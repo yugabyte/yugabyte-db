@@ -17,7 +17,7 @@ set parallel_tuple_cost to 0;
 -- simple union
 explain (costs off)
 select * from t1 union select * from t2;
-         QUERY PLAN
+         QUERY PLAN         
 ----------------------------
  HashAggregate
    Group Key: t1.k, t1.v
@@ -27,7 +27,7 @@ select * from t1 union select * from t2;
 (5 rows)
 
 select * from t1 union select * from t2;
- k |     v
+ k |     v      
 ---+------------
  4 | value_t2_4
  3 | value_t2_3
@@ -38,7 +38,7 @@ select * from t1 union select * from t2;
 -- simple union all
 explain (costs off)
 select * from t1 union all select * from t2;
-      QUERY PLAN
+      QUERY PLAN      
 ----------------------
  Append
    ->  Seq Scan on t1
@@ -46,7 +46,7 @@ select * from t1 union all select * from t2;
 (3 rows)
 
 select * from t1 union all select * from t2;
- k |     v
+ k |     v      
 ---+------------
  2 | value_t1_2
  1 | value_t1_1
@@ -57,7 +57,7 @@ select * from t1 union all select * from t2;
 -- joins union
 explain (costs off)
 select * from t, t1 where t.k = t1.k union select * from t, t2 where t.k = t2.k;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  HashAggregate
    Group Key: t.k, t.v, t1.k, t1.v
@@ -75,7 +75,7 @@ select * from t, t1 where t.k = t1.k union select * from t, t2 where t.k = t2.k;
 (13 rows)
 
 select * from t, t1 where t.k = t1.k union select * from t, t2 where t.k = t2.k;
- k |     v     | k |     v
+ k |     v     | k |     v      
 ---+-----------+---+------------
  3 | value_t_3 | 3 | value_t2_3
  2 | value_t_2 | 2 | value_t1_2
@@ -84,7 +84,7 @@ select * from t, t1 where t.k = t1.k union select * from t, t2 where t.k = t2.k;
 -- joins union all
 explain (costs off)
 select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t2.k;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Append
    ->  Hash Join
@@ -100,7 +100,7 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 (11 rows)
 
 select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t2.k;
- k |     v     | k |     v
+ k |     v     | k |     v      
 ---+-----------+---+------------
  2 | value_t_2 | 2 | value_t1_2
  3 | value_t_3 | 3 | value_t2_3
@@ -109,7 +109,7 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 -- partitioned table
 explain (costs off)
 select * from lp;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Append
    ->  Seq Scan on lp_ad lp_1
@@ -120,7 +120,7 @@ select * from lp;
 (6 rows)
 
 select * from lp;
- a
+ a 
 ---
 (0 rows)
 
@@ -128,7 +128,7 @@ set yb_enable_parallel_append to true;
 -- do not execute those parallel queries, there are known issues with YB PA
 explain (costs off)
 select * from t1 union select * from t2;
-         QUERY PLAN
+         QUERY PLAN         
 ----------------------------
  HashAggregate
    Group Key: t1.k, t1.v
@@ -140,7 +140,7 @@ select * from t1 union select * from t2;
 -- simple union all
 explain (costs off)
 select * from t1 union all select * from t2;
-         QUERY PLAN
+         QUERY PLAN         
 ----------------------------
  Gather
    Workers Planned: 2
@@ -152,7 +152,7 @@ select * from t1 union all select * from t2;
 -- joins union
 explain (costs off)
 select * from t, t1 where t.k = t1.k union select * from t, t2 where t.k = t2.k;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  HashAggregate
    Group Key: t.k, t.v, t1.k, t1.v
@@ -172,7 +172,7 @@ select * from t, t1 where t.k = t1.k union select * from t, t2 where t.k = t2.k;
 -- joins union all
 explain (costs off)
 select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t2.k;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Gather
    Workers Planned: 2
@@ -192,7 +192,7 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 -- partitioned table
 explain (costs off)
 select * from lp;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Gather
    Workers Planned: 2
@@ -207,7 +207,7 @@ select * from lp;
 -- union of non-YB relations (#21733)
 explain (costs off)
 /*+ Set(enable_seqscan OFF) */ select 'l' UNION ALL (SELECT 'g') ORDER BY 1;
-         QUERY PLAN
+         QUERY PLAN          
 -----------------------------
  Sort
    Sort Key: ('l'::text)
@@ -217,3 +217,4 @@ explain (costs off)
                ->  Result
                ->  Result
 (7 rows)
+

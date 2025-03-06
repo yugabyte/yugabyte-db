@@ -1191,7 +1191,7 @@ SELECT strip('base hidden rebel spaceship strike'::tsvector);
 (1 row)
 
 SELECT ts_delete(to_tsvector('english', 'Rebel spaceships, striking from a hidden base'), 'spaceship');
-                ts_delete
+                ts_delete                 
 ------------------------------------------
  'base':7 'hidden':6 'rebel':1 'strike':3
 (1 row)

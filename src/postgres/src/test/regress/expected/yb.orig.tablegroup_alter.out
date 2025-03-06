@@ -8,7 +8,7 @@ CREATE DATABASE db_alter_tablegroup;
 CREATE TABLEGROUP alter_tgroup1;
 CREATE TABLEGROUP alter_tgroup2;
 SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
-    grpname
+    grpname    
 ---------------
  alter_tgroup1
  alter_tgroup2
@@ -16,7 +16,7 @@ SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
 
 ALTER TABLEGROUP alter_tgroup1 RENAME TO alter_tgroup_try_alt;
 SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
-       grpname
+       grpname        
 ----------------------
  alter_tgroup2
  alter_tgroup_try_alt
@@ -24,7 +24,7 @@ SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
 
 ALTER TABLEGROUP alter_tgroup_try_alt RENAME TO alter_tgroup_alt;
 SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
-     grpname
+     grpname      
 ------------------
  alter_tgroup2
  alter_tgroup_alt
@@ -35,7 +35,7 @@ ERROR:  tablegroup "alter_tgroup_alt" already exists
 ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup2; -- fail
 ERROR:  tablegroup "alter_tgroup2" already exists
 SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
-     grpname
+     grpname      
 ------------------
  alter_tgroup2
  alter_tgroup_alt
@@ -69,4 +69,3 @@ ERROR:  role "u1" cannot be dropped because some objects depend on it
 DETAIL:  owner of tablegroup alter_tgroup6
 ALTER TABLEGROUP alter_tgroup6 OWNER TO u2;
 DROP USER u1; -- succeeds
-

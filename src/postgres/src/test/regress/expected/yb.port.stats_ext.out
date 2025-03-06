@@ -90,7 +90,7 @@ CREATE SCHEMA regress_schema_2;
 CREATE STATISTICS regress_schema_2.ab1_a_b_stats ON a, b FROM ab1;
 -- Let's also verify the pg_get_statisticsobjdef output looks sane.
 SELECT pg_get_statisticsobjdef(oid) FROM pg_statistic_ext WHERE stxname = 'ab1_a_b_stats';
-                      pg_get_statisticsobjdef
+                      pg_get_statisticsobjdef                      
 -------------------------------------------------------------------
  CREATE STATISTICS regress_schema_2.ab1_a_b_stats ON a, b FROM ab1
 (1 row)
@@ -103,23 +103,23 @@ CREATE STATISTICS ab1_b_a_stats ON b, a FROM ab1;
 ALTER TABLE ab1 DROP COLUMN a;
 \d ab1
                 Table "public.ab1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- b      | integer |           |          |
- c      | integer |           |          |
+ b      | integer |           |          | 
+ c      | integer |           |          | 
 Statistics objects:
     "public.ab1_b_c_stats" ON b, c FROM ab1
 
 -- Ensure statistics are dropped when table is
 SELECT stxname FROM pg_statistic_ext WHERE stxname LIKE 'ab1%';
-    stxname
+    stxname    
 ---------------
  ab1_b_c_stats
 (1 row)
 
 DROP TABLE ab1;
 SELECT stxname FROM pg_statistic_ext WHERE stxname LIKE 'ab1%';
- stxname
+ stxname 
 ---------
 (0 rows)
 
@@ -135,10 +135,10 @@ ALTER TABLE ab1 ALTER a SET STATISTICS -1;
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS 0;
 \d ab1
                 Table "public.ab1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Statistics objects:
     "public.ab1_a_b_stats" ON a, b FROM ab1; STATISTICS 0
 
@@ -146,18 +146,18 @@ ANALYZE ab1;
 SELECT stxname, stxdndistinct, stxddependencies, stxdmcv, stxdinherit
   FROM pg_statistic_ext s LEFT JOIN pg_statistic_ext_data d ON (d.stxoid = s.oid)
  WHERE s.stxname = 'ab1_a_b_stats';
-    stxname    | stxdndistinct | stxddependencies | stxdmcv | stxdinherit
+    stxname    | stxdndistinct | stxddependencies | stxdmcv | stxdinherit 
 ---------------+---------------+------------------+---------+-------------
- ab1_a_b_stats |               |                  |         |
+ ab1_a_b_stats |               |                  |         | 
 (1 row)
 
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS -1;
 \d+ ab1
                                     Table "public.ab1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              |
- b      | integer |           |          |         | plain   |              |
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
 Statistics objects:
     "public.ab1_a_b_stats" ON a, b FROM ab1
 
@@ -210,20 +210,20 @@ INSERT INTO stxdinp SELECT 1, a/100, a/100 FROM generate_series(1, 999) a;
 CREATE STATISTICS stxdinp ON (a + 1), a, b FROM stxdinp;
 ANALYZE stxdinp; -- partitions are processed recursively -- YB: just use ANALYZE because VACUUM ANALYZE is no-op
 SELECT 1 FROM pg_statistic_ext WHERE stxrelid = 'stxdinp'::regclass;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 -- YB: broken until #23592 is fixed (Should be 10 but 200)
 SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinp GROUP BY 1, 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     10
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT a + 1, b FROM ONLY stxdinp GROUP BY 1, 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -236,7 +236,7 @@ CREATE STATISTICS ab1_exprstat_1 ON (a+b) FROM ab1;
 -- with a single expression, we only enable expression statistics
 CREATE STATISTICS ab1_exprstat_2 ON (a+b) FROM ab1;
 SELECT stxkind FROM pg_statistic_ext WHERE stxname = 'ab1_exprstat_2';
- stxkind
+ stxkind 
 ---------
  {e}
 (1 row)
@@ -244,7 +244,7 @@ SELECT stxkind FROM pg_statistic_ext WHERE stxname = 'ab1_exprstat_2';
 -- adding anything to the expression builds all statistics kinds
 CREATE STATISTICS ab1_exprstat_3 ON (a+b), a FROM ab1;
 SELECT stxkind FROM pg_statistic_ext WHERE stxname = 'ab1_exprstat_3';
-  stxkind
+  stxkind  
 -----------
  {d,f,m,e}
 (1 row)
@@ -265,7 +265,7 @@ FROM generate_series(1, 100) x;
 ANALYZE ab1;
 -- apply some stats
 SELECT * FROM check_estimated_rows('SELECT * FROM ab1 WHERE (case a when 1 then true else false end) AND b=2');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -342,55 +342,55 @@ INSERT INTO ndistinct (a, b, c, filler1)
 ANALYZE ndistinct;
 -- Group Aggregate, due to over-estimate of the number of groups
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY b, c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (a+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     11
 (1 row)
@@ -402,7 +402,7 @@ SELECT s.stxkind, d.stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
- stxkind |                    stxdndistinct
+ stxkind |                    stxdndistinct                    
 ---------+-----------------------------------------------------
  {d,f,m} | {"3, 4": 11, "3, 6": 11, "4, 6": 11, "3, 4, 6": 11}
 (1 row)
@@ -414,45 +414,45 @@ CONTEXT:  SQL statement "explain analyze SELECT COUNT(*) FROM ndistinct GROUP BY
 PL/pgSQL function check_estimated_rows(text) line 7 at FOR over EXECUTE statement
 -- Hash Aggregate, thanks to estimates improved by the statistic
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY b, c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
 
 -- partial improvement (match on attributes)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (a+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
 
 -- expressions - no improvement
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |     11
 (1 row)
@@ -460,13 +460,13 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (
 -- last two plans keep using Group Aggregate, because 'd' is not covered
 -- by the statistic and while it's NULL-only we assume 200 values for it
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     11
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     11
 (1 row)
@@ -482,62 +482,62 @@ SELECT s.stxkind, d.stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
- stxkind |                      stxdndistinct
+ stxkind |                      stxdndistinct                       
 ---------+----------------------------------------------------------
  {d,f,m} | {"3, 4": 221, "3, 6": 247, "4, 6": 323, "3, 4, 6": 1000}
 (1 row)
 
 -- correct estimates
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1000 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1000 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        323 |    323
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     13
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (a+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1000 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
@@ -547,80 +547,80 @@ SELECT s.stxkind, d.stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
- stxkind | stxdndistinct
+ stxkind | stxdndistinct 
 ---------+---------------
 (0 rows)
 
 -- dropping the statistics results in under-estimates
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY b, c, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    323
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, d');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |     13
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (a+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
 
 -- ndistinct estimates with statistics on expressions
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
@@ -631,25 +631,25 @@ SELECT s.stxkind, d.stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
- stxkind |                           stxdndistinct
+ stxkind |                           stxdndistinct                           
 ---------+-------------------------------------------------------------------
  {d,e}   | {"-1, -2": 221, "-1, -3": 247, "-2, -3": 323, "-1, -2, -3": 1000}
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1000 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
@@ -657,19 +657,19 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (
 DROP STATISTICS s10;
 -- a mix of attributes and expressions
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    247
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |   1000
 (1 row)
@@ -680,25 +680,25 @@ SELECT s.stxkind, d.stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
- stxkind |                        stxdndistinct
+ stxkind |                        stxdndistinct                        
 ---------+-------------------------------------------------------------
  {d,e}   | {"3, 4": 221, "3, -1": 247, "4, -1": 323, "3, 4, -1": 1000}
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        221 |    221
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        247 |    247
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (2*c)');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1000 |   1000
 (1 row)
@@ -712,43 +712,43 @@ INSERT INTO ndistinct (a, b, c, d)
        FROM generate_series(1,1000) s(i);
 ANALYZE ndistinct;
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
         27 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         27 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), b');
- estimated | actual
+ estimated | actual 
 -----------+--------
         27 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         27 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1), c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    180
 (1 row)
@@ -758,43 +758,43 @@ CREATE STATISTICS s11 (ndistinct) ON a, b FROM ndistinct;
 CREATE STATISTICS s12 (ndistinct) ON c, d FROM ndistinct;
 ANALYZE ndistinct;
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1), c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    180
 (1 row)
@@ -804,43 +804,43 @@ DROP STATISTICS s12;
 CREATE STATISTICS s12 (ndistinct) ON (c * 10), (d - 1) FROM ndistinct;
 ANALYZE ndistinct;
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1), c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    180
 (1 row)
@@ -850,43 +850,43 @@ DROP STATISTICS s12;
 CREATE STATISTICS s12 (ndistinct) ON c, d, (c * 10), (d - 1) FROM ndistinct;
 ANALYZE ndistinct;
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1), c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    180
 (1 row)
@@ -896,43 +896,43 @@ DROP STATISTICS s11;
 CREATE STATISTICS s11 (ndistinct) ON a, b, (a*5), (b+1) FROM ndistinct;
 ANALYZE ndistinct;
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1), c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    180
 (1 row)
@@ -946,43 +946,43 @@ CREATE STATISTICS s11 (ndistinct) ON a, b, (a*5), (b+1) FROM ndistinct;
 CREATE STATISTICS s12 (ndistinct) ON a, (b+1), (c * 10) FROM ndistinct;
 ANALYZE ndistinct;
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          9 |      9
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5), (b+1), c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         45 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |     45
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    180
 (1 row)
@@ -1008,13 +1008,13 @@ INSERT INTO functional_dependencies (a, b, c, filler1)
      SELECT mod(i, 5), mod(i, 7), mod(i, 11), i FROM generate_series(1,1000) s(i);
 ANALYZE functional_dependencies;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         29 |     29
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |      3
 (1 row)
@@ -1023,13 +1023,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 CREATE STATISTICS func_deps_stat (dependencies) ON a, b, c FROM functional_dependencies;
 ANALYZE functional_dependencies;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         29 |     29
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |      3
 (1 row)
@@ -1042,13 +1042,13 @@ INSERT INTO functional_dependencies (a, b, c, filler1)
      SELECT i, i, i, i FROM generate_series(1,5000) s(i);
 ANALYZE functional_dependencies;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE mod(a, 11) = 1 AND mod(b::int, 13) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     35
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE mod(a, 11) = 1 AND mod(b::int, 13) = 1 AND mod(c, 7) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      5
 (1 row)
@@ -1057,13 +1057,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 CREATE STATISTICS func_deps_stat (dependencies) ON (mod(a,11)), (mod(b::int, 13)), (mod(c, 7)) FROM functional_dependencies;
 ANALYZE functional_dependencies;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE mod(a, 11) = 1 AND mod(b::int, 13) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         35 |     35
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE mod(a, 11) = 1 AND mod(b::int, 13) = 1 AND mod(c, 7) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          5 |      5
 (1 row)
@@ -1075,157 +1075,157 @@ INSERT INTO functional_dependencies (a, b, c, filler1)
      SELECT mod(i,100), mod(i,50), mod(i,25), i FROM generate_series(1,5000) s(i);
 ANALYZE functional_dependencies;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 -- IN
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 26, 51, 76) AND b IN (''1'', ''26'') AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 26, 51, 76) AND b IN (''1'', ''26'') AND c IN (1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 26, 27, 51, 52, 76, 77) AND b IN (''1'', ''2'', ''26'', ''27'') AND c IN (1, 2)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |    400
 (1 row)
 
 -- OR clauses referencing the same attribute
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR a = 51) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR a = 51) AND (b = ''1'' OR b = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR a = 2 OR a = 51 OR a = 52) AND (b = ''1'' OR b = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 -- OR clauses referencing different attributes
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR b = ''1'') AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |    100
 (1 row)
 
 -- ANY
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 51]) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 51]) AND b = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 2, 51, 52]) AND b = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 26, 51, 76]) AND b = ANY (ARRAY[''1'', ''26'']) AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 26, 51, 76]) AND b = ANY (ARRAY[''1'', ''26'']) AND c = ANY (ARRAY[1])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 2, 26, 27, 51, 52, 76, 77]) AND b = ANY (ARRAY[''1'', ''2'', ''26'', ''27'']) AND c = ANY (ARRAY[1, 2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |    400
 (1 row)
 
 -- ANY with inequalities should not benefit from functional dependencies
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a < ANY (ARRAY[1, 51]) AND b > ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2472 |   2400
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a >= ANY (ARRAY[1, 51]) AND b <= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1441 |   1250
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a <= ANY (ARRAY[1, 2, 51, 52]) AND b >= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       3909 |   2550
 (1 row)
 
 -- ALL (should not benefit from functional dependencies)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -1235,163 +1235,163 @@ CREATE STATISTICS func_deps_stat (dependencies) ON a, b, c FROM functional_depen
 ANALYZE functional_dependencies;
 -- print the detected dependencies
 SELECT dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
-                                                dependencies
+                                                dependencies                                                
 ------------------------------------------------------------------------------------------------------------
  {"3 => 4": 1.000000, "3 => 6": 1.000000, "4 => 6": 1.000000, "3, 4 => 6": 1.000000, "3, 6 => 4": 1.000000}
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 -- IN
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 26, 51, 76) AND b IN (''1'', ''26'') AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 26, 51, 76) AND b IN (''1'', ''26'') AND c IN (1)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 26, 27, 51, 52, 76, 77) AND b IN (''1'', ''2'', ''26'', ''27'') AND c IN (1, 2)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        400 |    400
 (1 row)
 
 -- OR clauses referencing the same attribute
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR a = 51) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         99 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR a = 51) AND (b = ''1'' OR b = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
         99 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR a = 2 OR a = 51 OR a = 52) AND (b = ''1'' OR b = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        197 |    200
 (1 row)
 
 -- OR clauses referencing different attributes are incompatible
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a = 1 OR b = ''1'') AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |    100
 (1 row)
 
 -- ANY
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 51]) AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 51]) AND b = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 2, 51, 52]) AND b = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 26, 51, 76]) AND b = ANY (ARRAY[''1'', ''26'']) AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 26, 51, 76]) AND b = ANY (ARRAY[''1'', ''26'']) AND c = ANY (ARRAY[1])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 2, 26, 27, 51, 52, 76, 77]) AND b = ANY (ARRAY[''1'', ''2'', ''26'', ''27'']) AND c = ANY (ARRAY[1, 2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        400 |    400
 (1 row)
 
 -- ANY with inequalities should not benefit from functional dependencies
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a < ANY (ARRAY[1, 51]) AND b > ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2472 |   2400
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a >= ANY (ARRAY[1, 51]) AND b <= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1441 |   1250
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a <= ANY (ARRAY[1, 2, 51, 52]) AND b >= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       3909 |   2550
 (1 row)
 
 -- ALL (should not benefit from functional dependencies)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -1404,14 +1404,14 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 ANALYZE functional_dependencies;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
@@ -1419,119 +1419,119 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 DROP STATISTICS func_deps_stat;
 -- now try functional dependencies with expressions
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1'' AND (c + 1) = 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 -- IN
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 52, 102, 152) AND upper(b) IN (''1'', ''26'') AND (c + 1) = 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 52, 102, 152) AND upper(b) IN (''1'', ''26'') AND (c + 1) IN (2)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 52, 54, 102, 104, 152, 154) AND upper(b) IN (''1'', ''2'', ''26'', ''27'') AND (c + 1) IN (2, 3)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    400
 (1 row)
 
 -- OR clauses referencing the same attribute
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR (a * 2) = 102) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR (a * 2) = 102) AND (upper(b) = ''1'' OR upper(b) = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR (a * 2) = 4 OR (a * 2) = 102 OR (a * 2) = 104) AND (upper(b) = ''1'' OR upper(b) = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 -- OR clauses referencing different attributes
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR upper(b) = ''1'') AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 -- ANY
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 102]) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 102]) AND upper(b) = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 4, 102, 104]) AND upper(b) = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 52, 102, 152]) AND upper(b) = ANY (ARRAY[''1'', ''26'']) AND (c + 1) = 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 52, 102, 152]) AND upper(b) = ANY (ARRAY[''1'', ''26'']) AND (c + 1) = ANY (ARRAY[2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 4, 52, 54, 102, 104, 152, 154]) AND upper(b) = ANY (ARRAY[''1'', ''2'', ''26'', ''27'']) AND (c + 1) = ANY (ARRAY[2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    400
 (1 row)
@@ -1539,38 +1539,38 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 -- ANY with inequalities should not benefit from functional dependencies
 -- the estimates however improve thanks to having expression statistics
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) < ANY (ARRAY[2, 102]) AND upper(b) > ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        926 |   2400
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) >= ANY (ARRAY[2, 102]) AND upper(b) <= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1543 |   1250
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) <= ANY (ARRAY[2, 4, 102, 104]) AND upper(b) >= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2229 |   2550
 (1 row)
 
 -- ALL (should not benefit from functional dependencies)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ALL (ARRAY[''1''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -1580,125 +1580,125 @@ CREATE STATISTICS func_deps_stat (dependencies) ON (a * 2), upper(b), (c + 1) FR
 ANALYZE functional_dependencies;
 -- print the detected dependencies
 SELECT dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
-                                                      dependencies
+                                                      dependencies                                                      
 ------------------------------------------------------------------------------------------------------------------------
  {"-1 => -2": 1.000000, "-1 => -3": 1.000000, "-2 => -3": 1.000000, "-1, -2 => -3": 1.000000, "-1, -3 => -2": 1.000000}
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1'' AND (c + 1) = 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 -- IN
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) IN (''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 52, 102, 152) AND upper(b) IN (''1'', ''26'') AND (c + 1) = 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 52, 102, 152) AND upper(b) IN (''1'', ''26'') AND (c + 1) IN (2)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 52, 54, 102, 104, 152, 154) AND upper(b) IN (''1'', ''2'', ''26'', ''27'') AND (c + 1) IN (2, 3)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        400 |    400
 (1 row)
 
 -- OR clauses referencing the same attribute
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR (a * 2) = 102) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         99 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR (a * 2) = 102) AND (upper(b) = ''1'' OR upper(b) = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
         99 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR (a * 2) = 4 OR (a * 2) = 102 OR (a * 2) = 104) AND (upper(b) = ''1'' OR upper(b) = ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        197 |    200
 (1 row)
 
 -- OR clauses referencing different attributes
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE ((a * 2) = 2 OR upper(b) = ''1'') AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |    100
 (1 row)
 
 -- ANY
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 102]) AND upper(b) = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 102]) AND upper(b) = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 4, 102, 104]) AND upper(b) = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 52, 102, 152]) AND upper(b) = ANY (ARRAY[''1'', ''26'']) AND (c + 1) = 2');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 52, 102, 152]) AND upper(b) = ANY (ARRAY[''1'', ''26'']) AND (c + 1) = ANY (ARRAY[2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = ANY (ARRAY[2, 4, 52, 54, 102, 104, 152, 154]) AND upper(b) = ANY (ARRAY[''1'', ''2'', ''26'', ''27'']) AND (c + 1) = ANY (ARRAY[2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        400 |    400
 (1 row)
@@ -1706,38 +1706,38 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 -- ANY with inequalities should not benefit from functional dependencies
 -- the estimates however improve thanks to having expression statistics
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) < ANY (ARRAY[2, 102]) AND upper(b) > ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2472 |   2400
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) >= ANY (ARRAY[2, 102]) AND upper(b) <= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1441 |   1250
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) <= ANY (ARRAY[2, 4, 102, 104]) AND upper(b) >= ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
       3909 |   2550
 (1 row)
 
 -- ALL (should not benefit from functional dependencies)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ALL (ARRAY[''1''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) = ALL (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -1761,31 +1761,31 @@ INSERT INTO functional_dependencies_multi (a, b, c, d)
 ANALYZE functional_dependencies_multi;
 -- estimates without any functional dependencies
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE a = 0 AND b = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        102 |    714
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE 0 = a AND 0 = b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        102 |    714
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
         41 |    454
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE a = 0 AND b = 0 AND c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     64
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE 0 = a AND b = 0 AND 0 = c AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     64
 (1 row)
@@ -1795,31 +1795,31 @@ CREATE STATISTICS functional_dependencies_multi_1 (dependencies) ON a, b FROM fu
 CREATE STATISTICS functional_dependencies_multi_2 (dependencies) ON c, d FROM functional_dependencies_multi;
 ANALYZE functional_dependencies_multi;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE a = 0 AND b = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        714 |    714
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE 0 = a AND 0 = b');
- estimated | actual
+ estimated | actual 
 -----------+--------
        714 |    714
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        454 |    454
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE a = 0 AND b = 0 AND c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
         65 |     64
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE 0 = a AND b = 0 AND 0 = c AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
         65 |     64
 (1 row)
@@ -1843,13 +1843,13 @@ INSERT INTO mcv_lists (a, b, c, filler1)
      SELECT mod(i,37), mod(i,41), mod(i,43), mod(i,47) FROM generate_series(1,5000) s(i);
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |      4
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      1
 (1 row)
@@ -1858,13 +1858,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = 
 CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c FROM mcv_lists;
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          3 |      4
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      1
 (1 row)
@@ -1876,13 +1876,13 @@ INSERT INTO mcv_lists (a, b, c, filler1)
      SELECT i, i, i, i FROM generate_series(1,1000) s(i);
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 AND mod(b::int,11) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     13
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 AND mod(b::int,11) = 1 AND mod(c,13) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      1
 (1 row)
@@ -1891,13 +1891,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 A
 CREATE STATISTICS mcv_lists_stats (mcv) ON (mod(a,7)), (mod(b::int,11)), (mod(c,13)) FROM mcv_lists;
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 AND mod(b::int,11) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         13 |     13
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 AND mod(b::int,11) = 1 AND mod(c,13) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      1
 (1 row)
@@ -1910,145 +1910,145 @@ INSERT INTO mcv_lists (a, b, c, ia, filler1)
        FROM generate_series(1,5000) s(i);
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = a AND ''1'' = b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < 1 AND b < ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 > a AND ''1'' > b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= 0 AND b <= ''0''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 0 >= a AND ''0'' >= b');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < 5 AND b < ''1'' AND c < 5');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < 5 AND ''1'' > b AND 5 > c');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= 4 AND b <= ''0'' AND c <= 4');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 4 >= a AND ''0'' >= b AND 4 >= c');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''1'' OR c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
        343 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''1'' OR c = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
        343 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (1, 2, 51, 52) AND b IN ( ''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (1, 2, 51, 52, NULL) AND b IN ( ''1'', ''2'', NULL)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[1, 2, 51, 52]) AND b = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[NULL, 1, 2, 51, 52]) AND b = ANY (ARRAY[''1'', ''2'', NULL])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          8 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= ANY (ARRAY[1, 2, 3]) AND b IN (''1'', ''2'', ''3'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
         26 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= ANY (ARRAY[1, NULL, 2, 3]) AND b IN (''1'', ''2'', NULL, ''3'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
         26 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND c > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
         10 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND c > ANY (ARRAY[1, 2, 3, NULL])');
- estimated | actual
+ estimated | actual 
 -----------+--------
         10 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', ''3'') AND c > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', NULL, ''3'') AND c > ANY (ARRAY[1, 2, NULL, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[4,5]) AND 4 = ANY(ia)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |     50
 (1 row)
@@ -2057,151 +2057,151 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY
 CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c, ia FROM mcv_lists;
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = a AND ''1'' = b');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < 1 AND b < ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 > a AND ''1'' > b');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= 0 AND b <= ''0''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 0 >= a AND ''0'' >= b');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1'' AND c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < 5 AND b < ''1'' AND c < 5');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < 5 AND ''1'' > b AND 5 > c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= 4 AND b <= ''0'' AND c <= 4');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 4 >= a AND ''0'' >= b AND 4 >= c');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''1'' OR c = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''1'' OR c = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''1'' OR c = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (1, 2, 51, 52) AND b IN ( ''1'', ''2'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (1, 2, 51, 52, NULL) AND b IN ( ''1'', ''2'', NULL)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[1, 2, 51, 52]) AND b = ANY (ARRAY[''1'', ''2''])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[NULL, 1, 2, 51, 52]) AND b = ANY (ARRAY[''1'', ''2'', NULL])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= ANY (ARRAY[1, 2, 3]) AND b IN (''1'', ''2'', ''3'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        150 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a <= ANY (ARRAY[1, NULL, 2, 3]) AND b IN (''1'', ''2'', NULL, ''3'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
        150 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND c > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND c > ANY (ARRAY[1, 2, 3, NULL])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', ''3'') AND c > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', NULL, ''3'') AND c > ANY (ARRAY[1, 2, NULL, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[4,5]) AND 4 = ANY(ia)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |     50
 (1 row)
@@ -2215,7 +2215,7 @@ SELECT d.stxdmcv IS NOT NULL
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxname = 'mcv_lists_stats'
    AND d.stxoid = s.oid;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -2226,14 +2226,14 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
@@ -2247,61 +2247,61 @@ ANALYZE mcv_lists;
 -- without any stats on the expressions, we have to use default selectivities, which
 -- is why the estimates here are different from the pre-computed case above
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = mod(a,20) AND 1 = mod(b::int,10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < 1 AND mod(b::int,10) < 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
        111 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 > mod(a,20) AND 1 > mod(b::int,10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        111 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1 AND mod(c,5) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 OR mod(b::int,10) = 1 OR mod(c,25) = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
         15 |    120
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) IN (1, 2, 51, 52, NULL) AND mod(b::int,10) IN ( 1, 2, NULL)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = ANY (ARRAY[1, 2, 51, 52]) AND mod(b::int,10) = ANY (ARRAY[1, 2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) <= ANY (ARRAY[1, NULL, 2, 3]) AND mod(b::int,10) IN (1, 2, NULL, 3)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < ALL (ARRAY[4, 5]) AND mod(b::int,10) IN (1, 2, 3) AND mod(c,5) > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
@@ -2312,61 +2312,61 @@ CREATE STATISTICS mcv_lists_stats_2 ON (mod(b::int,10)) FROM mcv_lists;
 CREATE STATISTICS mcv_lists_stats_3 ON (mod(c,5)) FROM mcv_lists;
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          5 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = mod(a,20) AND 1 = mod(b::int,10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          5 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < 1 AND mod(b::int,10) < 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          5 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 > mod(a,20) AND 1 > mod(b::int,10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          5 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1 AND mod(c,5) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 OR mod(b::int,10) = 1 OR mod(c,25) = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
        149 |    120
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) IN (1, 2, 51, 52, NULL) AND mod(b::int,10) IN ( 1, 2, NULL)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         20 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = ANY (ARRAY[1, 2, 51, 52]) AND mod(b::int,10) = ANY (ARRAY[1, 2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
         20 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) <= ANY (ARRAY[1, NULL, 2, 3]) AND mod(b::int,10) IN (1, 2, NULL, 3)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        116 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < ALL (ARRAY[4, 5]) AND mod(b::int,10) IN (1, 2, 3) AND mod(c,5) > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
         12 |    100
 (1 row)
@@ -2378,68 +2378,68 @@ DROP STATISTICS mcv_lists_stats_3;
 CREATE STATISTICS mcv_lists_stats (mcv) ON (mod(a,20)), (mod(b::int,10)), (mod(c,5)) FROM mcv_lists;
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = mod(a,20) AND 1 = mod(b::int,10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < 1 AND mod(b::int,10) < 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 > mod(a,20) AND 1 > mod(b::int,10)');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1 AND mod(c,5) = 1');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 OR mod(b::int,10) = 1 OR mod(c,25) = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
        105 |    120
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) IN (1, 2, 51, 52, NULL) AND mod(b::int,10) IN ( 1, 2, NULL)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = ANY (ARRAY[1, 2, 51, 52]) AND mod(b::int,10) = ANY (ARRAY[1, 2])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) <= ANY (ARRAY[1, NULL, 2, 3]) AND mod(b::int,10) IN (1, 2, NULL, 3)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        150 |    150
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < ALL (ARRAY[4, 5]) AND mod(b::int,10) IN (1, 2, 3) AND mod(c,5) > ANY (ARRAY[1, 2, 3])');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 -- we can't use the statistic for OR clauses that are not fully covered (missing 'd' attribute)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 OR mod(b::int,10) = 1 OR mod(c,5) = 1 OR d IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |    200
 (1 row)
@@ -2456,31 +2456,31 @@ INSERT INTO mcv_lists (a, b, c, filler1)
      FROM generate_series(1,5000) s(i);
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NULL AND c IS NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
         49 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NOT NULL AND b IS NULL AND c IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
         95 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (0, 1) AND b IN (''0'', ''1'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
@@ -2489,31 +2489,31 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (0, 1) AN
 CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c FROM mcv_lists;
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NULL AND c IS NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NOT NULL AND b IS NULL AND c IS NOT NULL');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (0, 1) AND b IN (''0'', ''1'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
@@ -2527,7 +2527,7 @@ SELECT m.*
        pg_mcv_list_items(d.stxdmcv) m
  WHERE s.stxname = 'mcv_lists_stats'
    AND d.stxoid = s.oid;
- index | values  |  nulls  | frequency | base_frequency
+ index | values  |  nulls  | frequency | base_frequency 
 -------+---------+---------+-----------+----------------
      0 | {1,2,3} | {f,f,f} |         1 |              1
 (1 row)
@@ -2544,19 +2544,19 @@ INSERT INTO mcv_lists (a, b, c, d)
      FROM generate_series(1,5000) s(i);
 ANALYZE mcv_lists;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE b = ''x'' OR d = ''x''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       3750 |   2500
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''x'' OR d = ''x''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       3750 |   2500
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND (b = ''x'' OR d = ''x'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
       3750 |   2500
 (1 row)
@@ -2570,26 +2570,26 @@ SELECT m.*
        pg_mcv_list_items(d.stxdmcv) m
  WHERE s.stxname = 'mcv_lists_stats'
    AND d.stxoid = s.oid;
- index |      values      |  nulls  | frequency | base_frequency
+ index |      values      |  nulls  | frequency | base_frequency 
 -------+------------------+---------+-----------+----------------
      0 | {NULL,x,x}       | {t,f,f} |       0.5 |           0.25
      1 | {NULL,NULL,NULL} | {t,t,t} |       0.5 |           0.25
 (2 rows)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE b = ''x'' OR d = ''x''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2500 |   2500
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''x'' OR d = ''x''');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2500 |   2500
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND (b = ''x'' OR d = ''x'')');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2500 |   2500
 (1 row)
@@ -2610,13 +2610,13 @@ INSERT INTO mcv_lists_uuid (a, b, c)
      FROM generate_series(1,5000) s(i);
 ANALYZE mcv_lists_uuid;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_uuid WHERE a = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND b = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_uuid WHERE a = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND b = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND c = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc''');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |     50
 (1 row)
@@ -2625,13 +2625,13 @@ CREATE STATISTICS mcv_lists_uuid_stats (mcv) ON a, b, c
   FROM mcv_lists_uuid;
 ANALYZE mcv_lists_uuid;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_uuid WHERE a = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND b = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_uuid WHERE a = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND b = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND c = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         50 |     50
 (1 row)
@@ -2668,25 +2668,25 @@ INSERT INTO mcv_lists_bool (a, b, c)
      FROM generate_series(1,10000) s(i);
 ANALYZE mcv_lists_bool;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE a AND b AND c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        156 |   1250
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND b AND c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        156 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND NOT b AND c');
- estimated | actual
+ estimated | actual 
 -----------+--------
        469 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND b AND NOT c');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1094 |      0
 (1 row)
@@ -2695,25 +2695,25 @@ CREATE STATISTICS mcv_lists_bool_stats (mcv) ON a, b, c
   FROM mcv_lists_bool;
 ANALYZE mcv_lists_bool;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE a AND b AND c');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1250 |   1250
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND b AND c');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND NOT b AND c');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND b AND NOT c');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -2747,49 +2747,49 @@ INSERT INTO mcv_lists_partial (a, b, c)
      FROM generate_series(0,3999) s(i);
 ANALYZE mcv_lists_partial;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 AND b = 0 AND c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    102
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 OR b = 0 OR c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        300 |    102
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 10 AND b = 10 AND c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      2
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 10 OR b = 10 OR c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
          6 |      2
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 AND b = 0 AND c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 OR b = 0 OR c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
        204 |    104
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE (a = 0 AND b = 0 AND c = 0) OR (a = 1 AND b = 1 AND c = 1) OR (a = 2 AND b = 2 AND c = 2)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    306
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE (a = 0 AND b = 0) OR (a = 0 AND c = 0) OR (b = 0 AND c = 0)');
- estimated | actual
+ estimated | actual 
 -----------+--------
          6 |    102
 (1 row)
@@ -2798,49 +2798,49 @@ CREATE STATISTICS mcv_lists_partial_stats (mcv) ON a, b, c
   FROM mcv_lists_partial;
 ANALYZE mcv_lists_partial;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 AND b = 0 AND c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        102 |    102
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 OR b = 0 OR c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
         96 |    102
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 10 AND b = 10 AND c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |      2
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 10 OR b = 10 OR c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
          2 |      2
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 AND b = 0 AND c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 OR b = 0 OR c = 10');
- estimated | actual
+ estimated | actual 
 -----------+--------
        102 |    104
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE (a = 0 AND b = 0 AND c = 0) OR (a = 1 AND b = 1 AND c = 1) OR (a = 2 AND b = 2 AND c = 2)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        306 |    306
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE (a = 0 AND b = 0) OR (a = 0 AND c = 0) OR (b = 0 AND c = 0)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        108 |    102
 (1 row)
@@ -2865,43 +2865,43 @@ INSERT INTO mcv_lists_multi (a, b, c, d)
 ANALYZE mcv_lists_multi;
 -- estimates without any mcv statistics
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 AND b = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        200 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        102 |    714
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE b = 0 AND c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        143 |    142
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE b = 0 OR c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1571 |   1572
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 AND b = 0 AND c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          4 |    142
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE (a = 0 AND b = 0) OR (c = 0 AND d = 0)');
- estimated | actual
+ estimated | actual 
 -----------+--------
        298 |   1572
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 OR b = 0 OR c = 0 OR d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
       2649 |   1572
 (1 row)
@@ -2911,43 +2911,43 @@ CREATE STATISTICS mcv_lists_multi_1 (mcv) ON a, b FROM mcv_lists_multi;
 CREATE STATISTICS mcv_lists_multi_2 (mcv) ON c, d FROM mcv_lists_multi;
 ANALYZE mcv_lists_multi;
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 AND b = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1000 |   1000
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        714 |    714
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE b = 0 AND c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        143 |    142
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE b = 0 OR c = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1571 |   1572
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 AND b = 0 AND c = 0 AND d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        143 |    142
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE (a = 0 AND b = 0) OR (c = 0 AND d = 0)');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1571 |   1572
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 OR b = 0 OR c = 0 OR d = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
       1571 |   1572
 (1 row)
@@ -2958,13 +2958,13 @@ CREATE TABLE expr_stats (a int, b int, c int);
 INSERT INTO expr_stats SELECT mod(i,10), mod(i,10), mod(i,10) FROM generate_series(1,1000) s(i);
 ANALYZE expr_stats;
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (2*a) = 0 AND (3*b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (a+b) = 0 AND (a-b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
@@ -2972,13 +2972,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (a+b) = 0 AND
 CREATE STATISTICS expr_stats_1 (mcv) ON (a+b), (a-b), (2*a), (3*b) FROM expr_stats;
 ANALYZE expr_stats;
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (2*a) = 0 AND (3*b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (a+b) = 0 AND (a-b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
@@ -2990,19 +2990,19 @@ CREATE TABLE expr_stats (a int, b int, c int);
 INSERT INTO expr_stats SELECT mod(i,10), mod(i,10), mod(i,10) FROM generate_series(1,1000) s(i);
 ANALYZE expr_stats;
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (2*a) = 0 AND (3*b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 3 AND b = 3 AND (a-b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND b = 1 AND (a-b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -3010,19 +3010,19 @@ SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND b =
 CREATE STATISTICS expr_stats_1 (mcv) ON a, b, (2*a), (3*b), (a+b), (a-b) FROM expr_stats;
 ANALYZE expr_stats;
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (2*a) = 0 AND (3*b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 3 AND b = 3 AND (a-b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND b = 1 AND (a-b) = 0');
- estimated | actual
+ estimated | actual 
 -----------+--------
          1 |      0
 (1 row)
@@ -3033,7 +3033,7 @@ CREATE TABLE expr_stats (a int, b name, c text);
 INSERT INTO expr_stats SELECT mod(i,10), md5(mod(i,10)::text), md5(mod(i,10)::text) FROM generate_series(1,1000) s(i);
 ANALYZE expr_stats;
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (b || c) <= ''z'' AND (c || b) >= ''0''');
- estimated | actual
+ estimated | actual 
 -----------+--------
         11 |    100
 (1 row)
@@ -3041,7 +3041,7 @@ SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (b 
 CREATE STATISTICS expr_stats_1 (mcv) ON a, b, (b || c), (c || b) FROM expr_stats;
 ANALYZE expr_stats;
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (b || c) <= ''z'' AND (c || b) >= ''0''');
- estimated | actual
+ estimated | actual 
 -----------+--------
        100 |    100
 (1 row)
@@ -3061,7 +3061,7 @@ SELECT c0 FROM ONLY expr_stats_incompatible_test WHERE
   AND
   (c0 IN (0, 1) OR c1)
 );
- c0
+ c0 
 ----
 (0 rows)
 
@@ -3099,14 +3099,14 @@ analyze stts_t1;
 set search_path to public, stts_s1, stts_s2, tststats;
 \dX
                                                         List of extended statistics
-  Schema  |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV
+  Schema  |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV   
 ----------+------------------------+------------------------------------------------------------------+-----------+--------------+---------
- public   | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      |
+ public   | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      | 
  public   | mcv_lists_arrays_stats | a, b, c FROM mcv_lists_arrays                                    |           |              | defined
  public   | mcv_lists_bool_stats   | a, b, c FROM mcv_lists_bool                                      |           |              | defined
  public   | mcv_lists_stats        | a, b, d FROM mcv_lists                                           |           |              | defined
- public   | stts_1                 | a, b FROM stts_t1                                                | defined   |              |
- public   | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      |
+ public   | stts_1                 | a, b FROM stts_t1                                                | defined   |              | 
+ public   | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      | 
  public   | stts_3                 | a, b FROM stts_t1                                                | defined   | defined      | defined
  public   | stts_4                 | b, c FROM stts_t2                                                | defined   | defined      | defined
  public   | stts_hoge              | col1, col2, col3 FROM stts_t3                                    | defined   | defined      | defined
@@ -3117,31 +3117,31 @@ set search_path to public, stts_s1, stts_s2, tststats;
 
 \dX stts_?
                        List of extended statistics
- Schema |  Name  |    Definition     | Ndistinct | Dependencies |   MCV
+ Schema |  Name  |    Definition     | Ndistinct | Dependencies |   MCV   
 --------+--------+-------------------+-----------+--------------+---------
- public | stts_1 | a, b FROM stts_t1 | defined   |              |
- public | stts_2 | a, b FROM stts_t1 | defined   | defined      |
+ public | stts_1 | a, b FROM stts_t1 | defined   |              | 
+ public | stts_2 | a, b FROM stts_t1 | defined   | defined      | 
  public | stts_3 | a, b FROM stts_t1 | defined   | defined      | defined
  public | stts_4 | b, c FROM stts_t2 | defined   | defined      | defined
 (4 rows)
 
 \dX *stts_hoge
                                List of extended statistics
- Schema |   Name    |          Definition           | Ndistinct | Dependencies |   MCV
+ Schema |   Name    |          Definition           | Ndistinct | Dependencies |   MCV   
 --------+-----------+-------------------------------+-----------+--------------+---------
  public | stts_hoge | col1, col2, col3 FROM stts_t3 | defined   | defined      | defined
 (1 row)
 
 \dX+
                                                         List of extended statistics
-  Schema  |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV
+  Schema  |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV   
 ----------+------------------------+------------------------------------------------------------------+-----------+--------------+---------
- public   | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      |
+ public   | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      | 
  public   | mcv_lists_arrays_stats | a, b, c FROM mcv_lists_arrays                                    |           |              | defined
  public   | mcv_lists_bool_stats   | a, b, c FROM mcv_lists_bool                                      |           |              | defined
  public   | mcv_lists_stats        | a, b, d FROM mcv_lists                                           |           |              | defined
- public   | stts_1                 | a, b FROM stts_t1                                                | defined   |              |
- public   | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      |
+ public   | stts_1                 | a, b FROM stts_t1                                                | defined   |              | 
+ public   | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      | 
  public   | stts_3                 | a, b FROM stts_t1                                                | defined   | defined      | defined
  public   | stts_4                 | b, c FROM stts_t2                                                | defined   | defined      | defined
  public   | stts_hoge              | col1, col2, col3 FROM stts_t3                                    | defined   | defined      | defined
@@ -3152,24 +3152,24 @@ set search_path to public, stts_s1, stts_s2, tststats;
 
 \dX+ stts_?
                        List of extended statistics
- Schema |  Name  |    Definition     | Ndistinct | Dependencies |   MCV
+ Schema |  Name  |    Definition     | Ndistinct | Dependencies |   MCV   
 --------+--------+-------------------+-----------+--------------+---------
- public | stts_1 | a, b FROM stts_t1 | defined   |              |
- public | stts_2 | a, b FROM stts_t1 | defined   | defined      |
+ public | stts_1 | a, b FROM stts_t1 | defined   |              | 
+ public | stts_2 | a, b FROM stts_t1 | defined   | defined      | 
  public | stts_3 | a, b FROM stts_t1 | defined   | defined      | defined
  public | stts_4 | b, c FROM stts_t2 | defined   | defined      | defined
 (4 rows)
 
 \dX+ *stts_hoge
                                List of extended statistics
- Schema |   Name    |          Definition           | Ndistinct | Dependencies |   MCV
+ Schema |   Name    |          Definition           | Ndistinct | Dependencies |   MCV   
 --------+-----------+-------------------------------+-----------+--------------+---------
  public | stts_hoge | col1, col2, col3 FROM stts_t3 | defined   | defined      | defined
 (1 row)
 
 \dX+ stts_s2.stts_yama
                             List of extended statistics
- Schema  |   Name    |       Definition        | Ndistinct | Dependencies |   MCV
+ Schema  |   Name    |       Definition        | Ndistinct | Dependencies |   MCV   
 ---------+-----------+-------------------------+-----------+--------------+---------
  stts_s2 | stts_yama | col1, col3 FROM stts_t3 |           | defined      | defined
 (1 row)
@@ -3177,14 +3177,14 @@ set search_path to public, stts_s1, stts_s2, tststats;
 set search_path to public, stts_s1;
 \dX
                                                        List of extended statistics
- Schema  |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV
+ Schema  |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV   
 ---------+------------------------+------------------------------------------------------------------+-----------+--------------+---------
- public  | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      |
+ public  | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      | 
  public  | mcv_lists_arrays_stats | a, b, c FROM mcv_lists_arrays                                    |           |              | defined
  public  | mcv_lists_bool_stats   | a, b, c FROM mcv_lists_bool                                      |           |              | defined
  public  | mcv_lists_stats        | a, b, d FROM mcv_lists                                           |           |              | defined
- public  | stts_1                 | a, b FROM stts_t1                                                | defined   |              |
- public  | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      |
+ public  | stts_1                 | a, b FROM stts_t1                                                | defined   |              | 
+ public  | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      | 
  public  | stts_3                 | a, b FROM stts_t1                                                | defined   | defined      | defined
  public  | stts_4                 | b, c FROM stts_t2                                                | defined   | defined      | defined
  public  | stts_hoge              | col1, col2, col3 FROM stts_t3                                    | defined   | defined      | defined
@@ -3195,14 +3195,14 @@ create role regress_stats_ext nosuperuser;
 set role regress_stats_ext;
 \dX
                                                        List of extended statistics
- Schema |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV
+ Schema |          Name          |                            Definition                            | Ndistinct | Dependencies |   MCV   
 --------+------------------------+------------------------------------------------------------------+-----------+--------------+---------
- public | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      |
+ public | func_deps_stat         | (a * 2), upper(b), (c + 1::numeric) FROM functional_dependencies |           | defined      | 
  public | mcv_lists_arrays_stats | a, b, c FROM mcv_lists_arrays                                    |           |              | defined
  public | mcv_lists_bool_stats   | a, b, c FROM mcv_lists_bool                                      |           |              | defined
  public | mcv_lists_stats        | a, b, d FROM mcv_lists                                           |           |              | defined
- public | stts_1                 | a, b FROM stts_t1                                                | defined   |              |
- public | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      |
+ public | stts_1                 | a, b FROM stts_t1                                                | defined   |              | 
+ public | stts_2                 | a, b FROM stts_t1                                                | defined   | defined      | 
  public | stts_3                 | a, b FROM stts_t1                                                | defined   | defined      | defined
  public | stts_4                 | b, c FROM stts_t2                                                | defined   | defined      | defined
  public | stts_hoge              | col1, col2, col3 FROM stts_t3                                    | defined   | defined      | defined
@@ -3247,7 +3247,7 @@ GRANT SELECT, DELETE ON tststats.priv_test_view TO regress_stats_user1;
 -- Should now have access via the view, but see nothing and leak nothing
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_view WHERE a <<< 0 AND b <<< 0; -- Should not leak
- a | b
+ a | b 
 ---+---
 (0 rows)
 
@@ -3259,7 +3259,7 @@ GRANT SELECT, DELETE ON tststats.priv_test_tbl TO regress_stats_user1;
 -- Should now have direct table access, but see nothing and leak nothing
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
- a | b
+ a | b 
 ---+---
 (0 rows)
 

@@ -181,7 +181,7 @@ $$;
 -- Verify that we're testing all of the caches and
 -- the right number of keys for each catalog cache.
 SELECT COUNT(DISTINCT catcache_name) FROM catcache_keys;
- count
+ count 
 -------
     55
 (1 row)
@@ -190,7 +190,7 @@ SELECT catcache_name, COUNT(*)
 FROM catcache_keys
 GROUP BY catcache_name
 ORDER BY catcache_name;
-       catcache_name        | count
+       catcache_name        | count 
 ----------------------------+-------
  AGGFNOID                   |   100
  AMNAME                     |     9
@@ -13590,3 +13590,4 @@ hashval       | 208134237
 catcache_name | YBCONSTRAINTRELIDTYPIDNAME
 keys          | {"f1": "0", "f2": "13201", "f3": "yes_or_no_check", "f4": null}
 hashval       | 2566409916
+

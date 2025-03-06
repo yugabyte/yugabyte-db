@@ -8,7 +8,7 @@ SET yb_enable_bitmapscan TO on;
 SELECT * FROM onek
    WHERE onek.unique1 < 10
    ORDER BY onek.unique1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |     998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | KMBAAA   | OOOOxx
        1 |     214 |   1 |    1 |   1 |      1 |       1 |        1 |           1 |         1 |        1 |   2 |    3 | BAAAAA   | GIAAAA   | OOOOxx
@@ -28,7 +28,7 @@ SELECT * FROM onek
 SELECT onek.unique1, onek.stringu1 FROM onek
    WHERE onek.unique1 < 20
    ORDER BY unique1 using >;
- unique1 | stringu1
+ unique1 | stringu1 
 ---------+----------
       19 | TAAAAA
       18 | SAAAAA
@@ -58,7 +58,7 @@ SELECT onek.unique1, onek.stringu1 FROM onek
 SELECT onek.unique1, onek.stringu1 FROM onek
    WHERE onek.unique1 > 980
    ORDER BY stringu1 using <;
- unique1 | stringu1
+ unique1 | stringu1 
 ---------+----------
      988 | AMAAAA
      989 | BMAAAA
@@ -88,7 +88,7 @@ SELECT onek.unique1, onek.stringu1 FROM onek
 SELECT onek.unique1, onek.string4 FROM onek
    WHERE onek.unique1 > 980
    ORDER BY string4 using <, unique1 using >;
- unique1 | string4
+ unique1 | string4 
 ---------+---------
      999 | AAAAxx
      995 | AAAAxx
@@ -118,7 +118,7 @@ SELECT onek.unique1, onek.string4 FROM onek
 SELECT onek.unique1, onek.string4 FROM onek
    WHERE onek.unique1 > 980
    ORDER BY string4 using >, unique1 using <;
- unique1 | string4
+ unique1 | string4 
 ---------+---------
      984 | VVVVxx
      989 | VVVVxx
@@ -148,7 +148,7 @@ SELECT onek.unique1, onek.string4 FROM onek
 SELECT onek.unique1, onek.string4 FROM onek
    WHERE onek.unique1 < 20
    ORDER BY unique1 using >, string4 using <;
- unique1 | string4
+ unique1 | string4 
 ---------+---------
       19 | OOOOxx
       18 | VVVVxx
@@ -179,7 +179,7 @@ SELECT onek.unique1, onek.string4 FROM onek
 SELECT onek.unique1, onek.string4 FROM onek
    WHERE onek.unique1 < 20
    ORDER BY unique1 using <, string4 using >;
- unique1 | string4
+ unique1 | string4 
 ---------+---------
        0 | OOOOxx
        1 | OOOOxx
@@ -218,7 +218,7 @@ SET enable_sort TO off;
 -- awk '{if($1<10){print $0;}else{next;}}' onek.data | sort +0n -1
 --
 SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |     998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | KMBAAA   | OOOOxx
        1 |     214 |   1 |    1 |   1 |      1 |       1 |        1 |           1 |         1 |        1 |   2 |    3 | BAAAAA   | GIAAAA   | OOOOxx
@@ -238,7 +238,7 @@ SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10;
 SELECT onek2.unique1, onek2.stringu1 FROM onek2
     WHERE onek2.unique1 < 20
     ORDER BY unique1 using >;
- unique1 | stringu1
+ unique1 | stringu1 
 ---------+----------
       19 | TAAAAA
       18 | SAAAAA
@@ -267,7 +267,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 --
 SELECT onek2.unique1, onek2.stringu1 FROM onek2
    WHERE onek2.unique1 > 980;
- unique1 | stringu1
+ unique1 | stringu1 
 ---------+----------
      981 | TLAAAA
      982 | ULAAAA
@@ -512,34 +512,34 @@ SELECT * FROM nocols n, LATERAL (VALUES(n.*)) v;
 CREATE TEMP TABLE foo (f1 int);
 INSERT INTO foo VALUES (42),(3),(10),(7),(null),(null),(1);
 SELECT * FROM foo ORDER BY f1;
- f1
+ f1 
 ----
   1
   3
   7
  10
  42
-
-
+   
+   
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 ASC;	-- same thing
- f1
+ f1 
 ----
   1
   3
   7
  10
  42
-
-
+   
+   
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 NULLS FIRST;
- f1
+ f1 
 ----
-
-
+   
+   
   1
   3
   7
@@ -548,10 +548,10 @@ SELECT * FROM foo ORDER BY f1 NULLS FIRST;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC;
- f1
+ f1 
 ----
-
-
+   
+   
  42
  10
   7
@@ -560,37 +560,37 @@ SELECT * FROM foo ORDER BY f1 DESC;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
- f1
+ f1 
 ----
  42
  10
   7
   3
   1
-
-
+   
+   
 (7 rows)
 
 -- check if indexscans do the right things
 CREATE INDEX fooi ON foo (f1);
 SET enable_sort = false;
 SELECT * FROM foo ORDER BY f1;
- f1
+ f1 
 ----
   1
   3
   7
  10
  42
-
-
+   
+   
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 NULLS FIRST;
- f1
+ f1 
 ----
-
-
+   
+   
   1
   3
   7
@@ -599,10 +599,10 @@ SELECT * FROM foo ORDER BY f1 NULLS FIRST;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC;
- f1
+ f1 
 ----
-
-
+   
+   
  42
  10
   7
@@ -611,36 +611,36 @@ SELECT * FROM foo ORDER BY f1 DESC;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
- f1
+ f1 
 ----
  42
  10
   7
   3
   1
-
-
+   
+   
 (7 rows)
 
 DROP INDEX fooi;
 CREATE INDEX fooi ON foo (f1 DESC);
 SELECT * FROM foo ORDER BY f1;
- f1
+ f1 
 ----
   1
   3
   7
  10
  42
-
-
+   
+   
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 NULLS FIRST;
- f1
+ f1 
 ----
-
-
+   
+   
   1
   3
   7
@@ -649,10 +649,10 @@ SELECT * FROM foo ORDER BY f1 NULLS FIRST;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC;
- f1
+ f1 
 ----
-
-
+   
+   
  42
  10
   7
@@ -661,36 +661,36 @@ SELECT * FROM foo ORDER BY f1 DESC;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
- f1
+ f1 
 ----
  42
  10
   7
   3
   1
-
-
+   
+   
 (7 rows)
 
 DROP INDEX fooi;
 CREATE INDEX fooi ON foo (f1 DESC NULLS LAST);
 SELECT * FROM foo ORDER BY f1;
- f1
+ f1 
 ----
   1
   3
   7
  10
  42
-
-
+   
+   
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 NULLS FIRST;
- f1
+ f1 
 ----
-
-
+   
+   
   1
   3
   7
@@ -699,10 +699,10 @@ SELECT * FROM foo ORDER BY f1 NULLS FIRST;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC;
- f1
+ f1 
 ----
-
-
+   
+   
  42
  10
   7
@@ -711,15 +711,15 @@ SELECT * FROM foo ORDER BY f1 DESC;
 (7 rows)
 
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
- f1
+ f1 
 ----
  42
  10
   7
   3
   1
-
-
+   
+   
 (7 rows)
 
 --
@@ -728,7 +728,7 @@ SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
 -- partial index is usable
 explain (costs off)
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Index Scan using onek2_u2_prtl on onek2
    Index Cond: (unique2 = 11)
@@ -736,7 +736,7 @@ select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 (3 rows)
 
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
      494 |      11 |   0 |    2 |   4 |     14 |       4 |       94 |          94 |       494 |      494 |   8 |    9 | ATAAAA   | LAAAAA   | VVVVxx
 (1 row)
@@ -744,7 +744,7 @@ select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 -- actually run the query with an analyze to use the partial index
 explain (costs off, analyze on, timing off, summary off)
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using onek2_u2_prtl on onek2 (actual rows=1 loops=1)
    Index Cond: (unique2 = 11)
@@ -753,7 +753,7 @@ select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Index Scan using onek2_u2_prtl on onek2
    Index Cond: (unique2 = 11)
@@ -761,7 +761,7 @@ select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 (3 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
- unique2
+ unique2 
 ---------
       11
 (1 row)
@@ -769,28 +769,28 @@ select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 -- partial index predicate implies clause, so no need for retest
 explain (costs off)
 select * from onek2 where unique2 = 11 and stringu1 < 'B';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using onek2_u2_prtl on onek2
    Index Cond: (unique2 = 11)
 (2 rows)
 
 select * from onek2 where unique2 = 11 and stringu1 < 'B';
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
      494 |      11 |   0 |    2 |   4 |     14 |       4 |       94 |          94 |       494 |      494 |   8 |    9 | ATAAAA   | LAAAAA   | VVVVxx
 (1 row)
 
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
-                  QUERY PLAN
+                  QUERY PLAN                  
 ----------------------------------------------
  Index Only Scan using onek2_u2_prtl on onek2
    Index Cond: (unique2 = 11)
 (2 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
- unique2
+ unique2 
 ---------
       11
 (1 row)
@@ -798,7 +798,7 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 -- but if it's an update target, must retest anyway
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  LockRows
    ->  Index Scan using onek2_u2_prtl on onek2
@@ -807,7 +807,7 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
 (4 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
- unique2
+ unique2 
 ---------
       11
 (1 row)
@@ -815,14 +815,14 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
 -- partial index is not applicable
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Seq Scan on onek2
    Storage Filter: ((stringu1 < 'C'::name) AND (unique2 = 11))
 (2 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
- unique2
+ unique2 
 ---------
       11
 (1 row)
@@ -831,7 +831,7 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
 SET enable_indexscan TO off;
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  YB Bitmap Table Scan on onek2
    ->  Bitmap Index Scan on onek2_u2_prtl
@@ -839,7 +839,7 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 (3 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
- unique2
+ unique2 
 ---------
       11
 (1 row)
@@ -849,7 +849,7 @@ RESET enable_indexscan;
 explain (costs off)
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B';
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  YB Bitmap Table Scan on onek2
    Storage Filter: (stringu1 < 'B'::name)
@@ -862,7 +862,7 @@ select unique1, unique2 from onek2
 
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B';
- unique1 | unique2
+ unique1 | unique2 
 ---------+---------
        0 |     998
      494 |      11
@@ -871,7 +871,7 @@ select unique1, unique2 from onek2
 explain (costs off)
 select unique1, unique2 from onek2
   where (unique2 = 11 and stringu1 < 'B') or unique1 = 0;
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  YB Bitmap Table Scan on onek2
    ->  BitmapOr
@@ -883,7 +883,7 @@ select unique1, unique2 from onek2
 
 select unique1, unique2 from onek2
   where (unique2 = 11 and stringu1 < 'B') or unique1 = 0;
- unique1 | unique2
+ unique1 | unique2 
 ---------+---------
        0 |     998
      494 |      11

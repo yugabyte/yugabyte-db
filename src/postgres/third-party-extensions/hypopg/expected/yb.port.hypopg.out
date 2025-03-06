@@ -164,7 +164,7 @@ WHERE e ~ 'Index.*<\d+>lsm_hypo.*'; -- YB: change btree to lsm
 SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc, "Id2" desc nulls first, id desc nulls last, cast(md5(val) as bpchar)  bpchar_pattern_ops) with (fillfactor = 10) WHERE id < 1000 AND id +1 %2 = 3');
 ERROR:  unrecognized parameter "fillfactor"
 SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc, "Id2" desc nulls first, id desc nulls last, cast(md5(val) as bpchar)  bpchar_pattern_ops) WHERE id < 1000 AND id +1 %2 = 3'); -- YB: create same index without fillfactor as a workaround
-                                                                          hypopg_get_indexdef
+                                                                          hypopg_get_indexdef                                                                          
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  CREATE INDEX ON public.hypo USING lsm (id DESC, "Id2" DESC, id DESC NULLS LAST, ((md5(val))::bpchar) bpchar_pattern_ops) WHERE ((id < 1000) AND ((id + (1 % 2)) = 3))
 (1 row)

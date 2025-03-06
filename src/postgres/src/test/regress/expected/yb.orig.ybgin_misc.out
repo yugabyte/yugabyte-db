@@ -15,7 +15,7 @@ CREATE INDEX ON jsonbs USING ybgin (j);
 INSERT INTO vectors (v) VALUES ('a b c i k'), ('abc j k');
 EXPLAIN (costs off)
 UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Update on vectors
    ->  Index Scan using vectors_v_idx on vectors
@@ -24,7 +24,7 @@ UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
 
 UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
 SELECT v FROM vectors WHERE v @@ 'k' ORDER BY i;
-        v
+        v        
 -----------------
  'a' 'b' 'i' 'k'
  'abc' 'k'
@@ -35,7 +35,7 @@ DELETE FROM vectors WHERE v @@ 'k';
 INSERT INTO jsonbs (j) VALUES ('[4,7,"sh",3,"du"]'), ('{"du":[7,9], "sh":13}');
 EXPLAIN (costs off)
 UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Update on jsonbs
    ->  Index Scan using jsonbs_j_idx on jsonbs
@@ -44,7 +44,7 @@ UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
 
 UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
 SELECT j FROM jsonbs WHERE j ? 'du' ORDER BY i;
-        j
+        j        
 -----------------
  [4, 7, 3, "du"]
  {"du": [7, 9]}
@@ -97,7 +97,7 @@ INSERT INTO vectors (v) VALUES
     (E'\x7F\x7F');
 EXPLAIN (costs off)
 SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Sort
    Sort Key: i
@@ -106,7 +106,7 @@ SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
 (4 rows)
 
 SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
-         v
+         v          
 --------------------
  '\x7F\x7F\x7F'
  '\x7F\x7F\x7Fa'
@@ -115,7 +115,7 @@ SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
 
 EXPLAIN (costs off)
 DELETE FROM vectors WHERE v @@ E'\x7F:*';
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Delete on vectors
    ->  Index Scan using vectors_v_idx on vectors
@@ -152,79 +152,79 @@ INSERT INTO vectors (v) VALUES
     (E'\x7F\U0010ffff'),
     (E'\x7F\U0010ffff\x7F');
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00bf:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00cf:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00df:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ef:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ff:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u013f:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u017f:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u07ff:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\ufeff:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\uffff:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0001ffff:*';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0010ffff:*';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM vectors WHERE v @@ E'\x7F:*';
- count
+ count 
 -------
     24
 (1 row)
@@ -236,14 +236,14 @@ DELETE FROM vectors WHERE v @@ E'\x7F:*';
 -- AND inside tsquery
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'a & bb';
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '''a'' & ''bb'''::tsquery)
 (2 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a & bb';
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
@@ -252,7 +252,7 @@ SELECT * FROM vectors WHERE v @@ 'a & bb';
 -- AND between '@@' ops
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: ((v @@ '''a'''::tsquery) AND (v @@ '''bb'''::tsquery))
@@ -265,7 +265,7 @@ HINT:  Consider rewriting the query with INTERSECT and UNION.
 -- INTERSECT between '@@' selects
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  SetOp Intersect
    ->  Sort
@@ -280,7 +280,7 @@ SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 
 (10 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
@@ -292,7 +292,7 @@ SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 
 -- OR inside tsquery
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'a | c';
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '''a'' | ''c'''::tsquery)
@@ -304,14 +304,14 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 -- OR between '@@' ops
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on vectors
    Storage Filter: ((v @@ '''a'''::tsquery) OR (v @@ '''c'''::tsquery))
 (2 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
  4 | 'a':1,2,3,4,5,6
@@ -321,7 +321,7 @@ SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
 -- UNION between '@@' selects
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique
    ->  Sort
@@ -334,7 +334,7 @@ SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
 (8 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
@@ -347,14 +347,14 @@ SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
 -- Top-level disjunction where the last item is simple
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '( ''a'' & ''e'' | ''ccc'' & ''ccd'' ) & ''o'''::tsquery)
 (2 rows)
 
 SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
 (1 row)
@@ -362,7 +362,7 @@ SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
 -- Top-level disjunction where the last item is complex
 EXPLAIN (costs off)
 SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '''o'' & ( ''a'' & ''e'' | ''ccc'' & ''ccd'' )'::tsquery)
@@ -431,14 +431,14 @@ CREATE INDEX ON garrays USING ybgin (a);
 INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
 EXPLAIN (costs off)
 SELECT * FROM garrays WHERE a && '{11}';
-                QUERY PLAN
+                QUERY PLAN                 
 -------------------------------------------
  Index Scan using garrays_a_idx on garrays
    Index Cond: (a && '{11}'::integer[])
 (2 rows)
 
 SELECT * FROM garrays WHERE a && '{11}';
- i |    a
+ i |    a    
 ---+---------
  1 | {11,22}
  3 | {33,11}
@@ -457,23 +457,23 @@ INSERT INTO altercoltab VALUES ('{1}', 2);
 -- Test
 ALTER TABLE altercoltab DROP COLUMN i;
 SELECT * FROM altercoltab WHERE a && '{1}';
-  a
+  a  
 -----
  {1}
 (1 row)
 
 ALTER TABLE altercoltab ADD COLUMN j int;
 SELECT * FROM altercoltab WHERE a && '{1}';
-  a  | j
+  a  | j 
 -----+---
- {1} |
+ {1} |  
 (1 row)
 
 ALTER TABLE altercoltab RENAME COLUMN j TO k;
 SELECT * FROM altercoltab WHERE a && '{1}';
-  a  | k
+  a  | k 
 -----+---
- {1} |
+ {1} |  
 (1 row)
 
 -- Cleanup

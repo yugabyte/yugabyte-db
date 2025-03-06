@@ -14,7 +14,7 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 -- Test plain (unlocked case).
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5;
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
    Index Cond: (k = 5)
@@ -27,7 +27,7 @@ SELECT * FROM yb_locks_t WHERE k = 5;
 (8 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5;
- k
+ k 
 ---
  5
 (1 row)
@@ -35,7 +35,7 @@ SELECT * FROM yb_locks_t WHERE k = 5;
 -- Test single-RPC select+lock (no LockRows node).
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -49,7 +49,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
- k
+ k 
 ---
  5
 (1 row)
@@ -57,7 +57,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 -- Test other types of locking.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -71,14 +71,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE;
- k
+ k 
 ---
  5
 (1 row)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -92,14 +92,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE;
- k
+ k 
 ---
  5
 (1 row)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -113,7 +113,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;
- k
+ k 
 ---
  5
 (1 row)
@@ -121,7 +121,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;
 -- Test LockRows node (more RPCs), and scan is unlocked.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t FOR UPDATE;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
@@ -134,7 +134,7 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 (8 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
- k
+ k  
 ----
   5
   1
@@ -156,7 +156,7 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 -- Test NOWAIT (should batch)
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
@@ -169,7 +169,7 @@ SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;
 (8 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;
- k
+ k  
 ----
   5
   1
@@ -191,7 +191,7 @@ SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;
 -- Test SKIP LOCKED (shouldn't batch)
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
@@ -204,7 +204,7 @@ SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;
 (8 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;
- k
+ k  
 ----
   5
   1
@@ -228,7 +228,7 @@ SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;
 SET yb_explicit_row_locking_batch_size = 1;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t FOR UPDATE;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
@@ -241,7 +241,7 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 (8 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
- k
+ k  
 ----
   5
   1
@@ -267,7 +267,7 @@ ERROR:  0 is outside the valid range for parameter "yb_explicit_row_locking_batc
 SET yb_explicit_row_locking_batch_size = 10000;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t FOR UPDATE;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
@@ -280,7 +280,7 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 (8 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
- k
+ k  
 ----
   5
   1
@@ -304,7 +304,7 @@ SET yb_explicit_row_locking_batch_size = 1024;
 -- Test with multi-column primary key.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t2_pkey on yb_locks_t2 (actual rows=1 loops=1)
@@ -318,7 +318,7 @@ SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;
- k1 | k2 | k3 | v
+ k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
@@ -326,7 +326,7 @@ SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;
 -- Test with partial column set for primary key (should use LockRows).
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t2_pkey on yb_locks_t2 (actual rows=1 loops=1)
@@ -340,7 +340,7 @@ SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;
- k1 | k2 | k3 | v
+ k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
@@ -348,7 +348,7 @@ SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;
 -- Test LockRows node is used for join.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  LockRows (actual rows=4 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=4 loops=1)
@@ -367,7 +367,7 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 (14 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
- k1 | k2 | k3 | v  | k
+ k1 | k2 | k3 | v  | k  
 ----+----+----+----+----
   5 |  6 |  7 |  8 |  5
   1 |  2 |  3 |  4 |  1
@@ -378,7 +378,7 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 -- Test simple join with top-level locking
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5 FOR UPDATE;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  LockRows (actual rows=2 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=2 loops=1)
@@ -398,7 +398,7 @@ SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE
 (15 rows)
 
 SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5 FOR UPDATE;
- k | k1 | k2 | k3 | v
+ k | k1 | k2 | k3 | v 
 ---+----+----+----+---
  5 |  5 |  6 |  7 | 8
  1 |  1 |  2 |  3 | 4
@@ -407,7 +407,7 @@ SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE
 -- Test join with leaf-level locking (sub-query)
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_locks_t.k = z.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=2 loops=1)
    Join Filter: (yb_locks_t.k = z.k1)
@@ -428,7 +428,7 @@ SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_
 (16 rows)
 
 SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_locks_t.k = z.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5;
- k | k1 | k2 | k3 | v
+ k | k1 | k2 | k3 | v 
 ---+----+----+----+---
  5 |  5 |  6 |  7 | 8
  1 |  1 |  2 |  3 | 4
@@ -437,7 +437,7 @@ SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_
 -- Test when limit returns less than filtered query
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Limit (actual rows=3 loops=1)
    ->  LockRows (actual rows=3 loops=1)
@@ -452,7 +452,7 @@ SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;
 (10 rows)
 
 SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;
- k
+ k 
 ---
  5
  1
@@ -462,7 +462,7 @@ SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;
 -- Test limit with a Sort plan node between LockRows and Scan node
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Limit (actual rows=13 loops=1)
    ->  LockRows (actual rows=13 loops=1)
@@ -479,7 +479,7 @@ SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;
 (12 rows)
 
 SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;
- k
+ k  
 ----
   1
   2
@@ -499,7 +499,7 @@ SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;
 -- Test when multiple limit nodes
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1;
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Hash Join (actual rows=3 loops=1)
    Hash Cond: (y.k = z.k1)
@@ -524,7 +524,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT *
 (20 rows)
 
 SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1;
- k  | k1 | k2 | k3 | v
+ k  | k1 | k2 | k3 | v  
 ----+----+----+----+----
   5 |  5 |  6 |  7 |  8
   1 |  1 |  2 |  3 |  4
@@ -534,7 +534,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT *
 -- Test when FOR UPDATE is supposed to acquire less locks than the limit (1 row on yb_locks_t, but all limited rows on yb_locks_t2)
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 ORDER BY k1 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1 LIMIT 1;
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=1 loops=1)
    ->  Hash Join (actual rows=1 loops=1)
@@ -566,7 +566,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOI
 (27 rows)
 
 SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 ORDER BY k1 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1 LIMIT 1;
- k | k1 | k2 | k3 | v
+ k | k1 | k2 | k3 | v 
 ---+----+----+----+---
  1 |  1 |  2 |  3 | 4
 (1 row)
@@ -574,7 +574,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOI
 -- Test with CTE subquery locking
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  CTE Scan on cte (actual rows=15 loops=1)
    CTE cte
@@ -589,7 +589,7 @@ WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;
 (10 rows)
 
 WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;
- k
+ k  
 ----
   5
   1
@@ -611,7 +611,7 @@ WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;
 -- Test with multiple CTE subquery locking
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Limit (actual rows=2 loops=1)
    CTE cte_yb_locks_t
@@ -636,7 +636,7 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
 (20 rows)
 
 WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;
- k | k1 | k2 | k3 | v
+ k | k1 | k2 | k3 | v 
 ---+----+----+----+---
  5 |  5 |  6 |  7 | 8
  1 |  1 |  2 |  3 | 4
@@ -645,7 +645,7 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
 -- Test top level limit with multiple CTE subquery locking
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Limit (actual rows=2 loops=1)
    CTE cte_yb_locks_t
@@ -670,7 +670,7 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
 (20 rows)
 
 WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;
- k | k1 | k2 | k3 | v
+ k | k1 | k2 | k3 | v 
 ---+----+----+----+---
  5 |  5 |  6 |  7 | 8
  1 |  1 |  2 |  3 | 4
@@ -679,7 +679,7 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
 -- Test LockRows node is used with ASC table when YB Sequential Scan is used.
 /*+ SeqScan(yb_locks_tasc) */ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE;
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Seq Scan on yb_locks_tasc (actual rows=1 loops=1)
@@ -693,7 +693,7 @@ SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE;
 (9 rows)
 
 /*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE;
- k
+ k 
 ---
  1
 (1 row)
@@ -703,7 +703,7 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- Test same locking as for REPEATABLE READ (default isolation).
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
-                                            QUERY PLAN
+                                            QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -717,7 +717,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
- k
+ k 
 ---
  5
 (1 row)
@@ -725,7 +725,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 -- Test no LockRows node for sequential scan.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t FOR UPDATE;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  LockRows (no-op) (actual rows=15 loops=1)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t (actual rows=15 loops=1)
@@ -738,7 +738,7 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 (8 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
- k
+ k  
 ----
   5
   1
@@ -760,7 +760,7 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 -- Test no LockRows node for join.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
-                                               QUERY PLAN
+                                               QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=4 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=4 loops=1)
@@ -779,7 +779,7 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 (14 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
- k1 | k2 | k3 | v  | k
+ k1 | k2 | k3 | v  | k  
 ----+----+----+----+----
   1 |  2 |  3 |  4 |  1
   5 |  6 |  7 |  8 |  5
@@ -791,7 +791,7 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 -- (No WHERE clause.)
 /*+ SeqScan(yb_locks_tasc) */ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_tasc FOR UPDATE;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  LockRows (no-op) (actual rows=3 loops=1)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_tasc (actual rows=3 loops=1)
@@ -804,7 +804,7 @@ SELECT * FROM yb_locks_tasc FOR UPDATE;
 (8 rows)
 
 /*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc FOR UPDATE;
- k
+ k 
 ---
  1
  2
@@ -814,7 +814,7 @@ SELECT * FROM yb_locks_tasc FOR UPDATE;
 -- For an ASC table, should lock inline, with no LockRows node.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
-                                               QUERY PLAN
+                                               QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=3 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_tasc_pkey on yb_locks_tasc (actual rows=3 loops=1)
@@ -827,7 +827,7 @@ SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
 (8 rows)
 
 SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
- k
+ k 
 ---
  1
  2
@@ -839,7 +839,7 @@ COMMIT;
 SET yb_lock_pk_single_rpc TO OFF;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -853,7 +853,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
- k
+ k 
 ---
  5
 (1 row)
@@ -863,7 +863,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
-                                            QUERY PLAN
+                                            QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -877,7 +877,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
 (9 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
- k
+ k 
 ---
  5
 (1 row)
@@ -888,7 +888,7 @@ CREATE INDEX ON yb_locks_t2 (v);
 -- Test with an index. We use a LockRows node for an index.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t2_v_idx on yb_locks_t2 (actual rows=1 loops=1)
@@ -904,7 +904,7 @@ SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
 (11 rows)
 
 SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
- k1 | k2 | k3 | v
+ k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
@@ -912,7 +912,7 @@ SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
 -- Test only the indexed column.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t2_v_idx on yb_locks_t2 (actual rows=1 loops=1)
@@ -928,7 +928,7 @@ SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
 (11 rows)
 
 SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
- v
+ v 
 ---
  4
 (1 row)
@@ -937,7 +937,7 @@ SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
-                                             QUERY PLAN
+                                             QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t2_v_idx on yb_locks_t2 (actual rows=1 loops=1)
@@ -953,7 +953,7 @@ SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
 (11 rows)
 
 SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
- k1 | k2 | k3 | v
+ k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
@@ -964,7 +964,7 @@ CREATE TABLE yb_locks_partition(a char PRIMARY KEY) PARTITION BY LIST (a);
 CREATE TABLE yb_locks_partition_default PARTITION OF yb_locks_partition DEFAULT;
 CREATE TABLE yb_locks_partition_a PARTITION OF yb_locks_partition FOR VALUES IN ('a');
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
-                                                     QUERY PLAN
+                                                     QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  LockRows (actual rows=0 loops=1)
    ->  Index Scan using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition (actual rows=0 loops=1)
@@ -977,7 +977,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE 
 (8 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'b' FOR UPDATE;
-                                                           QUERY PLAN
+                                                           QUERY PLAN                                                            
 ---------------------------------------------------------------------------------------------------------------------------------
  LockRows (actual rows=0 loops=1)
    ->  Index Scan using yb_locks_partition_default_pkey on yb_locks_partition_default yb_locks_partition (actual rows=0 loops=1)
@@ -991,7 +991,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE 
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
-                                                               QUERY PLAN
+                                                               QUERY PLAN                                                                
 -----------------------------------------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=0 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition (actual rows=0 loops=1)
@@ -1007,7 +1007,7 @@ COMMIT;
 -- Test JSON.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, FORMAT JSON)
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
-                QUERY PLAN
+                QUERY PLAN                 
 -------------------------------------------
  [                                        +
    {                                      +
@@ -1044,7 +1044,7 @@ SET yb_lock_pk_single_rpc TO OFF;
 SET yb_test_planner_custom_plan_threshold to 1;
 PREPARE yb_locks_plan_rr(INT) AS SELECT * FROM yb_locks_t WHERE k = $1 FOR UPDATE;
 EXECUTE yb_locks_plan_rr(1);
- k
+ k 
 ---
  1
 (1 row)
@@ -1052,7 +1052,7 @@ EXECUTE yb_locks_plan_rr(1);
 -- The $1 in the EXPLAIN output tells you it's a stored plan.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 EXECUTE yb_locks_plan_rr(1);
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -1067,7 +1067,7 @@ EXECUTE yb_locks_plan_rr(1);
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXECUTE yb_locks_plan_rr(1);
- k
+ k 
 ---
  1
 (1 row)
@@ -1075,7 +1075,7 @@ EXECUTE yb_locks_plan_rr(1);
 -- The LockRows node has a "no-op" annotation.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 EXECUTE yb_locks_plan_rr(1);
-                                            QUERY PLAN
+                                            QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -1091,7 +1091,7 @@ EXECUTE yb_locks_plan_rr(1);
 -- In JSON mode, the LockRows node has an "Executes" field set to false.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, FORMAT JSON)
 EXECUTE yb_locks_plan_rr(1);
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  [                                            +
    {                                          +
@@ -1139,14 +1139,14 @@ SET yb_lock_pk_single_rpc TO ON;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser(INT) AS SELECT * FROM yb_locks_t WHERE k = $1 FOR UPDATE;
 EXECUTE yb_locks_plan_ser(1);
- k
+ k 
 ---
  1
 (1 row)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 EXECUTE yb_locks_plan_ser(1);
-                                         QUERY PLAN
+                                         QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
    Index Cond: (k = $1)
@@ -1160,14 +1160,14 @@ EXECUTE yb_locks_plan_ser(1);
 
 COMMIT;
 EXECUTE yb_locks_plan_ser(1);
- k
+ k 
 ---
  1
 (1 row)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 EXECUTE yb_locks_plan_ser(1);
-                                         QUERY PLAN
+                                         QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
    Index Cond: (k = $1)
@@ -1184,7 +1184,7 @@ EXECUTE yb_locks_plan_ser(1);
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser_all(INT) AS SELECT * FROM yb_locks_t FOR UPDATE;
 EXECUTE yb_locks_plan_ser_all(1);
- k
+ k  
 ----
   5
   1
@@ -1205,7 +1205,7 @@ EXECUTE yb_locks_plan_ser_all(1);
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 EXECUTE yb_locks_plan_ser_all(1);
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  LockRows (no-op) (actual rows=15 loops=1)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t (actual rows=15 loops=1)
@@ -1219,7 +1219,7 @@ EXECUTE yb_locks_plan_ser_all(1);
 
 COMMIT;
 EXECUTE yb_locks_plan_ser_all(1);
- k
+ k  
 ----
   5
   1
@@ -1240,7 +1240,7 @@ EXECUTE yb_locks_plan_ser_all(1);
 
 EXPLAIN (COSTS OFF)
 EXECUTE yb_locks_plan_ser_all(1);
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  LockRows
    ->  Seq Scan on yb_locks_t
@@ -1260,7 +1260,7 @@ SELECT 'Past Event ' || i, NOW() - (i || ' days')::interval
 FROM generate_series(1, 10) AS s(i);
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_events WHERE event_time > NOW();
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on yb_events (actual rows=10 loops=1)
    Filter: (event_time > now())
@@ -1275,7 +1275,7 @@ SELECT * FROM yb_events WHERE event_time > NOW();
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_events WHERE event_time < NOW();
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on yb_events (actual rows=10 loops=1)
    Filter: (event_time < now())

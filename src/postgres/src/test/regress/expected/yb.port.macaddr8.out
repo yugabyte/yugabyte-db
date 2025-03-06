@@ -4,37 +4,37 @@
 -- test various cases of valid and invalid input
 -- valid
 SELECT '08:00:2b:01:02:03     '::macaddr8;
-        macaddr8
+        macaddr8         
 -------------------------
  08:00:2b:ff:fe:01:02:03
 (1 row)
 
 SELECT '    08:00:2b:01:02:03     '::macaddr8;
-        macaddr8
+        macaddr8         
 -------------------------
  08:00:2b:ff:fe:01:02:03
 (1 row)
 
 SELECT '    08:00:2b:01:02:03'::macaddr8;
-        macaddr8
+        macaddr8         
 -------------------------
  08:00:2b:ff:fe:01:02:03
 (1 row)
 
 SELECT '08:00:2b:01:02:03:04:05     '::macaddr8;
-        macaddr8
+        macaddr8         
 -------------------------
  08:00:2b:01:02:03:04:05
 (1 row)
 
 SELECT '    08:00:2b:01:02:03:04:05     '::macaddr8;
-        macaddr8
+        macaddr8         
 -------------------------
  08:00:2b:01:02:03:04:05
 (1 row)
 
 SELECT '    08:00:2b:01:02:03:04:05'::macaddr8;
-        macaddr8
+        macaddr8         
 -------------------------
  08:00:2b:01:02:03:04:05
 (1 row)
@@ -98,7 +98,7 @@ LINE 1: SELECT '08:00:2b:01.02:03:04:05'::macaddr8;
 -- test converting a MAC address to modified EUI-64 for inclusion
 -- in an ipv6 address
 SELECT macaddr8_set7bit('00:08:2b:01:02:03'::macaddr8);
-    macaddr8_set7bit
+    macaddr8_set7bit     
 -------------------------
  02:08:2b:ff:fe:01:02:03
 (1 row)
@@ -129,7 +129,7 @@ INSERT INTO macaddr8_data VALUES (19, '0800.2b01.0203.0405');
 INSERT INTO macaddr8_data VALUES (20, '08002b01:02030405');
 INSERT INTO macaddr8_data VALUES (21, '08002b0102030405');
 SELECT * FROM macaddr8_data ORDER BY 1;
- a  |            b
+ a  |            b            
 ----+-------------------------
   1 | 08:00:2b:ff:fe:01:02:03
   2 | 08:00:2b:ff:fe:01:02:03
@@ -157,7 +157,7 @@ SELECT * FROM macaddr8_data ORDER BY 1;
 -- CREATE INDEX macaddr8_data_lsm ON macaddr8_data USING lsm (b);
 -- CREATE INDEX macaddr8_data_hash ON macaddr8_data USING hash (b);
 SELECT a, b, trunc(b) FROM macaddr8_data ORDER BY 2, 1;
- a  |            b            |          trunc
+ a  |            b            |          trunc          
 ----+-------------------------+-------------------------
  12 | 08:00:2a:ff:fe:01:02:03 | 08:00:2a:00:00:00:00:00
  14 | 08:00:2a:ff:fe:01:02:04 | 08:00:2a:00:00:00:00:00
@@ -182,103 +182,103 @@ SELECT a, b, trunc(b) FROM macaddr8_data ORDER BY 2, 1;
 (20 rows)
 
 SELECT b <  '08:00:2b:01:02:04' FROM macaddr8_data WHERE a = 1; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b >  '08:00:2b:ff:fe:01:02:04' FROM macaddr8_data WHERE a = 1; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b >  '08:00:2b:ff:fe:01:02:03' FROM macaddr8_data WHERE a = 1; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b::macaddr <= '08:00:2b:01:02:04' FROM macaddr8_data WHERE a = 1; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b::macaddr >= '08:00:2b:01:02:04' FROM macaddr8_data WHERE a = 1; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b =  '08:00:2b:ff:fe:01:02:03' FROM macaddr8_data WHERE a = 1; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b::macaddr <> '08:00:2b:01:02:04'::macaddr FROM macaddr8_data WHERE a = 1; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b::macaddr <> '08:00:2b:01:02:03'::macaddr FROM macaddr8_data WHERE a = 1; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b <  '08:00:2b:01:02:03:04:06' FROM macaddr8_data WHERE a = 15; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b >  '08:00:2b:01:02:03:04:06' FROM macaddr8_data WHERE a = 15; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b >  '08:00:2b:01:02:03:04:05' FROM macaddr8_data WHERE a = 15; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b <= '08:00:2b:01:02:03:04:06' FROM macaddr8_data WHERE a = 15; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b >= '08:00:2b:01:02:03:04:06' FROM macaddr8_data WHERE a = 15; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT b =  '08:00:2b:01:02:03:04:05' FROM macaddr8_data WHERE a = 15; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b <> '08:00:2b:01:02:03:04:06' FROM macaddr8_data WHERE a = 15; -- true
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT b <> '08:00:2b:01:02:03:04:05' FROM macaddr8_data WHERE a = 15; -- false
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT ~b                       FROM macaddr8_data ORDER BY a;
-        ?column?
+        ?column?         
 -------------------------
  f7:ff:d4:00:01:fe:fd:fc
  f7:ff:d4:00:01:fe:fd:fc
@@ -303,7 +303,7 @@ SELECT ~b                       FROM macaddr8_data ORDER BY a;
 (20 rows)
 
 SELECT  b & '00:00:00:ff:ff:ff' FROM macaddr8_data ORDER BY a;
-        ?column?
+        ?column?         
 -------------------------
  00:00:00:ff:fe:01:02:03
  00:00:00:ff:fe:01:02:03
@@ -328,7 +328,7 @@ SELECT  b & '00:00:00:ff:ff:ff' FROM macaddr8_data ORDER BY a;
 (20 rows)
 
 SELECT  b | '01:02:03:04:05:06' FROM macaddr8_data ORDER BY a;
-        ?column?
+        ?column?         
 -------------------------
  09:02:2b:ff:fe:05:07:07
  09:02:2b:ff:fe:05:07:07

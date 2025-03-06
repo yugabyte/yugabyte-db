@@ -155,7 +155,7 @@ SELECT anon.is_initialized() IS FALSE;
 ROLLBACK;
 */ -- YB
 SELECT anon.stop_dynamic_masking(); -- YB: workaround for lack of transactional DDL
- stop_dynamic_masking
+ stop_dynamic_masking 
 ----------------------
  t
 (1 row)

@@ -18,7 +18,7 @@ INSERT INTO bigname_table (t)
 INSERT INTO bigname_table (t)
     VALUES ('AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaABCcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccCBD');
 SELECT * FROM bigname_table;
-                                                                t
+                                                                t                                                                
 ---------------------------------------------------------------------------------------------------------------------------------
  AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaABCcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccC
  AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaABCcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccC
@@ -49,7 +49,7 @@ INSERT INTO name_table (t)
 INSERT INTO name_table (t)
     VALUES ('AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaABC');
 SELECT * FROM name_table;
-                                t
+                                t                                
 -----------------------------------------------------------------
  AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA
  AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA
@@ -76,7 +76,7 @@ CREATE TABLE lseg_table (t lseg_type);
 INSERT INTO lseg_table (t)
     VALUES ('[(1, 2), (3, 4)]');
 SELECT * FROM lseg_table;
-       t
+       t       
 ---------------
  [(1,2),(3,4)]
 (1 row)
@@ -101,7 +101,7 @@ CREATE TABLE line_table (t line_type);
 INSERT INTO line_table (t)
     VALUES ('{1, 2, 3}');
 SELECT * FROM line_table;
-    t
+    t    
 ---------
  {1,2,3}
 (1 row)
@@ -126,7 +126,7 @@ CREATE TABLE point_table (t point_type);
 INSERT INTO point_table (t)
     VALUES ('(1, 2)');
 SELECT * FROM point_table;
-   t
+   t   
 -------
  (1,2)
 (1 row)
@@ -151,7 +151,7 @@ CREATE TABLE uuid_table (t uuid_type);
 INSERT INTO uuid_table (t)
     VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
 SELECT * FROM uuid_table;
-                  t
+                  t                   
 --------------------------------------
  a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 (1 row)
@@ -177,7 +177,7 @@ CREATE TABLE timetz_table (t timetz_type);
 INSERT INTO timetz_table (t)
     VALUES ('2015-05-01 11:25:00 America/Caracas');
 SELECT * FROM timetz_table;
-       t
+       t        
 ----------------
  11:25:00-04:30
 (1 row)
@@ -202,7 +202,7 @@ CREATE TABLE macaddr8_table (t macaddr8_type);
 INSERT INTO macaddr8_table (t)
     VALUES ('08:00:2b:01:02:03:04:05');
 SELECT * FROM macaddr8_table;
-            t
+            t            
 -------------------------
  08:00:2b:01:02:03:04:05
 (1 row)
@@ -230,7 +230,7 @@ INSERT INTO int8_table (t)
     VALUES ('9223372036854775808');
 ERROR:  value "9223372036854775808" is out of range for type bigint at character 40
 SELECT * FROM int8_table;
-          t
+          t          
 ---------------------
  9223372036854775807
 (1 row)
@@ -255,7 +255,7 @@ CREATE TABLE float8_table (t float8_type);
 INSERT INTO float8_table (t)
     VALUES ('1.23456789');
 SELECT * FROM float8_table;
-     t
+     t      
 ------------
  1.23456789
 (1 row)
@@ -280,7 +280,7 @@ CREATE TABLE macaddr_table (t macaddr_type);
 INSERT INTO macaddr_table (t)
     VALUES ('08:00:2b:01:02:03');
 SELECT * FROM macaddr_table;
-         t
+         t         
 -------------------
  08:00:2b:01:02:03
 (1 row)
@@ -305,7 +305,7 @@ CREATE TABLE tid_table (t tid_type);
 INSERT INTO tid_table (t)
     VALUES ('(0, 1)');
 SELECT * FROM tid_table;
-   t
+   t   
 -------
  (0,1)
 (1 row)
@@ -333,7 +333,7 @@ INSERT INTO int4_table (t)
     VALUES ('2147483648');
 ERROR:  value "2147483648" is out of range for type integer at character 40
 SELECT * FROM int4_table;
-     t
+     t      
 ------------
  2147483647
 (1 row)
@@ -361,7 +361,7 @@ INSERT INTO int2_table (t)
     VALUES ('32768');
 ERROR:  value "32768" is out of range for type smallint at character 40
 SELECT * FROM int2_table;
-   t
+   t   
 -------
  32767
 (1 row)
@@ -386,7 +386,7 @@ CREATE TABLE bool_table (t bool_type);
 INSERT INTO bool_table (t)
     VALUES ('true');
 SELECT * FROM bool_table;
- t
+ t 
 ---
  t
 (1 row)
@@ -414,7 +414,7 @@ CREATE TABLE char_table (t char_type);
 INSERT INTO char_table (t)
     VALUES ('t');
 SELECT * FROM char_table;
- t
+ t 
 ---
  t
 (1 row)
@@ -439,7 +439,7 @@ CREATE TABLE bytea_table (t bytea_type);
 INSERT INTO bytea_table (t)
     VALUES (E'\\xDEADBEEF');
 SELECT * FROM bytea_table;
-     t
+     t      
 ------------
  \xdeadbeef
 (1 row)
@@ -464,7 +464,7 @@ CREATE TABLE cidr_table (t cidr_type);
 INSERT INTO cidr_table (t)
     VALUES ('192.168.100.128/25');
 SELECT * FROM cidr_table;
-         t
+         t          
 --------------------
  192.168.100.128/25
 (1 row)
@@ -489,7 +489,7 @@ CREATE TABLE int2vector_table (t int2vector_type);
 INSERT INTO int2vector_table (t)
     VALUES ('1 2 3');
 SELECT * FROM int2vector_table;
-   t
+   t   
 -------
  1 2 3
 (1 row)
@@ -514,7 +514,7 @@ CREATE TABLE json_table (t json_type);
 INSERT INTO json_table (t)
     VALUES ('{"a": [1, 2, 3]}');
 SELECT * FROM json_table;
-        t
+        t         
 ------------------
  {"a": [1, 2, 3]}
 (1 row)
@@ -539,7 +539,7 @@ CREATE TABLE text_table (t text_type);
 INSERT INTO text_table (t)
     VALUES ('thisistext');
 SELECT * FROM text_table;
-     t
+     t      
 ------------
  thisistext
 (1 row)
@@ -564,7 +564,7 @@ CREATE TABLE cstring_table (t cstring_type);
 INSERT INTO cstring_table (t)
     VALUES ('thisiscstring');
 SELECT * FROM cstring_table;
-       t
+       t       
 ---------------
  thisiscstring
 (1 row)

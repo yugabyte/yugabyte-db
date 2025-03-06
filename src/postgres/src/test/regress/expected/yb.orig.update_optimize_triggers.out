@@ -32,7 +32,7 @@ CREATE TRIGGER mchairs_table_trigger BEFORE UPDATE ON mchairs_table FOR EACH ROW
 -- The value of v1 should be incremented twice, index v1_v2 should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 + 1 WHERE h = 1;
 NOTICE:  Musical chairs invoked with h = 1
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
@@ -51,7 +51,7 @@ NOTICE:  Musical chairs invoked with h = 1
 -- The value of v1 should be updated again, indexes v1_v2, v3 should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v3 = v3 + 1 WHERE h = 1;
 NOTICE:  Musical chairs invoked with h = 1
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
@@ -73,7 +73,7 @@ NOTICE:  Musical chairs invoked with h = 11
 NOTICE:  Musical chairs invoked with h = 12
 NOTICE:  Musical chairs invoked with h = 9
 NOTICE:  Musical chairs invoked with h = 10
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
@@ -92,7 +92,7 @@ NOTICE:  Musical chairs invoked with h = 10
 
 -- Validate the updates
 SELECT * FROM mchairs_table ORDER BY h;
- h  | v1 | v2 | v3
+ h  | v1 | v2 | v3 
 ----+----+----+----
   1 |  4 |  1 |  2
   2 |  2 |  2 |  2
@@ -112,7 +112,7 @@ SELECT * FROM mchairs_table ORDER BY h;
 -- should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1 WHERE h = 1;
 NOTICE:  Musical chairs invoked with h = 1
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
@@ -130,7 +130,7 @@ NOTICE:  Musical chairs invoked with h = 1
 -- Same as above but for the primary key
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 40, v1 = v1 + 1 WHERE h = 4;
 NOTICE:  Musical chairs invoked with h = -36
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
@@ -150,7 +150,7 @@ NOTICE:  Musical chairs invoked with h = -36
 -- h is applied on the value of h that is returned by the before row trigger.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 1, v1 = v1 + 1 WHERE h = 4;
 NOTICE:  Musical chairs invoked with h = 3
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
@@ -172,7 +172,7 @@ NOTICE:  Musical chairs invoked with h = 5
 NOTICE:  Musical chairs invoked with h = 6
 NOTICE:  Musical chairs invoked with h = 7
 NOTICE:  Musical chairs invoked with h = 8
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Update on mchairs_table (actual rows=0 loops=1)
    ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
@@ -191,7 +191,7 @@ NOTICE:  Musical chairs invoked with h = 8
 
 -- Again, validate the updates
 SELECT * FROM mchairs_table ORDER BY h;
- h  | v1 | v2 | v3
+ h  | v1 | v2 | v3 
 ----+----+----+----
   1 |  4 |  1 |  2
   2 |  2 |  2 |  2
@@ -303,7 +303,7 @@ NOTICE:  New value of v2 = 7 where h = 6
 NOTICE:  New value of v1 = 5 where h = 4
 NOTICE:  New value of v2 = 5 where h = 4
 SELECT * FROM t_simple ORDER BY h;
- h  | v1 | v2 | v3 | v4
+ h  | v1 | v2 | v3 | v4 
 ----+----+----+----+----
   1 |  2 |  2 |  1 |  1
   2 |  4 |  3 |  2 |  2
@@ -376,7 +376,7 @@ NOTICE:  New value of v1 = 10 where h = 20
 NOTICE:  New value of v2 = 10 where h = 20
 NOTICE:  statement trigger (AFTER v1, v2) invoked with row = <NULL>
 SELECT * FROM t_simple ORDER BY h;
- h  | v1 | v2 | v3 | v4
+ h  | v1 | v2 | v3 | v4 
 ----+----+----+----+----
   1 |  2 |  2 |  1 |  1
   2 |  4 |  3 |  2 |  2
@@ -389,3 +389,4 @@ SELECT * FROM t_simple ORDER BY h;
  19 | 10 |  9 |  9 | 10
  20 | 10 | 10 |  9 | 10
 (10 rows)
+

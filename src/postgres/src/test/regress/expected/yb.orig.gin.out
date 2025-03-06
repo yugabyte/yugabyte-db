@@ -27,7 +27,7 @@ INSERT INTO vectors (v) VALUES
     (to_tsvector('simple', 'cc')); -- test aminsert
 -- test amgetbitmap
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a');
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Bitmap Heap Scan on vectors
    Recheck Cond: (v @@ '''a'''::tsquery)
@@ -36,7 +36,7 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a');
 (4 rows)
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a');
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
@@ -44,7 +44,7 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a');
 (3 rows)
 
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e');
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Bitmap Heap Scan on vectors
    Recheck Cond: (v @@ '''a'' & ''e'''::tsquery)
@@ -53,13 +53,13 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e
 (4 rows)
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e');
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc');
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Bitmap Heap Scan on vectors
    Recheck Cond: (v @@ '''bb'' | ''cc'''::tsquery)
@@ -68,7 +68,7 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | 
 (4 rows)
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc');
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
@@ -76,7 +76,7 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc');
 (3 rows)
 
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc');
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on vectors
    Recheck Cond: (v @@ '''bb'' & !''ccc'''::tsquery)
@@ -85,13 +85,13 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & 
 (4 rows)
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc');
- i |                  v
+ i |                  v                   
 ---+--------------------------------------
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*');
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Bitmap Heap Scan on vectors
    Recheck Cond: (v @@ '''cc'':*'::tsquery)
@@ -100,7 +100,7 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*'
 (4 rows)
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*');
- i |          v
+ i |          v           
 ---+----------------------
  1 | 'a':1 'bb':2 'ccc':3
  3 | 'ccd':1
@@ -108,7 +108,7 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*');
 (3 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on vectors
@@ -118,7 +118,7 @@ EXPLAIN (costs off) SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple',
 (5 rows)
 
 SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
- count
+ count 
 -------
      3
 (1 row)
@@ -137,7 +137,7 @@ INSERT INTO arrays (a) VALUES
     ('{10, 20, 30}'); -- test aminsert
 -- test amgetbitmap
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a && '{1, 100, 3}';
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Bitmap Heap Scan on arrays
    Recheck Cond: (a && '{1,100,3}'::integer[])
@@ -146,7 +146,7 @@ EXPLAIN (costs off) SELECT * FROM arrays WHERE a && '{1, 100, 3}';
 (4 rows)
 
 SELECT * FROM arrays WHERE a && '{1, 100, 3}';
- i |     a
+ i |     a     
 ---+-----------
  1 | {1,3,5}
  2 | {2,3,5}
@@ -156,7 +156,7 @@ SELECT * FROM arrays WHERE a && '{1, 100, 3}';
 (5 rows)
 
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a @> '{5, 3}';
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Bitmap Heap Scan on arrays
    Recheck Cond: (a @> '{5,3}'::integer[])
@@ -165,14 +165,14 @@ EXPLAIN (costs off) SELECT * FROM arrays WHERE a @> '{5, 3}';
 (4 rows)
 
 SELECT * FROM arrays WHERE a @> '{5, 3}';
- i |    a
+ i |    a    
 ---+---------
  1 | {1,3,5}
  2 | {2,3,5}
 (2 rows)
 
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}';
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Bitmap Heap Scan on arrays
    Recheck Cond: (a <@ '{5,4,3,2}'::integer[])
@@ -181,7 +181,7 @@ EXPLAIN (costs off) SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}';
 (4 rows)
 
 SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}';
- i |    a
+ i |    a    
 ---+---------
  2 | {2,3,5}
  4 | {3}
@@ -189,7 +189,7 @@ SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}';
 (3 rows)
 
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a = '{3}';
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Bitmap Heap Scan on arrays
    Recheck Cond: (a = '{3}'::integer[])
@@ -198,13 +198,13 @@ EXPLAIN (costs off) SELECT * FROM arrays WHERE a = '{3}';
 (4 rows)
 
 SELECT * FROM arrays WHERE a = '{3}';
- i |  a
+ i |  a  
 ---+-----
  4 | {3}
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM arrays WHERE a = '{3}';
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on arrays
@@ -214,7 +214,7 @@ EXPLAIN (costs off) SELECT count(*) FROM arrays WHERE a = '{3}';
 (5 rows)
 
 SELECT count(*) FROM arrays WHERE a = '{3}';
- count
+ count 
 -------
      1
 (1 row)
@@ -233,7 +233,7 @@ INSERT INTO jsonbs (j) VALUES
     ('{"aaa":{"bbb":[2,4], "ccc":{"ddd":6}}, "eee":8}'); -- test aminsert
 -- test amgetbitmap
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j ? 'aaa'::text)
@@ -242,7 +242,7 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j ? 'aaa';
- i |                           j
+ i |                           j                           
 ---+-------------------------------------------------------
  1 | {"aaa": [1, 2.00, 3]}
  3 | ["bbb", "aaa"]
@@ -251,7 +251,7 @@ SELECT * FROM jsonbs WHERE j ? 'aaa';
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}';
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j ?| '{ggg,eee}'::text[])
@@ -260,14 +260,14 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}';
- i |                           j
+ i |                           j                           
 ---+-------------------------------------------------------
  2 | {"ggg": "aaa"}
  6 | {"aaa": {"bbb": [2, 4], "ccc": {"ddd": 6}}, "eee": 8}
 (2 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}';
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j ?& '{aaa,eee}'::text[])
@@ -276,13 +276,13 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}';
- i |                           j
+ i |                           j                           
 ---+-------------------------------------------------------
  6 | {"aaa": {"bbb": [2, 4], "ccc": {"ddd": 6}}, "eee": 8}
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}';
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @> '{"bbb": [4]}'::jsonb)
@@ -291,12 +291,12 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}';
- i | j
+ i | j 
 ---+---
 (0 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @> '{"aaa": {"bbb": [4]}}'::jsonb)
@@ -305,13 +305,13 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
- i |                           j
+ i |                           j                           
 ---+-------------------------------------------------------
  6 | {"aaa": {"bbb": [2, 4], "ccc": {"ddd": 6}}, "eee": 8}
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)';
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @? '$."aaa"[*]?(@ == 2)'::jsonpath)
@@ -320,13 +320,13 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)';
- i |           j
+ i |           j           
 ---+-----------------------
  1 | {"aaa": [1, 2.00, 3]}
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @@ '($."ggg" starts with "aa")'::jsonpath)
@@ -335,13 +335,13 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"';
- i |       j
+ i |       j        
 ---+----------------
  2 | {"ggg": "aaa"}
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on jsonbs
@@ -351,7 +351,7 @@ EXPLAIN (costs off) SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 (5 rows)
 
 SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
- count
+ count 
 -------
      4
 (1 row)
@@ -364,28 +364,28 @@ CREATE INDEX ON jsonbs USING gin (j jsonb_path_ops); -- test ambuild
 INSERT INTO jsonbs (j) VALUES
     ('{"aaa":{"bbb":[2], "ccc":{"ddd":6}}, "eee":[]}'); -- test aminsert
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa';
-         QUERY PLAN
+         QUERY PLAN          
 -----------------------------
  Seq Scan on jsonbs
    Filter: (j ? 'aaa'::text)
 (2 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}';
-              QUERY PLAN
+              QUERY PLAN              
 --------------------------------------
  Seq Scan on jsonbs
    Filter: (j ?| '{ggg,eee}'::text[])
 (2 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}';
-              QUERY PLAN
+              QUERY PLAN              
 --------------------------------------
  Seq Scan on jsonbs
    Filter: (j ?& '{aaa,eee}'::text[])
 (2 rows)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @> '{"aaa": {"bbb": [4]}}'::jsonb)
@@ -394,13 +394,13 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}';
- i |                           j
+ i |                           j                           
 ---+-------------------------------------------------------
  6 | {"aaa": {"bbb": [2, 4], "ccc": {"ddd": 6}}, "eee": 8}
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)';
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @? '$."aaa"[*]?(@ == 2)'::jsonpath)
@@ -409,13 +409,13 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)';
- i |           j
+ i |           j           
 ---+-----------------------
  1 | {"aaa": [1, 2.00, 3]}
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Bitmap Heap Scan on jsonbs
    Recheck Cond: (j @@ '($."ggg" starts with "aa")'::jsonpath)
@@ -424,7 +424,7 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"';
 (4 rows)
 
 SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"';
- i |       j
+ i |       j        
 ---+----------------
  2 | {"ggg": "aaa"}
 (1 row)
@@ -443,7 +443,7 @@ INSERT INTO multi VALUES
     (to_tsvector('simple', 'c d'), ARRAY['a'], ARRAY[5, 6.1], '{"f":5}',
      '{"r":[3.0,6.5]}'); -- test aminsert
 EXPLAIN (costs off) SELECT count(*) FROM multi WHERE v @@ 'a' or a1 && ARRAY['a'];
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on multi
@@ -456,13 +456,13 @@ EXPLAIN (costs off) SELECT count(*) FROM multi WHERE v @@ 'a' or a1 && ARRAY['a'
 (8 rows)
 
 SELECT count(*) FROM multi WHERE v @@ 'a' or a1 && ARRAY['a'];
- count
+ count 
 -------
      2
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM multi WHERE a2 && ARRAY[5.0]::float[];
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on multi
@@ -472,13 +472,13 @@ EXPLAIN (costs off) SELECT count(*) FROM multi WHERE a2 && ARRAY[5.0]::float[];
 (5 rows)
 
 SELECT count(*) FROM multi WHERE a2 && ARRAY[5.0]::float[];
- count
+ count 
 -------
      2
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM multi WHERE j1 ? 'f' and j2 @> '{"r":[3.0]}';
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on multi
@@ -488,7 +488,7 @@ EXPLAIN (costs off) SELECT count(*) FROM multi WHERE j1 ? 'f' and j2 @> '{"r":[3
 (5 rows)
 
 SELECT count(*) FROM multi WHERE j1 ? 'f' and j2 @> '{"r":[3.0]}';
- count
+ count 
 -------
      2
 (1 row)
@@ -505,7 +505,7 @@ CREATE INDEX ON expression USING gin (
 INSERT INTO expression VALUES
     (to_tsvector('simple', 'a a'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 EXPLAIN (costs off) SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on expression
@@ -515,13 +515,13 @@ EXPLAIN (costs off) SELECT count(*) FROM expression WHERE tsvector_to_array(v) &
 (5 rows)
 
 SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
- count
+ count 
 -------
      1
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on expression
@@ -531,14 +531,14 @@ EXPLAIN (costs off) SELECT count(*) FROM expression WHERE array_to_tsvector(a) @
 (5 rows)
 
 SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
- count
+ count 
 -------
      1
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM expression
     WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
-                                                   QUERY PLAN
+                                                   QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on expression
@@ -549,7 +549,7 @@ EXPLAIN (costs off) SELECT count(*) FROM expression
 
 SELECT count(*) FROM expression
     WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
- count
+ count 
 -------
      1
 (1 row)
@@ -565,7 +565,7 @@ CREATE INDEX ON partial USING gin (j) WHERE a && ARRAY['f']; -- test ambuild
 INSERT INTO partial VALUES
     (to_tsvector('simple', 'a b c'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Aggregate
    ->  Seq Scan on partial
@@ -573,7 +573,7 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
 (3 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
-                   QUERY PLAN
+                   QUERY PLAN                   
 ------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on partial
@@ -582,13 +582,13 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
 (4 rows)
 
 SELECT count(*) FROM partial WHERE v @@ 'c';
- count
+ count 
 -------
      1
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE a && ARRAY['e'];
-              QUERY PLAN
+              QUERY PLAN              
 --------------------------------------
  Aggregate
    ->  Seq Scan on partial
@@ -597,7 +597,7 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE a && ARRAY['e'];
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on partial
@@ -608,14 +608,14 @@ EXPLAIN (costs off) SELECT count(*) FROM partial
 
 SELECT count(*) FROM partial
     WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
- count
+ count 
 -------
      1
 (1 row)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE j @? '$.g[*] ? (@ == "h")';
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Aggregate
    ->  Seq Scan on partial
@@ -624,7 +624,7 @@ EXPLAIN (costs off) SELECT count(*) FROM partial
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
-                                       QUERY PLAN
+                                       QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on partial
@@ -635,7 +635,7 @@ EXPLAIN (costs off) SELECT count(*) FROM partial
 
 SELECT count(*) FROM partial
     WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
- count
+ count 
 -------
      1
 (1 row)

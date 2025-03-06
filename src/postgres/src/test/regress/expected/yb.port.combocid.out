@@ -17,7 +17,7 @@ INSERT INTO combocidtest SELECT 1 LIMIT 0;
 INSERT INTO combocidtest VALUES (1);
 INSERT INTO combocidtest VALUES (2);
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |   10 |      1
  (0,2) |   11 |      2
@@ -31,7 +31,7 @@ BEGIN;
 UPDATE combocidtest SET foobar = foobar + 10;
 -- here we should see only updated tuples
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,3) |    0 |     11
  (0,4) |    0 |     12
@@ -42,7 +42,7 @@ SELECT ctid,cmin,* FROM combocidtest;
 ROLLBACK;
 -- now we should see old tuples, but with combo CIDs starting at 0
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    0 |      1
  (0,2) |    0 |      2
@@ -52,7 +52,7 @@ SELECT ctid,cmin,* FROM combocidtest;
 -- COMMIT;
 -- combo data is not there anymore, but should still see tuples
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    0 |      1
  (0,2) |    0 |      2
@@ -64,7 +64,7 @@ INSERT INTO combocidtest VALUES (333);
 DECLARE c CURSOR FOR SELECT ctid,cmin,* FROM combocidtest;
 DELETE FROM combocidtest;
 FETCH ALL FROM c;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2
@@ -73,7 +73,7 @@ FETCH ALL FROM c;
 
 ROLLBACK;
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2
@@ -94,7 +94,7 @@ INSERT INTO combocidtest SELECT 1 LIMIT 0;
 INSERT INTO combocidtest SELECT 1 LIMIT 0;
 INSERT INTO combocidtest VALUES (444);
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2
@@ -108,7 +108,7 @@ COMMIT;
 BEGIN;
 -- this should not affect cmin
 SELECT ctid,cmin,* FROM combocidtest FOR UPDATE;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2
@@ -116,7 +116,7 @@ SELECT ctid,cmin,* FROM combocidtest FOR UPDATE;
 (3 rows)
 
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2
@@ -126,7 +126,7 @@ SELECT ctid,cmin,* FROM combocidtest;
 -- but this does
 UPDATE combocidtest SET foobar = foobar + 10;
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,7) |    1 |     11
  (0,8) |    1 |     12
@@ -137,7 +137,7 @@ SELECT ctid,cmin,* FROM combocidtest;
 -- ROLLBACK TO s1;
 ROLLBACK;
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2
@@ -147,7 +147,7 @@ SELECT ctid,cmin,* FROM combocidtest;
 -- Not supporting SAVEPOINT yet. Comment the commit for now.
 -- COMMIT;
 SELECT ctid,cmin,* FROM combocidtest;
- ctid  | cmin | foobar
+ ctid  | cmin | foobar 
 -------+------+--------
  (0,1) |    1 |      1
  (0,2) |    1 |      2

@@ -42,7 +42,7 @@ INSERT INTO pkey_only_table (SELECT i, i FROM generate_series(1, 1024) AS i);
 -- A simple point update without involving the primary key
 -- This query does not go through the distributed transaction path
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h = 1;
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -56,7 +56,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h 
 -- Point updates that include the primary key in the targetlist
 -- These queries do not go through the distributed transaction path either
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v - 1, v = v + 1 WHERE h = 1;
-                                       QUERY PLAN
+                                       QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
@@ -71,7 +71,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v - 1, v = v +
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h = 1;
-                                       QUERY PLAN
+                                       QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
@@ -86,7 +86,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 W
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1, v = v + 1 WHERE h = 1;
-                                       QUERY PLAN
+                                       QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
@@ -103,7 +103,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1, v = v + 1 W
 -- Queries affecting a range of rows
 -- Since the primary key is not specified in its entirety, these use the distributed txns
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h > 10 AND h < 15;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Seq Scan on pkey_only_table (actual rows=4 loops=1)
@@ -118,7 +118,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 W
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v, v = v + 1 WHERE h > 20 AND h < 25;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Seq Scan on pkey_only_table (actual rows=4 loops=1)
@@ -135,7 +135,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v, v = v + 1 W
 -- Query that updates the primary key. This should involve multiple flushes
 -- over a distributed transaction.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h + 1024, v = v + 1 WHERE h < 5;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Seq Scan on pkey_only_table (actual rows=4 loops=1)
@@ -150,7 +150,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h + 1024, v = 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h + 1024, v = v + 1 WHERE h < 2000;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Seq Scan on pkey_only_table (actual rows=1024 loops=1)
@@ -174,7 +174,7 @@ INSERT INTO secindex_only_table (SELECT i, i, i FROM generate_series(1, 1024) AS
 CREATE INDEX NONCONCURRENTLY secindex_only_table_v1 ON secindex_only_table (v1);
 -- Updates not involving the secondary index should not have multiple flushes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v3 = v2 + 1 WHERE v1 = 1;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -194,7 +194,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v3 = v2 + 1 WH
 -- and columns that are potentially modified. The index should be added to a
 -- skip list without further consideration
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
@@ -210,7 +210,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = 
 
 -- Point updates that include the column referenced by the index in the targetlist.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 + 1 WHERE v1 = 1;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -227,7 +227,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = v3 + 1 WHERE v1 = 1;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -245,7 +245,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = 
 
 -- Queries affecting a range of rows
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 + 1 WHERE v1 < 5;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
@@ -260,7 +260,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = v3 + 1 WHERE v1 < 5;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
@@ -275,7 +275,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 + 1 WHERE v2 < 5;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
@@ -292,7 +292,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
 -- Special case where no column is affected. We should still see a flush in order
 -- to acquire necessary row lock on the main table. This is similar to SELECT FOR UPDATEs.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE v1 = 5;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -309,7 +309,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE 
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE v1 < 5;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
@@ -327,7 +327,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE 
 CREATE INDEX NONCONCURRENTLY secindex_only_table_v1_v2 ON secindex_only_table (v1, v2);
 -- Queries that affect only one of the two indexes
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 + 1 WHERE v1 = 1;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -344,7 +344,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = 
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
@@ -360,7 +360,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = 
 
 -- Same as above but queries that actually modify one of the indexes exclusively.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v1 = 15;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -378,7 +378,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v2 = 16;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=2 loops=1)
@@ -395,7 +395,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v
 
 -- Queries that cover both indexes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 WHERE v1 = 15;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -412,7 +412,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 15;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -430,7 +430,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = 
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 15;
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -452,7 +452,7 @@ CREATE TRIGGER secindex_only_table_no_update BEFORE UPDATE ON secindex_only_tabl
 -- Repeat the above queries to validate that the number of flushes do not change.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 + 1 WHERE v1 = 1;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -471,7 +471,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
 NOTICE:  Trigger "no_update" invoked
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
@@ -488,7 +488,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v1 = 25;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -508,7 +508,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 25;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -528,7 +528,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 25;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -550,7 +550,7 @@ NOTICE:  Trigger "no_update" invoked
 CREATE TRIGGER secindex_only_table_increment_v3 BEFORE UPDATE ON secindex_only_table FOR EACH ROW EXECUTE FUNCTION increment_v3();
 -- Read the values corresponding to v1 = 1.
 SELECT * FROM secindex_only_table WHERE v1 = 1;
- v1 | v2 | v3
+ v1 | v2 | v3 
 ----+----+----
   1 |  1 |  9
 (1 row)
@@ -558,7 +558,7 @@ SELECT * FROM secindex_only_table WHERE v1 = 1;
 -- Repeat a subset of the above queries to validate that no extra flushes are required.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 + 1 WHERE v1 = 1;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -578,7 +578,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v1 = 35;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -599,7 +599,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 35;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -620,7 +620,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 35;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -642,7 +642,7 @@ NOTICE:  Trigger "no_update" invoked
 -- Read the values corresponding to v1 = 1 again to validate that v3 is incremented twice:
 -- once by the query, once by the trigger.
 SELECT * FROM secindex_only_table WHERE v1 = 1;
- v1 | v2 | v3
+ v1 | v2 | v3 
 ----+----+----
   1 |  1 | 11
 (1 row)
@@ -651,7 +651,7 @@ SELECT * FROM secindex_only_table WHERE v1 = 1;
 CREATE TRIGGER secindex_only_table_increment_v1 BEFORE UPDATE ON secindex_only_table FOR EACH ROW EXECUTE FUNCTION increment_v1();
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 + 1 WHERE v1 = 1;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -673,7 +673,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
 NOTICE:  Trigger "no_update" invoked
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
@@ -693,7 +693,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 45;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -715,7 +715,7 @@ NOTICE:  Trigger "no_update" invoked
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 55;
 NOTICE:  Trigger "no_update" invoked
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
@@ -743,7 +743,7 @@ NOTICE:  Trigger "no_update" invoked
 -- One row for v1 = 46
 -- Two rows for v1 = 47
 SELECT * FROM secindex_only_table WHERE v1 IN (45, 46, 47, 55, 56, 57) ORDER BY v1, v2;
- v1 | v2 | v3
+ v1 | v2 | v3 
 ----+----+----
  46 | 46 | 46
  46 | 46 | 46
@@ -766,7 +766,7 @@ NOTICE:  Trigger "no_update" invoked
 NOTICE:  Trigger "no_update" invoked
 NOTICE:  Trigger "no_update" invoked
 NOTICE:  Trigger "no_update" invoked
-                           QUERY PLAN
+                           QUERY PLAN                           
 ----------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=10 loops=1)
@@ -797,7 +797,7 @@ NOTICE:  Trigger "no_update" invoked
 NOTICE:  Trigger "no_update" invoked
 NOTICE:  Trigger "no_update" invoked
 NOTICE:  Trigger "no_update" invoked
-                           QUERY PLAN
+                           QUERY PLAN                           
 ----------------------------------------------------------------
  Update on secindex_only_table (actual rows=0 loops=1)
    ->  Seq Scan on secindex_only_table (actual rows=11 loops=1)
@@ -825,7 +825,7 @@ INSERT INTO no_index_table (SELECT i, i FROM generate_series(1, 1024) AS i);
 -- Point update queries. Irrespective of whether the columns in the targetlist
 -- are modified, we should see flushes updating the row.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h, v = v WHERE h = 1;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Update on no_index_table (actual rows=0 loops=1)
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
@@ -840,7 +840,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h, v = v WHERE 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h WHERE h = 1;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Update on no_index_table (actual rows=0 loops=1)
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
@@ -855,7 +855,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h WHERE h = 1;
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h + 1 WHERE h = 10;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Update on no_index_table (actual rows=0 loops=1)
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
@@ -870,7 +870,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h + 1 WHERE h =
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET v = v + 1 WHERE v = 10;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Update on no_index_table (actual rows=0 loops=1)
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
@@ -885,7 +885,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET v = v + 1 WHERE v =
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = v + 1, v = h + 1 WHERE v = 20;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Update on no_index_table (actual rows=0 loops=1)
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
@@ -923,7 +923,7 @@ INSERT INTO b2_test (SELECT i, i, i FROM generate_series(1, 1024) AS i);
 -- Point update queries on table 'a'. Should skip 'referenced-by' constraints on
 -- b-level tables.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = h, v2 = v2 + 1 WHERE h = 1;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on a_test (actual rows=0 loops=1)
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
@@ -938,7 +938,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = h, v2 = v2 + 1 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE h = 1;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Update on a_test (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -950,7 +950,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE v1 = 1;
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  Update on a_test (actual rows=0 loops=1)
    ->  Index Scan using a_test_v1_key on a_test (actual rows=1 loops=1)
@@ -967,7 +967,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE v1 = h AND h = 2;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on a_test (actual rows=0 loops=1)
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
@@ -985,7 +985,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
 -- Same as above but update the rows to validate 'referenced-by' constraints.
 INSERT INTO a_test (SELECT i, i, i FROM generate_series(1025, 1034) AS i);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = v1 + 1 WHERE h = 1034;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on a_test (actual rows=0 loops=1)
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
@@ -1003,7 +1003,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = v1 + 1 WHERE h 
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h + 1, v1 = v1 + 1 WHERE h = 1034;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on a_test (actual rows=0 loops=1)
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
@@ -1033,7 +1033,7 @@ CREATE TABLE base_table1 (k INT PRIMARY KEY, v1 INT, v2 INT);
 INSERT INTO base_table1 (SELECT i, i, i FROM generate_series(1, 10) AS i);
 -- This query below should follow the transaction fast path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -1046,7 +1046,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1062,7 +1062,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1078,7 +1078,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHERE k > 5 AND k < 15;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Seq Scan on base_table1 (actual rows=5 loops=1)
@@ -1098,7 +1098,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHE
 CREATE TRIGGER base_table1_no_update BEFORE UPDATE ON base_table1 FOR EACH ROW EXECUTE FUNCTION no_update();
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
 NOTICE:  Trigger "no_update" invoked
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1117,7 +1117,7 @@ DROP TRIGGER base_table1_no_update ON base_table1;
 -- Add a trigger that updates values of v1.
 CREATE TRIGGER base_table1_increment_v1 BEFORE UPDATE ON base_table1 FOR EACH ROW EXECUTE FUNCTION increment_v1();
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v2 = v2 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1134,7 +1134,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v2 = v2 + 1 WHERE k = 
 
 -- v1 should be updated twice
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1153,7 +1153,7 @@ DROP TRIGGER base_table1_increment_v1 ON base_table1;
 -- Drop the trigger and adding a secondary index should produce the same result.
 CREATE INDEX NONCONCURRENTLY base_table1_v1 ON base_table1 (v1);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1170,7 +1170,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1186,7 +1186,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1204,14 +1204,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 WHERE k = 1;
 
 -- Validate that the values have indeed been updated.
 SELECT * FROM base_table1 WHERE k = 1;
- k | v1 | v2
+ k | v1 | v2 
 ---+----+----
  1 |  8 |  4
 (1 row)
 
 -- Use an index-only scan to validate that the index has been updated.
 SELECT v1 FROM base_table1 WHERE k = 1;
- v1
+ v1 
 ----
   8
 (1 row)
@@ -1235,7 +1235,7 @@ CREATE TABLE base_table1 (k INT PRIMARY KEY, v1 INT, v2 INT) WITH (colocation = 
 INSERT INTO base_table1 (SELECT i, i, i FROM generate_series(1, 10) AS i);
 -- This query below should follow the transaction fast path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -1248,7 +1248,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1263,7 +1263,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHERE k = 1;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
@@ -1278,7 +1278,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHERE k > 5 AND k < 15;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=5 loops=1)
@@ -1317,7 +1317,7 @@ INSERT INTO ancestry VALUES ('child1', 'Harry', 'parent1', 'gparent1');
 INSERT INTO ancestry VALUES ('child2', 'Ivan', 'parent2', 'gparent1');
 -- Query modifying the value column should not trigger referential constraint check.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET value = 'David' WHERE value = 'Dave';
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Update on ancestry (actual rows=0 loops=1)
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
@@ -1332,7 +1332,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET value = 'David' WHERE val
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'root', value = 'David' WHERE key = 'root';
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on ancestry (actual rows=0 loops=1)
    ->  Index Scan using ancestry_pkey on ancestry (actual rows=1 loops=1)
@@ -1350,7 +1350,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'root', value = 'Da
 -- constraint in only one direction to see if the parent exists. Grandparent
 -- checks in both directions should be skipped.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET parent = 'ggparent2', gparent = 'root' WHERE value = 'Donatello';
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Update on ancestry (actual rows=0 loops=1)
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
@@ -1372,7 +1372,7 @@ DETAIL:  Key (parent)=(ggparent23) is not present in table "ancestry".
 -- Query modifying the key to the row should trigger checks in only the children
 -- and grandchildren.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE value = 'Eddie';
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Update on ancestry (actual rows=0 loops=1)
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
@@ -1390,7 +1390,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE v
 
 -- Same query, no modification, no triggers
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE value = 'Eddie';
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Update on ancestry (actual rows=0 loops=1)
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
@@ -1405,7 +1405,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE v
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent3' WHERE key = 'gparent30';
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on ancestry (actual rows=0 loops=1)
    ->  Index Scan using ancestry_pkey on ancestry (actual rows=1 loops=1)
@@ -1441,7 +1441,7 @@ EXECUTE updateplan1 (1, 1, 1, 1, 1);
 EXECUTE updateplan1 (1, 1, 1, 1, 1);
 EXECUTE updateplan1 (1, 1, 1, 1, 1);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on t_simple (actual rows=0 loops=1)
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
@@ -1460,7 +1460,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
 -- optimized as v3 does not have any other entities on it.
 CREATE INDEX NONCONCURRENTLY t_simple_v3 ON t_simple (v3);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on t_simple (actual rows=0 loops=1)
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
@@ -1487,7 +1487,7 @@ EXECUTE updateplan1 (1, 1, 1, 1, 1);
 SET yb_update_num_cols_to_compare TO 2;
 DROP INDEX t_simple_v2;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on t_simple (actual rows=0 loops=1)
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
@@ -1511,7 +1511,7 @@ ALTER TABLE t_simple ADD CONSTRAINT fk_t_simple_v2 FOREIGN KEY (v2) REFERENCES t
 -- Updating v2 should not produce a foreign key check when the value of the column
 -- remains unchanged.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on t_simple (actual rows=0 loops=1)
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
@@ -1533,7 +1533,7 @@ EXECUTE updateplan1 (1, 1, 2, 1, 1);
 SET yb_update_num_cols_to_compare TO 2;
 ALTER TABLE t_simple DROP CONSTRAINT fk_t_simple_v2;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on t_simple (actual rows=0 loops=1)
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
@@ -1563,7 +1563,7 @@ CREATE EXTENSION "uuid-ossp";
 -- insert
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
   ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Insert on ioc_table (actual rows=0 loops=1)
    Conflict Resolution: UPDATE
@@ -1583,7 +1583,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
 -- conflict: update
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
   ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Insert on ioc_table (actual rows=0 loops=1)
    Conflict Resolution: UPDATE
@@ -1606,7 +1606,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
 -- conflict: update again
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
   ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Insert on ioc_table (actual rows=0 loops=1)
    Conflict Resolution: UPDATE

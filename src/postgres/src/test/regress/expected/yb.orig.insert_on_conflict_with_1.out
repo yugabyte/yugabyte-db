@@ -7,7 +7,7 @@ WITH w(i) AS (
     INSERT INTO with_a VALUES (generate_series(1, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
 ) INSERT INTO with_b VALUES (generate_series(1, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
 TABLE with_a;
- i
+ i  
 ----
  11
  10
@@ -23,7 +23,7 @@ TABLE with_a;
 (11 rows)
 
 TABLE with_b;
- i
+ i  
 ----
   1
   2
@@ -71,7 +71,7 @@ WITH w(i) AS (
     INSERT INTO with_a VALUES (11) RETURNING i
 ) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
 TABLE with_a;
- i
+ i  
 ----
  22
  21
@@ -96,7 +96,7 @@ WITH w(i) AS (
     DELETE FROM with_a WHERE i = 10 RETURNING i
 ) INSERT INTO with_a VALUES (generate_series(9, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
 TABLE with_a;
- i
+ i  
 ----
  19
  15
@@ -138,7 +138,7 @@ WITH w(i) AS (
     ELSE u
     END FROM generate_series(10, 15) u ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 10;
 TABLE with_a;
-  i
+  i   
 ------
   109
   108

@@ -96,7 +96,7 @@ set yb_bnl_batch_size = 1024; set yb_enable_base_scans_cost_model = true;
 SET yb_enable_optimizer_statistics = true;
 -- Query Hash: fc9a1677584c556c9ae8b2a510738d25
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16);
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k1 = ANY ('{4,8,12}'::integer[])) AND (k4 = ANY ('{4,8,12,16}'::integer[])))
@@ -104,7 +104,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12,
 
 -- Query Hash: 9274124195113877a48cd356a9b7dfe1
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12);
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k2 = ANY ('{4,8,12,16}'::integer[])) AND (k4 = ANY ('{4,8,12}'::integer[])))
@@ -112,7 +112,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8,
 
 -- Query Hash: 2e3933a314ffab2ec57eab1f65bc99a7
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12);
-                                          QUERY PLAN
+                                          QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: ((k2 = ANY ('{4,8,12,16}'::integer[])) AND (k4 = ANY ('{4,8,12}'::integer[])))
@@ -120,7 +120,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8,
 
 -- Query Hash: e7f63532c5f21e987dcf70c5b62f5cb8
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16);
-                                           QUERY PLAN
+                                           QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k1 = ANY ('{4,8,12,16}'::integer[])) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
@@ -128,7 +128,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8,
 
 -- Query Hash: 035ed29bec9cf48d0cfccab9ea75393a
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 = 4 and k2 IN (4, 8, 12, 16);
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k1 = 4) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
@@ -136,7 +136,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 = 4 and k2 IN (4, 8, 12, 16);
 
 -- Query Hash: d5c50c8a7ac34a8901e60dbb379e3f4b
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 IN (4, 8, 12, 16) and k2 = 4;
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k1 = ANY ('{4,8,12,16}'::integer[])) AND (k2 = 4))
@@ -144,7 +144,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 IN (4, 8, 12, 16) and k2 = 4;
 
 -- Query Hash: 8e96c9a0b2caf93157b338bbd13ee9fa
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k3 IN (4, 8, 12, 16) and k4 = 4;
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k3 = ANY ('{4,8,12,16}'::integer[])) AND (k4 = 4))
@@ -152,7 +152,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k3 IN (4, 8, 12, 16) and k4 = 4;
 
 -- Query Hash: 98672ebc721b9dabcd751ae8d1d70bfe
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16);
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: ((k1 >= 4) AND (k1 < 5) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
@@ -160,7 +160,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 1
 
 -- Query Hash: 4e3d6cdf2d3dfd8c9661d9db1e06d06f
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 12, 16);
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: ((k1 >= 4) AND (k1 < 6) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
@@ -168,7 +168,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 1
 
 -- Query Hash: b3c453f75f2bfa75e8934afb1d0a000e
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16);
-                                    QUERY PLAN
+                                    QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: ((k1 >= 4) AND (k1 < 14) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
@@ -176,7 +176,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 
 
 -- Query Hash: c7fd96b45a1a90a438c5c8b51b88bf2f
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16);
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Index Scan using t3_pkey on t3
    Index Cond: ((k1 >= 4) AND (k1 < 7) AND (k3 = ANY ('{4,8,12,16}'::integer[])))
@@ -184,7 +184,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 1
 
 -- Query Hash: 7c3d5db060949e54e6135d9a0d8ea919
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12);
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k2 >= 4) AND (k2 < 7) AND (k4 = ANY ('{4,8,12}'::integer[])))
@@ -192,7 +192,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 1
 
 -- Query Hash: 42a855f52bd3a79f8fb3814af23cc20d
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12);
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: ((k2 >= 4) AND (k2 < 7) AND (k4 = ANY ('{4,8,12}'::integer[])))
@@ -200,7 +200,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 1
 
 -- Query Hash: 0e9d33c69acb0551957d04fc0fcc5aa1
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 IN (4,8,12,16) and k3 <= 4 and k3 > 7 and k4 IN (4, 8, 12);
-                                                       QUERY PLAN
+                                                       QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: ((k2 = ANY ('{4,8,12,16}'::integer[])) AND (k3 <= 4) AND (k3 > 7) AND (k4 = ANY ('{4,8,12}'::integer[])))
@@ -208,7 +208,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 IN (4,8,12,16) and k3 <= 4 and k3 
 
 -- Query Hash: 8b07844ffb72e7e079ec3f59c0986f88
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k3 >= 4 and k3 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k3 >= 4) AND (k3 < 14))
@@ -216,7 +216,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k3 >= 4 and k3 < 14;
 
 -- Query Hash: 7431fd75b284e9732a0fe4b7d6efc8a2
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 >= 4 and k1 < 14 and k3 >= 4 and k3 < 14;
-                             QUERY PLAN
+                             QUERY PLAN                              
 ---------------------------------------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k1 >= 4) AND (k1 < 14) AND (k3 >= 4) AND (k3 < 14))
@@ -224,7 +224,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 >= 4 and k1 < 14 and k3 >= 4 and k
 
 -- Query Hash: 0bbbb91ea7ed546300a103f7ebf911b0
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 >= 4 and k2 < 14 and k4 >= 4 and k4 < 14;
-                             QUERY PLAN
+                             QUERY PLAN                              
 ---------------------------------------------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: ((k2 >= 4) AND (k2 < 14) AND (k4 >= 4) AND (k4 < 14))
@@ -232,7 +232,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k2 >= 4 and k2 < 14 and k4 >= 4 and k
 
 -- Query Hash: a2d5901879e1db5f406b2dff1ce91e8e
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 >= 4 and k1 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: ((k1 >= 4) AND (k1 < 14))
@@ -240,7 +240,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 >= 4 and k1 < 14;
 
 -- Query Hash: 61f218667861386932c71486de344a8f
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: ((k1 >= 4) AND (k1 < 14))
@@ -248,7 +248,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 14;
 
 -- Query Hash: 4fc63a754558f81b3ea788b8ab66b2dd
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k1 >= 4 and k1 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t3_pkey on t3
    Index Cond: ((k1 >= 4) AND (k1 < 14))
@@ -256,7 +256,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k1 >= 4 and k1 < 14;
 
 -- Query Hash: 24482e5009140b10ee7738b1f978e9f6
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 >= 4 and k1 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k1 >= 4) AND (k1 < 14))
@@ -264,7 +264,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k1 >= 4 and k1 < 14;
 
 -- Query Hash: f02c4a2ecd531f683479251b7d3439ce
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k1 >= 4 and k1 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: ((k1 >= 4) AND (k1 < 14))
@@ -272,7 +272,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k1 >= 4 and k1 < 14;
 
 -- Query Hash: a2d5901879e1db5f406b2dff1ce91e8e
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 >= 4 and k1 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: ((k1 >= 4) AND (k1 < 14))
@@ -280,7 +280,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 >= 4 and k1 < 14;
 
 -- Query Hash: 4772a64709ca191fa2b2096f159e5f3f
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 >= 4 and k2 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: ((k2 >= 4) AND (k2 < 14))
@@ -288,7 +288,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 >= 4 and k2 < 14;
 
 -- Query Hash: 24dc55c74b331ad4fd956ac9b6400d8d
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k3 >= 4 and k3 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t3_pkey on t3
    Index Cond: ((k3 >= 4) AND (k3 < 14))
@@ -296,7 +296,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k3 >= 4 and k3 < 14;
 
 -- Query Hash: f425b12c4a6d8d734c69e50afeff04ed
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k4 >= 4 and k4 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t4_pkey on t4
    Index Cond: ((k4 >= 4) AND (k4 < 14))
@@ -304,7 +304,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k4 >= 4 and k4 < 14;
 
 -- Query Hash: 7d901f98ab781317763d9915875de118 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k5 >= 4 and k5 < 14;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: ((k5 >= 4) AND (k5 < 14))
@@ -312,7 +312,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k5 >= 4 and k5 < 14;
 
 -- Query Hash: b5562a3ef44a737b2846f0975cf9e1c7
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8);
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (k1 = ANY ('{4,8}'::integer[]))
@@ -320,7 +320,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8);
 
 -- Query Hash: 6a8ead9b8b122eea0e5460236bc6c19b , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12);
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (k1 = ANY ('{4,8,12}'::integer[]))
@@ -328,7 +328,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12);
 
 -- Query Hash: d7eedc71bffb36fa0152da8c08bf7808
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12, 16);
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (k1 = ANY ('{4,8,12,16}'::integer[]))
@@ -336,7 +336,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12, 16);
 
 -- Query Hash: 3a022df927f53a2864f9d95af72fee58
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 IN (4, 8, 12, 16);
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: (k1 = ANY ('{4,8,12,16}'::integer[]))
@@ -344,7 +344,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 IN (4, 8, 12, 16);
 
 -- Query Hash: 8c7bf857d9e088af7a4b5c904c5b8610
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 IN (4, 8, 12, 16);
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Index Scan using t2_pkey on t2
    Index Cond: (k2 = ANY ('{4,8,12,16}'::integer[]))
@@ -352,7 +352,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 IN (4, 8, 12, 16);
 
 -- Query Hash: 5d91fd582d63d5cb7df1e3face8067d5
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: (k1 < 5)
@@ -360,7 +360,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5;
 
 -- Query Hash: 979b459461ba7b840826695627007334
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k2 < 25;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: (k2 < 25)
@@ -368,7 +368,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k2 < 25;
 
 -- Query Hash: 9a8420c43a0a8e1661e5d1ac9bdd62b0
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k3 < 125;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: (k3 < 125)
@@ -376,7 +376,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k3 < 125;
 
 -- Query Hash: 3324c9ff1941acab32f5415abd90c0c4
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k4 < 25;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: (k4 < 25)
@@ -384,7 +384,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k4 < 25;
 
 -- Query Hash: adbcbd6fb6decb44cd3d786bf910e5d4
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k2 < 25;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k1 < 5) AND (k2 < 25))
@@ -392,7 +392,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k2 < 25;
 
 -- Query Hash: 25bd3b427c6c6786ffd4bb1ac43d50c9
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k3 < 125;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k1 < 5) AND (k3 < 125))
@@ -400,7 +400,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k3 < 125;
 
 -- Query Hash: c51689b307246763709d95761488c01e
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k4 < 25;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k1 < 5) AND (k4 < 25))
@@ -408,7 +408,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k4 < 25;
 
 -- Query Hash: f2621d436cb67e9e38c733ba36c6e3bd
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k2 < 25 AND k3 < 125;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k2 < 25) AND (k3 < 125))
@@ -416,7 +416,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k2 < 25 AND k3 < 125;
 
 -- Query Hash: c60cbde271e15ebbb324c337b8219e11
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k2 < 25 AND k4 < 25;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k2 < 25) AND (k4 < 25))
@@ -424,7 +424,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k2 < 25 AND k4 < 25;
 
 -- Query Hash: 9be0c8a2b6797d336f5d43b76e18be46
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k3 < 125 AND k4 < 25;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k3 < 125) AND (k4 < 25))
@@ -432,7 +432,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k3 < 125 AND k4 < 25;
 
 -- Query Hash: 4fe07880e09bf7812010c348aae8a57d
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k2 < 25 AND k3 < 125 AND k4 < 25;
-                             QUERY PLAN
+                             QUERY PLAN                              
 ---------------------------------------------------------------------
  Index Only Scan using tcor_1_idx on tcor_1
    Index Cond: ((k1 < 5) AND (k2 < 25) AND (k3 < 125) AND (k4 < 25))
@@ -440,7 +440,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_1 WHERE k1 < 5 AND k2 < 25 AND k3 < 125 A
 
 -- Query Hash: aaa7d9c764b2723a7495d33f609ab200
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: (k1 < 0)
@@ -448,7 +448,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0;
 
 -- Query Hash: 540441b5cf77f76d10f510ba04556e3d
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k2 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: (k2 < 0)
@@ -456,7 +456,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k2 < 0;
 
 -- Query Hash: 3b525b570874f819873f09cd386b2c10
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k3 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: (k3 < 0)
@@ -464,7 +464,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k3 < 0;
 
 -- Query Hash: 90c6e6321ee74099b07569d8aa7e9f05
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k4 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: (k4 < 0)
@@ -472,7 +472,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k4 < 0;
 
 -- Query Hash: 4d05ca97a12862a4a513929f249524ea
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k2 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k1 < 0) AND (k2 < 0))
@@ -480,7 +480,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k2 < 0;
 
 -- Query Hash: 89c00f63e767513c6aa3d08cb9b55f0b
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k3 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k1 < 0) AND (k3 < 0))
@@ -488,7 +488,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k3 < 0;
 
 -- Query Hash: cc71e17fa039883b7e8fd219533c8285
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k4 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k1 < 0) AND (k4 < 0))
@@ -496,7 +496,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k4 < 0;
 
 -- Query Hash: 60229f8796efe228e27d959b0ea59781
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k2 < 0 AND k3 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k2 < 0) AND (k3 < 0))
@@ -504,7 +504,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k2 < 0 AND k3 < 0;
 
 -- Query Hash: 1a883df555044f269f4dc699156a8594
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k2 < 0 AND k4 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k2 < 0) AND (k4 < 0))
@@ -512,7 +512,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k2 < 0 AND k4 < 0;
 
 -- Query Hash: 4566c9cfd7224af62bb14a7dd6cf429f
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k3 < 0 AND k4 < 0;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k3 < 0) AND (k4 < 0))
@@ -520,7 +520,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k3 < 0 AND k4 < 0;
 
 -- Query Hash: 18f5729f5f6a432245c96e7c6ce13cbe
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k2 < 0 AND k3 < 0 AND k4 < 0;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Index Only Scan using tcor_2_idx on tcor_2
    Index Cond: ((k1 < 0) AND (k2 < 0) AND (k3 < 0) AND (k4 < 0))
@@ -528,7 +528,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_2 WHERE k1 < 0 AND k2 < 0 AND k3 < 0 AND 
 
 -- Query Hash: 51d11a69af237d21a0f439680ae11e86
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 > 50 and k3 > 50;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k1 > 50) AND (k3 > 50))
@@ -536,7 +536,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 > 50 and k3 > 50;
 
 -- Query Hash: b0418f7b0f73ba0a1e09526703b0ec60
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 > 50 and k3 > 50;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 > 50) AND (k3 > 50))
@@ -544,7 +544,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 > 50 and k3 > 50;
 
 -- Query Hash: 162202d912755f260a7ba158aaa656e7
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 > 50 and k2 > 50;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k1 > 50) AND (k2 > 50))
@@ -552,7 +552,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 > 50 and k2 > 50;
 
 -- Query Hash: 92961ecf4a4a096b80054048f778d525
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 = 50 AND k3 > 50;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k1 = 50) AND (k3 > 50))
@@ -560,7 +560,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 = 50 AND k3 > 50;
 
 -- Query Hash: 375c8ae3f86b5dbba917c7108e42b918
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 = 50 AND k3 > 50 AND k3 < 80;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k1 = 50) AND (k3 > 50) AND (k3 < 80))
@@ -568,7 +568,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 = 50 AND k3 > 50 AND k3 < 80;
 
 -- Query Hash: d729eb647c6857e30897b4b4a6fec1be
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 = 50 AND k3 > 50;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 = 50) AND (k3 > 50))
@@ -576,7 +576,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 = 50 AND k3 > 50;
 
 -- Query Hash: b57c1e01bf6b6658b86167fc6df13845
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 = 50 AND k3 > 50 AND k3 < 80;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 = 50) AND (k3 > 50) AND (k3 < 80))
@@ -584,7 +584,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 = 50 AND k3 > 50 AND k3 < 80;
 
 -- Query Hash: 024fb5b577416303e3777892ea2f02c9
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k3 = 50 AND k2 > 50;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 > 50) AND (k3 = 50))
@@ -592,7 +592,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k3 = 50 AND k2 > 50;
 
 -- Query Hash: d271787b745e12b73f1d71efdf25856c
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k3 = 50 AND k2 > 50 AND k2 < 80;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 > 50) AND (k2 < 80) AND (k3 = 50))
@@ -600,7 +600,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k3 = 50 AND k2 > 50 AND k2 < 80;
 
 -- Query Hash: 16a4b2ae22250f600cc8ddd60a443049
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 IN (50, 60, 70, 80) AND k3 > 50;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 = ANY ('{50,60,70,80}'::integer[])) AND (k3 > 50))
@@ -608,7 +608,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 IN (50, 60, 70, 80) AND k3 > 5
 
 -- Query Hash: 32a970e0cc5bed5898970ed39860a744
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 IN (50, 60, 70, 80) AND k3 > 50 AND k3 < 80;
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 = ANY ('{50,60,70,80}'::integer[])) AND (k3 > 50) AND (k3 < 80))
@@ -616,7 +616,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 IN (50, 60, 70, 80) AND k3 > 5
 
 -- Query Hash: 4ae624260329d91797989cfec1fe32b3
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 IN (50, 60, 70, 80) AND k2 IN (50, 60, 70, 80);
-                                             QUERY PLAN
+                                             QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k1 = ANY ('{50,60,70,80}'::integer[])) AND (k2 = ANY ('{50,60,70,80}'::integer[])))
@@ -624,7 +624,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 IN (50, 60, 70, 80) AND k2 IN 
 
 -- Query Hash: 17c4b34da306f3aab063529002052144
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 IN (50, 60, 70, 80) AND k3 IN (50, 60, 70, 80);
-                                             QUERY PLAN
+                                             QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k1 = ANY ('{50,60,70,80}'::integer[])) AND (k3 = ANY ('{50,60,70,80}'::integer[])))
@@ -632,7 +632,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k1 IN (50, 60, 70, 80) AND k3 IN 
 
 -- Query Hash: b457f2828cc6c6beded8e0b71b63a624
 EXPLAIN (COSTS OFF) SELECT * FROM tcor_3 WHERE k2 IN (50, 60, 70, 80) AND k3 IN (50, 60, 70, 80);
-                                             QUERY PLAN
+                                             QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Index Only Scan using tcor_3_idx on tcor_3
    Index Cond: ((k2 = ANY ('{50,60,70,80}'::integer[])) AND (k3 = ANY ('{50,60,70,80}'::integer[])))

@@ -11,54 +11,55 @@ ANALYZE hypo_part;
 SET enable_seqscan = 0;
 -- hypothetical index on root partitioned table should work
 SELECT COUNT(*) AS nb FROM hypopg_create_index('CREATE INDEX ON hypo_part (id3)');
- nb
+ nb 
 ----
   1
 (1 row)
 
 SELECT 1, COUNT(*) FROM do_explain('SELECT * FROM hypo_part WHERE id3 = 1') e
 WHERE e ~ 'Index.*<\d+>lsm_hypo_part.*'; -- YB: change btree to lsm
- ?column? | count
+ ?column? | count 
 ----------+-------
         1 |     1
 (1 row)
 
 SELECT hypopg_reset();
- hypopg_reset
+ hypopg_reset 
 --------------
-
+ 
 (1 row)
 
 -- hypothetical index on non-root partitioned table should work
 SELECT COUNT(*) AS nb FROM hypopg_create_index('CREATE INDEX ON hypo_part_1 (id3)');
- nb
+ nb 
 ----
   1
 (1 row)
 
 SELECT 2, COUNT(*) FROM do_explain('SELECT * FROM hypo_part_1 WHERE id3 = 1') e
 WHERE e ~ 'Index.*<\d+>lsm_hypo_part.*'; -- YB: change btree to lsm
- ?column? | count
+ ?column? | count 
 ----------+-------
         2 |     1
 (1 row)
 
 SELECT hypopg_reset();
- hypopg_reset
+ hypopg_reset 
 --------------
-
+ 
 (1 row)
 
 -- hypothetical index on partition should work
 SELECT COUNT(*) AS nb FROM  hypopg_create_index('CREATE INDEX ON hypo_part_1_1 (id3)');
- nb
+ nb 
 ----
   1
 (1 row)
 
 SELECT 3, COUNT(*) FROM do_explain('SELECT * FROM hypo_part_1_1 WHERE id3 = 1') e
 WHERE e ~ 'Index.*<\d+>lsm_hypo_part.*'; -- YB: change btree to lsm
- ?column? | count
+ ?column? | count 
 ----------+-------
         3 |     1
 (1 row)
+

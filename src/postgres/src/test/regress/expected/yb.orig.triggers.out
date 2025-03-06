@@ -157,7 +157,7 @@ NOTICE:  main_view BEFORE INSERT STATEMENT (before_view_ins_stmt)
 NOTICE:  main_view INSTEAD OF INSERT ROW (instead_of_ins)
 NOTICE:  NEW: (21,31)
 NOTICE:  main_view AFTER INSERT STATEMENT (after_view_ins_stmt)
- a  | b
+ a  | b  
 ----+----
  21 | 31
 (1 row)
@@ -181,7 +181,7 @@ NOTICE:  trigger_func(before_upd_a_stmt) called: action = UPDATE, when = BEFORE,
 NOTICE:  trigger_func(before_upd_a_row) called: action = UPDATE, when = BEFORE, level = ROW
 NOTICE:  trigger_func(after_upd_b_stmt) called: action = UPDATE, when = AFTER, level = STATEMENT
 NOTICE:  main_view AFTER UPDATE STATEMENT (after_view_upd_stmt)
- a | b
+ a | b 
 ---+---
 (0 rows)
 
@@ -208,14 +208,14 @@ NOTICE:  trigger_func(after_upd_a_b_row) called: action = UPDATE, when = AFTER, 
 NOTICE:  trigger_func(after_upd_b_row) called: action = UPDATE, when = AFTER, level = ROW
 NOTICE:  trigger_func(after_upd_b_stmt) called: action = UPDATE, when = AFTER, level = STATEMENT
 NOTICE:  main_view AFTER UPDATE STATEMENT (after_view_upd_stmt)
- a  | b
+ a  | b  
 ----+----
  21 | 32
 (1 row)
 
 UPDATE 1
 SELECT * from main_view order by a, b;
- a  | b
+ a  | b  
 ----+----
  20 | 31
  21 | 32
@@ -236,13 +236,13 @@ DELETE 1
 DELETE FROM main_view WHERE a = 31 RETURNING a, b;
 NOTICE:  main_view BEFORE DELETE STATEMENT (before_view_del_stmt)
 NOTICE:  main_view AFTER DELETE STATEMENT (after_view_del_stmt)
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 DELETE 0
 SELECT * from main_view order by a, b;
- a  | b
+ a  | b  
 ----+----
  21 | 32
 (1 row)
@@ -384,14 +384,14 @@ update self_ref_trigger set nchildren = nchildren - 1;
 \set query 'SELECT * FROM (select * from self_ref_trigger :ordering LIMIT ALL) ybview ORDER BY id'
 \set run 'EXPLAIN (costs off) :query; :query'
 :run;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: self_ref_trigger.id
    ->  Seq Scan on self_ref_trigger
 (3 rows)
 
- id | parent |     data     | nchildren
+ id | parent |     data     | nchildren 
 ----+--------+--------------+-----------
   1 |        | root!        |         2
   2 |      1 | root child A |         1
@@ -402,14 +402,14 @@ update self_ref_trigger set nchildren = nchildren - 1;
 
 \set ordering 'order by parent'
 :run;
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  Sort
    Sort Key: self_ref_trigger.id
    ->  Index Scan using self_ref_trigger_parent_idx on self_ref_trigger
 (3 rows)
 
- id | parent |     data     | nchildren
+ id | parent |     data     | nchildren 
 ----+--------+--------------+-----------
   1 |        | root!        |         2
   2 |      1 | root child A |         1
@@ -420,14 +420,14 @@ update self_ref_trigger set nchildren = nchildren - 1;
 
 \set ordering 'order by data'
 :run;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Sort
    Sort Key: self_ref_trigger.id
    ->  Index Scan using self_ref_trigger_data_idx on self_ref_trigger
 (3 rows)
 
- id | parent |     data     | nchildren
+ id | parent |     data     | nchildren 
 ----+--------+--------------+-----------
   1 |        | root!        |         2
   2 |      1 | root child A |         1
@@ -438,14 +438,14 @@ update self_ref_trigger set nchildren = nchildren - 1;
 
 \set ordering 'order by nchildren'
 :run;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Sort
    Sort Key: self_ref_trigger.id
    ->  Index Scan using self_ref_trigger_nchildren_idx on self_ref_trigger
 (3 rows)
 
- id | parent |     data     | nchildren
+ id | parent |     data     | nchildren 
 ----+--------+--------------+-----------
   1 |        | root!        |         2
   2 |      1 | root child A |         1
@@ -457,14 +457,14 @@ update self_ref_trigger set nchildren = nchildren - 1;
 delete from self_ref_trigger where id in (2, 4);
 \set ordering ''
 :run;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: self_ref_trigger.id
    ->  Seq Scan on self_ref_trigger
 (3 rows)
 
- id | parent |     data     | nchildren
+ id | parent |     data     | nchildren 
 ----+--------+--------------+-----------
   1 |        | root!        |         1
   3 |      1 | root child B |         1
@@ -473,14 +473,14 @@ delete from self_ref_trigger where id in (2, 4);
 
 delete from self_ref_trigger;
 :run;
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Sort
    Sort Key: self_ref_trigger.id
    ->  Seq Scan on self_ref_trigger
 (3 rows)
 
- id | parent | data | nchildren
+ id | parent | data | nchildren 
 ----+--------+------+-----------
 (0 rows)
 
@@ -499,21 +499,21 @@ CREATE TRIGGER increment_key_trigger BEFORE UPDATE ON incremental_key
 FOR EACH ROW EXECUTE PROCEDURE increment_key();
 INSERT INTO incremental_key VALUES(1, 1, 1, 1);
 SELECT * FROM incremental_key;
- h | r | v1 | v2
+ h | r | v1 | v2 
 ---+---+----+----
  1 | 1 |  1 |  1
 (1 row)
 
 UPDATE incremental_key SET v1 = 10 WHERE h = 1;
 SELECT * FROM incremental_key;
- h | r | v1 | v2
+ h | r | v1 | v2 
 ---+---+----+----
  1 | 2 | 10 |  1
 (1 row)
 
 UPDATE incremental_key SET v1 = 10 WHERE yb_hash_code(h) = yb_hash_code(1);
 SELECT * FROM incremental_key;
- h | r | v1 | v2
+ h | r | v1 | v2 
 ---+---+----+----
  1 | 3 | 10 |  1
 (1 row)
@@ -532,14 +532,14 @@ CREATE TRIGGER increment_value_trigger BEFORE UPDATE ON incremental_value
 FOR EACH ROW EXECUTE PROCEDURE increment_value();
 INSERT INTO incremental_value VALUES(1, 1, 1, 1);
 SELECT * FROM incremental_value;
- h | r | v1 | v2
+ h | r | v1 | v2 
 ---+---+----+----
  1 | 1 |  1 |  1
 (1 row)
 
 UPDATE incremental_value SET v1 = 10 WHERE h = 1;
 SELECT * FROM incremental_value;
- h | r | v1 | v2
+ h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 10 |  2
 (1 row)
@@ -567,7 +567,7 @@ RESET SESSION AUTHORIZATION;
 -- Verify trigger was run
 INSERT INTO foo VALUES (0);
 SELECT * from bar;
- b
+ b 
 ---
  1
 (1 row)

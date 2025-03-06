@@ -30,7 +30,7 @@ WITH w1 AS (
     (4),
     ((SELECT abs(min(i)) FROM (SELECT i FROM w2 LIMIT 4) l)) -- 5
 ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FROM w2 LIMIT 2) l) RETURNING i;
-  i
+  i  
 -----
    0
  102
@@ -40,7 +40,7 @@ ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FRO
 (5 rows)
 
 TABLE with_a;
-  i
+  i  
 -----
  104
  102
@@ -94,13 +94,13 @@ WITH w1 AS (
     ((SELECT abs(min(i)) FROM (SELECT i FROM w2 LIMIT 4) l)) -- unreachable
 ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FROM w2 LIMIT 2) l) RETURNING i;
 $$, 3);
- yb_run_spi
+ yb_run_spi 
 ------------
           3
 (1 row)
 
 TABLE with_a;
-  i
+  i  
 -----
  102
  100
@@ -162,13 +162,13 @@ WITH w1 AS (
       $q3$, 5))) -- unreachable
 ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FROM w2 LIMIT 2) l) RETURNING i;
 $$, 3);
- yb_run_spi
+ yb_run_spi 
 ------------
           3
 (1 row)
 
 TABLE with_a;
-  i
+  i  
 -----
  102
  100
@@ -229,7 +229,7 @@ WITH w1 AS (
           ON CONFLICT (i) DO UPDATE SET i = -EXCLUDED.i RETURNING i;
       $q3$, 5))) -- 3
 ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FROM w2 LIMIT 2) l) RETURNING i;
-  i
+  i  
 -----
    0
  102
@@ -240,7 +240,7 @@ ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FRO
 (6 rows)
 
 TABLE with_a;
-  i
+  i  
 -----
  104
  103

@@ -56,7 +56,7 @@ NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_even" does
 NOTICE:  trigger "parttrigtrig_createdtrig" for relation "parttrigtab_odd" does not exist, skipping
 NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=2 count=3
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i  | p
+  i  | p 
 -----+---
  -33 | t
  -22 | f
@@ -151,7 +151,7 @@ WITH w AS (
     ELSE g
     END AS n FROM generate_series(0, 10, 2) g) ns ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM (SELECT i FROM w LIMIT 2) l);
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i  | p
+  i  | p 
 -----+---
   -3 | t
   -2 | f
@@ -197,7 +197,7 @@ BEGIN;
 INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 8, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10;
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=7
 SELECT * FROM parttrigtab_parent ORDER BY (i % 10);
-  i  | p
+  i  | p 
 -----+---
    0 | f
   11 | t
@@ -229,7 +229,7 @@ WITH w AS (
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=12
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     3 | t
@@ -266,7 +266,7 @@ WITH w AS (
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=11
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     3 | t
@@ -303,7 +303,7 @@ WITH w AS (
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=11 count=7
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=12
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     1 | t
@@ -341,7 +341,7 @@ WITH w AS (
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     2 | f
@@ -377,7 +377,7 @@ WITH w AS (
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     2 | f
@@ -584,7 +584,7 @@ NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=0 count=7
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=7
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=7
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i  | p
+  i  | p 
 -----+---
    0 | f
    1 | t
@@ -633,7 +633,7 @@ NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=88 count=
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=12
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=12
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     4 | f
@@ -696,7 +696,7 @@ NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=1000 coun
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=13
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=6 count=13
 SELECT * FROM parttrigtab_parent ORDER BY i;
-   i   | p
+   i   | p 
 -------+---
  -1000 | f
   -999 | t
@@ -759,7 +759,7 @@ NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=-1000 cou
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=1000 count=13
 NOTICE:  parttrigtrig_createtrigoneven parttrigtab_even AFTER INSERT i=4 count=13
 SELECT * FROM parttrigtab_parent ORDER BY i;
-   i   | p
+   i   | p 
 -------+---
  -1000 | f
   -999 | t
@@ -821,7 +821,7 @@ NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=88 count=1
 NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=4 count=12
 NOTICE:  parttrigtrig_createtrigonodd parttrigtab_even AFTER INSERT i=6 count=12
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p
+  i   | p 
 ------+---
     0 | f
     4 | f
@@ -876,7 +876,7 @@ NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=6 count=6
 NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=7
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i  | p
+  i  | p 
 -----+---
    0 | f
    1 | t
@@ -906,7 +906,7 @@ NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=3
 NOTICE:  parttrigtrig_dropself parttrigtab_even BEFORE INSERT i=8 count=3
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=3 count=7
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i  | p
+  i  | p 
 -----+---
    0 | f
    1 | t
@@ -1018,7 +1018,7 @@ NOTICE:  noparttrigtrig noparttrigtab BEFORE INSERT i=4 count=7
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=8
 NOTICE:  parttrigtrig_createdtrig parttrigtab_even BEFORE INSERT i=8 count=8
 SELECT * FROM parttrigtab_parent ORDER BY i;
-   i   | p
+   i   | p 
 -------+---
  -1000 | f
      0 | f

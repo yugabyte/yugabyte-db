@@ -43,7 +43,7 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 -- Test yb_fetch_row_limit
 set yb_fetch_row_limit = 100;
 show yb_fetch_row_limit;
- yb_fetch_row_limit
+ yb_fetch_row_limit 
 --------------------
  100
 (1 row)
@@ -53,21 +53,21 @@ ERROR:  -1 is outside the valid range for parameter "yb_fetch_row_limit" (0 .. 2
 -- Test yb_fetch_size_limit
 set yb_fetch_size_limit = '2MB';
 show yb_fetch_size_limit;
- yb_fetch_size_limit
+ yb_fetch_size_limit 
 ---------------------
  2MB
 (1 row)
 
 set yb_fetch_size_limit = 789;
 show yb_fetch_size_limit;
- yb_fetch_size_limit
+ yb_fetch_size_limit 
 ---------------------
  789B
 (1 row)
 
 set yb_fetch_size_limit = 2048;
 show yb_fetch_size_limit;
- yb_fetch_size_limit
+ yb_fetch_size_limit 
 ---------------------
  2kB
 (1 row)
@@ -103,19 +103,19 @@ set enable_indexscan = on;
 set enable_indexonlyscan = on;
 set enable_bitmapscan = on;
 SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | f
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
- scan_type  | disabled
+ scan_type  | disabled 
 ------------+----------
  Index Scan | f
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | f
 (1 row)
@@ -124,19 +124,19 @@ set enable_seqscan = on;
 set enable_indexscan = off;
 set enable_bitmapscan = off;
 SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | f
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | f
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | f
 (1 row)
@@ -145,19 +145,19 @@ set enable_seqscan = off;
 set enable_indexscan = off;
 set enable_bitmapscan = off;
 SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | t
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
- scan_type  | disabled
+ scan_type  | disabled 
 ------------+----------
  Index Scan | t
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | t
 (1 row)
@@ -166,19 +166,19 @@ set enable_seqscan = off;
 set enable_indexscan = on;
 set enable_bitmapscan = off;
 SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | t
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
- scan_type  | disabled
+ scan_type  | disabled 
 ------------+----------
  Index Scan | f
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
- scan_type  | disabled
+ scan_type  | disabled 
 ------------+----------
  Index Only | f
 (1 row)
@@ -187,26 +187,26 @@ set enable_seqscan = off;
 set enable_indexscan = off;
 set enable_bitmapscan = on;
 SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | t
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  YB Bitmap | f
 (1 row)
 
 SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  YB Bitmap | f
 (1 row)
 
 set enable_indexonlyscan = off;
 SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
- scan_type | disabled
+ scan_type | disabled 
 -----------+----------
  Seq Scan  | t
 (1 row)
@@ -225,7 +225,7 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
 show yb_transaction_priority;
-          yb_transaction_priority
+          yb_transaction_priority          
 -------------------------------------------
  0.400000000 (Normal priority transaction)
 (1 row)
@@ -243,13 +243,13 @@ NOTICE:  priorities don't exist for read committed isolation transations, the tr
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
- i | j
+ i | j 
 ---+---
  1 | 1
 (1 row)
 
 show yb_transaction_priority;
-         yb_transaction_priority
+         yb_transaction_priority         
 -----------------------------------------
  0.400000000 (High priority transaction)
 (1 row)
@@ -264,13 +264,13 @@ NOTICE:  priorities don't exist for read committed isolation transations, the tr
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
- i | j
+ i | j 
 ---+---
  1 | 1
 (1 row)
 
 show yb_transaction_priority;
-   yb_transaction_priority
+   yb_transaction_priority    
 ------------------------------
  Highest priority transaction
 (1 row)
@@ -278,7 +278,7 @@ show yb_transaction_priority;
 COMMIT;
 -- Showing yb_transaction_priority outside a transaction block
 show yb_transaction_priority;
-          yb_transaction_priority
+          yb_transaction_priority          
 -------------------------------------------
  0.000000000 (Normal priority transaction)
 (1 row)
@@ -292,7 +292,7 @@ end $$
 language plpgsql
 set work_mem = '1MB';
 select myfunc(0), current_setting('work_mem');
- myfunc | current_setting
+ myfunc | current_setting 
 --------+-----------------
  2MB    | 4MB
 (1 row)
@@ -302,7 +302,7 @@ SET foo = false;  -- no such setting
 ERROR:  unrecognized configuration parameter "foo"
 -- test temp_file_limit default
 SHOW temp_file_limit;
- temp_file_limit
+ temp_file_limit 
 -----------------
  1GB
 (1 row)
@@ -310,14 +310,14 @@ SHOW temp_file_limit;
 -- test temp_File_limit update
 SET temp_file_limit="100MB";
 SHOW temp_file_limit;
- temp_file_limit
+ temp_file_limit 
 -----------------
  100MB
 (1 row)
 
 SET temp_file_limit=-1;
 SHOW temp_file_limit;
- temp_file_limit
+ temp_file_limit 
 -----------------
  -1
 (1 row)
@@ -325,21 +325,21 @@ SHOW temp_file_limit;
 -- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
 SET SESSION AUTHORIZATION yb_db_admin;
 SHOW session_replication_role;
- session_replication_role
+ session_replication_role 
 --------------------------
  origin
 (1 row)
 
 SET session_replication_role TO replica;
 SHOW session_replication_role;
- session_replication_role
+ session_replication_role 
 --------------------------
  replica
 (1 row)
 
 RESET session_replication_role;
 SHOW session_replication_role;
- session_replication_role
+ session_replication_role 
 --------------------------
  origin
 (1 row)

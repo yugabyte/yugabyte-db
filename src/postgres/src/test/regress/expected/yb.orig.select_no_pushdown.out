@@ -7,164 +7,164 @@ INSERT INTO pushdown_test VALUES (1, 1, 'value1', '2021-11-11 11:11:11', '2021-1
 INSERT INTO pushdown_test VALUES (2, 202, 'value2', NULL, '2222-02-22 22:22:22-7', numrange(-1, NULL), '{-2, 2, 122, -122}');
 -- Simple expression (column = constant)
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1;
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on pushdown_test
    Filter: (i1 = 1)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE t1 LIKE 'val%';
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Seq Scan on pushdown_test
    Filter: (t1 ~~ 'val%'::text)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 < '2021-11-11 11:11:12';
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on pushdown_test
    Filter: (ts1 < 'Thu Nov 11 11:11:12 2021'::timestamp without time zone)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts2 < '2021-11-11 11:11:10Z';
-                                 QUERY PLAN
+                                 QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Seq Scan on pushdown_test
    Filter: (ts2 < 'Thu Nov 11 11:11:10 2021 UTC'::timestamp with time zone)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1;
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 SELECT * FROM pushdown_test WHERE t1 LIKE 'val%';
- k | i1  |   t1   |           ts1            |             ts2              |  r1   |       a1
+ k | i1  |   t1   |           ts1            |             ts2              |  r1   |       a1        
 ---+-----+--------+--------------------------+------------------------------+-------+-----------------
  1 |   1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
  2 | 202 | value2 |                          | Sat Feb 23 05:22:22 2222 UTC | [-1,) | {-2,2,122,-122}
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE ts1 < '2021-11-11 11:11:12';
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 SELECT * FROM pushdown_test WHERE ts2 < '2021-11-11 11:11:10Z';
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Simple function on one column
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE isfinite(ts1);
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on pushdown_test
    Filter: isfinite(ts1)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE isfinite(ts1);
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Simple function on multiple columns
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
-               QUERY PLAN
+               QUERY PLAN               
 ----------------------------------------
  Seq Scan on pushdown_test
    Filter: ("left"(t1, i1) = 'v'::text)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Functions safe for pushdown (yb_safe_funcs_for_pushdown.c)
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
-                                             QUERY PLAN
+                                             QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
    Filter: ((i1)::double precision < ('10'::double precision + (random() * '90'::double precision)))
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Null test
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 IS NULL;
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on pushdown_test
    Filter: (ts1 IS NULL)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 IS NOT NULL;
-         QUERY PLAN
+         QUERY PLAN          
 -----------------------------
  Seq Scan on pushdown_test
    Filter: (ts1 IS NOT NULL)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE ts1 IS NULL;
- k | i1  |   t1   | ts1 |             ts2              |  r1   |       a1
+ k | i1  |   t1   | ts1 |             ts2              |  r1   |       a1        
 ---+-----+--------+-----+------------------------------+-------+-----------------
  2 | 202 | value2 |     | Sat Feb 23 05:22:22 2222 UTC | [-1,) | {-2,2,122,-122}
 (1 row)
 
 SELECT * FROM pushdown_test WHERE ts1 IS NOT NULL;
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Boolean expression
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01-01 01:01:01-7'::timestamptz;
-                                                     QUERY PLAN
+                                                     QUERY PLAN                                                     
 --------------------------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
    Filter: ((i1 = 1) OR ((NOT isfinite(ts1)) AND (ts2 > 'Mon Jan 01 08:01:01 2001 UTC'::timestamp with time zone)))
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01-01 01:01:01-7'::timestamptz;
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Case expression
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
-                                                                                                        QUERY PLAN
+                                                                                                        QUERY PLAN                                                                                                        
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
    Filter: CASE WHEN ((i1 % 2) = 0) THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN ((i1 % 2) = 1) THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE i1 % 2 WHEN 0 THEN ts1 < '2021-11-12' WHEN 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
-                                                                                               QUERY PLAN
+                                                                                               QUERY PLAN                                                                                                
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
    Filter: CASE (i1 % 2) WHEN 0 THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN 1 THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
- k | i1 | t1 | ts1 | ts2 | r1 | a1
+ k | i1 | t1 | ts1 | ts2 | r1 | a1 
 ---+----+----+-----+-----+----+----
 (0 rows)
 
 -- Aggregates
 EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test;
-           QUERY PLAN
+           QUERY PLAN            
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on pushdown_test
@@ -172,7 +172,7 @@ EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test;
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test WHERE i1 = 1;
-           QUERY PLAN
+           QUERY PLAN            
 ---------------------------------
  Aggregate
    ->  Seq Scan on pushdown_test
@@ -180,13 +180,13 @@ EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test WHERE i1 = 1;
 (3 rows)
 
 SELECT count(*) FROM pushdown_test;
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM pushdown_test WHERE i1 = 1;
- count
+ count 
 -------
      1
 (1 row)
@@ -194,14 +194,14 @@ SELECT count(*) FROM pushdown_test WHERE i1 = 1;
 -- Parameter
 PREPARE s AS SELECT * FROM pushdown_test WHERE i1 = $1;
 EXPLAIN (COSTS FALSE) EXECUTE s(1);
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on pushdown_test
    Filter: (i1 = 1)
 (2 rows)
 
 EXECUTE s(1);
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
@@ -211,7 +211,7 @@ DEALLOCATE s;
 CREATE TABLE pushdown_lookup(k int primary key, tag text);
 INSERT INTO pushdown_lookup VALUES (1, 'foo'), (2, 'bar'), (3, 'baz');
 EXPLAIN (COSTS FALSE) SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 'foo';
-                           QUERY PLAN
+                           QUERY PLAN                           
 ----------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t.k = l.k)
@@ -222,7 +222,7 @@ EXPLAIN (COSTS FALSE) SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE 
 (6 rows)
 
 SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 'foo';
-   t1
+   t1   
 --------
  value1
 (1 row)
@@ -230,14 +230,14 @@ SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 
 -- Negative test cases (expressions should not be pushed down)
 -- Not immutable functions
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE t1 = concat('value', i1::text);
-                  QUERY PLAN
+                  QUERY PLAN                  
 ----------------------------------------------
  Seq Scan on pushdown_test
    Filter: (t1 = concat('value', (i1)::text))
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE t1 = concat('value', i1::text);
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
@@ -245,14 +245,14 @@ SELECT * FROM pushdown_test WHERE t1 = concat('value', i1::text);
 -- Index scan
 CREATE INDEX pushdown_test_i1 ON pushdown_test(i1);
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Index Scan using pushdown_test_i1 on pushdown_test
    Index Cond: (i1 = 1)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1';
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Index Scan using pushdown_test_i1 on pushdown_test
    Index Cond: (i1 = 1)
@@ -260,54 +260,54 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1'
 (3 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1;
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1';
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 -- Records, ranges, arrays
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE isempty(r1);
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on pushdown_test
    Filter: isempty(r1)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE a1[2] = 2;
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Seq Scan on pushdown_test
    Filter: (a1[2] = 2)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE isempty(r1);
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
 SELECT * FROM pushdown_test WHERE a1[2] = 2;
- k | i1  |   t1   | ts1 |             ts2              |  r1   |       a1
+ k | i1  |   t1   | ts1 |             ts2              |  r1   |       a1        
 ---+-----+--------+-----+------------------------------+-------+-----------------
  2 | 202 | value2 |     | Sat Feb 23 05:22:22 2222 UTC | [-1,) | {-2,2,122,-122}
 (1 row)
 
 -- Pseudo types
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE num_nulls(variadic a1) > 0;
-               QUERY PLAN
+               QUERY PLAN               
 ----------------------------------------
  Seq Scan on pushdown_test
    Filter: (num_nulls(VARIADIC a1) > 0)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE num_nulls(variadic a1) > 0;
- k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1
+ k | i1 |   t1   |           ts1            |             ts2              |  r1   |     a1      
 ---+----+--------+--------------------------+------------------------------+-------+-------------
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
@@ -317,14 +317,14 @@ CREATE TYPE pair AS (first int, second int);
 CREATE TABLE pushdown_composite(k int primary key, v pair);
 INSERT INTO pushdown_composite VALUES (1, (2, 3));
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_composite WHERE (v).first = 2;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Seq Scan on pushdown_composite
    Filter: ((v).first = 2)
 (2 rows)
 
 SELECT * FROM pushdown_composite WHERE (v).first = 2;
- k |   v
+ k |   v   
 ---+-------
  1 | (2,3)
 (1 row)
@@ -334,27 +334,27 @@ CREATE TYPE color AS ENUM('red', 'green', 'blue');
 CREATE TABLE pushdown_enum(k int, c color, x int);
 INSERT INTO pushdown_enum VALUES (1, 'red', 255);
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_enum WHERE c = 'red';
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Seq Scan on pushdown_enum
    Filter: (c = 'red'::color)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_enum WHERE c::text = 'red';
-             QUERY PLAN
+             QUERY PLAN              
 -------------------------------------
  Seq Scan on pushdown_enum
    Filter: ((c)::text = 'red'::text)
 (2 rows)
 
 SELECT * FROM pushdown_enum WHERE c = 'red';
- k |  c  |  x
+ k |  c  |  x  
 ---+-----+-----
  1 | red | 255
 (1 row)
 
 SELECT * FROM pushdown_enum WHERE c::text = 'red';
- k |  c  |  x
+ k |  c  |  x  
 ---+-----+-----
  1 | red | 255
 (1 row)
@@ -364,14 +364,14 @@ CREATE TABLE pushdown_collation(k int primary key, v text COLLATE "ucs_basic");
 INSERT INTO pushdown_collation VALUES (1, 'foo');
 -- Do not pushdown operation on column with collation other than C
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_collation WHERE v = 'foo';
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Seq Scan on pushdown_collation
    Filter: (v = 'foo'::text)
 (2 rows)
 
 SELECT * FROM pushdown_collation WHERE v = 'foo';
- k |  v
+ k |  v  
 ---+-----
  1 | foo
 (1 row)
@@ -385,14 +385,14 @@ INSERT INTO pushdown_index VALUES (2, 1, 1, 2, 3, 4, 'row 4');
 INSERT INTO pushdown_index VALUES (2, 2, 1, 3, 2, 1, 'row 5');
 INSERT INTO pushdown_index VALUES (2, 20, 1, 20, 40, 50, 'row 6');
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: ((k1 = 1) AND (k2 = 2))
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
@@ -400,7 +400,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
@@ -408,7 +408,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
-                                                QUERY PLAN
+                                                QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
@@ -416,14 +416,14 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND 
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Only Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Only Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
@@ -431,7 +431,7 @@ EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
-                            QUERY PLAN
+                            QUERY PLAN                            
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
@@ -439,7 +439,7 @@ EXPLAIN (COSTS FALSE) SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
-                            QUERY PLAN
+                            QUERY PLAN                            
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
@@ -447,7 +447,7 @@ EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
-                            QUERY PLAN
+                            QUERY PLAN                            
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
@@ -455,7 +455,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND 
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
-                                                       QUERY PLAN
+                                                       QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
@@ -463,33 +463,33 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND 
 (3 rows)
 
 SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   1 |  2 |  3 |  4 |  5 |  6 | row 2
 (1 row)
 
 SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   1 |  1 |  1 |  1 |  1 |  0 | row 1
   1 |  2 |  3 |  4 |  5 |  6 | row 2
 (2 rows)
 
 SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   1 |  1 |  1 |  1 |  1 |  0 | row 1
   1 | 20 | 20 | 20 | 20 | 20 | row 3
 (2 rows)
 
 SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   1 |  1 |  1 |  1 |  1 |  0 | row 1
 (1 row)
 
 SELECT v2 FROM pushdown_index WHERE v1 = 1;
- v2
+ v2 
 ----
   1
   2
@@ -498,7 +498,7 @@ SELECT v2 FROM pushdown_index WHERE v1 = 1;
 (4 rows)
 
 SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
- v2
+ v2 
 ----
   2
   3
@@ -506,7 +506,7 @@ SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
 (3 rows)
 
 SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
- v2 | v3 | v4
+ v2 | v3 | v4 
 ----+----+----
   2 |  3 |  4
   3 |  2 |  1
@@ -514,28 +514,28 @@ SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
 (3 rows)
 
 SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
- v2
+ v2 
 ----
   1
   3
 (2 rows)
 
 SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   2 |  1 |  1 |  2 |  3 |  4 | row 4
   2 | 20 |  1 | 20 | 40 | 50 | row 6
 (2 rows)
 
 SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   2 |  1 |  1 |  2 |  3 |  4 | row 4
 (1 row)
 
 PREPARE pk_param AS SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 + $1;
 EXPLAIN (COSTS FALSE) EXECUTE pk_param(0);
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
@@ -543,7 +543,7 @@ EXPLAIN (COSTS FALSE) EXECUTE pk_param(0);
 (3 rows)
 
 EXECUTE pk_param(0);
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   1 |  1 |  1 |  1 |  1 |  0 | row 1
   1 | 20 | 20 | 20 | 20 | 20 | row 3
@@ -552,7 +552,7 @@ EXECUTE pk_param(0);
 DEALLOCATE pk_param;
 PREPARE si_param AS SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 + $1 AND v3 > v2 + $2;
 EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
-                            QUERY PLAN
+                            QUERY PLAN                            
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
@@ -560,7 +560,7 @@ EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
 (3 rows)
 
 EXECUTE si_param(0, 0);
- k1 | k2 | v1 | v2 | v3 | v4 |  v5
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5   
 ----+----+----+----+----+----+-------
   2 |  1 |  1 |  2 |  3 |  4 | row 4
   2 | 20 |  1 | 20 | 40 | 50 | row 6
@@ -569,7 +569,7 @@ EXECUTE si_param(0, 0);
 DEALLOCATE si_param;
 -- Index scan with storage filter on a system table
 EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using pg_class_relname_nsp_index on pg_class
    Index Cond: ((relname >= 'pushdown'::text) AND (relname < 'pushdowo'::text))
@@ -577,7 +577,7 @@ EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE '
 (3 rows)
 
 SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
-         relname         | relkind
+         relname         | relkind 
 -------------------------+---------
  pushdown_collation      | r
  pushdown_collation_pkey | i
@@ -589,7 +589,7 @@ SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
 CREATE TABLE pushdown_range(k1 text, v1 int, v2 int, primary key(k1 asc)) SPLIT AT VALUES (('2 '), ('3 '), ('4 '), ('5 '), ('6 '), ('7 '), ('8 '), ('9 '));
 INSERT INTO pushdown_range SELECT i::text, i, i FROM  generate_series(1,100) AS i;
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pushdown_range_pkey on pushdown_range
    Index Cond: (k1 = ANY ('{11,17,33,42,87}'::text[]))
@@ -597,21 +597,21 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33'
 (3 rows)
 
 SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
- k1 | v1 | v2
+ k1 | v1 | v2 
 ----+----+----
  17 | 17 | 17
  87 | 87 | 87
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pushdown_range_pkey on pushdown_range
    Filter: ((v1 > 5) AND (v2 < 33))
 (2 rows)
 
 SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
- k1 | v1 | v2
+ k1 | v1 | v2 
 ----+----+----
  10 | 10 | 10
  11 | 11 | 11
@@ -649,7 +649,7 @@ CREATE TABLE tlateral2 (a int, b int, c varchar);
 INSERT INTO tlateral2 SELECT i % 25, i, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 3) i;
 ANALYZE tlateral1, tlateral2;
 EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
-                                 QUERY PLAN
+                                 QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
@@ -665,20 +665,20 @@ EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a 
 (11 rows)
 
 SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
-  a  | b |  c   | t2a | t2c  | t2b | t3b | least
+  a  | b |  c   | t2a | t2c  | t2b | t3b | least 
 -----+---+------+-----+------+-----+-----+-------
    0 | 0 | 0000 |   0 | 0000 |   0 |   0 |     0
-  50 | 0 | 0002 |     |      |     |     |
- 100 | 0 | 0000 |     |      |     |     |
+  50 | 0 | 0002 |     |      |     |     |      
+ 100 | 0 | 0000 |     |      |     |     |      
  150 | 0 | 0002 | 150 | 0002 |   0 | 150 |   150
- 200 | 0 | 0000 |     |      |     |     |
- 250 | 0 | 0002 |     |      |     |     |
+ 200 | 0 | 0000 |     |      |     |     |      
+ 250 | 0 | 0002 |     |      |     |     |      
  300 | 0 | 0000 | 300 | 0000 |   0 | 300 |   300
- 350 | 0 | 0002 |     |      |     |     |
- 400 | 0 | 0000 |     |      |     |     |
+ 350 | 0 | 0002 |     |      |     |     |      
+ 400 | 0 | 0000 |     |      |     |     |      
  450 | 0 | 0002 | 450 | 0002 |   0 | 450 |   450
- 500 | 0 | 0000 |     |      |     |     |
- 550 | 0 | 0002 |     |      |     |     |
+ 500 | 0 | 0000 |     |      |     |     |      
+ 550 | 0 | 0002 |     |      |     |     |      
 (12 rows)
 
 -- Test PARAM_EXEC pushdown when parameters are coming from a subplan
@@ -687,7 +687,7 @@ INSERT INTO tmaster VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
 CREATE TABLE tsub(k int primary key, v1 int, v2 int);
 INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
 EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
-         QUERY PLAN
+         QUERY PLAN         
 ----------------------------
  Seq Scan on tmaster
    Filter: (v1 = $0)
@@ -697,7 +697,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHER
 (5 rows)
 
 SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
- k | v1 | v2
+ k | v1 | v2 
 ---+----+----
  2 |  2 |  2
 (1 row)
@@ -711,7 +711,7 @@ INSERT INTO tidxrescan1 VALUES (1,1,2,3), (1,2,4,5);
 INSERT INTO tidxrescan2 VALUES (1,2), (2,2);
 INSERT INTO tidxrescan3 VALUES (1,2), (2,2);
 EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using tidxrescan1_pkey on tidxrescan1 t1
    Index Cond: (k1 = 1)
@@ -722,21 +722,21 @@ EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHE
 (6 rows)
 
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
- k2 | v1 | v1
+ k2 | v1 | v1 
 ----+----+----
   1 |  2 |  2
-  2 |  4 |
+  2 |  4 |   
 (2 rows)
 
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
- k2 | v1 | v1
+ k2 | v1 | v1 
 ----+----+----
-  2 |  4 |
+  2 |  4 |   
   1 |  2 |  2
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using tidxrescan1_pkey on tidxrescan1 t1
    Index Cond: (k1 = 1)
@@ -747,16 +747,16 @@ EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHE
 (6 rows)
 
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
- k2 | v1 | v1
+ k2 | v1 | v1 
 ----+----+----
   1 |  2 |  2
-  2 |  4 |
+  2 |  4 |   
 (2 rows)
 
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
- k2 | v1 | v1
+ k2 | v1 | v1 
 ----+----+----
-  2 |  4 |
+  2 |  4 |   
   1 |  2 |  2
 (2 rows)
 

@@ -4,7 +4,7 @@ CREATE TYPE user_type AS (
   v VARCHAR
 );
 SELECT typname FROM pg_type WHERE typname LIKE '%user_type';
-  typname
+  typname   
 ------------
  _user_type
  user_type
@@ -16,7 +16,7 @@ INSERT INTO user_table(val) VALUES ((10, 'aa')::user_type);
 INSERT INTO user_table(val) VALUES ((2, 'b')::user_type);
 -- Default ordering will be based on first base type ie. (i INT)
 SELECT * FROM user_table ORDER BY val;
- id |   val
+ id |   val    
 ----+----------
   1 | (1,aaaa)
   3 | (2,b)
@@ -71,7 +71,7 @@ AS
     FUNCTION 1 ut_cmp(user_type, user_type);
 -- Ensure that ORDER BY user data type works
 SELECT * FROM user_table ORDER BY val;
- id |   val
+ id |   val    
 ----+----------
   2 | (10,aa)
   1 | (1,aaaa)

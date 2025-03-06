@@ -17,13 +17,13 @@ INSERT INTO tab VALUES (1, 2, 3, 4, 5, 6, 7),
   (1, 2, 3, 43, 52, 61, 7), (1, 2, 3, 43, 52, 62, 7), (1, 2, 3, 43, 52, 63, 7),
   (1, 2, 3, 43, 53, 61, 7), (1, 2, 3, 43, 53, 62, 7), (1, 2, 3, 43, 53, 63, 7);
 SELECT * FROM tab WHERE c2 = 2 AND c6 = 6 AND c5 = 5 AND c4 = 4;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 SELECT * FROM tab WHERE c2 = 2;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
   1 |  2 |  3 | 41 | 51 | 61 |  7
@@ -56,44 +56,44 @@ SELECT * FROM tab WHERE c2 = 2;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 AND c6 = 6;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 SELECT * FROM tab WHERE c2 = 2 AND c5 = 5;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 SELECT * FROM tab WHERE c2 = 2 AND c4 = 4;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 SELECT * FROM tab WHERE c2 = 2 AND c6 = 6 AND c5 = 5;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 SELECT * FROM tab WHERE c2 = 2 AND c6 = 6 AND c4 = 4;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 SELECT * FROM tab WHERE c2 = 2 AND c5 = 5 AND c4 = 4;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
 (1 row)
 
 -- Test correctness of value ordering.
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5, c6;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
   1 |  2 |  3 | 41 | 51 | 61 |  7
@@ -126,7 +126,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5, c6;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5, c6 DESC;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
   1 |  2 |  3 | 41 | 51 | 63 |  7
@@ -159,7 +159,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5, c6 DESC;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5 DESC, c6;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
   1 |  2 |  3 | 41 | 53 | 61 |  7
@@ -192,7 +192,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5 DESC, c6;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5 DESC, c6 DESC;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 |  4 |  5 |  6 |  7
   1 |  2 |  3 | 41 | 53 | 63 |  7
@@ -225,7 +225,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5 DESC, c6 DESC;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5, c6;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 | 43 | 51 | 61 |  7
   1 |  2 |  3 | 43 | 51 | 62 |  7
@@ -258,7 +258,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5, c6;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5, c6 DESC;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 | 43 | 51 | 63 |  7
   1 |  2 |  3 | 43 | 51 | 62 |  7
@@ -291,7 +291,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5, c6 DESC;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5 DESC, c6;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 | 43 | 53 | 61 |  7
   1 |  2 |  3 | 43 | 53 | 62 |  7
@@ -324,7 +324,7 @@ SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5 DESC, c6;
 (28 rows)
 
 SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5 DESC, c6 DESC;
- c1 | c2 | c3 | c4 | c5 | c6 | c7
+ c1 | c2 | c3 | c4 | c5 | c6 | c7 
 ----+----+----+----+----+----+----
   1 |  2 |  3 | 43 | 53 | 63 |  7
   1 |  2 |  3 | 43 | 53 | 62 |  7
@@ -362,7 +362,7 @@ SELECT * FROM airports WHERE
 			 name = 'Battle Lake Municipal Airport' AND
 			 type = 'small_airport' AND
 			 ident = '00MN';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -372,7 +372,7 @@ SELECT * FROM airports WHERE
 			 name = 'Battle Lake Municipal Airport' AND
 			 type = 'small_airport' AND
 			 iso_region = 'US-MN';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -381,7 +381,7 @@ SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
 			 type = 'heliport'
 			 ORDER BY ident;
- ident |   type   |                    name                     | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |   type   |                    name                     | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates               
 -------+----------+---------------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+----------------------------------------
  05MN  | heliport | Northern Pines Medical Center Heliport      |         1446 | NA        | US          | US-MN      | Aurora       | 05MN     |           | 05MN       | -92.2302778, 47.5175001
  0MN7  | heliport | Ely Bloomenson Community Hospital Heliport  |         1450 | NA        | US          | US-MN      | Ely          | 0MN7     |           | 0MN7       | -91.87300109863281, 47.89910125732422
@@ -415,7 +415,7 @@ SELECT * FROM airports WHERE
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
 			 name = 'Battle Lake Municipal Airport';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -423,7 +423,7 @@ SELECT * FROM airports WHERE
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
 			 ident = '00MN';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -432,7 +432,7 @@ SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
 			 name = 'Battle Lake Municipal Airport' AND
 			 type = 'small_airport';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -441,7 +441,7 @@ SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
 			 name = 'Battle Lake Municipal Airport' AND
 			 ident = '00MN';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -450,7 +450,7 @@ SELECT * FROM airports WHERE
 			 iso_region = 'US-MN' AND
 			 type = 'small_airport' AND
 			 ident = '00MN';
- ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
 (1 row)
@@ -461,7 +461,7 @@ SELECT * FROM airports WHERE
 			 coordinates = '-88.55889892578125, 30.53030014038086' AND
 			 ident = '10MS' AND
 			 name = 'Daniel Emergency Response Team Heliport';
- ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
 (1 row)
@@ -469,7 +469,7 @@ SELECT * FROM airports WHERE
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MS' AND type = 'heliport'
 			 ORDER BY ident;
- ident |   type   |                        name                        | elevation_ft | continent | iso_country | iso_region |  municipality  | gps_code | iata_code | local_code |              coordinates
+ ident |   type   |                        name                        | elevation_ft | continent | iso_country | iso_region |  municipality  | gps_code | iata_code | local_code |              coordinates               
 -------+----------+----------------------------------------------------+--------------+-----------+-------------+------------+----------------+----------+-----------+------------+----------------------------------------
  03MS  | heliport | Vicksburg Medical Center Heliport                  |          110 | NA        | US          | US-MS      | Vicksburg      | 03MS     |           | 03MS       | -90.8832015991211, 32.31880187988281
  05MS  | heliport | Va Medical Center Jackson Heliport                 |          359 | NA        | US          | US-MS      | Jackson        | 05MS     |           | 05MS       | -90.16809844970703, 32.31890106201172
@@ -507,7 +507,7 @@ SELECT * FROM airports WHERE
 SELECT * FROM airports WHERE
 			 iso_region = 'US-MS' AND type = 'heliport' AND
 			 coordinates = '-88.55889892578125, 30.53030014038086';
- ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
 (1 row)
@@ -516,7 +516,7 @@ SELECT * FROM airports WHERE
 			 iso_region = 'US-MS' AND type = 'heliport' AND
 			 coordinates = '-88.55889892578125, 30.53030014038086' AND
 			 ident = '10MS';
- ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
 (1 row)
@@ -525,7 +525,8 @@ SELECT * FROM airports WHERE
 			 iso_region = 'US-MS' AND type = 'heliport' AND
 			 coordinates = '-88.55889892578125, 30.53030014038086' AND
 			 name = 'Daniel Emergency Response Team Heliport';
- ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates              
 -------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
  10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
 (1 row)
+

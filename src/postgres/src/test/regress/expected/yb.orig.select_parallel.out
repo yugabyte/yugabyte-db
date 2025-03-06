@@ -21,7 +21,7 @@ create table part_pa_test_p2 partition of part_pa_test for values from (0) to (m
 explain (costs off)
 	select (select max((select pa1.b from part_pa_test pa1 where pa1.a = pa2.a)))
 	from part_pa_test pa2;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Aggregate
    ->  Append
@@ -42,7 +42,7 @@ drop table part_pa_test;
 set parallel_leader_participation = off;
 explain (costs off)
   select count(*) from tenk1 where stringu1 = 'GRAAAA';
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
@@ -51,7 +51,7 @@ explain (costs off)
 (4 rows)
 
 select count(*) from tenk1 where stringu1 = 'GRAAAA';
- count
+ count 
 -------
     15
 (1 row)
@@ -61,7 +61,7 @@ select count(*) from tenk1 where stringu1 = 'GRAAAA';
 set max_parallel_workers = 0;
 explain (costs off)
   select count(*) from tenk1 where stringu1 = 'GRAAAA';
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
@@ -70,7 +70,7 @@ explain (costs off)
 (4 rows)
 
 select count(*) from tenk1 where stringu1 = 'GRAAAA';
- count
+ count 
 -------
     15
 (1 row)
@@ -81,7 +81,7 @@ reset parallel_leader_participation;
 explain (verbose, costs off)
 select sp_parallel_restricted(unique1) from tenk1
   where stringu1 = 'GRAAAA' order by 1;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Sort
    Output: (sp_parallel_restricted(unique1))
@@ -94,7 +94,7 @@ select sp_parallel_restricted(unique1) from tenk1
 -- test parallel plan when group by expression is in target list.
 explain (costs off)
 	select length(stringu1) from tenk1 group by length(stringu1);
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  HashAggregate
    Group Key: length((stringu1)::text)
@@ -102,14 +102,14 @@ explain (costs off)
 (3 rows)
 
 select length(stringu1) from tenk1 group by length(stringu1);
- length
+ length 
 --------
       6
 (1 row)
 
 explain (costs off)
 	select stringu1, count(*) from tenk1 group by stringu1 order by stringu1;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Sort
    Sort Key: stringu1
@@ -123,7 +123,7 @@ explain (costs off)
 explain (costs off)
 	select  sum(sp_parallel_restricted(unique1)) from tenk1
 	group by(sp_parallel_restricted(unique1));
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  HashAggregate
    Group Key: sp_parallel_restricted(unique1)
@@ -133,7 +133,7 @@ explain (costs off)
 -- test prepared statement
 prepare tenk1_count(integer) As select  count((unique1)) from tenk1 where hundred > $1;
 explain (costs off) execute tenk1_count(1);
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
@@ -142,7 +142,7 @@ explain (costs off) execute tenk1_count(1);
 (4 rows)
 
 execute tenk1_count(1);
- count
+ count 
 -------
   9800
 (1 row)
@@ -152,7 +152,7 @@ deallocate tenk1_count;
 explain (costs off)
 	select count(*) from tenk1 where (two, four) not in
 	(select hundred, thousand from tenk2 where thousand > 100);
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Aggregate
    ->  Seq Scan on tenk1
@@ -164,7 +164,7 @@ explain (costs off)
 
 select count(*) from tenk1 where (two, four) not in
 	(select hundred, thousand from tenk2 where thousand > 100);
- count
+ count 
 -------
  10000
 (1 row)
@@ -173,7 +173,7 @@ select count(*) from tenk1 where (two, four) not in
 explain (costs off)
 	select * from tenk1 where (unique1 + random())::integer not in
 	(select ten from tenk2);
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Seq Scan on tenk1
    Filter: (NOT (hashed SubPlan 1))
@@ -188,7 +188,7 @@ set enable_bitmapscan = off;
 explain (costs off)
 	select count(*) from tenk1
         where tenk1.unique1 = (Select max(tenk2.unique1) from tenk2);
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Finalize Aggregate
    InitPlan 1 (returns $1)
@@ -202,7 +202,7 @@ explain (costs off)
 
 select count(*) from tenk1
     where tenk1.unique1 = (Select max(tenk2.unique1) from tenk2);
- count
+ count 
 -------
      1
 (1 row)
@@ -215,7 +215,7 @@ set enable_seqscan to off;
 set enable_bitmapscan to off;
 explain (costs off)
 	select  count((unique1)) from tenk1 where hundred > 1;
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Finalize Aggregate
    ->  Index Scan using tenk1_hundred on tenk1
@@ -224,7 +224,7 @@ explain (costs off)
 (4 rows)
 
 select  count((unique1)) from tenk1 where hundred > 1;
- count
+ count 
 -------
   9800
 (1 row)
@@ -232,7 +232,7 @@ select  count((unique1)) from tenk1 where hundred > 1;
 -- test parallel index-only scans.
 explain (costs off)
 	select  count(*) from tenk1 where thousand > 95;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using tenk1_thous_tenthous on tenk1
@@ -241,7 +241,7 @@ explain (costs off)
 (4 rows)
 
 select  count(*) from tenk1 where thousand > 95;
- count
+ count 
 -------
   9040
 (1 row)
@@ -252,7 +252,7 @@ explain (costs off)
 select * from
   (select count(unique1) from tenk1 where hundred > 10) ss
   right join (values (1),(2),(3)) v(x) on true;
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Nested Loop Left Join
    ->  Values Scan on "*VALUES*"
@@ -265,7 +265,7 @@ select * from
 select * from
   (select count(unique1) from tenk1 where hundred > 10) ss
   right join (values (1),(2),(3)) v(x) on true;
- count | x
+ count | x 
 -------+---
   8900 | 1
   8900 | 2
@@ -276,7 +276,7 @@ explain (costs off)
 select * from
   (select count(*) from tenk1 where thousand > 99) ss
   right join (values (1),(2),(3)) v(x) on true;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Nested Loop Left Join
    ->  Values Scan on "*VALUES*"
@@ -289,7 +289,7 @@ select * from
 select * from
   (select count(*) from tenk1 where thousand > 99) ss
   right join (values (1),(2),(3)) v(x) on true;
- count | x
+ count | x 
 -------+---
   9000 | 1
   9000 | 2
@@ -304,7 +304,7 @@ set enable_hashjoin to off;
 set enable_nestloop to off;
 explain (costs off)
 	select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
-                           QUERY PLAN
+                           QUERY PLAN                           
 ----------------------------------------------------------------
  Aggregate
    ->  Merge Join
@@ -315,7 +315,7 @@ explain (costs off)
 (6 rows)
 
 select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
- count
+ count 
 -------
  10000
 (1 row)
@@ -326,7 +326,7 @@ reset enable_nestloop;
 set enable_hashagg = false;
 explain (costs off)
    select count(*) from tenk1 group by twenty;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  GroupAggregate
    Group Key: twenty
@@ -336,7 +336,7 @@ explain (costs off)
 (5 rows)
 
 select count(*) from tenk1 group by twenty;
- count
+ count 
 -------
    500
    500
@@ -369,7 +369,7 @@ end;
 $$ language plpgsql PARALLEL SAFE;
 explain (costs off, verbose)
     select ten, sp_simple_func(ten) from tenk1 where ten < 100 order by ten;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Result
    Output: ten, sp_simple_func(ten)
@@ -385,7 +385,7 @@ drop function sp_simple_func(integer);
 -- test handling of SRFs in targetlist (bug in 10.0)
 explain (costs off)
    select count(*), generate_series(1,2) from tenk1 group by twenty;
-             QUERY PLAN
+             QUERY PLAN              
 -------------------------------------
  ProjectSet
    ->  GroupAggregate
@@ -396,7 +396,7 @@ explain (costs off)
 (6 rows)
 
 select count(*), generate_series(1,2) from tenk1 group by twenty;
- count | generate_series
+ count | generate_series 
 -------+-----------------
    500 |               1
    500 |               2
@@ -444,7 +444,7 @@ select count(*), generate_series(1,2) from tenk1 group by twenty;
 set parallel_leader_participation = off;
 explain (costs off)
    select count(*) from tenk1 group by twenty;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  GroupAggregate
    Group Key: twenty
@@ -454,7 +454,7 @@ explain (costs off)
 (5 rows)
 
 select count(*) from tenk1 group by twenty;
- count
+ count 
 -------
    500
    500
@@ -486,7 +486,7 @@ select * from
   (select string4, count(unique2)
    from tenk1 group by string4 order by string4) ss
   right join (values (1),(2),(3)) v(x) on true;
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  Nested Loop Left Join
    ->  Values Scan on "*VALUES*"
@@ -501,7 +501,7 @@ select * from
   (select string4, count(unique2)
    from tenk1 group by string4 order by string4) ss
   right join (values (1),(2),(3)) v(x) on true;
- string4 | count | x
+ string4 | count | x 
 ---------+-------+---
  AAAAxx  |  2500 | 1
  HHHHxx  |  2500 | 1
@@ -522,14 +522,14 @@ reset enable_hashagg;
 -- check parallelized int8 aggregate (bug #14897)
 explain (costs off)
 select avg(unique1::int8) from tenk1;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Aggregate
    ->  Index Only Scan using tenk1_unique1 on tenk1
 (2 rows)
 
 select avg(unique1::int8) from tenk1;
-          avg
+          avg          
 -----------------------
  4999.5000000000000000
 (1 row)
@@ -537,7 +537,7 @@ select avg(unique1::int8) from tenk1;
 -- gather merge test with a LIMIT
 explain (costs off)
   select fivethous from tenk1 order by fivethous limit 4;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Limit
    ->  Sort
@@ -546,7 +546,7 @@ explain (costs off)
 (4 rows)
 
 select fivethous from tenk1 order by fivethous limit 4;
- fivethous
+ fivethous 
 -----------
          0
          0
@@ -558,7 +558,7 @@ select fivethous from tenk1 order by fivethous limit 4;
 set max_parallel_workers = 0;
 explain (costs off)
    select string4 from tenk1 order by string4 limit 5;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Limit
    ->  Sort
@@ -567,7 +567,7 @@ explain (costs off)
 (4 rows)
 
 select string4 from tenk1 order by string4 limit 5;
- string4
+ string4 
 ---------
  AAAAxx
  AAAAxx
@@ -582,7 +582,7 @@ select string4 from tenk1 order by string4 limit 5;
 set parallel_leader_participation = off;
 explain (costs off)
    select string4 from tenk1 order by string4 limit 5;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Limit
    ->  Sort
@@ -591,7 +591,7 @@ explain (costs off)
 (4 rows)
 
 select string4 from tenk1 order by string4 limit 5;
- string4
+ string4 
 ---------
  AAAAxx
  AAAAxx
@@ -620,7 +620,7 @@ $$;
 SAVEPOINT settings;
 SET LOCAL force_parallel_mode = 1;
 SELECT make_record(x) FROM (SELECT generate_series(1, 5) x) ss ORDER BY x;
- make_record
+ make_record 
 -------------
  (1)
  (1,2)
@@ -640,7 +640,7 @@ reset session authorization;
 drop role regress_parallel_worker;
 set force_parallel_mode = 1;
 select count(*) from tenk1;
- count
+ count 
 -------
  10000
 (1 row)
@@ -651,7 +651,7 @@ reset role;
 explain (costs off, verbose)
   select count(*) from tenk1 a where (unique1, two) in
     (select unique1, row_number() over() from tenk1 b);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Aggregate
    Output: count(*)
@@ -671,7 +671,7 @@ explain (costs off, verbose)
 explain (costs off)
   select * from tenk1 a where two in
     (select two from tenk1 b where stringu1 like '%AAAA' limit 3);
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Hash Semi Join
    Hash Cond: (a.two = b.two)
@@ -686,7 +686,7 @@ explain (costs off)
 SAVEPOINT settings;
 SET LOCAL force_parallel_mode = 1;
 EXPLAIN (analyze, timing off, summary off, costs off) SELECT * FROM tenk1;
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Gather (actual rows=10000 loops=1)
    Workers Planned: 1
@@ -713,7 +713,7 @@ EXPLAIN (COSTS OFF)
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1
 UNION ALL
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1;
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Append
    ->  Seq Scan on tenk1
@@ -731,7 +731,7 @@ UNION ALL
 SELECT unique1 FROM tenk1 WHERE fivethous =
 	(SELECT unique2 FROM tenk1 WHERE fivethous = 1 LIMIT 1)
 ORDER BY 1;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Sort
    Sort Key: tenk1.unique1
@@ -762,7 +762,7 @@ CREATE TABLE fooarr(f1 text, f2 int[], f3 text);
 INSERT INTO fooarr VALUES('1', ARRAY[1,2], 'one');
 PREPARE pstmt(text, int[]) AS SELECT * FROM fooarr WHERE f1 = $1 AND f2 = $2;
 EXPLAIN (COSTS OFF) EXECUTE pstmt('1', make_some_array(1,2));
-             QUERY PLAN
+             QUERY PLAN              
 -------------------------------------
  Seq Scan on fooarr
    Storage Filter: (f1 = '1'::text)
@@ -770,7 +770,7 @@ EXPLAIN (COSTS OFF) EXECUTE pstmt('1', make_some_array(1,2));
 (3 rows)
 
 EXECUTE pstmt('1', make_some_array(1,2));
- f1 |  f2   | f3
+ f1 |  f2   | f3  
 ----+-------+-----
  1  | {1,2} | one
 (1 row)
@@ -782,7 +782,7 @@ CREATE VIEW tenk1_vw_sec WITH (security_barrier) AS SELECT * FROM tenk1;
 EXPLAIN (COSTS OFF)
 SELECT 1 FROM tenk1_vw_sec
   WHERE (SELECT sum(f1) FROM int4_tbl WHERE f1 < unique1) < 100;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Subquery Scan on tenk1_vw_sec
    Filter: ((SubPlan 1) < 100)
@@ -822,7 +822,7 @@ WHERE
         FROM
             DUMMY
     );
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=59 loops=1)
    Join Filter: ((table2.col_varchar_key)::text = (table3.col_varchar_nokey)::text)
@@ -836,3 +836,4 @@ WHERE
                ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=12)
    ->  Seq Scan on c table3 (actual rows=20 loops=89)
 (11 rows)
+

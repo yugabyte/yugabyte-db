@@ -16,14 +16,14 @@ INSERT INTO gin_pushdown
 -- Find rows using gin index
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
 (2 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
  8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
@@ -32,7 +32,7 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
 -- Use pushdown filter
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
@@ -40,14 +40,14 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
- id | guid | status |              json_content
+ id | guid | status |              json_content              
 ----+------+--------+----------------------------------------
  8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
 (1 row)
 
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
@@ -55,7 +55,7 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
@@ -64,7 +64,7 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
 -- does not store the indexed value, hence filter goes to the main relation
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
-                                         QUERY PLAN
+                                         QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
@@ -72,14 +72,14 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
- id | guid | status |              json_content
+ id | guid | status |              json_content              
 ----+------+--------+----------------------------------------
  8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
 (1 row)
 
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
@@ -87,7 +87,7 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
@@ -95,7 +95,7 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
 -- Expression that does not refer any columns can go to the index.
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
@@ -103,13 +103,13 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
- id | guid | status | json_content
+ id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
@@ -117,7 +117,7 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
  8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
@@ -126,14 +126,14 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
 -- Find row using regular index
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9';
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
 (2 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9';
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
@@ -141,7 +141,7 @@ SELECT * FROM gin_pushdown WHERE guid = '9';
 -- Use pushdown filter
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
@@ -149,13 +149,13 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
- id | guid | status | json_content
+ id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
@@ -163,7 +163,7 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
@@ -171,7 +171,7 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
 -- Pushdown filter that goes with the index scan, since json_content is included
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
-                                         QUERY PLAN
+                                         QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
@@ -179,13 +179,13 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
- id | guid | status | json_content
+ id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
@@ -193,7 +193,7 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' =
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
@@ -201,7 +201,7 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' =
 -- Expression that does not refer any columns can go to the index.
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
@@ -209,13 +209,13 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
- id | guid | status | json_content
+ id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
 EXPLAIN (costs off)
 SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
@@ -223,7 +223,7 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
 (3 rows)
 
 SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
- id | guid | status |              json_content
+ id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)

@@ -12,21 +12,21 @@ CREATE TABLE partition_in_dc2 PARTITION OF partitioned_table FOR VALUES IN ('reg
 CREATE TABLE partition_in_dc3 PARTITION OF partitioned_table FOR VALUES IN ('region3') TABLESPACE tsp3;
 -- 4 implicit tablegroups must be created
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      4
 (1 row)
 
 -- 6 tablespaces(1 Default + 1 Global + 4 Defined) should have been created
 SELECT COUNT(*) FROM pg_tablespace;
- count
+ count 
 -------
      6
 (1 row)
 
 -- The created implicit tablegroups must use the specified tablespaces
 SELECT y.spcname FROM pg_tablespace as y JOIN pg_yb_tablegroup as x ON x.grptablespace = y.oid;
- spcname
+ spcname 
 ---------
  tsp1
  tsp2
@@ -36,7 +36,7 @@ SELECT y.spcname FROM pg_tablespace as y JOIN pg_yb_tablegroup as x ON x.grptabl
 DROP TABLE partitioned_table;
 -- Implicit tablegroups must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      0
 (1 row)
@@ -46,10 +46,10 @@ CREATE TABLE partitioned_table2 (name varchar, region varchar, PRIMARY KEY(name,
 CREATE TABLE partition_in_dc1_2 PARTITION OF partitioned_table2 FOR VALUES IN ('region1')  WITH (COLOCATION=FALSE) TABLESPACE tsp1;
 \d partition_in_dc1_2;
               Table "public.partition_in_dc1_2"
- Column |       Type        | Collation | Nullable | Default
+ Column |       Type        | Collation | Nullable | Default 
 --------+-------------------+-----------+----------+---------
- name   | character varying |           | not null |
- region | character varying |           | not null |
+ name   | character varying |           | not null | 
+ region | character varying |           | not null | 
 Partition of: partitioned_table2 FOR VALUES IN ('region1')
 Indexes:
     "partition_in_dc1_2_pkey" PRIMARY KEY, lsm (name ASC, region ASC), tablespace "tsp1"
@@ -58,10 +58,10 @@ Tablespace: "tsp1"
 CREATE TABLE partition_in_dc2_2 PARTITION OF partitioned_table2 FOR VALUES IN ('region2') TABLESPACE tsp2;
 \d partition_in_dc2_2;
               Table "public.partition_in_dc2_2"
- Column |       Type        | Collation | Nullable | Default
+ Column |       Type        | Collation | Nullable | Default 
 --------+-------------------+-----------+----------+---------
- name   | character varying |           | not null |
- region | character varying |           | not null |
+ name   | character varying |           | not null | 
+ region | character varying |           | not null | 
 Partition of: partitioned_table2 FOR VALUES IN ('region2')
 Indexes:
     "partition_in_dc2_2_pkey" PRIMARY KEY, lsm (name ASC, region ASC), tablespace "tsp2", colocation: true
@@ -80,7 +80,7 @@ ALTER SCHEMA s2 OWNER TO user2;
 GRANT CREATE ON TABLESPACE tsp1 TO user1;
 GRANT CREATE ON TABLESPACE tsp2 TO user2;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      0
 (1 row)
@@ -90,7 +90,7 @@ CREATE TABLE s1.t1 (a INT) TABLESPACE tsp1;
 CREATE TABLE s1.t2 (a INT) TABLESPACE tsp2;
 ERROR:  permission denied for tablespace tsp2
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      1
 (1 row)
@@ -104,7 +104,7 @@ ERROR:  permission denied for schema s1
 LINE 1: CREATE TABLE s1.t4 (a INT) TABLESPACE tsp2;
                      ^
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      2
 (1 row)
@@ -113,7 +113,7 @@ SET SESSION ROLE user1;
 DROP TABLE s1.t1;
 -- Implicit tablegroup must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      1
 (1 row)
@@ -122,7 +122,7 @@ SET SESSION ROLE user2;
 DROP TABLE s2.t3;
 -- Implicit tablegroup must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      0
 (1 row)
@@ -134,14 +134,14 @@ INSERT INTO base_table SELECT * FROM generate_series(1, 100);
 CREATE MATERIALIZED VIEW m TABLESPACE tsp1 AS SELECT * FROM base_table;
 -- 2 implicit tablegroup must be created
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      2
 (1 row)
 
 -- The implicit tablegroup must use tablespace tsp1
 SELECT y.spcname FROM pg_tablespace as y JOIN pg_yb_tablegroup as x ON x.grptablespace = y.oid;
- spcname
+ spcname 
 ---------
  tsp1
 (1 row)
@@ -150,7 +150,7 @@ DROP MATERIALIZED VIEW m;
 DROP TABLE base_table;
 -- Implicit tablegroup must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      0
 (1 row)
@@ -162,48 +162,48 @@ CREATE INDEX coloc_index1 on table_1(a);
 CREATE INDEX coloc_index2 on table_1(b) TABLESPACE tsp1;
 CREATE INDEX coloc_index3 on table_1(c) TABLESPACE tsp2;
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      3
 (1 row)
 
 INSERT INTO table_1 VALUES (1,1,1), (2,2,2), (3,3,3), (4,3,4), (5,5,4);
 SELECT * FROM table_1 WHERE a = 2 ORDER BY b;
- a | b | c
+ a | b | c 
 ---+---+---
  2 | 2 | 2
 (1 row)
 
 SELECT * FROM table_1 WHERE b = 3 ORDER BY c;
- a | b | c
+ a | b | c 
 ---+---+---
  3 | 3 | 3
  4 | 3 | 4
 (2 rows)
 
 SELECT * FROM table_1 WHERE c = 4 ORDER BY a;
- a | b | c
+ a | b | c 
 ---+---+---
  4 | 3 | 4
  5 | 5 | 4
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM table_1 WHERE a = 2;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Scan using table_1_pkey on table_1
    Index Cond: (a = 2)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM table_1 WHERE b = 3;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Scan using coloc_index2 on table_1
    Index Cond: (b = 3)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM table_1 WHERE c = 4;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Index Scan using coloc_index3 on table_1
    Index Cond: (c = 4)
@@ -217,7 +217,7 @@ JOIN pg_yb_tablegroup tg ON d.refobjid = tg.oid
 WHERE c.relname IN ('table_1', 'coloc_index1', 'coloc_index2', 'coloc_index3')
 GROUP BY tg.grpname
 ORDER BY relation_names;
-    relation_names
+    relation_names     
 -----------------------
  coloc_index1
  coloc_index2
@@ -230,7 +230,7 @@ DROP INDEX coloc_index3;
 DROP TABLE table_1;
 -- Implicit tablegroup must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      0
 (1 row)
@@ -239,9 +239,9 @@ SELECT COUNT(*) FROM pg_yb_tablegroup;
 CREATE TABLE table_1 (a INT PRIMARY KEY) TABLESPACE tsp1;
 \d+ table_1
                                   Table "public.table_1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              |
+ a      | integer |           | not null |         | plain   |              | 
 Indexes:
     "table_1_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
 Tablespace: "tsp1"
@@ -252,9 +252,9 @@ DROP TABLE table_1;
 CREATE TABLE table_1 (a INT PRIMARY KEY) with (COLOCATION = false);
 \d+ table_1
                                   Table "public.table_1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              |
+ a      | integer |           | not null |         | plain   |              | 
 Indexes:
     "table_1_pkey" PRIMARY KEY, lsm (a HASH)
 Options: colocation=false
@@ -262,7 +262,7 @@ Options: colocation=false
 DROP TABLE table_1;
 -- Implicit tablegroup must be deleted since it has no tables
 SELECT COUNT(*) FROM pg_yb_tablegroup;
- count
+ count 
 -------
      0
 (1 row)
@@ -291,7 +291,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp1
  index1      | tsp1
@@ -323,7 +323,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp3
  index1      | tsp3
@@ -351,7 +351,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp3
  index1      | tsp3
@@ -381,7 +381,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp2
  index1      | tsp2
@@ -403,7 +403,7 @@ x.objid = v.refobjid AND
 x.refclassid = 'pg_tablespace'::regclass::oid AND
 s.oid = x.refobjid
 ORDER BY u.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp2
  index1      | tsp2
@@ -441,7 +441,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp1
  index1      | tsp1
@@ -473,7 +473,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp3
  index1      | tsp3
@@ -495,7 +495,7 @@ x.objid = v.refobjid AND
 x.refclassid = 'pg_tablespace'::regclass::oid AND
 s.oid = x.refobjid
 ORDER BY u.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  col_mv      | tsp3
  index1      | tsp3
@@ -529,7 +529,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  table1      | tsp2
  table1_pkey | tsp2
@@ -552,7 +552,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  table1      | tsp3
  table1_pkey | tsp3
@@ -570,7 +570,7 @@ x.objid = v.refobjid AND
 x.refclassid = 'pg_tablespace'::regclass::oid AND
 s.oid = x.refobjid
 ORDER BY u.relname;
-   relname   | spcname
+   relname   | spcname 
 -------------+---------
  table3      | tsp3
  table3_pkey | tsp3
@@ -585,16 +585,16 @@ DROP TABLE table3;
 -- Explicitly specifying pg_default tablespace must not create a new tablegroup
 CREATE TABLE table1(a int);
 SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
- grpname | grpowner | grptablespace | grpacl | grpoptions
+ grpname | grpowner | grptablespace | grpacl | grpoptions 
 ---------+----------+---------------+--------+------------
- default |       10 |             0 |        |
+ default |       10 |             0 |        | 
 (1 row)
 
 CREATE TABLE table2(a int) TABLESPACE pg_default;
 SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
- grpname | grpowner | grptablespace | grpacl | grpoptions
+ grpname | grpowner | grptablespace | grpacl | grpoptions 
 ---------+----------+---------------+--------+------------
- default |       10 |             0 |        |
+ default |       10 |             0 |        | 
 (1 row)
 
 DROP TABLE table1;
@@ -603,7 +603,7 @@ DROP TABLE table2;
 CREATE TABLE table1(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp1;
 CREATE TABLE table2(a INT PRIMARY KEY, b INT, c INT) TABLESPACE tsp1;
 SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = ('colocation_' || grptablespace)) ;
- count
+ count 
 -------
      1
 (1 row)
@@ -614,7 +614,7 @@ DETAIL:  Data movement is a long running asynchronous process and can be monitor
 NOTICE:  data movement for table table2 is successfully initiated
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname != 'default' AND (grpname = ('colocation_' || grptablespace)) ;
- count
+ count 
 -------
      1
 (1 row)
@@ -679,7 +679,7 @@ x.objid = v.refobjid AND
 x.refclassid = 'pg_tablespace'::regclass::oid AND
 -- Find the tablespace name by matching tablespace oid (found using pg_shdepend) with pg_tablespace.
 s.oid = x.refobjid;
- spcname
+ spcname 
 ---------
  tsp1
 (1 row)
@@ -695,7 +695,7 @@ x.objid = v.refobjid AND
 x.refclassid = 'pg_tablespace'::regclass::oid AND
 -- Find the tablespace name by matching tablespace oid (found using pg_shdepend) with pg_tablespace.
 s.oid = x.refobjid;
- spcname
+ spcname 
 ---------
  tsp2
 (1 row)

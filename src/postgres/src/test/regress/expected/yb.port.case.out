@@ -27,7 +27,7 @@ SELECT '3' AS "One",
   CASE
     WHEN 1 < 2 THEN 3
   END AS "Simple WHEN";
- One | Simple WHEN
+ One | Simple WHEN 
 -----+-------------
  3   |           3
 (1 row)
@@ -36,9 +36,9 @@ SELECT '<NULL>' AS "One",
   CASE
     WHEN 1 > 2 THEN 3
   END AS "Simple default";
-  One   | Simple default
+  One   | Simple default 
 --------+----------------
- <NULL> |
+ <NULL> |               
 (1 row)
 
 SELECT '3' AS "One",
@@ -46,7 +46,7 @@ SELECT '3' AS "One",
     WHEN 1 < 2 THEN 3
     ELSE 4
   END AS "Simple ELSE";
- One | Simple ELSE
+ One | Simple ELSE 
 -----+-------------
  3   |           3
 (1 row)
@@ -56,7 +56,7 @@ SELECT '4' AS "One",
     WHEN 1 > 2 THEN 3
     ELSE 4
   END AS "ELSE default";
- One | ELSE default
+ One | ELSE default 
 -----+--------------
  4   |            4
 (1 row)
@@ -67,7 +67,7 @@ SELECT '6' AS "One",
     WHEN 4 < 5 THEN 6
     ELSE 7
   END AS "Two WHEN with default";
- One | Two WHEN with default
+ One | Two WHEN with default 
 -----+-----------------------
  6   |                     6
 (1 row)
@@ -75,20 +75,20 @@ SELECT '6' AS "One",
 SELECT '7' AS "None",
    CASE WHEN random() < 0 THEN 1
    END AS "NULL on no matches";
- None | NULL on no matches
+ None | NULL on no matches 
 ------+--------------------
- 7    |
+ 7    |                   
 (1 row)
 
 -- Constant-expression folding shouldn't evaluate unreachable subexpressions
 SELECT CASE WHEN 1=0 THEN 1/0 WHEN 1=1 THEN 1 ELSE 2/0 END;
- case
+ case 
 ------
     1
 (1 row)
 
 SELECT CASE 1 WHEN 0 THEN 1/0 WHEN 1 THEN 1 ELSE 2/0 END;
- case
+ case 
 ------
     1
 (1 row)
@@ -99,7 +99,7 @@ SELECT CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl;
 ERROR:  division by zero
 -- Test for cases involving untyped literals in test expression
 SELECT CASE 'a' WHEN 'a' THEN 1 ELSE 2 END;
- case
+ case 
 ------
     1
 (1 row)
@@ -174,13 +174,13 @@ SELECT
 --  defined in the SQL standard.
 --
 SELECT * FROM CASE_TBL WHERE COALESCE(f,i) = 4;
- i | f
+ i | f 
 ---+---
- 4 |
+ 4 |  
 (1 row)
 
 SELECT * FROM CASE_TBL WHERE NULLIF(f,i) = 2;
- i | f
+ i | f 
 ---+---
 (0 rows)
 
@@ -355,7 +355,7 @@ SELECT CASE
   WHEN 'it was foo!' THEN 'foo recognized'
   WHEN 'it was bar!' THEN 'bar recognized'
   ELSE 'unrecognized' END;
-      case
+      case      
 ----------------
  bar recognized
 (1 row)
@@ -369,7 +369,7 @@ CREATE FUNCTION inline_eq(foodomain, foodomain) returns boolean as
 CREATE OPERATOR = (procedure = inline_eq,
                    leftarg = foodomain, rightarg = foodomain);
 SELECT CASE volfoo('bar') WHEN 'foo'::foodomain THEN 'is foo' ELSE 'is not foo' END;
-    case
+    case    
 ------------
  is not foo
 (1 row)
@@ -395,7 +395,7 @@ SELECT CASE make_ad(1,2)
   WHEN array[2,5]::arrdomain THEN 'still wrong'
   WHEN array[1,2]::arrdomain THEN 'right'
   END;
- case
+ case  
 -------
  right
 (1 row)
@@ -409,7 +409,7 @@ SELECT
     WHEN 'foo' THEN ARRAY['a', 'b', 'c', 'd'] || enum_range(NULL::casetestenum)::text[]
     ELSE ARRAY['x', 'y']
     END;
-      array
+      array      
 -----------------
  {a,b,c,d,e,f,g}
 (1 row)

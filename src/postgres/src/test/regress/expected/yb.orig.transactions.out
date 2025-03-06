@@ -10,14 +10,14 @@ BEGIN;
 SET TRANSACTION READ WRITE;
 INSERT INTO test VALUES(1);
 SELECT COUNT(*) FROM test; -- equals 1
- count
+ count 
 -------
      1
 (1 row)
 
 ABORT;
 SELECT COUNT(*) FROM test; -- equals 0
- count
+ count 
 -------
      0
 (1 row)
@@ -27,14 +27,14 @@ BEGIN;
 SET TRANSACTION READ WRITE;
 INSERT INTO test VALUES(1);
 SELECT COUNT(*) FROM test; -- equals 1
- count
+ count 
 -------
      1
 (1 row)
 
 END;
 SELECT COUNT(*) FROM test; -- equals 1
- count
+ count 
 -------
      1
 (1 row)
@@ -43,14 +43,15 @@ SELECT COUNT(*) FROM test; -- equals 1
 START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ WRITE;
 INSERT INTO test VALUES(1);
 SELECT COUNT(*) FROM test; -- equals 2
- count
+ count 
 -------
      2
 (1 row)
 
 ABORT;
 SELECT COUNT(*) FROM test; -- equals 1
- count
+ count 
 -------
      1
 (1 row)
+

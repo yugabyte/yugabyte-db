@@ -11,7 +11,7 @@ CREATE PUBLICATION testpub_default;
 RESET client_min_messages;
 COMMENT ON PUBLICATION testpub_default IS 'test publication';
 SELECT obj_description(p.oid, 'pg_publication') FROM pg_publication p;
- obj_description
+ obj_description  
 ------------------
  test publication
 (1 row)
@@ -31,7 +31,7 @@ CREATE PUBLICATION testpub_xxx WITH (publish = 'cluster, vacuum');
 ERROR:  unrecognized value for publication option "publish": "cluster"
 \dRp
                                              List of publications
-      Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+      Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 -----------------+--------------------------+------------+---------+---------+---------+-----------+----------
  testpub_default | regress_publication_user | f          | t       | t       | t       | t         | f
 (1 row)
@@ -41,7 +41,7 @@ ERROR:  publishing only a subset of DML commands is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 \dRp
                                              List of publications
-      Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+      Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 -----------------+--------------------------+------------+---------+---------+---------+-----------+----------
  testpub_default | regress_publication_user | f          | t       | t       | t       | t         | f
 (1 row)
@@ -79,17 +79,17 @@ ALTER PUBLICATION testpub_foralltables SET TABLE pub_test.testpub_nopk;
 ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
 DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
 SELECT pubname, puballtables FROM pg_publication WHERE pubname = 'testpub_foralltables';
-       pubname        | puballtables
+       pubname        | puballtables 
 ----------------------+--------------
  testpub_foralltables | t
 (1 row)
 
 \d+ testpub_tbl2
                                                 Table "public.testpub_tbl2"
- Column |  Type   | Collation | Nullable |                 Default                  | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable |                 Default                  | Storage  | Stats target | Description 
 --------+---------+-----------+----------+------------------------------------------+----------+--------------+-------------
- id     | integer |           | not null | nextval('testpub_tbl2_id_seq'::regclass) | plain    |              |
- data   | text    |           |          |                                          | extended |              |
+ id     | integer |           | not null | nextval('testpub_tbl2_id_seq'::regclass) | plain    |              | 
+ data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl2_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
@@ -97,7 +97,7 @@ Publications:
 
 \dRp+ testpub_foralltables
                               Publication testpub_foralltables
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 --------------------------+------------+---------+---------+---------+-----------+----------
  regress_publication_user | t          | t       | t       | t       | t         | f
 (1 row)
@@ -184,7 +184,7 @@ CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1;
 ERROR:  publication "testpub_fortbl" already exists
 \dRp+ testpub_fortbl
                                  Publication testpub_fortbl
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 --------------------------+------------+---------+---------+---------+-----------+----------
  regress_publication_user | f          | t       | t       | t       | t         | f
 Tables:
@@ -203,17 +203,17 @@ ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tb
 ERROR:  publication "testpib_ins_trunct" does not exist
 \d+ pub_test.testpub_nopk
                               Table "pub_test.testpub_nopk"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- foo    | integer |           |          |         | plain   |              |
- bar    | integer |           |          |         | plain   |              |
+ foo    | integer |           |          |         | plain   |              | 
+ bar    | integer |           |          |         | plain   |              | 
 
 \d+ testpub_tbl1
                                                 Table "public.testpub_tbl1"
- Column |  Type   | Collation | Nullable |                 Default                  | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable |                 Default                  | Storage  | Stats target | Description 
 --------+---------+-----------+----------+------------------------------------------+----------+--------------+-------------
- id     | integer |           | not null | nextval('testpub_tbl1_id_seq'::regclass) | plain    |              |
- data   | text    |           |          |                                          | extended |              |
+ id     | integer |           | not null | nextval('testpub_tbl1_id_seq'::regclass) | plain    |              | 
+ data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
@@ -222,7 +222,7 @@ Publications:
 
 \dRp+ testpub_default
                                 Publication testpub_default
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 --------------------------+------------+---------+---------+---------+-----------+----------
  regress_publication_user | f          | t       | t       | t       | t         | f
 Tables:
@@ -237,10 +237,10 @@ ALTER PUBLICATION testpub_default DROP TABLE pub_test.testpub_nopk;
 ERROR:  relation "testpub_nopk" is not part of the publication
 \d+ testpub_tbl1
                                                 Table "public.testpub_tbl1"
- Column |  Type   | Collation | Nullable |                 Default                  | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable |                 Default                  | Storage  | Stats target | Description 
 --------+---------+-----------+----------+------------------------------------------+----------+--------------+-------------
- id     | integer |           | not null | nextval('testpub_tbl1_id_seq'::regclass) | plain    |              |
- data   | text    |           |          |                                          | extended |              |
+ id     | integer |           | not null | nextval('testpub_tbl1_id_seq'::regclass) | plain    |              | 
+ data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
@@ -270,7 +270,7 @@ DROP VIEW testpub_view;
 DROP TABLE testpub_tbl1;
 \dRp+ testpub_default
                                 Publication testpub_default
-          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 --------------------------+------------+---------+---------+---------+-----------+----------
  regress_publication_user | f          | t       | t       | t       | t         | f
 (1 row)
@@ -283,7 +283,7 @@ RESET ROLE;
 ALTER PUBLICATION testpub_default RENAME TO testpub_foo;
 \dRp testpub_foo
                                            List of publications
-    Name     |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+    Name     |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 -------------+--------------------------+------------+---------+---------+---------+-----------+----------
  testpub_foo | regress_publication_user | f          | t       | t       | t       | t         | f
 (1 row)
@@ -293,7 +293,7 @@ ALTER PUBLICATION testpub_foo RENAME TO testpub_default;
 ALTER PUBLICATION testpub_default OWNER TO regress_publication_user2;
 \dRp testpub_default
                                              List of publications
-      Name       |           Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root
+      Name       |           Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 -----------------+---------------------------+------------+---------+---------+---------+-----------+----------
  testpub_default | regress_publication_user2 | f          | t       | t       | t       | t         | f
 (1 row)

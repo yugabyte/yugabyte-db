@@ -10,7 +10,7 @@ INSERT INTO ids VALUES (0, 'first (-2 ?)');
 INSERT INTO ids VALUES (null, 'second (-1 ?)');
 INSERT INTO ids(idesc) VALUES ('third (1 ?!)');
 SELECT * FROM ids ORDER BY idesc ASC;
- id |     idesc
+ id |     idesc     
 ----+---------------
  -2 | first (-2 ?)
  -1 | second (-1 ?)
@@ -21,7 +21,7 @@ UPDATE ids SET id = null, idesc = 'first: -2 --> 2' WHERE idesc = 'first (-2 ?)'
 UPDATE ids SET id = 0, idesc = 'second: -1 --> 3' WHERE id = -1;
 UPDATE ids SET id = 4, idesc = 'third: 1 --> 4' WHERE id = 1;
 SELECT * FROM ids ORDER BY idesc ASC;
- id |      idesc
+ id |      idesc       
 ----+------------------
   2 | first: -2 --> 2
   3 | second: -1 --> 3
@@ -29,7 +29,7 @@ SELECT * FROM ids ORDER BY idesc ASC;
 (3 rows)
 
 SELECT 'Wasn''t it 4 ?' as nextval, nextval ('next_id');
-    nextval    | nextval
+    nextval    | nextval 
 ---------------+---------
  Wasn't it 4 ? |       4
 (1 row)
@@ -50,7 +50,7 @@ INSERT INTO username_test VALUES ('space', ' ');
 INSERT INTO username_test VALUES ('tab', '	');
 INSERT INTO username_test VALUES ('name', 'name');
 SELECT * FROM username_test ORDER BY name ASC;
-     name     | username
+     name     | username 
 --------------+----------
  empty string | yugabyte
  name         | yugabyte
@@ -72,7 +72,7 @@ INSERT INTO mdt VALUES (1, 'first');
 INSERT INTO mdt VALUES (2, 'second');
 INSERT INTO mdt VALUES (3, 'third');
 SELECT id, idesc FROM mdt ORDER BY moddate;
- id | idesc
+ id | idesc  
 ----+--------
   1 | first
   2 | second
@@ -83,7 +83,7 @@ UPDATE mdt SET id = 4 WHERE id = 1;
 UPDATE mdt SET id = 5 WHERE id = 2;
 UPDATE mdt SET id = 6 WHERE id = 3;
 SELECT id, idesc FROM mdt ORDER BY moddate ASC;
- id | idesc
+ id | idesc  
 ----+--------
   4 | first
   5 | second
@@ -113,7 +113,7 @@ INSERT INTO spi_test VALUES(3, 'desc3');
 SET ROLE yugabyte;
 INSERT INTO spi_test VALUES(4, 'desc4');
 SELECT  id, content, username FROM spi_test ORDER BY moddate ASC;
- id | content | username
+ id | content | username 
 ----+---------+----------
   1 | desc1   | yugabyte
   2 | desc2   | postgres
@@ -124,7 +124,7 @@ SELECT  id, content, username FROM spi_test ORDER BY moddate ASC;
 UPDATE spi_test SET content = 'desc1_updated' WHERE id = 1;
 UPDATE spi_test SET content = 'desc3_updated' WHERE id = 3;
 SELECT id, content, username FROM spi_test ORDER BY moddate ASC;
- id |    content    | username
+ id |    content    | username 
 ----+---------------+----------
   2 | desc2         | postgres
   4 | desc4         | yugabyte
@@ -194,19 +194,19 @@ DELETE FROM A WHERE id = 30;
 NOTICE:  at: 2 tuple(s) of B are deleted
 NOTICE:  at: 1 tuple(s) of C are deleted
 SELECT * FROM A ORDER BY id ASC;
- id
+ id 
 ----
  40
  50
 (2 rows)
 
 SELECT * FROM B ORDER BY refb ASC;
- refb
+ refb 
 ------
 (0 rows)
 
 SELECT * FROM C ORDER BY refc ASC;
- refc
+ refc 
 ------
 (0 rows)
 

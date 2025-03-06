@@ -19,7 +19,7 @@ ERROR:  operator right argument type must be specified
 DETAIL:  Postfix operators are not supported.
 -- Test operator created above
 SELECT @#@ 24;
-         ?column?
+         ?column?         
 --------------------------
  620448401733239439360000
 (1 row)

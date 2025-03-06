@@ -14,7 +14,7 @@ COPY x (b, d) from stdin;
 COPY x (a, b, c, d, e) from stdin;
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
- relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
 -------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
  x     | COPY FROM | SUCCESS   | PIPE |              93 |           0 |                5 |               0
 (1 row)
@@ -45,30 +45,30 @@ COPY x from stdin WITH DELIMITER AS ';' NULL AS '';
 COPY x from stdin WITH DELIMITER AS ':' NULL AS E'\\X' ENCODING 'sql_ascii';
 -- check results of copy in
 SELECT * FROM x ORDER BY a,b,c,d;
-   a   | b  |     c      |   d    | e
+   a   | b  |     c      |   d    | e  
 -------+----+------------+--------+----
-  3000 |    | c          |        |
-  4000 |    | C          |        |
-  4001 |  1 | empty      |        |
-  4002 |  2 | null       |        |
+  3000 |    | c          |        | 
+  4000 |    | C          |        | 
+  4001 |  1 | empty      |        | 
+  4002 |  2 | null       |        | 
   4003 |  3 | Backslash  | \      | \
   4004 |  4 | BackslashX | \X     | \X
   4005 |  5 | N          | N      | N
   4006 |  6 | BackslashN | \N     | \N
   4007 |  7 | XX         | XX     | XX
   4008 |  8 | Delimiter  | :      | :
-  9999 |    | \N         | NN     |
+  9999 |    | \N         | NN     | 
  10000 | 21 | 31         | 41     | 51
  10001 | 22 | 32         | 42     | 52
  10002 | 23 | 33         | 43     | 53
  10003 | 24 | 34         | 44     | 54
  10004 | 25 | 35         | 45     | 55
  10005 | 26 | 36         | 46     | 56
-       |  1 |            | test_1 |
-       |  2 |            | test_2 |
-       |  3 |            | test_3 |
-       |  4 |            | test_4 |
-       |  5 |            | test_5 |
+       |  1 |            | test_1 | 
+       |  2 |            | test_2 | 
+       |  3 |            | test_3 | 
+       |  4 |            | test_4 | 
+       |  5 |            | test_5 | 
        |    | ,          | \,     | \
        |    | 45         | 80     | 90
        |    | x          | \x     | \x
@@ -78,7 +78,7 @@ SELECT * FROM x ORDER BY a,b,c,d;
 COPY (SELECT * FROM x ORDER BY a,b,c,d) TO stdout;
 3000	\N	c	\N	\N
 4000	\N	C	\N	\N
-4001	1	empty
+4001	1	empty		
 4002	2	null	\N	\N
 4003	3	Backslash	\\	\\
 4004	4	BackslashX	\\X	\\X
@@ -104,7 +104,7 @@ COPY (SELECT * FROM x ORDER BY a,b,c,d) TO stdout;
 COPY (SELECT c,e FROM x ORDER BY a,b,c,d) TO stdout;
 c	\N
 C	\N
-empty
+empty	
 null	\N
 Backslash	\\
 BackslashX	\\X
@@ -130,7 +130,7 @@ x	\\x
 COPY (SELECT b,e FROM x ORDER BY a,b,c,d) TO stdout WITH NULL 'I''m null';
 I'm null	I'm null
 I'm null	I'm null
-1
+1	
 2	I'm null
 3	\\
 4	\\X
@@ -162,11 +162,11 @@ INSERT INTO y VALUES ('It is "perfect".',E'\t');
 INSERT INTO y VALUES ('', NULL);
 COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout WITH CSV;
 "",
-"It is ""perfect"".",
+"It is ""perfect"".",	
 "Jackson, Sam",\h
 COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout WITH CSV QUOTE '''' DELIMITER '|';
 ''|
-It is "perfect".|
+It is "perfect".|	
 Jackson, Sam|\h
 COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout WITH CSV FORCE QUOTE col2 ESCAPE E'\\' ENCODING 'sql_ascii';
 "",
@@ -179,11 +179,11 @@ COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout WITH CSV FORCE QUOTE *;
 -- Repeat above tests with new 9.0 option syntax
 COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV);
 "",
-"It is ""perfect"".",
+"It is ""perfect"".",	
 "Jackson, Sam",\h
 COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV, QUOTE '''', DELIMITER '|');
 ''|
-It is "perfect".|
+It is "perfect".|	
 Jackson, Sam|\h
 COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV, FORCE_QUOTE (col2), ESCAPE E'\\');
 "",
@@ -195,11 +195,11 @@ COPY (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV, FORCE_QUOTE *);
 "Jackson, Sam","\h"
 \copy (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV)
 "",
-"It is ""perfect"".",
+"It is ""perfect"".",	
 "Jackson, Sam",\h
 \copy (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV, QUOTE '''', DELIMITER '|')
 ''|
-It is "perfect".|
+It is "perfect".|	
 Jackson, Sam|\h
 \copy (SELECT * FROM y ORDER BY col1,col2) TO stdout (FORMAT CSV, FORCE_QUOTE (col2), ESCAPE E'\\')
 "",
@@ -223,12 +223,12 @@ COPY (SELECT * FROM testnull ORDER BY a,b) TO stdout WITH NULL AS E'\\0';
 \0	\0
 COPY testnull FROM stdin WITH NULL AS E'\\0';
 SELECT * FROM testnull ORDER BY a,b;
- a  | b
+ a  | b  
 ----+----
   1 | \0
  42 | \0
-    |
-    |
+    | 
+    | 
 (4 rows)
 
 -- Test FORCE_NOT_NULL and FORCE_NULL options
@@ -245,7 +245,7 @@ BEGIN;
 COPY forcetest (a, b, c) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL(b), FORCE_NULL(c));
 COMMIT;
 SELECT b, c FROM forcetest WHERE a = 1;
- b |  c
+ b |  c   
 ---+------
    | NULL
 (1 row)
@@ -255,7 +255,7 @@ BEGIN;
 COPY forcetest (a, b, c, d) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL(c,d), FORCE_NULL(c,d));
 COMMIT;
 SELECT c, d FROM forcetest WHERE a = 2;
- c |  d
+ c |  d   
 ---+------
    | NULL
 (1 row)
@@ -284,7 +284,7 @@ COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_pkey"
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
- relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
 -------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
  t     | COPY FROM | ERROR     | PIPE |               0 |           0 |                0 |               0
 (1 row)
@@ -294,13 +294,13 @@ COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_v_idx"
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
- relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
 -------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
  t     | COPY FROM | ERROR     | PIPE |               0 |           0 |                0 |               0
 (1 row)
 
 SELECT COUNT(*) FROM t;
- count
+ count 
 -------
      0
 (1 row)
@@ -328,7 +328,7 @@ ERROR:  no partition of relation "q" found for row
 DETAIL:  Partition key of the failing row contains (a) = (3).
 CONTEXT:  COPY q, line 1: "3	0"
 select * from q ORDER BY a,b;
- a | b
+ a | b 
 ---+---
  1 | 5
  1 | 7
@@ -358,7 +358,7 @@ ERROR:  no partition of relation "s" found for row
 DETAIL:  Partition key of the failing row contains (a) = (6).
 CONTEXT:  COPY s, line 1: "6	10"
 select * from s ORDER BY a,b;
- a | b
+ a | b 
 ---+---
  1 | 5
  2 | 6
@@ -384,7 +384,7 @@ ERROR:  no partition of relation "r" found for row
 DETAIL:  Partition key of the failing row contains (a) = (5).
 CONTEXT:  COPY r, line 1: "5	3"
 select * from r ORDER BY a,b;
- a | b
+ a | b 
 ---+---
  1 | 3
  2 | 4
@@ -418,7 +418,7 @@ ERROR:  no partition of relation "w4" found for row
 DETAIL:  Partition key of the failing row contains (a) = (2).
 CONTEXT:  COPY w, line 1: "2	6"
 select * from w ORDER BY a,b;
- a | b
+ a | b 
 ---+---
  3 | 7
  8 | 2
@@ -439,7 +439,7 @@ ERROR:  no partition of relation "p" found for row
 DETAIL:  Partition key of the failing row contains (a) = (0).
 CONTEXT:  COPY p, line 1: "0	1"
 select * from p ORDER BY a,b;
- a | b
+ a | b 
 ---+---
  1 | 5
  1 | 6
@@ -455,7 +455,7 @@ copy u (b) from stdin;
 copy u from stdin;
 ERROR:  duplicate key value violates unique constraint "u1_a_idx"
 select * from u ORDER BY a,b;
- a | b
+ a | b 
 ---+---
  1 | 7
  2 | 8
@@ -480,7 +480,7 @@ NOTICE:  a: 10
 copy v (b) from stdin;
 ERROR:  duplicate key value violates unique constraint "v1_a_b_idx"
 select * from v ORDER BY a,b;
- a | b
+ a | b  
 ---+----
  1 |  5
  1 |  6
@@ -495,7 +495,7 @@ create table copy_options (a int primary key, b int);
 -- skip
 copy copy_options from stdin with (format csv, skip 2);
 select * from copy_options order by a;
- a | b
+ a | b 
 ---+---
  3 | 3
  4 | 4
@@ -506,7 +506,7 @@ select * from copy_options order by a;
 truncate copy_options;
 copy copy_options from stdin with (format csv, skip 3);
 select * from copy_options order by a;
- a | b
+ a | b 
 ---+---
  4 | 4
  5 | 5
@@ -516,7 +516,7 @@ select * from copy_options order by a;
 truncate copy_options;
 insert into copy_options (a, b) values (1, 0), (2, 1), (3, 2);
 select a, b from copy_options order by a;
- a | b
+ a | b 
 ---+---
  1 | 0
  2 | 1
@@ -525,7 +525,7 @@ select a, b from copy_options order by a;
 
 copy copy_options from stdin with (format csv, replace);
 select * from copy_options order by a;
- a | b
+ a | b 
 ---+---
  1 | 1
  2 | 2
@@ -540,7 +540,7 @@ insert into ref_table(a) values (1), (2), (3);
 create table main_table(a int references ref_table, b int);
 copy main_table from stdin with (format csv, disable_fk_check);
 select * from main_table order by a;
- a | b
+ a | b 
 ---+---
  1 | 1
  2 | 2
@@ -554,7 +554,7 @@ truncate copy_options;
 copy copy_options from stdin with (format csv, freeze);
 NOTICE:  cannot perform COPY FREEZE on a YugaByte table
 select * from copy_options order by a;
- a | b
+ a | b 
 ---+---
  1 | 1
  2 | 2

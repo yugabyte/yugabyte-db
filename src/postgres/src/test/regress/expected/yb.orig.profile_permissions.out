@@ -30,7 +30,7 @@ ALTER USER restricted_user PROFILE test_profile_2;
 SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
     pg_catalog.pg_yb_role_profile rp JOIN pg_catalog.pg_roles rol ON rp.rolprfrole = rol.oid
     JOIN pg_catalog.pg_yb_profile lp ON rp.rolprfprofile = lp.oid;
- rolprfstatus | rolprffailedloginattempts |     rolname     |    prfname
+ rolprfstatus | rolprffailedloginattempts |     rolname     |    prfname     
 --------------+---------------------------+-----------------+----------------
  o            |                         0 | restricted_user | test_profile_2
 (1 row)
@@ -50,7 +50,7 @@ ALTER USER restricted_user PROFILE test_profile_3;
 SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
     pg_catalog.pg_yb_role_profile rp JOIN pg_catalog.pg_roles rol ON rp.rolprfrole = rol.oid
     JOIN pg_catalog.pg_yb_profile lp ON rp.rolprfprofile = lp.oid;
- rolprfstatus | rolprffailedloginattempts |     rolname     |    prfname
+ rolprfstatus | rolprffailedloginattempts |     rolname     |    prfname     
 --------------+---------------------------+-----------------+----------------
  o            |                         0 | restricted_user | test_profile_3
 (1 row)

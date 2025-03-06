@@ -17,7 +17,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
 -- succeeds
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit) do nothing;
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -26,7 +26,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit, key, fruit, key) do nothing;
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -35,7 +35,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit), key, lower(fruit), key) do nothing;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -45,7 +45,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit) do update set fruit = excluded.fruit
   where exists (select 1 from insertconflicttest ii where ii.key = excluded.key);
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
@@ -61,7 +61,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 -- supplying them merely *limits* matches to indexes with matching opclasses
 -- used for relevant indexes
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit text_pattern_ops) do nothing;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -72,7 +72,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 -- Okay, arbitrates using both index where text_pattern_ops opclass does and
 -- does not appear.
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit collate "C") do nothing;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -83,7 +83,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 -- Okay, but only accepts the single index where both opclass and collation are
 -- specified
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit collate "C" text_pattern_ops, key) do nothing;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -94,7 +94,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 -- Okay, but only accepts the single index where both opclass and collation are
 -- specified (plus expression variant)
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", key, key) do nothing;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -117,7 +117,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 -- cases.  It rolls with unique indexes where attributes redundantly appear
 -- multiple times, too (which is not tested here).
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit, key, fruit text_pattern_ops, key) do nothing;
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -126,7 +126,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 (4 rows)
 
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C" text_pattern_ops, key, key) do nothing;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -147,7 +147,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
 -- works:
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", upper(fruit) text_pattern_ops) do nothing;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: NOTHING
@@ -164,7 +164,7 @@ create unique index key_index on insertconflicttest(key);
 -- Explain tests
 --
 explain (costs off) insert into insertconflicttest values (0, 'Bilberry') on conflict (key) do update set fruit = excluded.fruit;
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
@@ -174,7 +174,7 @@ explain (costs off) insert into insertconflicttest values (0, 'Bilberry') on con
 
 -- Should display qual actually attributable to internal sequential scan:
 explain (costs off) insert into insertconflicttest values (0, 'Bilberry') on conflict (key) do update set fruit = excluded.fruit where insertconflicttest.fruit != 'Cawesh';
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
@@ -185,7 +185,7 @@ explain (costs off) insert into insertconflicttest values (0, 'Bilberry') on con
 
 -- With EXCLUDED.* expression in scan node:
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key) do update set fruit = excluded.fruit where excluded.fruit != 'Elderberry';
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
@@ -196,7 +196,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 
 -- Does the same, but JSON format shows "Conflict Arbiter Index" as JSON array:
 explain (costs off, format json) insert into insertconflicttest values (0, 'Bilberry') on conflict (key) do update set fruit = excluded.fruit where insertconflicttest.fruit != 'Lime' returning *;
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  [                                                                     +
    {                                                                   +
@@ -333,7 +333,7 @@ insert into insertconflicttest values (24, 'Plum') on conflict (key, lower(fruit
 insert into insertconflicttest values (25, 'Peach') on conflict (lower(fruit), key) do update set fruit = excluded.fruit;
 -- Should not infer "tricky_expr_comp_key_index" index:
 explain (costs off) insert into insertconflicttest values (26, 'Fig') on conflict (lower(fruit), key, lower(fruit), key) do update set fruit = excluded.fruit;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
@@ -388,7 +388,7 @@ create unique index plain on insertconflicttest(key);
 -- Succeeds, updates existing row:
 insert into insertconflicttest as i values (23, 'Jackfruit') on conflict (key) do update set fruit = excluded.fruit
   where i.* != excluded.* returning *;
- key |   fruit
+ key |   fruit   
 -----+-----------
   23 | Jackfruit
 (1 row)
@@ -396,14 +396,14 @@ insert into insertconflicttest as i values (23, 'Jackfruit') on conflict (key) d
 -- No update this time, though:
 insert into insertconflicttest as i values (23, 'Jackfruit') on conflict (key) do update set fruit = excluded.fruit
   where i.* != excluded.* returning *;
- key | fruit
+ key | fruit 
 -----+-------
 (0 rows)
 
 -- Predicate changed to require match rather than non-match, so updates once more:
 insert into insertconflicttest as i values (23, 'Jackfruit') on conflict (key) do update set fruit = excluded.fruit
   where i.* = excluded.* returning *;
- key |   fruit
+ key |   fruit   
 -----+-----------
   23 | Jackfruit
 (1 row)
@@ -411,14 +411,14 @@ insert into insertconflicttest as i values (23, 'Jackfruit') on conflict (key) d
 -- Assign:
 insert into insertconflicttest as i values (23, 'Avocado') on conflict (key) do update set fruit = excluded.*::text
   returning *;
- key |    fruit
+ key |    fruit     
 -----+--------------
   23 | (23,Avocado)
 (1 row)
 
 -- deparse whole row var in WHERE and SET clauses:
 explain (costs off) insert into insertconflicttest as i values (23, 'Avocado') on conflict (key) do update set fruit = excluded.fruit where excluded.* is null;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Insert on insertconflicttest i
    Conflict Resolution: UPDATE
@@ -428,7 +428,7 @@ explain (costs off) insert into insertconflicttest as i values (23, 'Avocado') o
 (5 rows)
 
 explain (costs off) insert into insertconflicttest as i values (23, 'Avocado') on conflict (key) do update set fruit = excluded.*::text;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Insert on insertconflicttest i
    Conflict Resolution: UPDATE
@@ -478,7 +478,7 @@ create view insertconflictv as select * from insertconflict; -- YB: workaround v
 insert into insertconflictv values (1,'foo')
   on conflict (f1) do update set f2 = excluded.f2;
 select * from insertconflict;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | foo
 (1 row)
@@ -486,7 +486,7 @@ select * from insertconflict;
 insert into insertconflictv values (1,'bar')
   on conflict (f1) do update set f2 = excluded.f2;
 select * from insertconflict;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | bar
 (1 row)
@@ -533,7 +533,7 @@ with ybtmp as (delete from cities where name = 'Las Vegas' returning *)
     insert into cities select * from ybtmp; -- YB: imitate PG ctid reallocation for the following update
 insert into cities values ('Las Vegas', 5.83E+5, 2001) on conflict (name) do update set population = excluded.population, altitude = excluded.altitude;
 select tableoid::regclass, * from cities;
- tableoid |     name      | population | altitude
+ tableoid |     name      | population | altitude 
 ----------+---------------+------------+----------
  cities   | San Francisco |     724000 |       63
  cities   | Mariposa      |       1200 |     1953
@@ -546,7 +546,7 @@ select tableoid::regclass, * from cities;
 -- Cities contains two instances of "Las Vegas", since unique constraints don't
 -- work across inheritance:
 select tableoid::regclass, * from cities;
- tableoid |     name      | population | altitude
+ tableoid |     name      | population | altitude 
 ----------+---------------+------------+----------
  cities   | San Francisco |     724000 |       63
  cities   | Mariposa      |       1200 |     1953
@@ -556,7 +556,7 @@ select tableoid::regclass, * from cities;
 -- This only affects "cities" version of "Las Vegas":
 insert into cities values ('Las Vegas', 5.86E+5, 2223) on conflict (name) do update set population = excluded.population, altitude = excluded.altitude;
 select tableoid::regclass, * from cities;
- tableoid |     name      | population | altitude
+ tableoid |     name      | population | altitude 
 ----------+---------------+------------+----------
  cities   | San Francisco |     724000 |       63
  cities   | Mariposa      |       1200 |     1953
@@ -577,21 +577,21 @@ LINE 1: ...es(1, '2') on conflict (key) do update set data = excluded.d...
                                                              ^
 -- ok, aliased
 insert into excluded AS target values(1, '2') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data
+ key | data 
 -----+------
    1 | 2
 (1 row)
 
 -- ok, aliased
 insert into excluded AS target values(1, '2') on conflict (key) do update set data = target.data RETURNING *;
- key | data
+ key | data 
 -----+------
    1 | 2
 (1 row)
 
 -- make sure excluded isn't a problem in returning clause
 insert into excluded values(1, '2') on conflict (key) do update set data = 3 RETURNING excluded.*;
- key | data
+ key | data 
 -----+------
    1 | 3
 (1 row)
@@ -607,7 +607,7 @@ insert into dropcol(key, drop1, keep1, drop2, keep2) values(1, 2, '2', '2', 2) o
     where excluded.drop1 is not null and excluded.keep1 is not null and excluded.drop2 is not null and excluded.keep2 is not null
           and dropcol.drop1 is not null and dropcol.keep1 is not null and dropcol.drop2 is not null and dropcol.keep2 is not null
     returning *;
- key | drop1 | keep1 | drop2 | keep2
+ key | drop1 | keep1 | drop2 | keep2 
 -----+-------+-------+-------+-------
    1 |     2 | 2     |     2 |     2
 (1 row)
@@ -617,7 +617,7 @@ insert into dropcol(key, drop1, keep1, drop2, keep2) values(1, 2, '2', '2', 2) o
 insert into dropcol(key, drop1, keep1, drop2, keep2) values(1, 3, '3', '3', 3) on conflict(key)
     do update set drop1 = dropcol.drop1, keep1 = dropcol.keep1, drop2 = dropcol.drop2, keep2 = dropcol.keep2
     returning *;
- key | drop1 | keep1 | drop2 | keep2
+ key | drop1 | keep1 | drop2 | keep2 
 -----+-------+-------+-------+-------
    1 |     2 | 2     |     2 |     2
 (1 row)
@@ -630,7 +630,7 @@ insert into dropcol(key, keep1, keep2) values(1, '4', 4) on conflict(key)
     where excluded.keep1 is not null and excluded.keep2 is not null
           and dropcol.keep1 is not null and dropcol.keep2 is not null
     returning *;
- key | keep1 | keep2
+ key | keep1 | keep2 
 -----+-------+-------
    1 | 4     |     4
 (1 row)
@@ -640,7 +640,7 @@ insert into dropcol(key, keep1, keep2) values(1, '4', 4) on conflict(key)
 insert into dropcol(key, keep1, keep2) values(1, '5', 5) on conflict(key)
     do update set keep1 = dropcol.keep1, keep2 = dropcol.keep2
     returning *;
- key | keep1 | keep2
+ key | keep1 | keep2 
 -----+-------+-------
    1 | 4     |     4
 (1 row)
@@ -689,7 +689,7 @@ ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
 HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 commit;
 select * from selfconflict;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  1
   2 |  1
@@ -715,7 +715,7 @@ ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT spec
 insert into parted_conflict_test_1 values (2, 'b') on conflict (b) do update set a = excluded.a;
 -- should see (2, 'b')
 select * from parted_conflict_test order by a;
- a | b
+ a | b 
 ---+---
  2 | b
 (1 row)
@@ -729,7 +729,7 @@ insert into parted_conflict_test values (3, 'a') on conflict (a) do update set b
 insert into parted_conflict_test values (3, 'b') on conflict (a) do update set b = excluded.b;
 -- should see (3, 'b')
 select * from parted_conflict_test order by a;
- a | b
+ a | b 
 ---+---
  3 | b
 (1 row)
@@ -745,7 +745,7 @@ insert into parted_conflict_test (a, b) values (4, 'a') on conflict (a) do updat
 insert into parted_conflict_test (a, b) values (4, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
 -- should see (4, 'b')
 select * from parted_conflict_test order by a;
- a | b
+ a | b 
 ---+---
  4 | b
 (1 row)
@@ -758,7 +758,7 @@ insert into parted_conflict_test (a, b) values (5, 'a') on conflict (a) do updat
 insert into parted_conflict_test (a, b) values (5, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
 -- should see (5, 'b')
 select * from parted_conflict_test order by a;
- a | b
+ a | b 
 ---+---
  5 | b
 (1 row)
@@ -769,7 +769,7 @@ insert into parted_conflict_test (a, b) values (1, 'a'), (2, 'a'), (4, 'a') on c
 insert into parted_conflict_test (a, b) values (1, 'b'), (2, 'c'), (4, 'b') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
 -- should see (1, 'b'), (2, 'a'), (4, 'b')
 select * from parted_conflict_test order by a;
- a | b
+ a | b 
 ---+---
  1 | b
  2 | a
@@ -813,7 +813,7 @@ insert into parted_conflict values (50, 'cincuenta', 2)
         excluded = (50, text 'cincuenta', 2);
 -- should see (50, 'cincuenta', 2)
 select * from parted_conflict order by a;
- a  |     b     | c
+ a  |     b     | c 
 ----+-----------+---
  50 | cincuenta | 2
 (1 row)

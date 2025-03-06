@@ -1,12 +1,12 @@
 SET bytea_output TO hex;
 SELECT E'\\xDeAdBeEf'::bytea;
-   bytea
+   bytea    
 ------------
  \xdeadbeef
 (1 row)
 
 SELECT E'\\x De Ad Be Ef '::bytea;
-   bytea
+   bytea    
 ------------
  \xdeadbeef
 (1 row)
@@ -20,31 +20,31 @@ ERROR:  invalid hexadecimal digit: "x"
 LINE 1: SELECT E'\\xDeAdBeEx'::bytea;
                ^
 SELECT E'\\xDe00BeEf'::bytea;
-   bytea
+   bytea    
 ------------
  \xde00beef
 (1 row)
 
 SELECT E'DeAdBeEf'::bytea;
-       bytea
+       bytea        
 --------------------
  \x4465416442654566
 (1 row)
 
 SELECT E'De\\000dBeEf'::bytea;
-       bytea
+       bytea        
 --------------------
  \x4465006442654566
 (1 row)
 
 SELECT E'De\123dBeEf'::bytea;
-       bytea
+       bytea        
 --------------------
  \x4465536442654566
 (1 row)
 
 SELECT E'De\\123dBeEf'::bytea;
-       bytea
+       bytea        
 --------------------
  \x4465536442654566
 (1 row)
@@ -55,37 +55,37 @@ LINE 1: SELECT E'De\\678dBeEf'::bytea;
                ^
 SET bytea_output TO escape;
 SELECT E'\\xDeAdBeEf'::bytea;
-      bytea
+      bytea       
 ------------------
  \336\255\276\357
 (1 row)
 
 SELECT E'\\x De Ad Be Ef '::bytea;
-      bytea
+      bytea       
 ------------------
  \336\255\276\357
 (1 row)
 
 SELECT E'\\xDe00BeEf'::bytea;
-      bytea
+      bytea       
 ------------------
  \336\000\276\357
 (1 row)
 
 SELECT E'DeAdBeEf'::bytea;
-  bytea
+  bytea   
 ----------
  DeAdBeEf
 (1 row)
 
 SELECT E'De\\000dBeEf'::bytea;
-    bytea
+    bytea    
 -------------
  De\000dBeEf
 (1 row)
 
 SELECT E'De\\123dBeEf'::bytea;
-  bytea
+  bytea   
 ----------
  DeSdBeEf
 (1 row)
@@ -99,7 +99,7 @@ INSERT INTO binary_valued (k, b) VALUES (2, decode('001122', 'hex'));
 INSERT INTO binary_valued (k, b) VALUES (3, decode('11220033', 'hex'));
 INSERT INTO binary_valued (k, b) VALUES (4, decode('deadbeef00deadbeef', 'hex'));
 SELECT * FROM binary_valued ORDER BY k;
- k |          b
+ k |          b           
 ---+----------------------
  0 | \x
  1 | \x00
@@ -119,7 +119,7 @@ INSERT INTO binary_keyed (k, v) VALUES (decode('deadbeef00deadbeef', 'hex'), 4);
 INSERT INTO binary_keyed (k, v) VALUES (decode('0000', 'hex'), 5);
 INSERT INTO binary_keyed (k, v) VALUES (decode('01', 'hex'), 6);
 SELECT * FROM binary_keyed ORDER BY k;
-          k           | v
+          k           | v 
 ----------------------+---
  \x                   | 0
  \x00                 | 1

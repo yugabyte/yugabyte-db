@@ -21,7 +21,7 @@ SET SESSION AUTHORIZATION regress_alter_op_user;
 ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = NONE);
 SELECT oprrest FROM pg_operator WHERE oprname = '==='
   AND oprleft = 'boolean'::regtype AND oprright = 'boolean'::regtype;
- oprrest
+ oprrest 
 ---------
  -
 (1 row)
@@ -39,7 +39,7 @@ SELECT ns.nspname FROM pg_operator op
     INNER JOIN pg_namespace ns ON ns.oid = op.oprnamespace
     WHERE op.oprname = '==='
       AND op.oprleft = 'boolean'::regtype AND op.oprright = 'boolean'::regtype;
-  nspname
+  nspname  
 -----------
  op_schema
 (1 row)

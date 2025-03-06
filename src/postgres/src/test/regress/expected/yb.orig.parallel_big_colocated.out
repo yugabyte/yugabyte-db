@@ -22,7 +22,7 @@ set yb_parallel_range_rows to 10000;
 set yb_enable_base_scans_cost_model to true;
 EXPLAIN (costs off)
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name = 'Customer #42';
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Gather
    Workers Planned: 2
@@ -31,7 +31,7 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name = 'Cus
 (4 rows)
 
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name = 'Customer #42';
- pc_id |                   pc_address                   |   pc_phone    |        pc_email
+ pc_id |                   pc_address                   |   pc_phone    |        pc_email        
 -------+------------------------------------------------+---------------+------------------------
     42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com
 (1 row)
@@ -41,7 +41,7 @@ BEGIN;
 UPDATE pcustomer SET pc_acctbalance = 0 WHERE pc_id >= 40 AND pc_id < 50;
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Gather
    Workers Planned: 2
@@ -50,7 +50,7 @@ SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
 (4 rows)
 
 SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
- pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance
+ pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance 
 -------+--------------+------------------------------------------------+---------------+------------------------+----------------
     40 | Customer #40 | 1314 Unknown Str., Some Random City, XX, 32681 | (140)154-5361 | customer40@example.com |           0.00
     41 | Customer #41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com |           0.00
@@ -68,7 +68,7 @@ SAVEPOINT svp;
 UPDATE pcustomer SET pc_acctbalance = 100 WHERE pc_id = 42;
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Gather
    Workers Planned: 2
@@ -77,7 +77,7 @@ SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
 (4 rows)
 
 SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
- pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance
+ pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance 
 -------+--------------+------------------------------------------------+---------------+------------------------+----------------
     40 | Customer #40 | 1314 Unknown Str., Some Random City, XX, 32681 | (140)154-5361 | customer40@example.com |           0.00
     41 | Customer #41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com |           0.00
@@ -96,7 +96,7 @@ COMMIT;
 set enable_sort to false;
 EXPLAIN (costs off)
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
-                                  QUERY PLAN
+                                  QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
@@ -105,7 +105,7 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like '
 (4 rows)
 
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
- pc_id |                   pc_address                   |   pc_phone    |        pc_email
+ pc_id |                   pc_address                   |   pc_phone    |        pc_email        
 -------+------------------------------------------------+---------------+------------------------
     49 | 1332 Unknown Str., Some Random City, XX, 37784 | (149)163-5370 | customer49@example.com
     48 | 1330 Unknown Str., Some Random City, XX, 37217 | (148)162-5369 | customer48@example.com
@@ -125,7 +125,7 @@ set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_id = 42;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Gather
    Workers Planned: 2
@@ -134,7 +134,7 @@ SELECT * FROM pcustomer WHERE pc_id = 42;
 (4 rows)
 
 SELECT * FROM pcustomer WHERE pc_id = 42;
- pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance
+ pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance 
 -------+--------------+------------------------------------------------+---------------+------------------------+----------------
     42 | Customer #42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com |         100.00
 (1 row)

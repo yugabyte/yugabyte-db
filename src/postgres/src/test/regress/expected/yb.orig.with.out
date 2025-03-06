@@ -11,7 +11,7 @@ EXPLAIN (costs off)
 with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
 ) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Insert on b
    Conflict Resolution: UPDATE
@@ -37,7 +37,7 @@ EXPLAIN (costs off)
 with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
 ) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Insert on a
    Conflict Resolution: UPDATE
@@ -65,7 +65,7 @@ with w(i) as (
 ), x(i) as (
     insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
 ) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Insert on a
    Conflict Resolution: UPDATE

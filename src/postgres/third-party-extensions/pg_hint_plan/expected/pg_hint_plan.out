@@ -7,7 +7,7 @@ SET yb_enable_bitmapscan = true;
 -- In general, for postgres since t1.id and t2.id is sorted, merge joins should be optimal.
 -- However, since YB does not support merge join nested loop joins will be used.
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -17,7 +17,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.val = t2.val)
@@ -36,13 +36,13 @@ LINE 1: LOAD 'pg_hint_plan';
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SET pg_hint_plan.debug_print TO on;
 SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SHOW pg_hint_plan.enable_hint_table;
- pg_hint_plan.enable_hint_table
+ pg_hint_plan.enable_hint_table 
 --------------------------------
  off
 (1 row)
@@ -58,13 +58,13 @@ SET compute_query_id to off;
 SELECT 1;									-- gets warining
 WARNING:  hint table feature is deactivated because queryid is not available
 HINT:  Set compute_query_id to "auto" or "on" to use hint table.
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 SELECT 1;									-- not
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -72,7 +72,7 @@ SELECT 1;									-- not
 SET compute_query_id to on;
 SELECT 1;									-- reactivated
 LOG:  hint table feature is reactivated
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -81,7 +81,7 @@ SET compute_query_id to off;
 SELECT 1;									-- gets warining
 WARNING:  hint table feature is deactivated because queryid is not available
 HINT:  Set compute_query_id to "auto" or "on" to use hint table.
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -90,7 +90,7 @@ SET pg_hint_plan.enable_hint_table to off;
 SET compute_query_id to on;
 SET pg_hint_plan.enable_hint_table to on;
 SELECT 1;									-- no warining
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -98,7 +98,7 @@ SELECT 1;									-- no warining
 RESET compute_query_id;
 RESET pg_hint_plan.enable_hint_table;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -108,7 +108,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.val = t2.val)
@@ -125,7 +125,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near "Test (t1 t2) "
 DETAIL:  Unrecognized hint keyword "Test".
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -137,7 +137,7 @@ DETAIL:  Unrecognized hint keyword "Test".
 SET pg_hint_plan.enable_hint TO off;
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -151,7 +151,7 @@ SET pg_hint_plan.enable_hint TO on;
 -- pg_hint_plan comment formatting wrong
 /*Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -163,7 +163,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 -- pg_hint_plan comment formatting wrong
 --+Set(enable_indexscan off)
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -177,7 +177,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near "/* nest comment */ */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;"
 DETAIL:  Nested block comments are not supported.
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -195,7 +195,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -214,7 +214,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -233,7 +233,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Merge Join
    Merge Cond: (t1.id = t2.id)
@@ -254,7 +254,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -278,7 +278,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -303,7 +303,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -323,7 +323,7 @@ duplication hint:
 error hint:
 Set(work_mem 1M)
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -341,7 +341,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -361,7 +361,7 @@ duplication hint:
 error hint:
 Set(work_mem TO 1MB)
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -380,7 +380,7 @@ duplication hint:
 error hint:
 SeqScan()
 
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -398,7 +398,7 @@ duplication hint:
 error hint:
 SeqScan(t1 t2)
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -416,7 +416,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -435,7 +435,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -453,7 +453,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -472,7 +472,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -490,7 +490,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -508,7 +508,7 @@ not used hint:
 duplication hint:
 error hint:
 
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -533,7 +533,7 @@ duplication hint:
 error hint:
 NestLoop()
 
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -548,7 +548,7 @@ duplication hint:
 error hint:
 NestLoop(x)
 
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -562,7 +562,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN          
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -580,7 +580,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -601,7 +601,7 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN
+              QUERY PLAN              
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t2
@@ -619,7 +619,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -637,7 +637,7 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN            
 ---------------------------------
  Merge Join
    Merge Cond: (t3.val = t1.val)
@@ -658,7 +658,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN
+                             QUERY PLAN                              
 ---------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.val = t3.val)
@@ -676,7 +676,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN
+                             QUERY PLAN                              
 ---------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.val = t3.val)
@@ -694,7 +694,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t1.id = t3.id)
@@ -743,7 +743,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t3.id = t1.id)
@@ -770,7 +770,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -796,7 +796,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -817,7 +817,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Closing parenthesis is necessary.
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -845,7 +845,7 @@ duplication hint:
 error hint:
 Leading()
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -873,7 +873,7 @@ duplication hint:
 error hint:
 Leading(t3)
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -899,7 +899,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -929,7 +929,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -955,7 +955,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -983,7 +983,7 @@ duplication hint:
 error hint:
 Leading(t3 t4 t1 t2 t1)
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -1011,7 +1011,7 @@ duplication hint:
 error hint:
 Leading(t3 t4 t4)
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -1029,7 +1029,7 @@ Leading(t3 t4 t4)
 (13 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = "*VALUES*".column1)
@@ -1047,7 +1047,7 @@ HashJoin(t1 t2)
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = "*VALUES*".column1)
@@ -1065,7 +1065,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN
+                QUERY PLAN                 
 -------------------------------------------
  Hash Join
    Hash Cond: (t1.id = "*VALUES*".column1)
@@ -1085,7 +1085,7 @@ IndexScan(*VALUES*)
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = "*VALUES*".column1)
@@ -1096,7 +1096,7 @@ error hint:
 
 -- single table scan hint test
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
-                QUERY PLAN
+                QUERY PLAN                 
 -------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $1)
@@ -1127,7 +1127,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $3)
@@ -1154,7 +1154,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $3)
@@ -1181,7 +1181,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
    InitPlan 2 (returns $1)
@@ -1210,7 +1210,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $3)
@@ -1238,7 +1238,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
    InitPlan 1 (returns $1)
@@ -1267,7 +1267,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
    InitPlan 2 (returns $1)
@@ -1297,7 +1297,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                        QUERY PLAN
+                        QUERY PLAN                        
 ----------------------------------------------------------
  YB Bitmap Table Scan on t1
    InitPlan 1 (returns $1)
@@ -1662,7 +1662,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Append
    ->  Seq Scan on ischk_d1 ischk_1
@@ -1686,7 +1686,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: ("""t1 ) ".id = "t       2 """.id)
@@ -1740,7 +1740,7 @@ Leading(t1 t2)
 Set(enable_seqscan off)
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Merge Join
    Merge Cond: (t1.id = t2.id)
@@ -1766,7 +1766,7 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
 );
-                                                        QUERY PLAN
+                                                        QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -1844,7 +1844,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                        QUERY PLAN
+                                                        QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -1923,7 +1923,7 @@ Leading(a t1_1 t1_2 t1_4 t1_5)
 duplication hint:
 error hint:
 
-                                                        QUERY PLAN
+                                                        QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2002,7 +2002,7 @@ Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 
 duplication hint:
 error hint:
 
-                                                        QUERY PLAN
+                                                        QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2084,7 +2084,7 @@ NestLoop(t1_5 t2_5)
 duplication hint:
 error hint:
 
-                                                        QUERY PLAN
+                                                        QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2151,7 +2151,7 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
 );
-                                                  QUERY PLAN
+                                                  QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2229,7 +2229,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                  QUERY PLAN
+                                                  QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2308,7 +2308,7 @@ Leading(a t1_1 t1_2 t1_4 t1_5)
 duplication hint:
 error hint:
 
-                                                  QUERY PLAN
+                                                  QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2387,7 +2387,7 @@ Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 
 duplication hint:
 error hint:
 
-                                                  QUERY PLAN
+                                                  QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2469,7 +2469,7 @@ NestLoop(t1_5 t2_5)
 duplication hint:
 error hint:
 
-                                                  QUERY PLAN
+                                                  QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Nested Loop
    InitPlan 1 (returns $2048)
@@ -2526,7 +2526,7 @@ error hint:
 
 -- ambiguous error
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -2550,7 +2550,7 @@ duplication hint:
 error hint:
 MergeJoin(t1 t2)
 
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -2574,7 +2574,7 @@ duplication hint:
 error hint:
 Leading(t1 t2 t1)
 
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -2589,7 +2589,7 @@ Leading(t1 t2 t1)
 
 -- identifier length test
 EXPLAIN (COSTS false) SELECT * FROM t1 "123456789012345678901234567890123456789012345678901234567890123" JOIN t2 ON ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id) JOIN t3 ON (t2.id = t3.id);
-                                                               QUERY PLAN
+                                                               QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id)
@@ -2620,7 +2620,7 @@ duplication hint:
 error hint:
 Set(123456789012345678901234567890123456789012345678901234567890123 1)
 
-                                             QUERY PLAN
+                                             QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
@@ -2663,7 +2663,7 @@ duplication hint:
 error hint:
 Set(123456789012345678901234567890123456789012345678901234567890123 1)
 
-                                             QUERY PLAN
+                                             QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
@@ -2700,7 +2700,7 @@ error hint:
 Set(enable_seqscan 100)
 Set(seq_page_cost on)
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -2711,7 +2711,7 @@ Set(seq_page_cost on)
 
 -- debug log of candidate index to use IndexScan
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -2727,7 +2727,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Index Scan using t5_id2 on t5
    Index Cond: (id = 1)
@@ -2743,7 +2743,7 @@ IndexScan(t5 no_exist)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -2759,7 +2759,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Index Scan using t5_id2 on t5
    Index Cond: (id = 1)
@@ -2775,7 +2775,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Index Scan using t5_id2 on t5
    Index Cond: (id = 1)
@@ -2791,7 +2791,7 @@ IndexScan(t5 no_exist5 no_exist2)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -2799,7 +2799,7 @@ error hint:
 
 -- outer inner
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -2824,7 +2824,7 @@ duplication hint:
 error hint:
 Leading((t1))
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -2847,7 +2847,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Nested Loop
    Join Filter: (t2.val = t3.val)
@@ -2872,7 +2872,7 @@ duplication hint:
 error hint:
 Leading((t1 t2 t3))
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -2887,7 +2887,7 @@ Leading((t1 t2 t3))
 (10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.id < 10;
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -2906,7 +2906,7 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -2917,7 +2917,7 @@ error hint:
 (6 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -2940,7 +2940,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -2955,7 +2955,7 @@ error hint:
 (10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.val = t3.val)
@@ -2982,7 +2982,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Hash Join
    Hash Cond: (t3.id = t4.id)
@@ -3001,7 +3001,7 @@ error hint:
 (14 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3024,7 +3024,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3047,7 +3047,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -3062,7 +3062,7 @@ error hint:
 (10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.val = t3.val)
@@ -3089,7 +3089,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Hash Join
    Hash Cond: (t1.val = t3.val)
@@ -3108,7 +3108,7 @@ error hint:
 (14 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < ( SELECT t1_2.id FROM t1 t1_2, t2 t2_2 WHERE t1_2.id = t2_2.id AND t2_2.val > 100 ORDER BY t1_2.id LIMIT 1);
-                                       QUERY PLAN
+                                       QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3144,7 +3144,7 @@ duplication hint:
 Leading(((t1 t2) t3))
 error hint:
 
-                                       QUERY PLAN
+                                       QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -3178,7 +3178,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3211,7 +3211,7 @@ Leading(((((t1 t2) t3) t1_2) t2_2))
 duplication hint:
 error hint:
 
-                                       QUERY PLAN
+                                       QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3245,7 +3245,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3269,7 +3269,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3296,7 +3296,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN
+                  QUERY PLAN                   
 -----------------------------------------------
  Merge Join
    Merge Cond: (t2.val = t3.val)
@@ -3323,7 +3323,7 @@ MergeJoin(t1 t3)
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3338,7 +3338,7 @@ error hint:
 (10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.val = t3.val)
@@ -3366,7 +3366,7 @@ MergeJoin(t3 t4)
 duplication hint:
 error hint:
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t3.id = t4.id)
@@ -3397,7 +3397,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Merge Join
    Merge Cond: (t3.id = t4.id)
@@ -3427,7 +3427,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -3450,7 +3450,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -3473,7 +3473,7 @@ Leading(("t1(t2" "t3)"))
 duplication hint:
 error hint:
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3496,7 +3496,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3519,7 +3519,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3542,7 +3542,7 @@ Leading(("(t1" "t2)t3"))
 duplication hint:
 error hint:
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
@@ -3565,7 +3565,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                              QUERY PLAN
+                                              QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -3595,7 +3595,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                              QUERY PLAN
+                                              QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t5.id = t1.id)
@@ -3628,7 +3628,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t5.id)
@@ -3658,7 +3658,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t2.id = t1.id)
@@ -3688,7 +3688,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t3.id)
@@ -3718,7 +3718,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (t4.id = t1.id)
@@ -3748,7 +3748,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (t4.id = t1.id)
@@ -3778,7 +3778,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t3.id = t1.id)
@@ -3851,7 +3851,7 @@ set max_parallel_workers_per_gather to 0;
 -- regular expression
 -- ordinary table
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3867,7 +3867,7 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3883,7 +3883,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Index Scan using t5_id3 on t5
    Index Cond: (id = 1)
@@ -3899,7 +3899,7 @@ IndexScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3915,7 +3915,7 @@ IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3931,7 +3931,7 @@ IndexScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3947,7 +3947,7 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3963,7 +3963,7 @@ not used hint:
 duplication hint:
 error hint:
 
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  Index Only Scan using t5_id3 on t5
    Index Cond: (id = 1)
@@ -3979,7 +3979,7 @@ IndexOnlyScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -3995,7 +3995,7 @@ IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -4011,7 +4011,7 @@ IndexOnlyScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -4029,7 +4029,7 @@ not used hint:
 duplication hint:
 error hint:
 
-             QUERY PLAN
+             QUERY PLAN             
 ------------------------------------
  YB Bitmap Table Scan on t5
    ->  Bitmap Index Scan on t5_pkey
@@ -4046,7 +4046,7 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  YB Bitmap Table Scan on t5
    ->  Bitmap Index Scan on t5_id3
@@ -4063,7 +4063,7 @@ BitmapScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -4079,7 +4079,7 @@ BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -4095,7 +4095,7 @@ BitmapScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t5_pkey on t5
    Index Cond: (id = 1)
@@ -4104,7 +4104,7 @@ error hint:
 -- YB_COMMENT
 -- Inheritance
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
-         QUERY PLAN
+         QUERY PLAN          
 -----------------------------
  Seq Scan on p1
    Storage Filter: (val = 1)
@@ -4140,7 +4140,7 @@ INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES 
 INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?;', '', 'IndexScan(t1)');
 INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('EXPLAIN SELECT * FROM t1 WHERE t1.id = ?;', '', 'BitmapScan(t1)');
 SELECT * FROM hint_plan.hints ORDER BY id;
- id |                    norm_query_string                     | application_name |     hints
+ id |                    norm_query_string                     | application_name |     hints      
 ----+----------------------------------------------------------+------------------+----------------
   1 | EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;  |                  | SeqScan(t1)
   2 | EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?; |                  | IndexScan(t1)
@@ -4156,7 +4156,7 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN
+         QUERY PLAN         
 ----------------------------
  Seq Scan on t1
    Storage Filter: (id = 1)
@@ -4164,7 +4164,7 @@ error hint:
 
 SET pg_hint_plan.enable_hint_table = off;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = 1)
@@ -4175,7 +4175,7 @@ VACUUM ANALYZE hint_plan.hints;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 -- plpgsql test
 EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 1;
-           QUERY PLAN
+           QUERY PLAN           
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = 1)
@@ -4200,7 +4200,7 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ *          FROM t1 LIMIT 1"
 PL/pgSQL function testfunc() line 5 at SQL statement
- testfunc
+ testfunc 
 ----------
  (854,54)
 (1 row)
@@ -4222,9 +4222,9 @@ error hint:
 
 CONTEXT:  SQL statement "/*+ SeqScan(t1) */ SELECT * FROM t1"
 PL/pgSQL function testfunc() line 3 at EXECUTE
- testfunc
+ testfunc 
 ----------
-
+ 
 (1 row)
 
 -- This should not use SeqScan(t1)
@@ -4236,7 +4236,7 @@ not used hint:
 duplication hint:
 error hint:
 
- id  | val
+ id  | val 
 -----+-----
  854 |  54
 (1 row)
@@ -4258,9 +4258,9 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT  1, /*+ SeqScan(t1) */ * from t1"
 PL/pgSQL function testfunc() line 3 at PERFORM
- testfunc
+ testfunc 
 ----------
-
+ 
 (1 row)
 
 -- FOR loop
@@ -4287,9 +4287,9 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ v FROM t1 ORDER BY id"
 PL/pgSQL function testfunc() line 7 at FOR over SELECT rows
- testfunc
+ testfunc 
 ----------
-
+         
 (1 row)
 
 -- Dynamic FOR loop
@@ -4317,7 +4317,7 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ val FROM t1 ORDER BY id"
 PL/pgSQL function testfunc() line 8 at FOR over EXECUTE statement
- testfunc
+ testfunc 
 ----------
         0
 (1 row)
@@ -4346,7 +4346,7 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id"
 PL/pgSQL function testfunc() line 7 at FOR over cursor
- testfunc
+ testfunc 
 ----------
    495000
 (1 row)
@@ -4368,7 +4368,7 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id"
 PL/pgSQL function testfunc() line 3 at RETURN QUERY
- id | val
+ id | val 
 ----+-----
   1 |   1
 (1 row)
@@ -4395,7 +4395,7 @@ not used hint:
 duplication hint:
 error hint:
 
- id  | val
+ id  | val 
 -----+-----
  854 |  54
 (1 row)
@@ -4588,7 +4588,7 @@ set client_min_messages to 'DEBUG1';
 /*+ SeqScan( */ SELECT 1;
 INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Closing parenthesis is necessary.
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -4601,7 +4601,7 @@ not used hint:
 duplication hint:
 error hint:
 
- id | val
+ id | val 
 ----+-----
 (0 rows)
 
@@ -4617,7 +4617,7 @@ not used hint:
 duplication hint:
 error hint:
 
- id | val
+ id | val 
 ----+-----
 (0 rows)
 
@@ -4626,7 +4626,7 @@ set pg_hint_plan.parse_messages to 'NOTICE';
 /*+ SeqScan( */ SELECT 1;
 NOTICE:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Closing parenthesis is necessary.
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -4639,7 +4639,7 @@ not used hint:
 duplication hint:
 error hint:
 
- id | val
+ id | val 
 ----+-----
 (0 rows)
 
@@ -4659,7 +4659,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t3.id)
@@ -4674,3 +4674,4 @@ error hint:
    ->  Index Scan using t3_pkey on t3
          Index Cond: (id = ANY (ARRAY[t1.id, $1, $2, ..., $1023]))
 (12 rows)
+

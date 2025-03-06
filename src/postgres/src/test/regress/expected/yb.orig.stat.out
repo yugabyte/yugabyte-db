@@ -14,31 +14,31 @@ ERROR:  temporary file size exceeds temp_file_limit (0kB)
 -- In that time, the statistics in the backend would be updated and we will read updated
 -- statistics.
 SELECT pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 \d yb_terminated_queries
                     View "pg_catalog.yb_terminated_queries"
-       Column       |           Type           | Collation | Nullable | Default
+       Column       |           Type           | Collation | Nullable | Default 
 --------------------+--------------------------+-----------+----------+---------
- databasename       | name                     |           |          |
- backend_pid        | integer                  |           |          |
- query_text         | text                     |           |          |
- termination_reason | text                     |           |          |
- query_start_time   | timestamp with time zone |           |          |
- query_end_time     | timestamp with time zone |           |          |
+ databasename       | name                     |           |          | 
+ backend_pid        | integer                  |           |          | 
+ query_text         | text                     |           |          | 
+ termination_reason | text                     |           |          | 
+ query_start_time   | timestamp with time zone |           |          | 
+ query_end_time     | timestamp with time zone |           |          | 
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                   query_text
+ databasename |                termination_reason                 |                   query_text                   
 --------------+---------------------------------------------------+------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
 (2 rows)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'yugabyte';
- databasename |                termination_reason                 |                   query_text
+ databasename |                termination_reason                 |                   query_text                   
 --------------+---------------------------------------------------+------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -47,7 +47,7 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries W
 CREATE DATABASE db2;
 \c db2
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                   query_text
+ databasename |                termination_reason                 |                   query_text                   
 --------------+---------------------------------------------------+------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -58,13 +58,13 @@ SET temp_file_limit TO 0;
 SELECT * FROM generate_series(0, 1000001);
 ERROR:  temporary file size exceeds temp_file_limit (0kB)
 SELECT pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                   query_text
+ databasename |                termination_reason                 |                   query_text                   
 --------------+---------------------------------------------------+------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -77,13 +77,13 @@ SELECT 'We were taught in this modern age that science and mathematics is the pi
 FROM generate_series(0, 1000000);
 ERROR:  temporary file size exceeds temp_file_limit (0kB)
 SELECT pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                                                         query_text
+ databasename |                termination_reason                 |                                                         query_text                                                         
 --------------+---------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -94,14 +94,14 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 (4 rows)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'yugabyte';
- databasename |                termination_reason                 |                   query_text
+ databasename |                termination_reason                 |                   query_text                   
 --------------+---------------------------------------------------+------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
 (2 rows)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'db2';
- databasename |                termination_reason                 |                                                         query_text
+ databasename |                termination_reason                 |                                                         query_text                                                         
 --------------+---------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
  db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000001);
  db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
@@ -110,20 +110,20 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries W
 (2 rows)
 
 SELECT query_text, length(query_text) AS query_length FROM yb_terminated_queries;
-                                                         query_text                                                         | query_length
+                                                         query_text                                                         | query_length 
 ----------------------------------------------------------------------------------------------------------------------------+--------------
  SELECT * FROM generate_series(0, 1000000);                                                                                 |           42
  SELECT 'bob' FROM generate_series(0, 1000000);                                                                             |           46
  SELECT * FROM generate_series(0, 1000001);                                                                                 |           42
  SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +|          255
- 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+|
- 'We need to stand back                                                                                                     |
+ 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+| 
+ 'We need to stand back                                                                                                     | 
 (4 rows)
 
 -- Test permissions for different roles
 \c yugabyte
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                                                         query_text
+ databasename |                termination_reason                 |                                                         query_text                                                         
 --------------+---------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -138,9 +138,9 @@ CREATE ROLE test_user WITH login;
 SELECT * FROM generate_series(0, 100000002);
 ERROR:  temporary file size exceeds temp_file_limit (1048576kB)
 SELECT pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SELECT
@@ -148,7 +148,7 @@ SELECT
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
 LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
- databasename |                  query_text
+ databasename |                  query_text                  
 --------------+----------------------------------------------
  yugabyte     | SELECT * FROM generate_series(0, 100000002);
 (1 row)
@@ -161,7 +161,7 @@ SELECT
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
 LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
- databasename |                                                         query_text
+ databasename |                                                         query_text                                                         
 --------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte     | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -181,7 +181,7 @@ SELECT
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
 LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
- databasename |                                                         query_text
+ databasename |                                                         query_text                                                         
 --------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte     | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | SELECT 'bob' FROM generate_series(0, 1000000);
@@ -204,7 +204,7 @@ SET work_mem TO 128;
 -- to change the value of this config.
 SET temp_file_limit TO 0;
 show temp_file_limit;
- temp_file_limit
+ temp_file_limit 
 -----------------
  0
 (1 row)
@@ -212,7 +212,7 @@ show temp_file_limit;
 SELECT * FROM generate_series(0, 1234567);
 ERROR:  temporary file size exceeds temp_file_limit (0kB)
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries ORDER BY databasename;
-    databasename    |                   termination_reason                    |                                                         query_text
+    databasename    |                   termination_reason                    |                                                         query_text                                                         
 --------------------+---------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
  db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000001);
  db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
@@ -228,14 +228,15 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries O
 -- of our created database only.
 ALTER user test_user WITH nosuperuser;
 SELECT pg_sleep(1);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
-    databasename    |                   termination_reason                    |                  query_text
+    databasename    |                   termination_reason                    |                  query_text                  
 --------------------+---------------------------------------------------------+----------------------------------------------
  yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
  test_user_database | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1234567);
 (2 rows)
+

@@ -70,7 +70,7 @@ select * from bar;
 create sequence test_seq;
 \d test_seq
                           Sequence "public.test_seq"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
 
@@ -80,7 +80,7 @@ ERROR:  relation "test_seq" does not exist
 LINE 1: select nextval('test_seq');
                        ^
 select nextval('test_seq_renamed');
- nextval
+ nextval 
 ---------
        1
 (1 row)
@@ -88,7 +88,7 @@ select nextval('test_seq_renamed');
 \d test_seq
 \d test_seq_renamed
                       Sequence "public.test_seq_renamed"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
 
@@ -98,16 +98,16 @@ alter database test_rename2 rename to postgres; -- fail
 ERROR:  database "postgres" already exists
 \l
                                                   List of databases
-      Name       |  Owner   | Encoding | Collate |    Ctype    | ICU Locale | Locale Provider |   Access privileges
+      Name       |  Owner   | Encoding | Collate |    Ctype    | ICU Locale | Locale Provider |   Access privileges   
 -----------------+----------+----------+---------+-------------+------------+-----------------+-----------------------
- postgres        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
- system_platform | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ postgres        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | 
+ system_platform | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | 
  template0       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | =c/postgres          +
                  |          |          |         |             |            |                 | postgres=CTc/postgres
  template1       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | =c/postgres          +
                  |          |          |         |             |            |                 | postgres=CTc/postgres
- test_rename1    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            |
- test_rename2    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            |
- yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ test_rename1    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            | 
+ test_rename2    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            | 
+ yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | 
 (7 rows)
 

@@ -5,13 +5,13 @@ INSERT INTO t_temp VALUES (1,1);
 -- check system columns in YbSeqScan (#18485)
 explain (costs off)
 /*+ SeqScan(t_normal) */ SELECT tableoid::regclass, * FROM t_normal;
-      QUERY PLAN
+      QUERY PLAN      
 ----------------------
  Seq Scan on t_normal
 (1 row)
 
 /*+ SeqScan(t_normal) */ SELECT tableoid::regclass, * FROM t_normal;
- tableoid | k | v
+ tableoid | k | v 
 ----------+---+---
  t_normal | 1 | 1
 (1 row)
@@ -24,25 +24,26 @@ ERROR:  system column "xmax" is not supported yet
 ERROR:  system column "ctid" is not supported yet
 -- check system columns in YbSeqScan on temp tables
 SELECT tableoid::regclass, * FROM t_temp;
- tableoid | k | v
+ tableoid | k | v 
 ----------+---+---
  t_temp   | 1 | 1
 (1 row)
 
 SELECT xmin, * FROM t_temp;
- xmin | k | v
+ xmin | k | v 
 ------+---+---
     3 | 1 | 1
 (1 row)
 
 SELECT xmax, * FROM t_temp;
- xmax | k | v
+ xmax | k | v 
 ------+---+---
     0 | 1 | 1
 (1 row)
 
 SELECT ctid, * FROM t_temp;
- ctid  | k | v
+ ctid  | k | v 
 -------+---+---
  (0,1) | 1 | 1
 (1 row)
+

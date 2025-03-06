@@ -9,12 +9,12 @@
 SELECT datname, usename, state, query, backend_type,
        catalog_version IS NOT null AS has_catalog_snapshot
     FROM pg_stat_activity ORDER BY usename;
- datname  |    usename    | state  |                           query                            |   backend_type   | has_catalog_snapshot
+ datname  |    usename    | state  |                           query                            |   backend_type   | has_catalog_snapshot 
 ----------+---------------+--------+------------------------------------------------------------+------------------+----------------------
           | postgres      |        |                                                            | yb_ash collector | f
  yugabyte | yugabyte      | active | SELECT datname, usename, state, query, backend_type,      +| client backend   | t
-          |               |        |        catalog_version IS NOT null AS has_catalog_snapshot+|                  |
-          |               |        |     FROM pg_stat_activity ORDER BY usename;                |                  |
+          |               |        |        catalog_version IS NOT null AS has_catalog_snapshot+|                  | 
+          |               |        |     FROM pg_stat_activity ORDER BY usename;                |                  | 
  yugabyte | yugabyte_test | idle   | GRANT ALL ON SCHEMA public TO public                       | client backend   | f
           |               |        |                                                            | checkpointer     | f
 (4 rows)
@@ -25,7 +25,7 @@ SELECT beid,
        yb_pg_stat_get_backend_catalog_version(beid) IS NOT NULL AS has_catalog_snapshot
 FROM pg_stat_get_backend_idset() beid
 JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid;
- beid |   backend_type   | has_catalog_snapshot
+ beid |   backend_type   | has_catalog_snapshot 
 ------+------------------+----------------------
     1 | yb_ash collector | f
     2 | client backend   | f
@@ -42,7 +42,7 @@ FROM pg_stat_get_backend_idset() AS beid
 JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
 CROSS JOIN yb_pg_stat_get_backend_catalog_version(beid) AS be_catalog_version
 WHERE be_catalog_version IS NOT NULL;
- beid |  backend_type  | catalog_version_diff
+ beid |  backend_type  | catalog_version_diff 
 ------+----------------+----------------------
     3 | client backend |                    0
 (1 row)
@@ -56,7 +56,7 @@ JOIN pg_database d ON pg_stat_get_backend_dbid(beid) = d.oid
 JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
 WHERE d.datname = current_database()
 ORDER BY beid;
- beid |  backend_type  | database_name
+ beid |  backend_type  | database_name 
 ------+----------------+---------------
     2 | client backend | yugabyte
     3 | client backend | yugabyte
@@ -73,7 +73,7 @@ JOIN pg_database d ON pg_stat_get_backend_dbid(beid) = d.oid
 JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
 WHERE d.datname = current_database()
 ORDER BY beid;
- beid |  backend_type  | database_name
+ beid |  backend_type  | database_name 
 ------+----------------+---------------
     3 | client backend | postgres
 (1 row)
@@ -98,8 +98,9 @@ INSERT INTO actual_expected
          pg_stat_get_backend_pid(beid) pid
     WHERE pid = pg_backend_pid();
 SELECT actual = expected AS check FROM actual_expected;
- check
+ check 
 -------
  t
  t
 (2 rows)
+

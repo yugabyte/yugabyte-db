@@ -476,7 +476,7 @@ CREATE FUNCTION my_int_eq(int, int) RETURNS bool
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
 WHERE my_int_eq(a.unique2, 42); -- YB: output's a and b are flipped
-               QUERY PLAN
+               QUERY PLAN               
 ----------------------------------------
  Hash Join
    Hash Cond: (a.unique1 = b.unique1)
@@ -495,7 +495,7 @@ ALTER FUNCTION my_int_eq(int, int) SUPPORT test_support_func;
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
 WHERE my_int_eq(a.unique2, 42); -- YB: TODO: investigate why NestLoop is still higher cost
-               QUERY PLAN
+               QUERY PLAN               
 ----------------------------------------
  Hash Join
    Hash Cond: (a.unique1 = b.unique1)
@@ -523,7 +523,7 @@ SELECT * FROM tenk1 a JOIN my_gen_series(1,1000) g ON a.unique1 = g;
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (a.unique1 = g.g)
@@ -531,3 +531,4 @@ SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
    ->  Index Scan using tenk1_unique1 on tenk1 a
          Index Cond: (unique1 = ANY (ARRAY[g.g, $1, $2, ..., $1023]))
 (5 rows)
+

@@ -43,7 +43,7 @@ CREATE TEMP TABLE tmp (i int PRIMARY KEY, j int);
 CREATE INDEX ON tmp (j);
 SELECT relname FROM pg_class c JOIN pg_index i on c.oid = i.indexrelid
     WHERE indisvalid = false;
-         relname
+         relname          
 --------------------------
  pg_class_oid_index
  pg_depend_depender_index
@@ -55,7 +55,7 @@ SELECT relname FROM pg_class c JOIN pg_index i on c.oid = i.indexrelid
 --
 -- REINDEX SYSTEM/DATABASE expects current database name.
 SELECT current_database();
- current_database
+ current_database 
 ------------------
  yugabyte
 (1 row)
@@ -128,7 +128,7 @@ REINDEX INDEX yb_j_idx;
 -- Any rebuilt indexes should now be public.
 SELECT relname FROM pg_class c JOIN pg_index i on c.oid = i.indexrelid
     WHERE indisvalid = false;
-      relname
+      relname       
 --------------------
  pg_class_oid_index
 (1 row)
@@ -143,7 +143,7 @@ EXPLAIN (costs off)
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on pg_depend
    Storage Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
@@ -152,7 +152,7 @@ SELECT deptype FROM pg_depend
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype
+ deptype 
 ---------
  n
 (1 row)
@@ -161,7 +161,7 @@ EXPLAIN (costs off)
 /*+IndexScan(pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using pg_depend_depender_index on pg_depend
    Index Cond: ((classid = '1259'::oid) AND (objid = '54321'::oid))
@@ -170,7 +170,7 @@ SELECT deptype FROM pg_depend
 /*+IndexScan(pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype
+ deptype 
 ---------
  n
 (1 row)
@@ -178,7 +178,7 @@ SELECT deptype FROM pg_depend
 EXPLAIN (costs off)
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Seq Scan on tmp
    Filter: (j = '-5'::integer)
@@ -186,7 +186,7 @@ SELECT i FROM tmp WHERE j = -5;
 
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
- i
+ i 
 ---
  5
 (1 row)
@@ -195,7 +195,7 @@ SET enable_bitmapscan = on;
 EXPLAIN (costs off)
 /*+IndexScan(tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Bitmap Heap Scan on tmp
    Recheck Cond: (j = '-5'::integer)
@@ -205,7 +205,7 @@ SELECT i FROM tmp WHERE j = -5;
 
 /*+IndexScan(tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
- i
+ i 
 ---
  5
 (1 row)
@@ -214,7 +214,7 @@ RESET enable_bitmapscan;
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  Seq Scan on yb
    Storage Filter: (j = '-5'::integer)
@@ -222,7 +222,7 @@ SELECT i FROM yb WHERE j = -5;
 
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
- i
+ i 
 ---
  5
 (1 row)
@@ -230,7 +230,7 @@ SELECT i FROM yb WHERE j = -5;
 EXPLAIN (costs off)
 /*+IndexScan(yb_j_idx) */
 SELECT i FROM yb WHERE j = -5;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Scan using yb_j_idx on yb
    Index Cond: (j = '-5'::integer)
@@ -238,7 +238,7 @@ SELECT i FROM yb WHERE j = -5;
 
 /*+IndexScan(yb_j_idx) */
 SELECT i FROM yb WHERE j = -5;
- i
+ i 
 ---
  5
 (1 row)
@@ -263,14 +263,14 @@ UPDATE pg_index SET indislive = true, indisready = true, indisvalid = true
 -- Show the corruption.
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
- i
+ i  
 ----
  11
 (1 row)
 
 /*+IndexScan(tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
- i
+ i 
 ---
 (0 rows)
 
@@ -285,7 +285,7 @@ REINDEX INDEX tmp_j_idx;
 EXPLAIN (costs off)
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
-          QUERY PLAN
+          QUERY PLAN           
 -------------------------------
  Seq Scan on tmp
    Filter: (j = '-5'::integer)
@@ -293,7 +293,7 @@ SELECT i FROM tmp WHERE j = -5;
 
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
- i
+ i  
 ----
  11
 (1 row)
@@ -303,14 +303,14 @@ SELECT i FROM tmp WHERE j = -5;
 SET enable_seqscan TO off;
 EXPLAIN (costs off)
 SELECT i FROM tmp WHERE j = -5;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Scan using tmp_j_idx on tmp
    Index Cond: (j = '-5'::integer)
 (2 rows)
 
 SELECT i FROM tmp WHERE j = -5;
- i
+ i  
 ----
  11
 (1 row)
@@ -351,7 +351,7 @@ UPDATE pg_index SET indislive = true, indisready = true, indisvalid = true
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype
+ deptype 
 ---------
  n
 (1 row)
@@ -362,14 +362,14 @@ SELECT deptype FROM pg_depend
 ERROR:  ybctid not found in indexed table
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
- i
+ i  
 ----
  11
 (1 row)
 
 /*+IndexScan(yb_j_idx) */
 SELECT i FROM yb WHERE j = -5;
- i
+ i 
 ---
 (0 rows)
 
@@ -389,7 +389,7 @@ EXPLAIN (costs off)
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                               QUERY PLAN
+                               QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on pg_depend
    Storage Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
@@ -398,7 +398,7 @@ SELECT deptype FROM pg_depend
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype
+ deptype 
 ---------
  n
 (1 row)
@@ -407,7 +407,7 @@ EXPLAIN (costs off)
 /*+IndexScan(pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using pg_depend_depender_index on pg_depend
    Index Cond: ((classid = '1259'::oid) AND (objid = '54321'::oid))
@@ -416,7 +416,7 @@ SELECT deptype FROM pg_depend
 /*+IndexScan(pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype
+ deptype 
 ---------
  n
 (1 row)
@@ -424,7 +424,7 @@ SELECT deptype FROM pg_depend
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-              QUERY PLAN
+              QUERY PLAN               
 ---------------------------------------
  Seq Scan on yb
    Storage Filter: (j = '-5'::integer)
@@ -432,7 +432,7 @@ SELECT i FROM yb WHERE j = -5;
 
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
- i
+ i  
 ----
  11
 (1 row)
@@ -440,7 +440,7 @@ SELECT i FROM yb WHERE j = -5;
 EXPLAIN (costs off)
 /*+IndexScan(yb_j_idx) */
 SELECT i FROM yb WHERE j = -5;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Scan using yb_j_idx on yb
    Index Cond: (j = '-5'::integer)
@@ -448,7 +448,7 @@ SELECT i FROM yb WHERE j = -5;
 
 /*+IndexScan(yb_j_idx) */
 SELECT i FROM yb WHERE j = -5;
- i
+ i  
 ----
  11
 (1 row)
@@ -502,7 +502,7 @@ ERROR:  cannot reindex shared system indexes
 -- make sure index isn't broken after failure
 /*+IndexOnlyScan(pg_database pg_database_datname_index)*/
 SELECT datname from pg_database WHERE datname LIKE 'template%';
-  datname
+  datname  
 -----------
  template0
  template1
@@ -516,7 +516,7 @@ INSERT INTO ing SELECT g, -g FROM generate_series(1, 10) g;
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Sort
    Sort Key: i
@@ -526,7 +526,7 @@ SELECT i FROM ing WHERE j < -8 ORDER BY i;
 
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
- i
+ i  
 ----
   9
  10
@@ -539,7 +539,7 @@ REINDEX INDEX ing_j_idx;
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Sort
    Sort Key: i
@@ -549,7 +549,7 @@ SELECT i FROM ing WHERE j < -8 ORDER BY i;
 
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
- i
+ i  
 ----
   9
  10
@@ -558,7 +558,7 @@ SELECT i FROM ing WHERE j < -8 ORDER BY i;
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j = -9;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Scan using ing_j_idx on ing
    Index Cond: (j = '-9'::integer)
@@ -566,7 +566,7 @@ SELECT i FROM ing WHERE j = -9;
 
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j = -9;
- i
+ i 
 ---
  9
 (1 row)
@@ -578,7 +578,7 @@ CREATE INDEX NONCONCURRENTLY ON mv (j ASC);
 EXPLAIN (costs off)
 /*+IndexScan(mv_j_idx)*/
 SELECT i FROM mv WHERE j > -3 ORDER BY i;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Sort
    Sort Key: i
@@ -588,7 +588,7 @@ SELECT i FROM mv WHERE j > -3 ORDER BY i;
 
 /*+IndexScan(mv_j_idx)*/
 SELECT i FROM mv WHERE j > -3 ORDER BY i;
- i
+ i 
 ---
  1
  2
@@ -601,7 +601,7 @@ REINDEX INDEX mv_j_idx;
 EXPLAIN (costs off)
 /*+IndexScan(mv_j_idx)*/
 SELECT i FROM mv WHERE j > -3 ORDER BY i;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Sort
    Sort Key: i
@@ -611,7 +611,7 @@ SELECT i FROM mv WHERE j > -3 ORDER BY i;
 
 /*+IndexScan(mv_j_idx)*/
 SELECT i FROM mv WHERE j > -3 ORDER BY i;
- i
+ i 
 ---
  1
  2
@@ -627,7 +627,7 @@ INSERT INTO parted SELECT (2 * g), g FROM generate_series(1, 9) g;
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
    ->  Index Only Scan using parted_odd_i_idx on parted_odd parted_1
@@ -638,7 +638,7 @@ SELECT i FROM parted WHERE i = (2 * 5);
 
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);
- i
+ i  
 ----
  10
 (1 row)
@@ -646,7 +646,7 @@ SELECT i FROM parted WHERE i = (2 * 5);
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_odd_i_idx)*/
 SELECT i FROM parted_odd WHERE i = (2 * 5);
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Index Only Scan using parted_odd_i_idx on parted_odd
    Index Cond: (i = 10)
@@ -654,7 +654,7 @@ SELECT i FROM parted_odd WHERE i = (2 * 5);
 
 /*+IndexOnlyScan(parted_odd_i_idx)*/
 SELECT i FROM parted_odd WHERE i = (2 * 5);
- i
+ i  
 ----
  10
 (1 row)
@@ -681,7 +681,7 @@ REINDEX INDEX parted_odd_i_idx;
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
    ->  Index Only Scan using parted_odd_i_idx on parted_odd parted_1
@@ -692,7 +692,7 @@ SELECT i FROM parted WHERE i = (2 * 5);
 
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);
- i
+ i  
 ----
  10
 (1 row)
@@ -700,7 +700,7 @@ SELECT i FROM parted WHERE i = (2 * 5);
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_odd_i_idx)*/
 SELECT i FROM parted_odd WHERE i = (2 * 5);
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Index Only Scan using parted_odd_i_idx on parted_odd
    Index Cond: (i = 10)
@@ -708,7 +708,7 @@ SELECT i FROM parted_odd WHERE i = (2 * 5);
 
 /*+IndexOnlyScan(parted_odd_i_idx)*/
 SELECT i FROM parted_odd WHERE i = (2 * 5);
- i
+ i  
 ----
  10
 (1 row)

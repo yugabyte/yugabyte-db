@@ -29,37 +29,37 @@ LINE 1: INSERT INTO PG_LSN_TBL VALUES ('/ABCD');
 DROP TABLE PG_LSN_TBL;
 -- Operators
 SELECT '0/16AE7F8' = '0/16AE7F8'::pg_lsn;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '0/16AE7F8'::pg_lsn != '0/16AE7F7';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '0/16AE7F7' < '0/16AE7F8'::pg_lsn;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '0/16AE7F8' > pg_lsn '0/16AE7F7';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '0/16AE7F7'::pg_lsn - '0/16AE7F8'::pg_lsn;
- ?column?
+ ?column? 
 ----------
        -1
 (1 row)
 
 SELECT '0/16AE7F8'::pg_lsn - '0/16AE7F7'::pg_lsn;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -72,7 +72,7 @@ SELECT DISTINCT (i || '/' || j)::pg_lsn f
        generate_series(1, 5) k
   WHERE i <= 10 AND j > 0 AND j <= 10
   ORDER BY f;
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Sort
    Sort Key: (((((i.i)::text || '/'::text) || (j.j)::text))::pg_lsn)
@@ -94,7 +94,7 @@ SELECT DISTINCT (i || '/' || j)::pg_lsn f
        generate_series(1, 5) k
   WHERE i <= 10 AND j > 0 AND j <= 10
   ORDER BY f;
-   f
+   f   
 -------
  1/1
  1/2
@@ -210,7 +210,7 @@ INSERT INTO PG_LSN_TBL_ASC VALUES
   (1, '0/64'),
   (1, 'FFFFFFFF/FFFFFF9C');
 SELECT b FROM PG_LSN_TBL_ASC WHERE a=1;
-         b
+         b         
 -------------------
  0/0
  0/1
@@ -221,3 +221,4 @@ SELECT b FROM PG_LSN_TBL_ASC WHERE a=1;
  FFFFFFFF/FFFFFF9C
  FFFFFFFF/FFFFFFFF
 (8 rows)
+

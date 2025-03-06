@@ -10,61 +10,61 @@ set standard_conforming_strings=on;
 -- reduce noise
 set extra_float_digits = 0;
 select show_trgm('');
- show_trgm
+ show_trgm 
 -----------
  {}
 (1 row)
 
 select show_trgm('(*&^$@%@');
- show_trgm
+ show_trgm 
 -----------
  {}
 (1 row)
 
 select show_trgm('a b c');
-               show_trgm
+               show_trgm               
 ---------------------------------------
  {"  a","  b","  c"," a "," b "," c "}
 (1 row)
 
 select show_trgm(' a b c ');
-               show_trgm
+               show_trgm               
 ---------------------------------------
  {"  a","  b","  c"," a "," b "," c "}
 (1 row)
 
 select show_trgm('aA bB cC');
-                        show_trgm
+                        show_trgm                        
 ---------------------------------------------------------
  {"  a","  b","  c"," aa"," bb"," cc","aa ","bb ","cc "}
 (1 row)
 
 select show_trgm(' aA bB cC ');
-                        show_trgm
+                        show_trgm                        
 ---------------------------------------------------------
  {"  a","  b","  c"," aa"," bb"," cc","aa ","bb ","cc "}
 (1 row)
 
 select show_trgm('a b C0*%^');
-                  show_trgm
+                  show_trgm                  
 ---------------------------------------------
  {"  a","  b","  c"," a "," b "," c0","c0 "}
 (1 row)
 
 select similarity('wow','WOWa ');
- similarity
+ similarity 
 ------------
         0.5
 (1 row)
 
 select similarity('wow',' WOW ');
- similarity
+ similarity 
 ------------
           1
 (1 row)
 
 select similarity('---', '####---');
- similarity
+ similarity 
 ------------
           0
 (1 row)
@@ -72,7 +72,7 @@ select similarity('---', '####---');
 CREATE TABLE test_trgm(t text COLLATE "C");
 \copy test_trgm from 'data/trgm.data'
 select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu0988' order by sml desc, t;
-      t      |   sml
+      t      |   sml    
 -------------+----------
  qwertyu0988 |        1
  qwertyu0980 | 0.714286
@@ -1077,7 +1077,7 @@ select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu098
 (1000 rows)
 
 select t,similarity(t,'gwertyu0988') as sml from test_trgm where t % 'gwertyu0988' order by sml desc, t;
-      t      |   sml
+      t      |   sml    
 -------------+----------
  qwertyu0988 |      0.6
  qwertyu0980 | 0.411765
@@ -1192,20 +1192,20 @@ select t,similarity(t,'gwertyu0988') as sml from test_trgm where t % 'gwertyu098
 (110 rows)
 
 select t,similarity(t,'gwertyu1988') as sml from test_trgm where t % 'gwertyu1988' order by sml desc, t;
-      t      |   sml
+      t      |   sml    
 -------------+----------
  qwertyu0988 | 0.333333
 (1 row)
 
 select t <-> 'q0987wertyu0988', t from test_trgm order by t <-> 'q0987wertyu0988' limit 2;
- ?column? |      t
+ ?column? |      t      
 ----------+-------------
  0.411765 | qwertyu0988
       0.5 | qwertyu0987
 (2 rows)
 
 select count(*) from test_trgm where t ~ '[qwerty]{2}-?[qwerty]{2}';
- count
+ count 
 -------
   1000
 (1 row)
@@ -1233,7 +1233,7 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 25
 -- check handling of indexquals that generate no searchable conditions
 explain (costs off)
 select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Aggregate
    ->  Index Scan using trgm_idx on test_trgm
@@ -1246,7 +1246,7 @@ DETAIL:  ybgin index method cannot use more than one scan key: got 2.
 HINT:  Consider rewriting the query with INTERSECT and UNION.
 explain (costs off)
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  Aggregate
    ->  Index Scan using trgm_idx on test_trgm
@@ -1263,7 +1263,7 @@ create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
 insert into t_test_trgm values ('qwerty99'), ('qwerty01');
 explain (costs off)
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on t_test_trgm
@@ -1273,14 +1273,14 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
 (5 rows)
 
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
- count
+ count 
 -------
      1
 (1 row)
 
 explain (costs off)
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on t_test_trgm
@@ -1290,7 +1290,7 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
 (5 rows)
 
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
- count
+ count 
 -------
      1
 (1 row)
@@ -1299,25 +1299,25 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
 set enable_bitmapscan=off;
 set enable_seqscan=on;
 select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
- count
+ count 
 -------
     19
 (1 row)
 
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
- count
+ count 
 -------
     19
 (1 row)
 
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
- count
+ count 
 -------
      1
 (1 row)
 
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
- count
+ count 
 -------
      1
 (1 row)
@@ -1341,7 +1341,7 @@ set enable_seqscan=off;
 set yb_test_ybgin_disable_cost_factor = 0.5;
 explain (costs off)
   select * from test2 where t like '%BCD%';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using test2_idx_gin on test2
    Index Cond: (t ~~ '%BCD%'::text)
@@ -1349,56 +1349,56 @@ explain (costs off)
 
 explain (costs off)
   select * from test2 where t ilike '%BCD%';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using test2_idx_gin on test2
    Index Cond: (t ~~* '%BCD%'::text)
 (2 rows)
 
 select * from test2 where t like '%BCD%';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t like '%bcd%';
-   t
+   t    
 --------
  abcdef
 (1 row)
 
 select * from test2 where t like E'%\\bcd%';
-   t
+   t    
 --------
  abcdef
 (1 row)
 
 select * from test2 where t ilike '%BCD%';
-   t
+   t    
 --------
  abcdef
 (1 row)
 
 select * from test2 where t ilike 'qua%';
-   t
+   t   
 -------
  quark
 (1 row)
 
 select * from test2 where t like '%z foo bar%';
-      t
+      t      
 -------------
    z foo bar
 (1 row)
 
 select * from test2 where t like '  z foo%';
-      t
+      t      
 -------------
    z foo bar
 (1 row)
 
 explain (costs off)
   select * from test2 where t ~ '[abc]{3}';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using test2_idx_gin on test2
    Index Cond: (t ~ '[abc]{3}'::text)
@@ -1406,7 +1406,7 @@ explain (costs off)
 
 explain (costs off)
   select * from test2 where t ~* 'DEF';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using test2_idx_gin on test2
    Index Cond: (t ~* 'DEF'::text)
@@ -1422,18 +1422,18 @@ select * from test2 where t ~ '(abc)*$';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 select * from test2 where t ~* 'DEF';
-   t
+   t    
 --------
  abcdef
 (1 row)
 
 select * from test2 where t ~ 'dEf';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t ~* '^q';
-   t
+   t   
 -------
  quark
 (1 row)
@@ -1445,7 +1445,7 @@ select * from test2 where t ~* 'ab[a-z]{3}';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 26.
 select * from test2 where t ~* '(^| )qua';
-   t
+   t   
 -------
  quark
 (1 row)
@@ -1463,31 +1463,31 @@ select * from test2 where t ~* '(a{10}|b{10}|c{10}){10}';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 15.
 select * from test2 where t ~ 'z foo bar';
-      t
+      t      
 -------------
    z foo bar
 (1 row)
 
 select * from test2 where t ~ ' z foo bar';
-      t
+      t      
 -------------
    z foo bar
 (1 row)
 
 select * from test2 where t ~ '  z foo bar';
-      t
+      t      
 -------------
    z foo bar
 (1 row)
 
 select * from test2 where t ~ '  z foo';
-      t
+      t      
 -------------
    z foo bar
 (1 row)
 
 select * from test2 where t ~ 'qua(?!foo)';
-   t
+   t   
 -------
  quark
 (1 row)
@@ -1498,82 +1498,82 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 10
 -- test = operator
 explain (costs off)
   select * from test2 where t = 'abcdef';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using test2_idx_gin on test2
    Index Cond: (t = 'abcdef'::text)
 (2 rows)
 
 select * from test2 where t = 'abcdef';
-   t
+   t    
 --------
  abcdef
 (1 row)
 
 explain (costs off)
   select * from test2 where t = '%line%';
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Index Scan using test2_idx_gin on test2
    Index Cond: (t = '%line%'::text)
 (2 rows)
 
 select * from test2 where t = '%line%';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t = 'li_e 1';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t = '%line 2';
-    t
+    t    
 ---------
  %line 2
 (1 row)
 
 select * from test2 where t = 'line 3%';
-    t
+    t    
 ---------
  line 3%
 (1 row)
 
 select * from test2 where t = '%line 3%';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t = '%line 4%';
-    t
+    t     
 ----------
  %line 4%
 (1 row)
 
 select * from test2 where t = '%line 5%';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t = '%li_ne 5%';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t = '%li%ne 5%';
-     t
+     t     
 -----------
  %li%ne 5%
 (1 row)
 
 select * from test2 where t = 'line 6';
- t
+ t 
 ---
 (0 rows)
 
 select * from test2 where t = 'li_e 6';
-   t
+   t    
 --------
  li_e 6
 (1 row)
@@ -1589,7 +1589,7 @@ INSERT INTO restaurants SELECT 'Szczecin' FROM generate_series(1, 10000);
 CREATE INDEX ON restaurants USING gist(city gist_trgm_ops);
 -- Similarity of the two names (for reference).
 SELECT similarity('Szczecin', 'Warsaw');
- similarity
+ similarity 
 ------------
           0
 (1 row)
@@ -1598,7 +1598,7 @@ SELECT similarity('Szczecin', 'Warsaw');
 EXPLAIN (COSTS OFF)
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  HashAggregate
    Group Key: city, similarity(city, 'Warsaw'::text), show_limit()
@@ -1609,27 +1609,27 @@ SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
 (6 rows)
 
 SELECT set_limit(0.3);
- set_limit
+ set_limit 
 -----------
        0.3
 (1 row)
 
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-  city  | similarity | show_limit
+  city  | similarity | show_limit 
 --------+------------+------------
  Warsaw |          1 |        0.3
 (1 row)
 
 SELECT set_limit(0.5);
- set_limit
+ set_limit 
 -----------
        0.5
 (1 row)
 
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-  city  | similarity | show_limit
+  city  | similarity | show_limit 
 --------+------------+------------
  Warsaw |          1 |        0.5
 (1 row)

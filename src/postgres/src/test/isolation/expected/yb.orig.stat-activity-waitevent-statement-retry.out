@@ -15,7 +15,7 @@ k|v
 step s2a: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2b: update foo set v=10 where k=1; <waiting ...>
 s1: NOTICE:  found wait event Timeout YBTxnConflictBackoff
-step s1c:
+step s1c: 
   DO $$DECLARE r record;
   BEGIN
       WHILE true LOOP

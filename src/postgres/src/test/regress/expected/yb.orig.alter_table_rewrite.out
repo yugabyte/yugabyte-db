@@ -211,7 +211,7 @@ ALTER TABLE test_partitioned ADD COLUMN c SERIAL, ALTER COLUMN b TYPE int USING 
 ALTER TABLE test_partitioned DROP CONSTRAINT test_partitioned_pkey;
 ALTER TABLE test_partitioned ADD PRIMARY KEY (a ASC);
 SELECT * FROM test_partitioned;
- a  | b | c
+ a  | b | c  
 ----+---+----
   1 | 4 |  1
   2 | 4 |  2
@@ -226,7 +226,7 @@ SELECT * FROM test_partitioned;
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test_partitioned WHERE b = 4;
-                                            QUERY PLAN
+                                            QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Append
    ->  Index Scan using test_partitioned_part1_b_idx on test_partitioned_part1 test_partitioned_1
@@ -236,7 +236,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_partitioned WHERE b = 4;
 (5 rows)
 
 SELECT * FROM test_partitioned WHERE b = 4;
- a  | b | c
+ a  | b | c  
 ----+---+----
   1 | 4 |  1
   2 | 4 |  2
@@ -325,7 +325,7 @@ INSERT INTO base VALUES (1, 1); -- should fail.
 ERROR:  duplicate key value violates unique constraint "base_idx_unique"
 INSERT INTO base VALUES (4, 4), (5, 5);
 SELECT col, col2 FROM base;
- col | col2
+ col | col2 
 -----+------
    1 |    3
    2 |    2
@@ -650,7 +650,7 @@ ERROR:  column "id" of relation "nopk_usingindex" contains null values
 DELETE FROM nopk_usingindex WHERE id IS NULL;
 ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx2;
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk_usingindex'::regclass);
- num_tablets | num_hash_key_columns
+ num_tablets | num_hash_key_columns 
 -------------+----------------------
            5 |                    1
 (1 row)
@@ -662,7 +662,7 @@ INSERT INTO nopk_usingindex VALUES (null); -- should fail.
 ERROR:  null value in column "id" of relation "nopk_usingindex" violates not-null constraint
 DETAIL:  Failing row contains (null).
 SELECT * FROM nopk_usingindex ORDER BY id;
- id
+ id 
 ----
   1
   2
@@ -676,7 +676,7 @@ HINT:  You can drop constraint nopk_idx2 on table nopk_usingindex instead.
 ALTER TABLE nopk_usingindex DROP CONSTRAINT nopk_idx2;
 ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx3;
 SELECT * FROM nopk_usingindex;
- id
+ id 
 ----
   1
   2
@@ -856,7 +856,7 @@ SELECT * from varchar_table;
 
 ALTER TABLE varchar_table ALTER c1 TYPE double precision USING sqrt(c1);
 SELECT * from varchar_table;
- id |         c1
+ id |         c1         
 ----+--------------------
   1 | 1.4142135623730951
   2 |                  1
@@ -1128,7 +1128,7 @@ DETAIL:  Column "id2" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 INSERT INTO test_identity OVERRIDING SYSTEM VALUE VALUES (4, 4);
 SELECT * FROM test_identity;
- id | id2
+ id | id2 
 ----+-----
   1 |   1
   2 |   2
@@ -1145,14 +1145,14 @@ INSERT INTO test_drop_pk_column VALUES (1, 1), (2, 2), (3, 3);
 ALTER TABLE test_drop_pk_column DROP COLUMN id;
 \d test_drop_pk_column;
         Table "public.test_drop_pk_column"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- v      | integer |           |          |
+ v      | integer |           |          | 
 Tablespace: "test_tblspc"
 
 INSERT INTO test_drop_pk_column VALUES (1);
 SELECT * FROM test_drop_pk_column ORDER BY v;
- v
+ v 
 ---
  1
  1
@@ -1166,15 +1166,15 @@ INSERT INTO test_drop_pk_column_composite VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3)
 ALTER TABLE test_drop_pk_column_composite DROP COLUMN id;
 \d test_drop_pk_column_composite;
    Table "public.test_drop_pk_column_composite"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- v      | integer |           | not null |
- t      | integer |           |          |
+ v      | integer |           | not null | 
+ t      | integer |           |          | 
 Tablespace: "test_tblspc"
 
 INSERT INTO test_drop_pk_column_composite VALUES (1, 1);
 SELECT * FROM test_drop_pk_column_composite ORDER BY v;
- v | t
+ v | t 
 ---+---
  1 | 1
  1 | 1

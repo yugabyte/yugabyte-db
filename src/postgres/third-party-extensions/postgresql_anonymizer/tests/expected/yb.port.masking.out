@@ -101,7 +101,7 @@ SELECT anon.mask_update();
 -- We're using an external connection instead of `SET ROLE`
 -- Because we need the tricky search_path
 \! PGPASSWORD=x ${YB_BUILD_ROOT}/postgres/bin/ysqlsh -U skynet -c 'SHOW search_path;' # YB: Use ysqlsh and the default database
- search_path 
+ search_path  
 --------------
  mask, public
 (1 row)

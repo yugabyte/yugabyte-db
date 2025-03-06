@@ -6,7 +6,7 @@ create table int4_array_test (
 insert into int4_array_test (k, int_arr, int4_arr) values (
     1, '{2147483647,0,-2147483648}','{-2147483648,0,2147483647}');
 select * from int4_array_test;
- k |          int_arr           |          int4_arr
+ k |          int_arr           |          int4_arr          
 ---+----------------------------+----------------------------
  1 | {2147483647,0,-2147483648} | {-2147483648,0,2147483647}
 (1 row)
@@ -33,10 +33,10 @@ insert into int4_array_test (k, int_arr, int4_arr) values (
 insert into int4_array_test (k, int_arr, int4_arr) values (
     11, NULL, '{-1000000000,1,2,3,1000000000}');
 select * from int4_array_test order by k;
- k  |            int_arr             |            int4_arr
+ k  |            int_arr             |            int4_arr            
 ----+--------------------------------+--------------------------------
   1 | {2147483647,0,-2147483648}     | {-2147483648,0,2147483647}
- 10 | {-1000000000,1,2,3,1000000000} |
+ 10 | {-1000000000,1,2,3,1000000000} | 
  11 |                                | {-1000000000,1,2,3,1000000000}
 (3 rows)
 

@@ -24,7 +24,7 @@ step s1_rollback_to_a: ROLLBACK TO a;
 step s1_sleep: SELECT pg_sleep(2);
 pg_sleep
 --------
-
+        
 (1 row)
 
 step s2_insert_2_2: INSERT INTO t VALUES (2, 2);
@@ -36,3 +36,4 @@ key|v
   1|1
   2|2
 (2 rows)
+

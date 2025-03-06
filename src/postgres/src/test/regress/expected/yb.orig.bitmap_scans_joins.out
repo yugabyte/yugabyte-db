@@ -19,7 +19,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 -- join PK to PK
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
    Sort Key: joina.a
@@ -37,7 +37,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -47,7 +47,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
    Sort Key: joina.a
@@ -66,7 +66,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -77,7 +77,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 -- join index col to PK
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
    Sort Key: joina.a
@@ -95,7 +95,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c  | d
+ k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
  2 | 4 |  6 | 4 |  8 | 12
@@ -105,7 +105,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
    Sort Key: joina.a
@@ -124,7 +124,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c  | d
+ k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
  2 | 4 |  6 | 4 |  8 | 12
@@ -135,7 +135,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 -- join PK to index col
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
    Sort Key: joina.a
@@ -153,7 +153,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d 
 ---+---+----+---+---+---
  2 | 4 |  6 | 1 | 2 | 3
  4 | 8 | 12 | 2 | 4 | 6
@@ -161,7 +161,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
    Sort Key: joina.a
@@ -180,7 +180,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d 
 ---+---+----+---+---+---
  2 | 4 |  6 | 1 | 2 | 3
  4 | 8 | 12 | 2 | 4 | 6
@@ -189,7 +189,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 -- join index col to index col
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
    Sort Key: joina.a
@@ -207,7 +207,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -217,7 +217,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
    Sort Key: joina.a
@@ -236,7 +236,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -250,7 +250,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 -- join PK to PK
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -262,7 +262,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -272,7 +272,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -284,7 +284,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -294,7 +294,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -306,7 +306,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -316,7 +316,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -328,7 +328,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -339,7 +339,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.
 -- join index col to PK
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -351,7 +351,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c  | d
+ k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
  2 | 4 |  6 | 4 |  8 | 12
@@ -361,7 +361,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Merge Join (actual rows=4 loops=1)
    Merge Cond: (joina.a = joinb.k)
@@ -374,7 +374,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c  | d
+ k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
  2 | 4 |  6 | 4 |  8 | 12
@@ -384,7 +384,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -396,7 +396,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c  | d
+ k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
  2 | 4 |  6 | 4 |  8 | 12
@@ -406,7 +406,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -418,7 +418,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c  | d
+ k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
  2 | 4 |  6 | 4 |  8 | 12
@@ -429,7 +429,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.
 -- join PK to index col
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -441,7 +441,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a  | b  | k | c | d
+ k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
  4 |  8 | 12 | 2 | 4 |  6
@@ -451,7 +451,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -463,7 +463,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a  | b  | k | c | d
+ k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
  4 |  8 | 12 | 2 | 4 |  6
@@ -473,7 +473,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -485,7 +485,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a  | b  | k | c | d
+ k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
  4 |  8 | 12 | 2 | 4 |  6
@@ -495,7 +495,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -507,7 +507,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a  | b  | k | c | d
+ k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
  4 |  8 | 12 | 2 | 4 |  6
@@ -518,7 +518,7 @@ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.
 -- join index col to index col
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -530,7 +530,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -540,7 +540,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Merge Join (actual rows=4 loops=1)
    Merge Cond: (joina.a = joinb.c)
@@ -553,7 +553,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -563,7 +563,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -575,7 +575,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -585,7 +585,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -597,7 +597,7 @@ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.
 
 /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */
 SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
- k | a | b  | k | c | d
+ k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
  2 | 4 |  6 | 2 | 4 |  6
@@ -613,7 +613,7 @@ SELECT joina.a,
        (SELECT joinb.c FROM joinb WHERE (joina.k = joinb.k OR joinb.d = 1)
                                     AND joina.b = -1) -- unsatisfiable
   FROM joina ORDER BY joina.a;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
    SubPlan 1
@@ -632,18 +632,18 @@ SELECT joina.a,
        (SELECT joinb.c FROM joinb WHERE (joina.k = joinb.k OR joinb.d = 1)
                                     AND joina.b = -1) -- unsatisfiable
   FROM joina ORDER BY joina.a;
- a  | c
+ a  | c 
 ----+---
-  2 |
-  4 |
-  6 |
-  8 |
- 10 |
- 12 |
- 14 |
- 16 |
- 18 |
- 20 |
+  2 |  
+  4 |  
+  6 |  
+  8 |  
+ 10 |  
+ 12 |  
+ 14 |  
+ 16 |  
+ 18 |  
+ 20 |  
 (10 rows)
 
 --
@@ -659,7 +659,7 @@ ANALYZE pg_yb_tablegroup;
      FROM pg_catalog.yb_table_properties(16384) p
 LEFT JOIN pg_catalog.pg_yb_tablegroup gr
        ON gr.oid = p.tablegroup_oid;
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Nested Loop Left Join (actual rows=1 loops=1)
    ->  Function Scan on yb_table_properties p (actual rows=1 loops=1)
@@ -673,7 +673,7 @@ LEFT JOIN pg_catalog.pg_yb_tablegroup gr
      FROM pg_catalog.yb_table_properties(16384) p
 LEFT JOIN pg_catalog.pg_yb_tablegroup gr
        ON gr.oid = p.tablegroup_oid;
- grpname | is_colocated
+ grpname | is_colocated 
 ---------+--------------
          | f
 (1 row)
@@ -698,7 +698,7 @@ INSERT INTO test_join_filter VALUES (1, 4, 'v'), (2, 62, 'v'), (3, 7, 'c'), (4, 
 INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
         ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
      WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
-                                                   QUERY PLAN
+                                                   QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=173 loops=1)
    Join Filter: ((((table1.v)::text = 'g'::text) AND ((table1.v)::text = 's'::text)) OR (table1.a <= table2.b))
@@ -720,7 +720,7 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
 INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
         ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
      WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
-                                                QUERY PLAN
+                                                QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=173 loops=1)
    ->  Nested Loop (actual rows=33 loops=1)
@@ -744,7 +744,7 @@ INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 O
 --
 /*+ BitmapScan(joina) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
    Sort Key: joinb.k
@@ -760,7 +760,7 @@ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) O
 
 /*+ BitmapScan(joina) */
 SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
- k | c  | d
+ k | c  | d  
 ---+----+----
  1 |  2 |  3
  2 |  4 |  6
@@ -772,7 +772,7 @@ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) O
 
 /*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
-                                    QUERY PLAN
+                                    QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
    Sort Key: joinb.k
@@ -788,7 +788,7 @@ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) O
 
 /*+ Set(enable_bitmapscan false) */
 SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
- k | c  | d
+ k | c  | d  
 ---+----+----
  1 |  2 |  3
  2 |  4 |  6
@@ -837,7 +837,7 @@ COPY bb (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_
 COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_key, col_time_nokey, col_datetime_key, col_datetime_nokey, col_varchar_key, col_varchar_nokey) FROM stdin;
 /*+ BitmapScan(subquery1_t1) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
-                                                                          QUERY PLAN
+                                                                          QUERY PLAN                                                                           
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=1 loops=1)
    Join Filter: (subquery1_t1.pk = bb.col_int_key)
@@ -863,14 +863,14 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 
 /*+ BitmapScan(subquery1_t1) */
 SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
- pk
+ pk 
 ----
   8
 (1 row)
 
 /*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
-                                                                       QUERY PLAN
+                                                                       QUERY PLAN                                                                        
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=1 loops=1)
    Join Filter: (subquery1_t1.pk = bb.col_int_key)
@@ -891,7 +891,7 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 
 /*+ Set(enable_bitmapscan false) */
 SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
- pk
+ pk 
 ----
   8
 (1 row)
@@ -901,7 +901,7 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 --
 /*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop Semi Join (actual rows=6 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -911,7 +911,7 @@ SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina
 (5 rows)
 
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
- a
+ a  
 ----
   2
   4
@@ -923,7 +923,7 @@ SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina
 
 /*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                                   QUERY PLAN
+                                   QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
    Sort Key: joina.a
@@ -936,7 +936,7 @@ SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina
 (8 rows)
 
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
- a
+ a  
 ----
   2
   4
@@ -951,7 +951,7 @@ SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina
 --
 /*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop Anti Join (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -961,7 +961,7 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 (5 rows)
 
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
- a
+ a  
 ----
  14
  16
@@ -971,7 +971,7 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 
 /*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Nested Loop Anti Join (actual rows=4 loops=1)
    ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -981,7 +981,7 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 (5 rows)
 
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
- a
+ a  
 ----
  14
  16
@@ -994,7 +994,7 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 --
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
    ->  Seq Scan on pg_class c (actual rows=1 loops=1)
@@ -1010,7 +1010,7 @@ SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace 
 
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
- relname
+ relname  
 ----------
  pg_class
 (1 row)

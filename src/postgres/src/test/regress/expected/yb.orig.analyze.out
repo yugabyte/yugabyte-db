@@ -22,27 +22,27 @@ WHERE
   relname IN ('x', 'y')
 ORDER BY
   relname, staattnum;
- relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct 
 ---------+-----------+-----------+-------------+----------+-------------
- x       |        -1 |           |             |          |
- y       |        -1 |           |             |          |
+ x       |        -1 |           |             |          |            
+ y       |        -1 |           |             |          |            
 (2 rows)
 
 -- Explain queries without statistics
 EXPLAIN SELECT * FROM x;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Seq Scan on x  (cost=0.00..100.00 rows=1000 width=36)
 (1 row)
 
 EXPLAIN SELECT * FROM y;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Seq Scan on y  (cost=0.00..100.00 rows=1000 width=36)
 (1 row)
 
 EXPLAIN SELECT DISTINCT b FROM y;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  HashAggregate  (cost=102.50..104.50 rows=200 width=32)
    Group Key: b
@@ -50,7 +50,7 @@ EXPLAIN SELECT DISTINCT b FROM y;
 (3 rows)
 
 EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join  (cost=0.00..224.00 rows=1000 width=72)
    Join Filter: (x.a = y.a)
@@ -60,7 +60,7 @@ EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
 (5 rows)
 
 EXPLAIN SELECT * FROM y, x WHERE x.a = y.a;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join  (cost=0.00..224.00 rows=1000 width=72)
    Join Filter: (y.a = x.a)
@@ -84,7 +84,7 @@ WHERE
   relname IN ('x', 'y')
 ORDER BY
   relname, staattnum;
- relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct 
 ---------+-----------+-----------+-------------+----------+-------------
  x       |        25 |         1 |           0 |        4 |          -1
  x       |        25 |         2 |           0 |        2 |          -1
@@ -94,19 +94,19 @@ ORDER BY
 
 -- Explain queries with statistics
 EXPLAIN SELECT * FROM x;
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Seq Scan on x  (cost=0.00..2.50 rows=25 width=36)
 (1 row)
 
 EXPLAIN SELECT * FROM y;
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Seq Scan on y  (cost=0.00..2500.00 rows=25000 width=36)
 (1 row)
 
 EXPLAIN SELECT DISTINCT b FROM y;
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  HashAggregate  (cost=2562.50..2562.52 rows=2 width=32)
    Group Key: b
@@ -114,7 +114,7 @@ EXPLAIN SELECT DISTINCT b FROM y;
 (3 rows)
 
 EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join  (cost=0.00..9.50 rows=25 width=72)
    Join Filter: (x.a = y.a)
@@ -124,7 +124,7 @@ EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
 (5 rows)
 
 EXPLAIN SELECT * FROM y, x WHERE x.a = y.a;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join  (cost=0.00..9.25 rows=25 width=72)
    Join Filter: (y.a = x.a)
@@ -154,7 +154,7 @@ WHERE
   relname IN ('x', 'y')
 ORDER BY
   relname, staattnum;
- relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct 
 ---------+-----------+-----------+-------------+----------+-------------
  x       |        26 |         1 |           0 |        4 |          -1
  x       |        26 |         2 |           0 |        2 |          -1
@@ -187,7 +187,7 @@ WHERE
   relname = 'x'
 ORDER BY
   relname, staattnum;
- relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct 
 ---------+-----------+-----------+-------------+----------+-------------
  x       |        26 |         1 |           0 |        4 |          -1
 (1 row)

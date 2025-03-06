@@ -98,3 +98,4 @@ step s1_select: SELECT * FROM test ORDER BY k;
 19|2
 20|2
 (20 rows)
+

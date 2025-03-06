@@ -6,7 +6,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
 -- Did it create the right number of rows?
 --
 SELECT COUNT(*) FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
- count
+ count 
 -------
      6
 (1 row)
@@ -15,7 +15,7 @@ SELECT COUNT(*) FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
 -- I/O functions
 --
 SELECT 'red'::rainbow;
- rainbow
+ rainbow 
 ---------
  red
 (1 row)
@@ -32,7 +32,7 @@ SELECT enumlabel, enumsortorder
 FROM pg_enum
 WHERE enumtypid = 'planets'::regtype
 ORDER BY 2;
- enumlabel | enumsortorder
+ enumlabel | enumsortorder 
 -----------+---------------
  venus     |             1
  earth     |             2
@@ -44,7 +44,7 @@ SELECT enumlabel, enumsortorder
 FROM pg_enum
 WHERE enumtypid = 'planets'::regtype
 ORDER BY 2;
- enumlabel | enumsortorder
+ enumlabel | enumsortorder 
 -----------+---------------
  venus     |             1
  earth     |             2
@@ -60,7 +60,7 @@ SELECT enumlabel, enumsortorder
 FROM pg_enum
 WHERE enumtypid = 'planets'::regtype
 ORDER BY 2;
- enumlabel | enumsortorder
+ enumlabel | enumsortorder 
 -----------+---------------
  mercury   |             0
  venus     |             1
@@ -76,7 +76,7 @@ SELECT enumlabel, enumsortorder
 FROM pg_enum
 WHERE enumtypid = 'planets'::regtype
 ORDER BY enumlabel::planets;
- enumlabel | enumsortorder
+ enumlabel | enumsortorder 
 -----------+---------------
  mercury   |             0
  venus     |             1
@@ -104,7 +104,7 @@ ALTER TYPE planets ADD VALUE IF NOT EXISTS 'mercury';
 NOTICE:  enum label "mercury" already exists, skipping
 -- should be neptune, not mercury
 SELECT enum_last(NULL::planets);
- enum_last
+ enum_last 
 -----------
  neptune
 (1 row)
@@ -112,7 +112,7 @@ SELECT enum_last(NULL::planets);
 ALTER TYPE planets ADD VALUE IF NOT EXISTS 'pluto';
 -- should be pluto, i.e. the new value
 SELECT enum_last(NULL::planets);
- enum_last
+ enum_last 
 -----------
  pluto
 (1 row)
@@ -167,7 +167,7 @@ SELECT enumlabel,
 FROM pg_enum
 WHERE enumtypid = 'insenum'::regtype
 ORDER BY enumsortorder;
- enumlabel |         so
+ enumlabel |         so         
 -----------+--------------------
  L1        |                  1
  i1        |                1.5
@@ -204,7 +204,7 @@ INSERT INTO enumtest values ('red'), ('orange'), ('yellow'), ('green');
 COPY enumtest FROM stdin;
 -- ORDER BY is needed for Yugabyte
 SELECT * FROM enumtest ORDER BY col;
-  col
+  col   
 --------
  red
  orange
@@ -218,13 +218,13 @@ SELECT * FROM enumtest ORDER BY col;
 -- Operators, no index
 --
 SELECT * FROM enumtest WHERE col = 'orange';
-  col
+  col   
 --------
  orange
 (1 row)
 
 SELECT * FROM enumtest WHERE col <> 'orange' ORDER BY col;
-  col
+  col   
 --------
  red
  yellow
@@ -234,7 +234,7 @@ SELECT * FROM enumtest WHERE col <> 'orange' ORDER BY col;
 (5 rows)
 
 SELECT * FROM enumtest WHERE col > 'yellow' ORDER BY col;
-  col
+  col   
 --------
  green
  blue
@@ -242,7 +242,7 @@ SELECT * FROM enumtest WHERE col > 'yellow' ORDER BY col;
 (3 rows)
 
 SELECT * FROM enumtest WHERE col >= 'yellow' ORDER BY col;
-  col
+  col   
 --------
  yellow
  green
@@ -251,7 +251,7 @@ SELECT * FROM enumtest WHERE col >= 'yellow' ORDER BY col;
 (4 rows)
 
 SELECT * FROM enumtest WHERE col < 'green' ORDER BY col;
-  col
+  col   
 --------
  red
  orange
@@ -259,7 +259,7 @@ SELECT * FROM enumtest WHERE col < 'green' ORDER BY col;
 (3 rows)
 
 SELECT * FROM enumtest WHERE col <= 'green' ORDER BY col;
-  col
+  col   
 --------
  red
  orange
@@ -271,13 +271,13 @@ SELECT * FROM enumtest WHERE col <= 'green' ORDER BY col;
 -- Cast to/from text
 --
 SELECT 'red'::rainbow::text || 'hithere';
-  ?column?
+  ?column?  
 ------------
  redhithere
 (1 row)
 
 SELECT 'red'::text::rainbow = 'red'::rainbow;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -286,19 +286,19 @@ SELECT 'red'::text::rainbow = 'red'::rainbow;
 -- Aggregates
 --
 SELECT min(col) FROM enumtest;
- min
+ min 
 -----
  red
 (1 row)
 
 SELECT max(col) FROM enumtest;
-  max
+  max   
 --------
  purple
 (1 row)
 
 SELECT max(col) FROM enumtest WHERE col < 'green';
-  max
+  max   
 --------
  yellow
 (1 row)
@@ -314,13 +314,13 @@ SET enable_bitmapscan = off;
 CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 SELECT * FROM enumtest WHERE col = 'orange';
-  col
+  col   
 --------
  orange
 (1 row)
 
 SELECT * FROM enumtest WHERE col <> 'orange' ORDER BY col;
-  col
+  col   
 --------
  red
  yellow
@@ -330,7 +330,7 @@ SELECT * FROM enumtest WHERE col <> 'orange' ORDER BY col;
 (5 rows)
 
 SELECT * FROM enumtest WHERE col > 'yellow' ORDER BY col;
-  col
+  col   
 --------
  green
  blue
@@ -338,7 +338,7 @@ SELECT * FROM enumtest WHERE col > 'yellow' ORDER BY col;
 (3 rows)
 
 SELECT * FROM enumtest WHERE col >= 'yellow' ORDER BY col;
-  col
+  col   
 --------
  yellow
  green
@@ -347,7 +347,7 @@ SELECT * FROM enumtest WHERE col >= 'yellow' ORDER BY col;
 (4 rows)
 
 SELECT * FROM enumtest WHERE col < 'green' ORDER BY col;
-  col
+  col   
 --------
  red
  orange
@@ -355,7 +355,7 @@ SELECT * FROM enumtest WHERE col < 'green' ORDER BY col;
 (3 rows)
 
 SELECT * FROM enumtest WHERE col <= 'green' ORDER BY col;
-  col
+  col   
 --------
  red
  orange
@@ -364,19 +364,19 @@ SELECT * FROM enumtest WHERE col <= 'green' ORDER BY col;
 (4 rows)
 
 SELECT min(col) FROM enumtest;
- min
+ min 
 -----
  red
 (1 row)
 
 SELECT max(col) FROM enumtest;
-  max
+  max   
 --------
  purple
 (1 row)
 
 SELECT max(col) FROM enumtest WHERE col < 'green';
-  max
+  max   
 --------
  yellow
 (1 row)
@@ -388,7 +388,7 @@ DROP INDEX enumtest_btree;
 CREATE INDEX enumtest_hash ON enumtest USING hash (col);
 NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
 SELECT * FROM enumtest WHERE col = 'orange';
-  col
+  col   
 --------
  orange
 (1 row)
@@ -404,7 +404,7 @@ RESET enable_bitmapscan;
 --
 CREATE DOMAIN rgb AS rainbow CHECK (VALUE IN ('red', 'green', 'blue'));
 SELECT 'red'::rgb;
- rgb
+ rgb 
 -----
  red
 (1 row)
@@ -418,37 +418,37 @@ DROP DOMAIN rgb;
 -- Arrays
 --
 SELECT '{red,green,blue}'::rainbow[];
-     rainbow
+     rainbow      
 ------------------
  {red,green,blue}
 (1 row)
 
 SELECT ('{red,green,blue}'::rainbow[])[2];
- rainbow
+ rainbow 
 ---------
  green
 (1 row)
 
 SELECT 'red' = ANY ('{red,green,blue}'::rainbow[]);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT 'yellow' = ANY ('{red,green,blue}'::rainbow[]);
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT 'red' = ALL ('{red,green,blue}'::rainbow[]);
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT 'red' = ALL ('{red,red}'::rainbow[]);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -457,43 +457,43 @@ SELECT 'red' = ALL ('{red,red}'::rainbow[]);
 -- Support functions
 --
 SELECT enum_first(NULL::rainbow);
- enum_first
+ enum_first 
 ------------
  red
 (1 row)
 
 SELECT enum_last('green'::rainbow);
- enum_last
+ enum_last 
 -----------
  purple
 (1 row)
 
 SELECT enum_range(NULL::rainbow);
-              enum_range
+              enum_range               
 ---------------------------------------
  {red,orange,yellow,green,blue,purple}
 (1 row)
 
 SELECT enum_range('orange'::rainbow, 'green'::rainbow);
-      enum_range
+      enum_range       
 -----------------------
  {orange,yellow,green}
 (1 row)
 
 SELECT enum_range(NULL, 'green'::rainbow);
-        enum_range
+        enum_range         
 ---------------------------
  {red,orange,yellow,green}
 (1 row)
 
 SELECT enum_range('orange'::rainbow, NULL);
-            enum_range
+            enum_range             
 -----------------------------------
  {orange,yellow,green,blue,purple}
 (1 row)
 
 SELECT enum_range(NULL::rainbow, NULL);
-              enum_range
+              enum_range               
 ---------------------------------------
  {red,orange,yellow,green,blue,purple}
 (1 row)
@@ -507,7 +507,7 @@ RETURN $1::text || 'omg';
 END
 $$ LANGUAGE plpgsql;
 SELECT echo_me('red'::rainbow);
- echo_me
+ echo_me 
 ---------
  redomg
 (1 row)
@@ -521,7 +521,7 @@ RETURN $1::text || 'wtf';
 END
 $$ LANGUAGE plpgsql;
 SELECT echo_me('red'::rainbow);
- echo_me
+ echo_me 
 ---------
  redwtf
 (1 row)
@@ -532,7 +532,7 @@ SELECT echo_me('red'::rainbow);
 --
 DROP FUNCTION echo_me(anyenum);
 SELECT echo_me('red');
- echo_me
+ echo_me 
 ---------
  redwtf
 (1 row)
@@ -565,7 +565,7 @@ SELECT enumlabel, enumsortorder
 FROM pg_enum
 WHERE enumtypid = 'rainbow'::regtype
 ORDER BY 2;
- enumlabel | enumsortorder
+ enumlabel | enumsortorder 
 -----------+---------------
  crimson   |             1
  orange    |             2
@@ -612,7 +612,7 @@ HINT:  New enum values must be committed before they can be used.
 ROLLBACK TO x;
 COMMIT;
 SELECT 'new'::bogus;  -- now safe
- bogus
+ bogus 
 -------
  new
 (1 row)
@@ -621,7 +621,7 @@ SELECT enumlabel, enumsortorder
 FROM pg_enum
 WHERE enumtypid = 'bogus'::regtype
 ORDER BY 2;
- enumlabel | enumsortorder
+ enumlabel | enumsortorder 
 -----------+---------------
  good      |             1
  new       |             2
@@ -646,7 +646,7 @@ CREATE TYPE bogus AS ENUM('good','new');
 BEGIN;
 ALTER TYPE bogus RENAME VALUE 'good' to 'bad';
 SELECT 'bad'::bogus;
- bogus
+ bogus 
 -------
  bad
 (1 row)
@@ -658,7 +658,7 @@ BEGIN;
 CREATE TYPE bogus AS ENUM('good','bad','ugly');
 ALTER TYPE bogus RENAME TO bogon;
 select enum_range(null::bogon);
-   enum_range
+   enum_range    
 -----------------
  {good,bad,ugly}
 (1 row)
@@ -691,7 +691,7 @@ DROP TYPE bogon; -- (yifan): Non-transactional.
 -- Verify properly cleaned up
 --
 SELECT COUNT(*) FROM pg_type WHERE typname = 'rainbow';
- count
+ count 
 -------
      0
 (1 row)
@@ -701,3 +701,4 @@ SELECT * FROM pg_enum WHERE NOT EXISTS
  oid | enumtypid | enumsortorder | enumlabel 
 -----+-----------+---------------+-----------
 (0 rows)
+

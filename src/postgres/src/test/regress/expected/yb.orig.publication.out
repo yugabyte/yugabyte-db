@@ -11,10 +11,10 @@ CREATE PUBLICATION testpub FOR ALL TABLES;
 NOTICE:  tables without primary key will be skipped
 -- testpub_tbl3_nopk should get filtered out.
 SELECT * FROM pg_publication_tables;
- pubname | schemaname |  tablename   | attnames  | rowfilter
+ pubname | schemaname |  tablename   | attnames  | rowfilter 
 ---------+------------+--------------+-----------+-----------
- testpub | public     | testpub_tbl1 | {id,data} |
- testpub | public     | testpub_tbl2 | {id,data} |
+ testpub | public     | testpub_tbl1 | {id,data} | 
+ testpub | public     | testpub_tbl2 | {id,data} | 
 (2 rows)
 
 -- errors out since tables without pk are unsupported.

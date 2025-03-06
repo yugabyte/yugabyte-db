@@ -7,7 +7,7 @@
 --
 -- Select all.
 SELECT * FROM feature_tab_dml_identifier ORDER BY col_id;
- col_id |   col_name
+ col_id |   col_name    
 --------+---------------
       0 | zero
       1 | one
@@ -36,7 +36,7 @@ SELECT * FROM feature_tab_dml_identifier ORDER BY col_id;
 --
 -- Select rows 1-5 and 11-15 from the table.
 SELECT * FROM feature_tab_dml ORDER BY col_smallint LIMIT 5;
- col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 --------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
             1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.11 2019 | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
             2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
@@ -46,7 +46,7 @@ SELECT * FROM feature_tab_dml ORDER BY col_smallint LIMIT 5;
 (5 rows)
 
 SELECT * FROM feature_tab_dml ORDER BY col_smallint OFFSET 10 FETCH FIRST 5 ROWS ONLY;
- col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 --------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
            11 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.11 2019 | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
            12 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
@@ -70,7 +70,7 @@ SELECT DISTINCT
 		FROM feature_tab_dml
 		WHERE col_smallint < 20
 		ORDER BY col_bigint, col_smallint;
- col_smallint | col_bigint | col_real | col_char |              col_bytea               |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_smallint | col_bigint | col_real | col_char |              col_bytea               |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 --------------+------------+----------+----------+--------------------------------------+-----------------------------------+----------+---------------+---------------------
             1 |          1 |      1.1 | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
            11 |          1 |      1.1 | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
@@ -105,7 +105,7 @@ SELECT DISTINCT
 		FROM feature_tab_dml
 		WHERE col_smallint < 20
 		ORDER BY col_bigint;
- col_bigint | col_real | col_char |              col_bytea               |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_bigint | col_real | col_char |              col_bytea               |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 ------------+----------+----------+--------------------------------------+-----------------------------------+----------+---------------+---------------------
           1 |      1.1 | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
           2 |      2.2 | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
@@ -130,7 +130,7 @@ SELECT
 		FROM feature_tab_dml
 		GROUP BY col_bigint
 		ORDER BY col_bigint;
- col_bigint | count |        avg         | sum |  sum
+ col_bigint | count |        avg         | sum |  sum  
 ------------+-------+--------------------+-----+-------
           1 |     2 |  1.100000023841858 |   2 |   2.2
           2 |     2 |  2.200000047683716 |   4 |   4.4
@@ -141,9 +141,9 @@ SELECT
           7 |     2 |  7.699999809265137 |  14 |  15.4
           8 |     2 |  8.800000190734863 |  16 |  17.6
           9 |     2 |  9.899999618530273 |  18 |  19.8
-         10 |     1 | 10.100000381469727 |  10 |
+         10 |     1 | 10.100000381469727 |  10 |      
          77 |     1 |   77.7699966430664 |  77 | 77.77
-            |     1 |                    |     |
+            |     1 |                    |     |      
 (12 rows)
 
 --
@@ -156,7 +156,7 @@ SELECT
 		FROM feature_tab_dml
 		GROUP BY col_bigint HAVING SUM(col_double) < 18
 		ORDER BY col_bigint;
- col_bigint | count |        avg        | sum | sum
+ col_bigint | count |        avg        | sum | sum  
 ------------+-------+-------------------+-----+------
           1 |     2 | 1.100000023841858 |   2 |  2.2
           2 |     2 | 2.200000047683716 |   4 |  4.4
@@ -178,7 +178,7 @@ SELECT DISTINCT
 	 FROM feature_tab_dml
 	 WINDOW yuga_win AS (PARTITION BY col_integer ORDER BY col_smallint)
 	 ORDER BY yuga_rank, count, sum, avg;
- yuga_rank | count | sum |        avg
+ yuga_rank | count | sum |        avg         
 -----------+-------+-----+--------------------
          1 |     0 |  10 | 10.100000381469727
          1 |     1 |   1 |  1.100000023841858
@@ -213,7 +213,7 @@ SELECT
 		FROM feature_tab_dml t1, feature_tab_dml_identifier t2
 		WHERE t1.col_smallint = t2.col_id AND t2.col_name = t1.col_array_text[2]
         ORDER BY t1.col_smallint;
- col_smallint |   col_array_text    | col_name
+ col_smallint |   col_array_text    | col_name 
 --------------+---------------------+----------
             1 | {one,one,one}       | one
             2 | {two,two,two}       | two
@@ -236,7 +236,7 @@ SELECT
 		WHERE t1.col_smallint = t2.col_id AND
 					(t2.col_name = 'nine' OR t2.col_name = 'seven')
         ORDER BY t1.col_smallint;
- col_smallint |   col_array_text    | col_name
+ col_smallint |   col_array_text    | col_name 
 --------------+---------------------+----------
             7 | {seven,seven,seven} | seven
             9 | {nine,nine,nine}    | nine
@@ -252,7 +252,7 @@ SELECT	col_smallint Employee_ID,
 							FROM feature_tab_dml_identifier
 							WHERE col_id > 5)
 		ORDER BY Employee_ID;
- employee_id | employee_name
+ employee_id | employee_name 
 -------------+---------------
            1 | one
            2 | two
@@ -291,7 +291,7 @@ SELECT	col_smallint Employee_ID,
 									FROM feature_tab_dml_identifier
 									WHERE col_id > 5)
 		ORDER BY Employee_ID;
- employee_id | employee_name
+ employee_id | employee_name 
 -------------+---------------
            6 | six
            7 | seven
@@ -309,7 +309,7 @@ SELECT	col_smallint Employee_ID,
 			 				 FROM feature_tab_dml_identifier
 							 WHERE col_id > 5)
 		ORDER BY Employee_ID;
- employee_id | employee_name
+ employee_id | employee_name 
 -------------+---------------
            1 | one
            2 | two
@@ -326,7 +326,7 @@ SELECT	col_smallint Employee_ID,
 create table test (a bigint, b bigint);
 insert into test (a, b) select i, 2024000000000 + i from generate_series(1, 1000) as i;
 select max(sub.b) from (select b from test where (b > 2024000000000 AND b < 2025000000000) OFFSET 0 ) as sub;
-      max
+      max      
 ---------------
  2024000001000
 (1 row)

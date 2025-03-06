@@ -126,7 +126,7 @@ SELECT 'nan'::numeric::float4;
 (1 row)
 
 SELECT '' AS five, * FROM FLOAT4_TBL ORDER BY f1;
- five |      f1
+ five |      f1       
 ------+---------------
       |        -34.84
       |             0
@@ -136,7 +136,7 @@ SELECT '' AS five, * FROM FLOAT4_TBL ORDER BY f1;
 (5 rows)
 
 SELECT '' AS four, f.* FROM FLOAT4_TBL f WHERE f.f1 <> '1004.3' ORDER BY f1;
- four |      f1
+ four |      f1       
 ------+---------------
       |        -34.84
       |             0
@@ -151,7 +151,7 @@ SELECT '' AS one, f.* FROM FLOAT4_TBL f WHERE f.f1 = '1004.3' ORDER BY f1;
 (1 row)
 
 SELECT '' AS three, f.* FROM FLOAT4_TBL f WHERE '1004.3' > f.f1 ORDER BY f1;
- three |      f1
+ three |      f1       
 -------+---------------
        |        -34.84
        |             0
@@ -159,7 +159,7 @@ SELECT '' AS three, f.* FROM FLOAT4_TBL f WHERE '1004.3' > f.f1 ORDER BY f1;
 (3 rows)
 
 SELECT '' AS three, f.* FROM FLOAT4_TBL f WHERE  f.f1 < '1004.3' ORDER BY f1;
- three |      f1
+ three |      f1       
 -------+---------------
        |        -34.84
        |             0
@@ -167,7 +167,7 @@ SELECT '' AS three, f.* FROM FLOAT4_TBL f WHERE  f.f1 < '1004.3' ORDER BY f1;
 (3 rows)
 
 SELECT '' AS four, f.* FROM FLOAT4_TBL f WHERE '1004.3' >= f.f1 ORDER BY f1;
- four |      f1
+ four |      f1       
 ------+---------------
       |        -34.84
       |             0
@@ -176,7 +176,7 @@ SELECT '' AS four, f.* FROM FLOAT4_TBL f WHERE '1004.3' >= f.f1 ORDER BY f1;
 (4 rows)
 
 SELECT '' AS four, f.* FROM FLOAT4_TBL f WHERE  f.f1 <= '1004.3' ORDER BY f1;
- four |      f1
+ four |      f1       
 ------+---------------
       |        -34.84
       |             0
@@ -186,7 +186,7 @@ SELECT '' AS four, f.* FROM FLOAT4_TBL f WHERE  f.f1 <= '1004.3' ORDER BY f1;
 
 SELECT '' AS three, f.f1, f.f1 * '-10' AS x FROM FLOAT4_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |      f1       |       x
+ three |      f1       |       x        
 -------+---------------+----------------
        | 1.2345679e-20 | -1.2345678e-19
        |        1004.3 |         -10043
@@ -195,7 +195,7 @@ SELECT '' AS three, f.f1, f.f1 * '-10' AS x FROM FLOAT4_TBL f
 
 SELECT '' AS three, f.f1, f.f1 + '-10' AS x FROM FLOAT4_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |      f1       |       x
+ three |      f1       |       x       
 -------+---------------+---------------
        | 1.2345679e-20 |           -10
        |        1004.3 |         994.3
@@ -204,7 +204,7 @@ SELECT '' AS three, f.f1, f.f1 + '-10' AS x FROM FLOAT4_TBL f
 
 SELECT '' AS three, f.f1, f.f1 / '-10' AS x FROM FLOAT4_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |      f1       |       x
+ three |      f1       |       x        
 -------+---------------+----------------
        | 1.2345679e-20 | -1.2345679e-21
        |        1004.3 |        -100.43
@@ -213,7 +213,7 @@ SELECT '' AS three, f.f1, f.f1 / '-10' AS x FROM FLOAT4_TBL f
 
 SELECT '' AS three, f.f1, f.f1 - '-10' AS x FROM FLOAT4_TBL f
    WHERE f.f1 > '0.0' ORDER BY f1;
- three |      f1       |       x
+ three |      f1       |       x       
 -------+---------------+---------------
        | 1.2345679e-20 |            10
        |        1004.3 |        1014.3
@@ -224,7 +224,7 @@ SELECT '' AS three, f.f1, f.f1 - '-10' AS x FROM FLOAT4_TBL f
 SELECT '' AS bad, f.f1 / '0.0' from FLOAT4_TBL f ORDER BY f1;
 ERROR:  division by zero
 SELECT '' AS five, * FROM FLOAT4_TBL ORDER BY f1;
- five |      f1
+ five |      f1       
 ------+---------------
       |        -34.84
       |             0
@@ -235,7 +235,7 @@ SELECT '' AS five, * FROM FLOAT4_TBL ORDER BY f1;
 
 -- test the unary float4abs operator
 SELECT '' AS five, f.f1, @f.f1 AS abs_f1 FROM FLOAT4_TBL f ORDER BY f1;
- five |      f1       |    abs_f1
+ five |      f1       |    abs_f1     
 ------+---------------+---------------
       |        -34.84 |         34.84
       |             0 |             0

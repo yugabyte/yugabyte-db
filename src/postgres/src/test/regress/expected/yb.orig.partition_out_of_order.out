@@ -65,7 +65,7 @@ BEGIN;
 INSERT INTO base (a, b, c) (SELECT a + 12, b, c FROM part1);
 INSERT INTO base (SELECT a + 12, b, c FROM part2);
 SELECT * FROM base ORDER BY a;
-  a  |      b       | c
+  a  |      b       | c 
 -----+--------------+---
   11 | foo          | t
   12 | bar          | t
@@ -89,7 +89,7 @@ SELECT * FROM base ORDER BY a;
 
 ROLLBACK;
 SELECT * FROM base ORDER BY a;
-  a  |      b       | c
+  a  |      b       | c 
 -----+--------------+---
   11 | foo          | t
   12 | bar          | t
@@ -108,12 +108,12 @@ INSERT INTO part1 (a, b) VALUES (14, 'not-def');
 INSERT INTO part2 VALUES ('daz', 26, TRUE), ('faz', 27, FALSE);
 INSERT INTO part3 (SELECT a + 12, c, b FROM part2 WHERE a IN (26, 27));
 SELECT * FROM base ORDER BY a;
-  a  |      b       | c
+  a  |      b       | c 
 -----+--------------+---
   11 | foo          | t
   12 | bar          | t
   13 | abc          | f
-  14 | not-def      |
+  14 | not-def      | 
   21 | baz          | f
   22 | caz          | t
   26 | daz          | t
@@ -137,12 +137,12 @@ INSERT INTO part1 (a, b) VALUES (14, 'not-abc') ON CONFLICT DO NOTHING;
 INSERT INTO part2 VALUES ('not-daz', 26, FALSE) ON CONFLICT (a) DO NOTHING;
 INSERT INTO part3 (SELECT a + 6, c, b FROM part2 WHERE a IN (26, 27)) ON CONFLICT DO NOTHING;
 SELECT * FROM base ORDER BY a;
-  a  |      b       | c
+  a  |      b       | c 
 -----+--------------+---
   11 | foo          | t
   12 | bar          | t
   13 | abc          | f
-  14 | not-def      |
+  14 | not-def      | 
   21 | baz          | f
   22 | caz          | t
   26 | daz          | t
@@ -184,13 +184,13 @@ INSERT INTO part1 VALUES (TRUE, 'def', 14), (TRUE, 'ghi', 15) ON CONFLICT (a) DO
 INSERT INTO part3 AS old (a, b, c) VALUES (31, 'qux', TRUE), (39, 'fax', TRUE) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b || 'x';
 INSERT INTO part6 VALUES ('part6a-def', 61, FALSE), ('part6b-def', 66, TRUE) ON CONFLICT (a) DO UPDATE SET (b, c) = (EXCLUDED.b || 'z', NOT EXCLUDED.c);
 SELECT * FROM base ORDER BY a;
-  a  |      b       | c
+  a  |      b       | c 
 -----+--------------+---
   11 | foozz        | t
   12 | barz         | t
   13 | abcz         | f
-  14 | not-not-def  |
-  15 | not-ghi      |
+  14 | not-not-def  | 
+  15 | not-ghi      | 
   21 | bazz         | f
   22 | cazzyy       | f
   26 | daz          | t
@@ -201,12 +201,12 @@ SELECT * FROM base ORDER BY a;
   38 | dazz         | f
   39 | faxx         | f
   61 | part6a-defz  | t
-  62 | part6a-defyy |
+  62 | part6a-defyy | 
   66 | part6b-defz  | f
   67 | part6b-def   | t
-  68 |              |
+  68 |              | 
  101 | partmisc-abc | t
- 102 |              |
+ 102 |              | 
 (21 rows)
 
 -- UPDATE cases
@@ -220,12 +220,12 @@ UPDATE base SET (c, b) = ((c::INT + 1)::BOOL, 'test-' || b) WHERE a % 10 = 6;
 UPDATE base SET a = a + 10, b = b || 'z' WHERE a IN (15, 27, 101);
 -- Updates targeting a specific partition should work as expected.
 UPDATE part1 SET c = NOT c, a = a + 2 WHERE a BETWEEN 60 AND 65 RETURNING *; -- no rows affected
- c | b | a
+ c | b | a 
 ---+---+---
 (0 rows)
 
 UPDATE part6a SET c = NOT c, a = a + 2 WHERE a BETWEEN 60 AND 65 RETURNING c, b, a;
- c |          b           | a
+ c |          b           | a  
 ---+----------------------+----
  f | part6a-defz          | 63
    | updated-part6a-defyy | 64
@@ -234,15 +234,15 @@ UPDATE part6a SET c = NOT c, a = a + 2 WHERE a BETWEEN 60 AND 65 RETURNING c, b,
 UPDATE part2 SET b = 'y' || b WHERE a % 10 = 1;
 UPDATE part3 SET (b, c) = (b || 'z', NOT c) WHERE a >= 33 AND a <= 38;
 SELECT * FROM base ORDER BY a;
-  a  |          b           | c
+  a  |          b           | c 
 -----+----------------------+---
   11 | foozz                | t
   12 | updated-barz         | t
   13 | abcz                 | f
-  14 | not-not-def          |
+  14 | not-not-def          | 
   21 | yybazz               | f
   22 | updated-cazzyy       | f
-  25 | not-ghiz             |
+  25 | not-ghiz             | 
   26 | test-daz             | t
   31 | yquxx                | t
   32 | updated-xuqyy        | t
@@ -251,10 +251,11 @@ SELECT * FROM base ORDER BY a;
   38 | dazzz                | t
   39 | faxx                 | f
   63 | part6a-defz          | f
-  64 | updated-part6a-defyy |
+  64 | updated-part6a-defyy | 
   66 | test-part6b-defz     | t
   67 | part6b-def           | t
-  68 |                      |
- 102 |                      |
+  68 |                      | 
+ 102 |                      | 
  111 | partmisc-abcz        | t
 (21 rows)
+

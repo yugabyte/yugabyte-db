@@ -4,7 +4,7 @@ SET yb_xcluster_ddl_replication.replication_role = SOURCE;
 CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
 DROP TABLE temp_foo;
 SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
- yb_data
+ yb_data 
 ---------
 (0 rows)
 
@@ -20,7 +20,7 @@ CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1
 -- Verify that info for unique constraint indexes are also captured.
 CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);
 SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
-                                                                                                                                                  yb_data
+                                                                                                                                                  yb_data                                                                                                                                                  
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16414}]}
  {"user": "yugabyte", "query": "CREATE TABLE manual_foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "manual_replication": true}
@@ -29,7 +29,7 @@ SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
 (4 rows)
 
 SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
- ddl_end_time | query_id |                                                yb_data
+ ddl_end_time | query_id |                                                yb_data                                                 
 --------------+----------+--------------------------------------------------------------------------------------------------------
             1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
             2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
@@ -50,7 +50,7 @@ DROP TABLE unique_foo;
 DROP TABLE foo_partitioned_by_pkey;
 DROP TABLE foo_partitioned_by_col;
 SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
-                                                                                                                                                  yb_data
+                                                                                                                                                  yb_data                                                                                                                                                  
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16414}]}
  {"user": "yugabyte", "query": "CREATE TABLE manual_foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "manual_replication": true}
@@ -67,7 +67,7 @@ SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY ddl_end_time;
 (12 rows)
 
 SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
- ddl_end_time | query_id |                                                yb_data
+ ddl_end_time | query_id |                                                yb_data                                                 
 --------------+----------+--------------------------------------------------------------------------------------------------------
             1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
             2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}

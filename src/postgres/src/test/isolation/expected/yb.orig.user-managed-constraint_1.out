@@ -118,10 +118,10 @@ s2: NOTICE:  priorities don't exist for read committed isolation transations, th
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-step s1_update_case:
+step s1_update_case: 
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
-step s2_update_case:
+step s2_update_case: 
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
  <waiting ...>
 step s1_commit: COMMIT;
@@ -141,10 +141,10 @@ s2: NOTICE:  priorities don't exist for read committed isolation transations, th
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-step s1_update_case:
+step s1_update_case: 
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
-step s2_update_case:
+step s2_update_case: 
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
  <waiting ...>
 step s1_commit: COMMIT;
@@ -165,10 +165,10 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
-step s1_update_case:
+step s1_update_case: 
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
-step s2_update_case:
+step s2_update_case: 
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
  <waiting ...>
 step s1_commit: COMMIT;
@@ -187,10 +187,10 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-step s1_update_case:
+step s1_update_case: 
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
-step s2_update_case:
+step s2_update_case: 
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
  <waiting ...>
 step s1_commit: COMMIT;
@@ -208,10 +208,10 @@ DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict c
 s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-step s1_update_case:
+step s1_update_case: 
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
-step s2_update_case:
+step s2_update_case: 
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
  <waiting ...>
 step s1_commit: COMMIT;
@@ -230,10 +230,10 @@ s2: NOTICE:  priorities don't exist for read committed isolation transations, th
 DETAIL:  This also applies to other isolation levels if using Wait-on-Conflict concurrency control.
 step s2_enable_retries: SET yb_max_query_layer_retries = 60;
 step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
-step s1_update_case:
+step s1_update_case: 
   UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
-step s2_update_case:
+step s2_update_case: 
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
  <waiting ...>
 step s1_commit: COMMIT;
@@ -243,3 +243,4 @@ k|v1|v2|?column?
 -+--+--+--------
 1|30| 0|      30
 (1 row)
+

@@ -85,19 +85,19 @@ ERROR:  system column "xmax" is not supported yet
 -- All system columns should work for temp TABLE.
 CREATE temp TABLE test_temp_tab(id INT, PRIMARY KEY(id));
 INSERT INTO test_temp_tab VALUES (1) RETURNING ctid;
- ctid
+ ctid  
 -------
  (0,1)
 (1 row)
 
 INSERT INTO test_temp_tab VALUES (2) RETURNING cmin;
- cmin
+ cmin 
 ------
     0
 (1 row)
 
 INSERT INTO test_temp_tab VALUES (3) RETURNING cmax;
- cmax
+ cmax 
 ------
     0
 (1 row)
@@ -112,21 +112,21 @@ INSERT INTO test_temp_tab VALUES (5) RETURNING xmax
 ) SELECT count(*) FROM yb_with;
 */
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Seq Scan on pg_temp.test_temp_tab
    Output: ctid
 (2 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Seq Scan on pg_temp.test_temp_tab
    Output: cmin
 (2 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Seq Scan on pg_temp.test_temp_tab
    Output: cmax
@@ -137,7 +137,7 @@ EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmin FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Aggregate
    Output: count(*)
@@ -149,7 +149,7 @@ EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
-               QUERY PLAN
+               QUERY PLAN                
 -----------------------------------------
  Aggregate
    Output: count(*)
@@ -158,7 +158,7 @@ SELECT xmax FROM test_temp_tab
 (4 rows)
 
 SELECT ctid FROM test_temp_tab;
- ctid
+ ctid  
 -------
  (0,1)
  (0,2)
@@ -166,7 +166,7 @@ SELECT ctid FROM test_temp_tab;
 (3 rows)
 
 SELECT cmin FROM test_temp_tab;
- cmin
+ cmin 
 ------
     0
     0
@@ -174,7 +174,7 @@ SELECT cmin FROM test_temp_tab;
 (3 rows)
 
 SELECT cmax FROM test_temp_tab;
- cmax
+ cmax 
 ------
     0
     0
@@ -185,7 +185,7 @@ SELECT cmax FROM test_temp_tab;
 WITH yb_with AS (
 SELECT xmin FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
- count
+ count 
 -------
      3
 (1 row)
@@ -193,13 +193,13 @@ SELECT xmin FROM test_temp_tab
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
- count
+ count 
 -------
      3
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab WHERE id = 1;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using test_temp_tab_pkey on pg_temp.test_temp_tab
    Output: ctid
@@ -207,7 +207,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab WHERE id = 1;
 (3 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab WHERE id = 2;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using test_temp_tab_pkey on pg_temp.test_temp_tab
    Output: cmin
@@ -215,7 +215,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab WHERE id = 2;
 (3 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab WHERE id = 3;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using test_temp_tab_pkey on pg_temp.test_temp_tab
    Output: cmax
@@ -227,7 +227,7 @@ EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmin FROM test_temp_tab WHERE id = 4
 ) SELECT count(*) FROM yb_with;
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Aggregate
    Output: count(*)
@@ -240,7 +240,7 @@ EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab WHERE id = 5
 ) SELECT count(*) FROM yb_with;
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Aggregate
    Output: count(*)
@@ -250,19 +250,19 @@ SELECT xmax FROM test_temp_tab WHERE id = 5
 (5 rows)
 
 SELECT ctid FROM test_temp_tab WHERE id = 1;
- ctid
+ ctid  
 -------
  (0,1)
 (1 row)
 
 SELECT cmin FROM test_temp_tab WHERE id = 2;
- cmin
+ cmin 
 ------
     0
 (1 row)
 
 SELECT cmax FROM test_temp_tab WHERE id = 3;
- cmax
+ cmax 
 ------
     0
 (1 row)
@@ -271,7 +271,7 @@ SELECT cmax FROM test_temp_tab WHERE id = 3;
 WITH yb_with AS (
 SELECT xmin FROM test_temp_tab WHERE id = 4
 ) SELECT count(*) FROM yb_with;
- count
+ count 
 -------
      0
 (1 row)
@@ -279,7 +279,8 @@ SELECT xmin FROM test_temp_tab WHERE id = 4
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab WHERE id = 5
 ) SELECT count(*) FROM yb_with;
- count
+ count 
 -------
      0
 (1 row)
+
