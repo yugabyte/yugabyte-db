@@ -33,8 +33,11 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-#include "pg_yb_utils.h"
 #include <pthread.h>
+
+/* Yugabyte includes */
+#include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
 
 /*
  * Hooks for function calls
@@ -88,15 +91,12 @@ fmgr_init_direct_send_func(Oid oid, YbSendDirectFn func)
 /*
  * Initialize all direct send functions.
  */
-#define PG_PROC_INT2SEND_OID 2405
-#define PG_PROC_INT4SEND_OID 2407
-#define PG_PROC_INT8SEND_OID 2409
 static void
 fmgr_init_direct_send()
 {
-	fmgr_init_direct_send_func(PG_PROC_INT2SEND_OID, int2send_direct);
-	fmgr_init_direct_send_func(PG_PROC_INT4SEND_OID, int4send_direct);
-	fmgr_init_direct_send_func(PG_PROC_INT8SEND_OID, int8send_direct);
+	fmgr_init_direct_send_func(F_INT2SEND, int2send_direct);
+	fmgr_init_direct_send_func(F_INT4SEND, int4send_direct);
+	fmgr_init_direct_send_func(F_INT8SEND, int8send_direct);
 }
 
 /*

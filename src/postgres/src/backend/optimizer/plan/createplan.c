@@ -56,6 +56,7 @@
 #include "catalog/pg_yb_catalog_version.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
 
 /*
  * Flag bits that can appear in the flags argument of create_plan_recurse().
@@ -4219,7 +4220,7 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 static inline bool
 YbIsHashCodeFunc(FuncExpr *func)
 {
-	return func->funcid == YB_HASH_CODE_OID;
+	return func->funcid == F_YB_HASH_CODE;
 }
 
 /*
@@ -7071,7 +7072,7 @@ fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol)
 		/* It's a simple index column */
 		if (IsA(node, FuncExpr))
 		{
-			Assert(((FuncExpr *) (node))->funcid == YB_HASH_CODE_OID);
+			Assert(((FuncExpr *) (node))->funcid == F_YB_HASH_CODE);
 			return node;
 		}
 		if (IsA(node, Var) &&
