@@ -1342,29 +1342,6 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    bool is_colocated_table = false;
-    if (is_colocated_database) {
-      // A table in a colocated database is colocated unless it opted out
-      // of colocation.
-      auto table_info =
-          master_->catalog_manager()->GetTableInfo(GetPgsqlTableId(database_oid, oid));
-
-      if (!table_info) {
-        // Primary key indexes are a separate entry in pg_class but they do not have
-        // their own entry in YugaByte's catalog manager. So, we skip them here.
-        continue;
-      }
-
-      is_colocated_table = table_info->IsColocatedUserTable();
-    }
-
-    if (is_colocated_table) {
-      // This is a colocated table. This cannot have a tablespace associated with it.
-      VLOG(5) << "Table { oid: " << oid << ", name: " << table_name << " }"
-              << " skipped as it is colocated";
-      continue;
-    }
-
     // Process the tablespace oid for this table/index.
     const auto& tablespace_oid_col = row.GetValue(tablespace_col_id);
     if (!tablespace_oid_col) {
@@ -1372,8 +1349,6 @@ Status SysCatalogTable::ReadPgClassInfo(
     }
 
     const uint32 tablespace_oid = tablespace_oid_col->uint32_value();
-    VLOG(1) << "Table { oid: " << oid << ", name: " << table_name << " }"
-            << " has tablespace oid " << tablespace_oid;
 
     boost::optional<TablespaceId> tablespace_id = boost::none;
     // If the tablespace oid is kInvalidOid then it means this table was created
@@ -1399,6 +1374,31 @@ Status SysCatalogTable::ReadPgClassInfo(
     } else {
       table_id = GetPgsqlTableId(database_oid, relfilenode_oid);
     }
+
+    auto table_info = master_->catalog_manager()->GetTableInfo(table_id);
+
+    if (!table_info) {
+      // Some relations (eg: primary key indexes) may exist in pg_class but not in
+      // YugaByte's catalog manager. So, we skip them here.
+      continue;
+    }
+
+    bool is_colocated_table = false;
+    if (is_colocated_database) {
+      // A table in a colocated database is colocated unless it opted out
+      // of colocation.
+      is_colocated_table = table_info->IsColocatedUserTable();
+
+      if (is_colocated_table) {
+        // This is a colocated table. This cannot have a tablespace associated with it.
+        VLOG(5) << "Table { uuid: " << table_id << ", name: " << table_name << " }"
+                << " skipped as it is colocated";
+        continue;
+      }
+    }
+
+    VLOG(1) << "Table { uuid: " << table_id << ", name: " << table_name << " }"
+            << " has tablespace oid " << tablespace_oid;
     const auto& ret = table_to_tablespace_map->emplace(table_id, tablespace_id);
     // The map should not have a duplicate entry with the same oid.
     DCHECK(ret.second);
