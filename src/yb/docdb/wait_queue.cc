@@ -728,7 +728,6 @@ class BlockerData {
     }
 
     if (txn_status_response.ok()) {
-      DCHECK(!txn_status_response->status_time.is_special() || IsAbortedUnlocked());
       txn_status_ht_ = txn_status_response->status_time;
       if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set &&
           PREDICT_TRUE(!FLAGS_TEST_skip_waiter_resumption_on_blocking_subtxn_rollback)) {
@@ -741,9 +740,10 @@ class BlockerData {
 
     if (should_signal) {
       if (txn_status_ht_.is_special()) {
-        DCHECK(IsAbortedUnlocked())
-          << "Unexpected special status ht in blocker " << txn_status_or_res_
-          << " @ " << txn_status_ht_;
+        // We might see kMax for status COMITTED. Edit the below check on failures, if encountered.
+        DCHECK(IsAbortedUnlocked() || IsPromotedUnlocked())
+            << "Unexpected special status ht in blocker " << txn_status_or_res_
+            << " @ " << txn_status_ht_;
         txn_status_ht_ = now;
       }
       return GetWaitersToSignalUnlocked();
@@ -1636,13 +1636,15 @@ class WaitQueue::Impl {
         promoted_blocker = blocker_it->second.lock();
       }
     }
-
+    // If the participant processes the promotion message before the first transaction status
+    // response of RunningTransaction, we get the status ht as kMin.
+    const auto resume_ht = res.status_time == HybridTime::kMin ? clock_->Now() : res.status_time;
     // Check if the promoted transaction is an active waiter, and make it re-enter the wait queue
     // to ensure its wait-for relationships are re-registered with its new transaction coordinator,
     // corresponding to its new status tablet.
     if (waiting_txn) {
       for (const auto& waiter_data : waiting_txn->PurgeWaiters()) {
-        waiter_runner_.Submit(waiter_data, Status::OK(), res.status_time);
+        waiter_runner_.Submit(waiter_data, Status::OK(), resume_ht);
       }
     }
 
@@ -1666,7 +1668,7 @@ class WaitQueue::Impl {
             << "Did not find waiter to signal during promotion " << waiter->id
             << ", request_id: " << waiter->request_id;
         for (const auto& waiter_to_signal : waiters_to_signal) {
-          waiter_runner_.Submit(waiter_to_signal, Status::OK(), res.status_time);
+          waiter_runner_.Submit(waiter_to_signal, Status::OK(), resume_ht);
         }
       }
     }
