@@ -67,7 +67,6 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     (c: any) => c.key === RuntimeConfigKey.AWS_COOLDOWN_HOURS
   )?.value;
 
-  // Value of runtime config key
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
   );
@@ -193,11 +192,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                     getDedicatedContainerElement('universeForm.master', true)}
                 </>
               )}
-              {provider?.code === CloudType.kubernetes &&
-                useK8CustomResources &&
+              {useK8CustomResources &&
+                provider?.code === CloudType.kubernetes &&
                 getKubernetesInstanceElement('universeForm.tserver', false)}
-              {provider?.code === CloudType.kubernetes &&
-                useK8CustomResources &&
+              {useK8CustomResources &&
+                provider?.code === CloudType.kubernetes &&
+                isPrimary &&
                 getKubernetesInstanceElement('universeForm.master', true)}
               {provider?.code === CloudType.kubernetes &&
                 !useK8CustomResources &&
