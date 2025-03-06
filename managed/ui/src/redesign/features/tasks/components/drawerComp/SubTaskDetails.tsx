@@ -7,9 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import clsx from 'clsx';
-import { useToggle } from 'react-use';
+import { usePrevious, useToggle } from 'react-use';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { groupBy, keys, startCase, values } from 'lodash';
@@ -19,7 +19,7 @@ import { YBLoadingCircleIcon } from '../../../../../components/common/indicators
 import { getFailedTaskDetails, getSubTaskDetails } from './api';
 import { SubTaskInfo, Task, TaskStates } from '../../dtos';
 import { TaskDrawerCompProps } from './dtos';
-import { isTaskFailed, isTaskRunning } from '../../TaskUtils';
+import { isTaskFailed } from '../../TaskUtils';
 import LinkIcon from '../../../../assets/link.svg';
 
 const useStyles = makeStyles((theme) => ({
@@ -65,8 +65,7 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const classes = useStyles();
   const [expandDetails, toggleExpandDetails] = useToggle(false);
   const failedTask = isTaskFailed(currentTask);
-  const taskInProgress = isTaskRunning(currentTask);
-
+  const currentTaskPrevState = usePrevious(currentTask);
   const { t } = useTranslation('translation', {
     keyPrefix: 'taskDetails.progress'
   });
@@ -80,15 +79,23 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     }
   );
 
-  const { data: detailedTaskInfo, isLoading: isSubTaskLoading } = useQuery(
-    ['subTasks', currentTask.id!],
-    () => getSubTaskDetails(currentTask.id!),
-    {
-      select: (data) => data.data,
-      enabled: !!currentTask,
-      refetchInterval: taskInProgress ? 10000 : false
+  const {
+    data: detailedTaskInfo,
+    isLoading: isSubTaskLoading,
+    refetch: refetchSubTasks
+  } = useQuery(['subTasks', currentTask.id!], () => getSubTaskDetails(currentTask.id!), {
+    select: (data) => data.data,
+    enabled: !!currentTask,
+  });
+
+  useEffect(() => {
+    // when the current task is success, we stop refetching the subtasks(see above function)
+    // so we need to refetch the subtasks when the task is success
+    // we keep track of the previous state of the task to compare the percent complete
+    if (currentTaskPrevState?.percentComplete !== currentTask.percentComplete) {
+      refetchSubTasks();
     }
-  );
+  }, [currentTask, currentTaskPrevState]);
 
   if (!currentTask) return null;
 
