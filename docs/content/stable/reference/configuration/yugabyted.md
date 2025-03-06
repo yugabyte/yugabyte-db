@@ -977,7 +977,7 @@ Use the sub-command `yugabyted xcluster add_to_checkpoint` to add new databases 
 For example, to add new databases to xCluster replication, first checkpoint them using the following command:
 
 ```sh
-./bin/yugabyted xcluster create_checkpoint \
+./bin/yugabyted xcluster add_to_checkpoint \
     --replication_id <replication_id> \
     --databases <comma_separated_database_names>
 ```
