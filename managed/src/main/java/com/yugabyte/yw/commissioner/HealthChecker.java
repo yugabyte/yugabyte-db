@@ -930,7 +930,6 @@ public class HealthChecker {
           continue;
         }
         log.debug("Found ip with master/tserver running: {} node {}", ip, nodeDetails);
-        Optional<NodeInstance> nodeInstance = NodeInstance.maybeGet(nodeDetails.getNodeUuid());
         NodeData nodeData =
             new NodeData()
                 .setHasError(true)
