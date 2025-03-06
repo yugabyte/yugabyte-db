@@ -167,7 +167,6 @@ static char *features_file;
 static char *system_constraints_file;
 static char *system_functions_file;
 static char *system_views_file;
-static char *yb_system_views_file;
 static bool success = false;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
@@ -178,6 +177,9 @@ static bool caught_signal = false;
 static bool output_failed = false;
 static int	output_errno = 0;
 static char *pgdata_native;
+
+static char *yb_system_views_file;
+static char *yb_system_functions_file;
 
 /* defaults */
 static int	n_connections = 10;
@@ -2755,8 +2757,9 @@ setup_data_file_paths(void)
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_constraints_file, "system_constraints.sql");
 	set_input(&system_functions_file, "system_functions.sql");
-
 	set_input(&system_views_file, "system_views.sql");
+
+	set_input(&yb_system_functions_file, "yb_system_functions.sql");
 	set_input(&yb_system_views_file, "yb_system_views.sql");
 
 	if (show_setting || debug)
@@ -2787,7 +2790,10 @@ setup_data_file_paths(void)
 	check_input(system_functions_file);
 	check_input(system_views_file);
 	if (IsYugaByteGlobalClusterInitdb())
+	{
+		check_input(yb_system_functions_file);
 		check_input(yb_system_views_file);
+	}
 }
 
 
@@ -3113,7 +3119,10 @@ initialize_data_directory(void)
 	setup_run_file(cmdfd, system_views_file);
 
 	if (IsYugaByteGlobalClusterInitdb())
+	{
+		setup_run_file(cmdfd, yb_system_functions_file);
 		setup_run_file(cmdfd, yb_system_views_file);
+	}
 
 	/* Do not support copy in YB yet */
 	if (!IsYugaByteGlobalClusterInitdb())

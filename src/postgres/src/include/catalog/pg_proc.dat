@@ -12041,7 +12041,7 @@
 { oid => '8067',
   descr => 'Reset the statistics collected by the ANALYZE command.',
   proname => 'yb_reset_analyze_statistics', prolang => 'sql', provolatile => 'v',
-  prorettype => 'void', proargtypes => 'oid', prosrc => 'see yb_system_views.sql' },
+  prorettype => 'void', proargtypes => 'oid', prosrc => 'see yb_system_functions.sql' },
 
 { oid => '8068',
   descr => 'enables query diagnostics',

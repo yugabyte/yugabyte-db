@@ -5,7 +5,7 @@ SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
 -- (2) The current query should target a single row since the filter has all the key columns of
 -- unique index pg_proc_proname_args_nsp_index.
 -- (3) Setting the field proargdefaults is equivalent to running the following query in
--- yb_system_views.sql in initdb to provide a default value for the input argument.
+-- yb_system_functions.sql in initdb to provide a default value for the input argument.
 -- CREATE OR REPLACE FUNCTION
 --   yb_is_database_colocated(check_legacy DEFAULT false)
 -- RETURNS bool
