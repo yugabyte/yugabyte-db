@@ -158,7 +158,7 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject"            % "guice"                % "5.1.0",
   "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
-  "org.postgresql" % "postgresql" % "42.3.9",
+  "org.postgresql" % "postgresql" % "42.5.6",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
