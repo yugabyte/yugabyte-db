@@ -15,6 +15,7 @@
 #include "io/bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
+#include "collation/collation.h"
 #include "types/decimal128.h"
 #include "utils/documentdb_errors.h"
 #include "query/bson_compare.h"
@@ -23,7 +24,8 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
-typedef void (*ProcessSetDualOperands)(void *state, bson_value_t *result);
+typedef void (*ProcessSetDualOperands)(void *state, const char *collationString,
+									   bson_value_t *result);
 typedef bool (*ProcessSetVariableOperands)(const bson_value_t *currentValue,
 										   void *state,
 										   bson_value_t *result, bool
@@ -40,7 +42,27 @@ typedef struct DollarSetOperatorState
 
 	/* Hash Table to store frequency of elements */
 	HTAB *arrayElementsHashTable;
+
+	/* collation string for comparison, if any */
+	const char *collationString;
 } DollarSetOperatorState;
+
+typedef struct VariadicSetOperatorState
+{
+	List *inputArgumentsList;
+
+	/* collation string for comparison, if any */
+	const char *collationString;
+} VariadicSetOperatorState;
+
+typedef struct BinarySetOperatorState
+{
+	AggregationExpressionData *firstValue;
+	AggregationExpressionData *secondValue;
+
+	/* collation string for comparison, if any */
+	char *collationString;
+} BinarySetOperatorState;
 
 typedef struct BsonValueHashEntry
 {
@@ -52,6 +74,9 @@ typedef struct BsonValueHashEntry
 
 	/* store the number of array where element has seen last */
 	int lastSeenArray;
+
+	/* collation string to be used for comparison, if applicable */
+	const char *collationString;
 } BsonValueHashEntry;
 
 /* --------------------------------------------------------- */
@@ -93,8 +118,10 @@ static bool ProcessDollarSetEqualsElement(const bson_value_t *currentValue, void
 										  bson_value_t *result, bool
 										  isFieldPathExpression);
 static void ProcessDollarSetEqualsResult(void *state, bson_value_t *result);
-static void ProcessDollarSetDifference(void *state, bson_value_t *result);
-static void ProcessDollarSetIsSubset(void *state, bson_value_t *result);
+static void ProcessDollarSetDifference(void *state, const char *collationString,
+									   bson_value_t *result);
+static void ProcessDollarSetIsSubset(void *state, const char *collationString,
+									 bson_value_t *result);
 static void ProcessSetElement(const bson_value_t *currentValue,
 							  DollarSetOperatorState *state);
 static bool ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue,
@@ -118,6 +145,11 @@ ParseDollarSetIntersection(const bson_value_t *argument,
 		.isMatchWithPreviousSet = true,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
+
+	if (IsCollationApplicable(parseContext->collationString))
+	{
+		state.collationString = pstrdup(parseContext->collationString);
+	}
 
 	ParseSetVariableOperands(argument, data, &state, parseContext,
 							 ProcessDollarSetIntersection);
@@ -177,6 +209,11 @@ ParseDollarSetUnion(const bson_value_t *argument,
 		.isMatchWithPreviousSet = true,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
+
+	if (IsCollationApplicable(parseContext->collationString))
+	{
+		state.collationString = pstrdup(parseContext->collationString);
+	}
 
 	ParseSetVariableOperands(argument, data, &state, parseContext, ProcessDollarSetUnion);
 
@@ -246,6 +283,11 @@ ParseDollarSetEquals(const bson_value_t *argument,
 		.isMatchWithPreviousSet = true,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
+
+	if (IsCollationApplicable(parseContext->collationString))
+	{
+		state.collationString = pstrdup(parseContext->collationString);
+	}
 
 	ParseSetVariableOperands(argument, data, &state, parseContext,
 							 ProcessDollarSetEqualsElement);
@@ -476,14 +518,28 @@ ParseSetDualOperands(const bson_value_t *argument,
 
 		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
 											  &state);
-		processOperatorFunc(&state, &data->value);
+
+		const char *collationString = IsCollationApplicable(context->collationString) ?
+									  context->collationString : NULL;
+		processOperatorFunc(&state, collationString, &data->value);
 
 		data->kind = AggregationExpressionKind_Constant;
 		list_free_deep(arguments);
 	}
 	else
 	{
-		data->operator.arguments = arguments;
+		BinarySetOperatorState *binarySetOperatorState = palloc0(
+			sizeof(BinarySetOperatorState));
+		binarySetOperatorState->firstValue = firstArg;
+		binarySetOperatorState->secondValue = secondArg;
+
+		if (IsCollationApplicable(context->collationString))
+		{
+			binarySetOperatorState->collationString = pstrdup(context->collationString);
+		}
+
+		data->operator.arguments = binarySetOperatorState;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 	}
 }
 
@@ -495,9 +551,9 @@ HandlePreParsedSetDualOperands(pgbson *doc, void *arguments,
 							   ProcessSetDualOperands
 							   processOperatorFunc)
 {
-	List *argumentList = (List *) arguments;
-	AggregationExpressionData *firstArg = list_nth(argumentList, 0);
-	AggregationExpressionData *secondArg = list_nth(argumentList, 1);
+	BinarySetOperatorState *operatorState = (BinarySetOperatorState *) arguments;
+	AggregationExpressionData *firstArg = operatorState->firstValue;
+	AggregationExpressionData *secondArg = operatorState->secondValue;
 
 	bool hasFieldExpression = false;
 	bool isNullOnEmpty = false;
@@ -518,7 +574,7 @@ HandlePreParsedSetDualOperands(pgbson *doc, void *arguments,
 
 	InitializeDualArgumentExpressionState(firstValue, secondValue, hasFieldExpression,
 										  &state);
-	processOperatorFunc(&state, result);
+	processOperatorFunc(&state, operatorState->collationString, result);
 
 	ExpressionResultSetValue(expressionResult, result);
 }
@@ -560,8 +616,17 @@ ParseSetVariableOperands(const bson_value_t *argument,
 	}
 	else
 	{
-		data->operator.arguments = argumentsList;
-		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+		VariadicSetOperatorState *operatorState = palloc0(
+			sizeof(VariadicSetOperatorState));
+		operatorState->inputArgumentsList = argumentsList;
+
+		if (IsCollationApplicable(parseContext->collationString))
+		{
+			operatorState->collationString = pstrdup(parseContext->collationString);
+		}
+
+		data->operator.arguments = operatorState;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 	}
 }
 
@@ -575,7 +640,14 @@ HandlePreParsedSetVariableOperands(pgbson *doc, void *arguments,
 								   ProcessSetVariableOperands
 								   processOperatorFunc)
 {
-	List *argumentList = (List *) arguments;
+	VariadicSetOperatorState *operatorState = (VariadicSetOperatorState *) arguments;
+	List *argumentList = operatorState->inputArgumentsList;
+
+	DollarSetOperatorState *dollarSetState = (DollarSetOperatorState *) state;
+	if (IsCollationApplicable(operatorState->collationString))
+	{
+		dollarSetState->collationString = pstrdup(operatorState->collationString);
+	}
 
 	int idx = 0;
 	while (argumentList != NIL && idx < argumentList->length)
@@ -588,7 +660,7 @@ HandlePreParsedSetVariableOperands(pgbson *doc, void *arguments,
 
 		bson_value_t currentValue = childResult.value;
 
-		bool continueEnumerating = processOperatorFunc(&currentValue, state,
+		bool continueEnumerating = processOperatorFunc(&currentValue, dollarSetState,
 													   result,
 													   childResult.
 													   isFieldPathExpression);
@@ -780,7 +852,7 @@ ProcessDollarSetEqualsResult(void *state, bson_value_t *result)
 
 /* Function that validates the final state before returning the result for $setDifference. */
 static void
-ProcessDollarSetDifference(void *state, bson_value_t *result)
+ProcessDollarSetDifference(void *state, const char *collationString, bson_value_t *result)
 {
 	DualArgumentExpressionState *context = (DualArgumentExpressionState *) state;
 
@@ -809,6 +881,7 @@ ProcessDollarSetDifference(void *state, bson_value_t *result)
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.collationString = collationString
 	};
 
 	ProcessSetElement(&context->secondArgument, &setDifferenceState);
@@ -824,7 +897,9 @@ ProcessDollarSetDifference(void *state, bson_value_t *result)
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *arrayElement = bson_iter_value(&arrayIterator);
-		BsonValueHashEntry elementToFind = { .bsonValue = *arrayElement };
+		BsonValueHashEntry elementToFind = {
+			.bsonValue = *arrayElement, .collationString = collationString
+		};
 
 		bool found = false;
 
@@ -847,7 +922,7 @@ ProcessDollarSetDifference(void *state, bson_value_t *result)
 
 /* Function that validates the final state before returning the result for $setIsSubset. */
 static void
-ProcessDollarSetIsSubset(void *state, bson_value_t *result)
+ProcessDollarSetIsSubset(void *state, const char *collationString, bson_value_t *result)
 {
 	DualArgumentExpressionState *context = (DualArgumentExpressionState *) state;
 
@@ -881,6 +956,7 @@ ProcessDollarSetIsSubset(void *state, bson_value_t *result)
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.collationString = collationString
 	};
 
 	ProcessSetElement(&context->secondArgument, &setIsSubsetState);
@@ -892,7 +968,9 @@ ProcessDollarSetIsSubset(void *state, bson_value_t *result)
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *arrayElement = bson_iter_value(&arrayIterator);
-		BsonValueHashEntry elementToFind = { .bsonValue = *arrayElement };
+		BsonValueHashEntry elementToFind = {
+			.bsonValue = *arrayElement, .collationString = collationString
+		};
 
 		bool found = false;
 
@@ -931,7 +1009,9 @@ ProcessSetElement(const bson_value_t *currentValue,
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *arrayElement = bson_iter_value(&arrayIterator);
-		BsonValueHashEntry elementToFind = { .bsonValue = *arrayElement };
+		BsonValueHashEntry elementToFind = {
+			.bsonValue = *arrayElement, .collationString = state->collationString
+		};
 
 		bool found = false;
 		BsonValueHashEntry *foundElement =
@@ -1015,6 +1095,18 @@ static uint32
 BsonValueHashEntryHashFunc(const void *obj, size_t objsize)
 {
 	const BsonValueHashEntry *hashEntry = obj;
+	const bson_value_t *bsonValue = &hashEntry->bsonValue;
+
+	if (bsonValue->value_type == BSON_TYPE_UTF8 &&
+		IsCollationApplicable(hashEntry->collationString))
+	{
+		char *key = bsonValue->value.v_utf8.str;
+		char *sortKey = GetCollationSortKey(hashEntry->collationString, key, strlen(key));
+		uint32 hash = hash_bytes((unsigned char *) sortKey, strlen(sortKey));
+
+		pfree(sortKey);
+		return hash;
+	}
 	return BsonValueHashUint32(&hashEntry->bsonValue);
 }
 
@@ -1031,11 +1123,12 @@ BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsize)
 	const BsonValueHashEntry *hashEntry1 = obj1;
 	const BsonValueHashEntry *hashEntry2 = obj2;
 
-	if (BsonValueEquals(&hashEntry1->bsonValue, &hashEntry2->bsonValue))
-	{
-		return 0;
-	}
-	return 1;
+	bool isComparisonValidIgnore;
+	bool cmp = CompareBsonValueAndTypeWithCollation(&hashEntry1->bsonValue,
+													&hashEntry2->bsonValue,
+													&isComparisonValidIgnore,
+													hashEntry1->collationString);
+	return cmp ? 1 : 0;
 }
 
 

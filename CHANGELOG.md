@@ -13,6 +13,7 @@
 * Support collation with `$in` array operator *[Feature]*
 * Support unique index truncation by default with new operator class *[Feature]*
 * Support collation in aggregation `$redact` stage *[Feature]*
+* Support collation with `$setEquals`, `$setUnion`, `$setIntersection`, `$setDifference`, `$setIsSubet` in the aggregation pipeline *[Feature]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

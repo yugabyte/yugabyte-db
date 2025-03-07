@@ -2200,6 +2200,341 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_redac
  
 (5 rows)
 
+-- support for $setEquals
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setEquals": [["$a"], ["CAT"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : false }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setEquals": [["$a"], ["DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setEquals": [["$a"], ["DOG", "dOg"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setEquals": [["$a", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : false }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setEquals": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setEquals": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : false }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+-- support for $setIntersection
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIntersection": [["$a"], ["CAT"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [  ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [  ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [  ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIntersection": [["$a"], ["DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [  ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [  ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIntersection": [["$a"], ["DOG", "dOg"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [  ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [  ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIntersection": [["$a", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "dog" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "dog" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "dog" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "dog" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIntersection": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "dog" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "cAT", "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "dog" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "cAT", "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "cAT", "dog" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "cAT", "dog" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIntersection": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [  ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [  ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [  ] }
+(6 rows)
+
+-- support for $setUnion
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setUnion": [["$a"], ["CAT"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "CAT", "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "CAT", "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "CAT", "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setUnion": [["$a"], ["DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "DOG" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "DOG" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen", "DOG" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "DOG", "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setUnion": [["$a"], ["DOG", "dOg"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "DOG" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "DOG" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen", "DOG" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "DOG", "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setUnion": [["$a", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "dog" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "dog" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "CAT", "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "CAT", "dog", "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "CAT", "bat", "dog" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setUnion": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "dog" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "cAT", "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "dog" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "cAT", "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "cAT", "dog", "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "cAT", "bat", "dog" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setUnion": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+                                              document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "CAT", "DOG", "dog", "cat", "cAT" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "CAT", "DOG", "dog", "cAT" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "CAT", "DOG", "dog", "cAT", "cAt" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "CAT", "DOG", "dog", "dOg", "cAT" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "CAT", "DOG", "dog", "hen", "cAT" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "CAT", "DOG", "bat", "dog", "cAT" ] }
+(6 rows)
+
+-- support for $setDifference
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setDifference": [["$a"], ["CAT"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setDifference": [["$a"], ["DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [  ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setDifference": [["$a"], ["DOG", "dOg"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [  ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setDifference": [["$a", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [  ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setDifference": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [  ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "bat" ] }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setDifference": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+                                       document                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : [ "cat", "cAT", "dog" ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : [ "dog", "cAT" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : [ "cAt", "cAT", "dog" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : [ "dOg", "cAT", "dog" ] }
+ { "_id" : "hen", "a" : "hen", "newField" : [ "hen", "cAT", "dog" ] }
+ { "_id" : "bat", "a" : "bat", "newField" : [ "bat", "cAT", "dog" ] }
+(6 rows)
+
+-- support for $setIsSubset
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIsSubset": [["$a"], ["CAT"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : false }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIsSubset": [["$a"], ["DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIsSubset": [["$a"], ["DOG", "dOg"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 2} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIsSubset": [["$a", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIsSubset": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : true }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$project": { "a": 1, "newField": {"$setIsSubset": [["$a", "cAT", "dog"], ["CAT", "DOG"]]} } }], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat", "newField" : false }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog", "newField" : false }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cAt", "newField" : false }
+ { "_id" : { "$numberInt" : "4" }, "a" : "dOg", "newField" : false }
+ { "_id" : "hen", "a" : "hen", "newField" : false }
+ { "_id" : "bat", "a" : "bat", "newField" : false }
+(6 rows)
+
 -- query match
 -- enableLetAndCollationForQueryMatch GUC off: ignore collation
 SET documentdb.enableLetAndCollationForQueryMatch TO off;

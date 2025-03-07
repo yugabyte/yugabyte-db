@@ -15,7 +15,7 @@
 #include <utils/memutils.h>
 #include <unicode/umachine.h>
 #include <utils/pg_locale.h>
-
+#include <common/hashfn.h>
 
 #include "io/bson_core.h"
 #include "lib/stringinfo.h"
@@ -832,8 +832,8 @@ CheckCollationInputParamType(bson_type_t expectedType, bson_type_t foundType, co
 
 
 /*
- * Well known hash function to efficiently calculate hash of a string. While it may have collections it's unlikely in our case
- * where is hash function is used to generate hash code for limited number of collation strings. Even if there is collision,
+ * Well known hash function to efficiently calculate hash of a string. While it may have collisions it's unlikely in our case
+ * where the hash function is used to generate hash code for limited number of collation strings. Even if there is collision,
  * the functionality will not be broken, we will just generate a few more cache entries
  */
 static unsigned long
