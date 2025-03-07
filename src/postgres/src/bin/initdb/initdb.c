@@ -3386,12 +3386,11 @@ main(int argc, char *argv[])
 		}
 	}
 
-	const char *yb_log_dir = getenv("FLAGS_log_dir");
+	const char *yb_log_file_path = getenv("YB_INITDB_LOG_FILE_PATH");
 
-	if (yb_log_dir && yb_log_dir[0] != '\0')
+	if (yb_log_file_path && yb_log_file_path[0] != '\0')
 	{
-		const char *yb_log_option = psprintf("-r %s/initdb.log", yb_log_dir);
-
+		const char *yb_log_option = psprintf("-r %s", yb_log_file_path);
 		extra_options = psprintf("%s %s", extra_options, yb_log_option);
 	}
 
