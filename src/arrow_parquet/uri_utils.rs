@@ -4,10 +4,9 @@ use arrow::datatypes::SchemaRef;
 use object_store::{path::Path, ObjectStoreScheme};
 use parquet::{
     arrow::{
-        arrow_to_parquet_schema,
         async_reader::{ParquetObjectReader, ParquetRecordBatchStream},
         async_writer::ParquetObjectWriter,
-        AsyncArrowWriter, ParquetRecordBatchStreamBuilder,
+        ArrowSchemaConverter, AsyncArrowWriter, ParquetRecordBatchStreamBuilder,
     },
     file::{metadata::ParquetMetaData, properties::WriterProperties},
     schema::types::SchemaDescriptor,
@@ -110,7 +109,9 @@ pub(crate) fn parquet_schema_from_uri(uri_info: ParsedUriInfo) -> SchemaDescript
 
     let arrow_schema = parquet_reader.schema();
 
-    arrow_to_parquet_schema(arrow_schema).unwrap_or_else(|e| panic!("{}", e))
+    ArrowSchemaConverter::new()
+        .convert(arrow_schema)
+        .unwrap_or_else(|e| panic!("{}", e))
 }
 
 pub(crate) fn parquet_metadata_from_uri(uri_info: ParsedUriInfo) -> Arc<ParquetMetaData> {

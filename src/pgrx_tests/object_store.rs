@@ -17,7 +17,7 @@ mod tests {
                 .select(
                     "SELECT * FROM parquet_test.object_store_cache_items() ORDER BY 1,2,3;",
                     None,
-                    None,
+                    &[],
                 )
                 .unwrap();
 

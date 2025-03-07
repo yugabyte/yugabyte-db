@@ -301,7 +301,7 @@ mod tests {
         let result_metadata = Spi::connect(|client| {
             let mut results = Vec::new();
             let tup_table = client
-                .select(&parquet_file_metadata_command, None, None)
+                .select(&parquet_file_metadata_command, None, &[])
                 .unwrap();
 
             for row in tup_table {
@@ -337,7 +337,7 @@ mod tests {
         let result_metadata = Spi::connect(|client| {
             let mut results = Vec::new();
             let tup_table = client
-                .select(&parquet_file_metadata_command, None, None)
+                .select(&parquet_file_metadata_command, None, &[])
                 .unwrap();
 
             for row in tup_table {
@@ -379,7 +379,7 @@ mod tests {
         let result_metadata = Spi::connect(|client| {
             let mut results = Vec::new();
             let tup_table = client
-                .select(&parquet_file_metadata_command, None, None)
+                .select(&parquet_file_metadata_command, None, &[])
                 .unwrap();
 
             for row in tup_table {

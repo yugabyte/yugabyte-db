@@ -24,7 +24,7 @@ mod tests {
 
         let result_schema = Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(&parquet_schema_command, None, None).unwrap();
+            let tup_table = client.select(&parquet_schema_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let uri = row["uri"].value::<String>().unwrap().unwrap();
@@ -249,9 +249,7 @@ mod tests {
             let mut results_part1 = Vec::new();
             let mut results_part2 = Vec::new();
 
-            let tup_table = client
-                .select(&parquet_metadata_command, None, None)
-                .unwrap();
+            let tup_table = client.select(&parquet_metadata_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let uri = row["uri"].value::<String>().unwrap().unwrap();
@@ -604,7 +602,7 @@ mod tests {
         let result_file_metadata = Spi::connect(|client| {
             let mut results = Vec::new();
             let tup_table = client
-                .select(&parquet_file_metadata_command, None, None)
+                .select(&parquet_file_metadata_command, None, &[])
                 .unwrap();
 
             for row in tup_table {
@@ -654,7 +652,7 @@ mod tests {
         let result_kv_metadata = Spi::connect(|client| {
             let mut results = Vec::new();
             let tup_table = client
-                .select(&parquet_kv_metadata_command, None, None)
+                .select(&parquet_kv_metadata_command, None, &[])
                 .unwrap();
 
             for row in tup_table {

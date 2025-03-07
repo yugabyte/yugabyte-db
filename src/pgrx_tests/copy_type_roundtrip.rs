@@ -461,7 +461,7 @@ mod tests {
 
         let expected_a = Spi::connect(|client| {
             let query = "SELECT (crunchy_map.entries(a)).* from test_expected;";
-            let tup_table = client.select(query, None, None).unwrap();
+            let tup_table = client.select(query, None, &[]).unwrap();
 
             let mut results = Vec::new();
 
@@ -485,7 +485,7 @@ mod tests {
 
         let expected_b = Spi::connect(|client| {
             let query = "SELECT (crunchy_map.entries(b)).* from test_expected;";
-            let tup_table = client.select(query, None, None).unwrap();
+            let tup_table = client.select(query, None, &[]).unwrap();
 
             let mut results = Vec::new();
 
@@ -756,7 +756,7 @@ mod tests {
             Spi::connect(|client| {
                 let parquet_schema_command = format!("select precision, scale, logical_type, type_name from parquet.schema('{}') WHERE name = 'a';", LOCAL_TEST_FILE_PATH);
 
-                let tup_table = client.select(&parquet_schema_command, None, None).unwrap();
+                let tup_table = client.select(&parquet_schema_command, None, &[]).unwrap();
                 let mut results = Vec::new();
 
                 for row in tup_table {
@@ -869,7 +869,7 @@ mod tests {
             format!("select precision, scale, logical_type, type_name from parquet.schema('{}') WHERE name = 'a';", LOCAL_TEST_FILE_PATH);
 
         let attribute_schema = Spi::connect(|client| {
-            let tup_table = client.select(&parquet_schema_command, None, None).unwrap();
+            let tup_table = client.select(&parquet_schema_command, None, &[]).unwrap();
             let mut results = Vec::new();
 
             for row in tup_table {
@@ -908,7 +908,7 @@ mod tests {
             format!("select precision, scale, logical_type, type_name from parquet.schema('{}') WHERE name = 'element' ORDER BY logical_type;", LOCAL_TEST_FILE_PATH);
 
         let attribute_schema = Spi::connect(|client| {
-            let tup_table = client.select(&parquet_schema_command, None, None).unwrap();
+            let tup_table = client.select(&parquet_schema_command, None, &[]).unwrap();
             let mut results = Vec::new();
 
             for row in tup_table {
@@ -1184,7 +1184,7 @@ mod tests {
         let select_command = "SELECT owner FROM dog_owners ORDER BY owner;";
         let expected_result = Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(select_command, None, None).unwrap();
+            let tup_table = client.select(select_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let owner = row["owner"].value::<composite_type!("dog_owner")>();
@@ -1212,7 +1212,7 @@ mod tests {
 
         let result = Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(select_command, None, None).unwrap();
+            let tup_table = client.select(select_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let owner = row["owner"].value::<composite_type!("dog_owner")>();

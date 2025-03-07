@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 use arrow::datatypes::{Field, Fields, Schema};
 use arrow_cast::can_cast_types;
 use arrow_schema::{DataType, FieldRef};
-use parquet::arrow::{arrow_to_parquet_schema, PARQUET_FIELD_ID_META_KEY};
+use parquet::arrow::{ArrowSchemaConverter, PARQUET_FIELD_ID_META_KEY};
 use pg_sys::{
     can_coerce_type,
     CoercionContext::{self, COERCION_EXPLICIT},
@@ -33,7 +33,9 @@ pub(crate) fn parquet_schema_string_from_attributes(
     attributes: &[FormData_pg_attribute],
 ) -> String {
     let arrow_schema = parse_arrow_schema_from_attributes(attributes);
-    let parquet_schema = arrow_to_parquet_schema(&arrow_schema)
+
+    let parquet_schema = ArrowSchemaConverter::new()
+        .convert(&arrow_schema)
         .unwrap_or_else(|e| panic!("failed to convert arrow schema to parquet schema: {}", e));
 
     let mut buf = Vec::new();

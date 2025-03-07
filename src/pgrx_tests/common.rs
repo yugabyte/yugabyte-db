@@ -121,7 +121,7 @@ impl<T: IntoDatum + FromDatum> TestTable<T> {
 
         Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(&select_command, None, None).unwrap();
+            let tup_table = client.select(&select_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let val = row["a"].value::<T>();

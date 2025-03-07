@@ -46,7 +46,7 @@ mod tests {
         let select_command = "SELECT * FROM file1_result ORDER BY s;";
         let result1 = Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(select_command, None, None).unwrap();
+            let tup_table = client.select(select_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let s = row["s"].value::<i32>();
@@ -61,7 +61,7 @@ mod tests {
         let select_command = "SELECT * FROM file3_result;";
         let result3 = Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(select_command, None, None).unwrap();
+            let tup_table = client.select(select_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let copy_to_result = row["copy_to_result"].value::<&str>();
@@ -146,7 +146,7 @@ mod tests {
         let select_command = "SELECT b, c FROM test_table ORDER BY b, c;";
         let result = Spi::connect(|client| {
             let mut results = Vec::new();
-            let tup_table = client.select(select_command, None, None).unwrap();
+            let tup_table = client.select(select_command, None, &[]).unwrap();
 
             for row in tup_table {
                 let b = row["b"].value::<i32>();
@@ -224,7 +224,7 @@ mod tests {
 
         let result = Spi::connect(|client| {
             let tup_table = client
-                .select("select * from test_table;", None, None)
+                .select("select * from test_table;", None, &[])
                 .unwrap();
             let mut results = Vec::new();
 
