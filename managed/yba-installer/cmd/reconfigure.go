@@ -124,6 +124,14 @@ var configGenCmd = &cobra.Command{
 	Short:   "Create the default config file.",
 	Aliases: []string{"gen-config", "create-config"},
 	Run: func(cmd *cobra.Command, args []string) {
+		if _, err := os.Stat(common.InputFile()); err == nil {
+			prompt := fmt.Sprintf("Config file '%s' already exists, do you want to overwrite with a "+
+				"default config?", common.InputFile())
+			if !common.UserConfirm(prompt, common.DefaultNo) {
+				log.Info("skipping generate-config")
+				return
+			}
+		}
 		config.WriteDefaultConfig()
 	},
 }
