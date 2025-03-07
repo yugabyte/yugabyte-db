@@ -24,6 +24,7 @@ import "yb/docdb/docdb.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tserver/tserver.proto";
 
 message TablegroupIdentifierPB {
   // The tablegroup ID to fetch info.
@@ -795,6 +796,25 @@ message ReleaseObjectLocksGlobalResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message RefreshYsqlLeaseRequestPB {
+  optional NodeInstancePB instance = 1;
+}
+
+message RefreshYsqlLeaseInfoPB {
+  optional bool new_lease = 1;
+  optional uint64 lease_epoch = 2;
+  // TODO: If this ends up being too big, consider adding a way to break this up
+  // into multiple messages.
+  optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
+}
+
+message RefreshYsqlLeaseResponsePB {
+  oneof refresh_ysql_lease_payload {
+    MasterErrorPB error = 1;
+    RefreshYsqlLeaseInfoPB info = 2;
+  }
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -854,4 +874,6 @@ service MasterDdl {
       returns (AcquireObjectLocksGlobalResponsePB);
   rpc ReleaseObjectLocksGlobal(ReleaseObjectLocksGlobalRequestPB)
       returns (ReleaseObjectLocksGlobalResponsePB);
+  rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
+    returns (RefreshYsqlLeaseResponsePB);
 }

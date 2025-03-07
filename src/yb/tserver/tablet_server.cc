@@ -96,6 +96,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/ysql_lease_poller.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
@@ -450,6 +451,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   opts_.SetMasterAddresses(new_master_addresses);
 
   heartbeater_->set_master_addresses(new_master_addresses);
+  ysql_lease_poller_->set_master_addresses(new_master_addresses);
 
   return Status::OK();
 }
@@ -470,6 +472,8 @@ Status TabletServer::Init() {
   log_prefix_ = Format("P $0: ", permanent_uuid());
 
   heartbeater_ = CreateHeartbeater(opts_, this);
+
+  ysql_lease_poller_ = std::make_unique<YsqlLeaseClient>(*this, opts_.GetMasterAddresses());
 
   if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
     // Create the encrypted environment that will allow users to enable encryption.
@@ -722,6 +726,7 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(tablet_manager_->Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
+  RETURN_NOT_OK(ysql_lease_poller_->Start());
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -753,6 +758,7 @@ void TabletServer::Shutdown() {
 
   maintenance_manager_->Shutdown();
   WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
+  WARN_NOT_OK(ysql_lease_poller_->Stop(), "Failed to stop ysql lease client thread");
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
@@ -773,18 +779,19 @@ void TabletServer::Shutdown() {
 }
 
 Status TabletServer::ProcessLeaseUpdate(
-    const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
+    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
   VLOG(2) << __func__;
-  if (lease_update.has_ddl_lock_entries() && ts_local_lock_manager_) {
+  if (lease_refresh_info.has_ddl_lock_entries() && ts_local_lock_manager_) {
     // todo(amit):
     // BootstrapDdlObjectLocks must release all locks held and acquire all locks passed in,
     // regardless of whether it has been called in the past or not. Currently this method does
     // nothing when called after the first time on the same object.
-    RETURN_NOT_OK(ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries()));
+    RETURN_NOT_OK(
+        ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_refresh_info.ddl_lock_entries()));
   }
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
-    pg_client_service->impl.ProcessLeaseUpdate(lease_update, time);
+    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);
   }
   return Status::OK();
 }
@@ -1390,7 +1397,7 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
     }
   }
 
-  std::string leader = heartbeater_->get_leader_master_hostport();
+  std::string leader = heartbeater_->get_master_leader_hostport().ToString();
   for (const auto& resolved_master_entry : resolved_addr_map) {
     auto master_entry = peer_status->Add();
     auto master = resolved_master_entry.second;

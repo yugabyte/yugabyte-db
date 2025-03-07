@@ -400,7 +400,9 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
     for (size_t i = 1; i <= opts_.num_tablet_servers; i++) {
       RETURN_NOT_OK_PREPEND(
-          AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy),
+          AddTabletServer(
+              ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}, -1,
+              /* wait_for_registration */ false),
           Format("Failed starting tablet server $0", i));
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
@@ -1426,7 +1428,8 @@ string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {
 }
 
 Status ExternalMiniCluster::AddTabletServer(
-    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives) {
+    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives,
+    bool wait_for_registration) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -1507,6 +1510,10 @@ Status ExternalMiniCluster::AddTabletServer(
   // This is for the cases where we add new ts in middle of tests.
   if (!yb_controller_servers_.empty()) {
     RETURN_NOT_OK(AddYbControllerServer(ts));
+  }
+
+  if (wait_for_registration) {
+    RETURN_NOT_OK(WaitForTabletServerToRegister(ts->uuid(), kTabletServerRegistrationTimeout));
   }
 
   return Status::OK();
@@ -1667,7 +1674,8 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
       for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
         for (auto it = last_unmatched.begin(); it != last_unmatched.end(); ++it) {
           if ((**it).instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
-              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno()) {
+              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno() &&
+              (!e.has_lease_info() || e.lease_info().is_live())) {
             match_count++;
             last_unmatched.erase(it);
             break;
@@ -1681,6 +1689,33 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
     }
     SleepFor(MonoDelta::FromMilliseconds(100));
   }
+}
+
+Status ExternalMiniCluster::WaitForTabletServerToRegister(
+    const std::string& uuid, MonoDelta timeout) {
+  MonoTime deadline{MonoTime::Now()};
+  deadline.AddDelta(timeout);
+  while (true) {
+    if (deadline < MonoTime::Now()) {
+      return STATUS_FORMAT(
+          TimedOut, "New tablet server $0 failed to heartbeat within $1 seconds", uuid, timeout);
+    }
+    master::ListTabletServersRequestPB req;
+    master::ListTabletServersResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(deadline - MonoTime::Now());
+    RETURN_NOT_OK(
+        GetLeaderMasterProxy<master::MasterClusterProxy>().ListTabletServers(req, &resp, &rpc));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    auto tserver_it = std::find_if(
+        resp.servers().begin(), resp.servers().end(),
+        [&uuid](const auto& server) { return server.instance_id().permanent_uuid() == uuid; });
+    if (tserver_it != resp.servers().end()) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+  return Status::OK();
 }
 
 void ExternalMiniCluster::AssertNoCrashes() {
@@ -2076,6 +2111,21 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
                                resp.ShortDebugString());
   }
   return Status::OK();
+}
+
+Result<std::string> ExternalMiniCluster::GetFlag(ExternalDaemon* daemon, const std::string& flag) {
+  server::GenericServiceProxy proxy(proxy_cache_.get(), daemon->bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::GetFlagRequestPB req;
+  server::GetFlagResponsePB resp;
+  req.set_flag(flag);
+  RETURN_NOT_OK_PREPEND(proxy.GetFlag(req, &resp, &controller), "rpc failed");
+  if (!resp.valid()) {
+    return STATUS_FORMAT(InvalidArgument, "Failed to get value for flag $0", flag);
+  }
+  return resp.value();
 }
 
 Status ExternalMiniCluster::SetFlagOnMasters(const string& flag, const string& value) {

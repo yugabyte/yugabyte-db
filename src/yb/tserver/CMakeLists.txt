@@ -234,6 +234,7 @@ set(TSERVER_SRCS
   full_compaction_manager.cc
   heartbeater.cc
   heartbeater_factory.cc
+  master_leader_poller.cc
   metrics_snapshotter.cc
   pg_client_service.cc
   pg_client_session.cc
@@ -284,7 +285,8 @@ set(TSERVER_SRCS
   xcluster_poller_stats.cc
   xcluster_output_client.cc
   xcluster_write_implementations.cc
-  ysql_advisory_lock_table.cc)
+  ysql_advisory_lock_table.cc
+  ysql_lease_poller.cc)
 
 set(TSERVER_DEPS
   protobuf

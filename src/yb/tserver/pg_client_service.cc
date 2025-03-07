@@ -51,6 +51,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -1727,7 +1728,7 @@ class PgClientServiceImpl::Impl {
     table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
   }
 
-  void ProcessLeaseUpdate(const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
     if (!GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
       return;
     }
@@ -1735,8 +1736,11 @@ class PgClientServiceImpl::Impl {
     {
       std::lock_guard lock(mutex_);
       last_lease_refresh_time_ = time;
-      if (lease_update.new_lease()) {
-        lease_epoch_ = lease_update.lease_epoch();
+      if (lease_refresh_info.new_lease()) {
+        LOG(INFO) << Format(
+            "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
+            lease_refresh_info.lease_epoch());
+        lease_epoch_ = lease_refresh_info.lease_epoch();
         sessions.assign(sessions_.begin(), sessions_.end());
         sessions_.clear();
       }
@@ -2323,9 +2327,9 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
-void PgClientServiceImpl::ProcessLeaseUpdate(
-    const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
-  impl_->ProcessLeaseUpdate(lease_update, time);
+void PgClientServiceImpl::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB&
+                                             lease_refresh_info, MonoTime time) {
+  impl_->ProcessLeaseUpdate(lease_refresh_info, time);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }

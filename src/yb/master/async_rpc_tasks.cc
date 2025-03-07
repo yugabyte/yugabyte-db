@@ -611,7 +611,7 @@ void RetryingTSRpcTask::DoRpcCallback() {
       TransitionToCompleteState();
     } else if (
         type() == MonitoredTaskType::kObjectLock &&
-        !target_ts_desc_->HasLiveClientOperationLease()) {
+        !target_ts_desc_->HasLiveYsqlOperationLease()) {
       LOG(WARNING) << "TS " << target_ts_desc_->id()
                    << " no longer has a live lease. Ignoring this tserver for object lock task "
                    << description() << ", rpc status: " << rpc_.status();

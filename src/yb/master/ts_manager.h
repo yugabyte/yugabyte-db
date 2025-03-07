@@ -75,15 +75,6 @@ using TSDescriptorMap = std::map<std::string, TSDescriptorPtr>;
 
 using LeaseExpiredCallback = std::function<void(const std::string&, uint64_t, LeaderEpoch)>;
 
-struct HeartbeatResult {
-  TSDescriptorPtr desc;
-  std::optional<ClientOperationLeaseUpdate> lease_update;
-
-  HeartbeatResult();
-  HeartbeatResult(
-      TSDescriptorPtr&& desc_param, std::optional<ClientOperationLeaseUpdate>&& lease_update_param);
-};
-
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
 // This class is thread-safe.
@@ -127,12 +118,15 @@ class TSManager {
 
   // Lookup an existing TS descriptor from a heartbeat request. If found, update the TSDescriptor
   // using the metadata in the heartbeat request.
-  Result<HeartbeatResult> LookupAndUpdateTSFromHeartbeat(
+  Result<TSDescriptorPtr> LookupAndUpdateTSFromHeartbeat(
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const;
 
-  Result<HeartbeatResult> RegisterFromHeartbeat(
+  Result<TSDescriptorPtr> RegisterFromHeartbeat(
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
       CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache);
+
+  Result<YsqlLeaseUpdate> RefreshYsqlLease(
+      const LeaderEpoch& epoch, const NodeInstancePB& instance);
 
   // Return all of the currently registered TS descriptors into the provided list.
   void GetAllDescriptors(TSDescriptorVector* descs) const;
@@ -192,7 +186,7 @@ class TSManager {
   // Performs all mutations necessary to register a new tserver or update the registration of an
   // existing tserver. There are two registration pathways, one through heartbeats and the other
   // through membership in a tablet group that is heartbeating to the master.
-  Result<HeartbeatResult> RegisterInternal(
+  Result<TSDescriptorPtr> RegisterInternal(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
       std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
       CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache);

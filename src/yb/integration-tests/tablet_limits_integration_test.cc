@@ -184,6 +184,7 @@ TEST_F(CreateTableLimitTestRF1, BlacklistTServer) {
   const std::string final_table_ddl = DDLToCreateNTabletTable("t");
   conn = ASSERT_RESULT(PgConnect());
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
+  // need to fix this. AddTabletServer.
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(conn.Execute(final_table_ddl));
   ASSERT_OK(conn.Execute("DROP TABLE t"));
