@@ -25,8 +25,6 @@ To avoid issues, stop YugabyteDB services on the node _before_ enabling or disab
 
 ## Download YugabyteDB
 
-YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
-
 The following instructions are for downloading the latest stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
 
 {{<note title="Which release should I use?">}}
@@ -35,31 +33,31 @@ For production deployments, install a stable release.
 Preview releases are recommended for development and testing only, and are not supported for production deployments. There is currently no migration path from a preview release to a stable release.
 {{</note>}}
 
-Download YugabyteDB as follows:
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-1. Download the YugabyteDB package using one of the following `wget` commands:
+Download and extract YugabyteDB as follows:
 
-    ```sh
-    wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    ```
+{{< tabpane text=true >}}
 
-    Or:
+  {{% tab header="x86" lang="x86" %}}
 
-    ```sh
-    wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
-    ```
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+```
 
-1. Extract the package and then change directories to the YugabyteDB home.
+  {{% /tab %}}
 
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
-    ```
+  {{% tab header="aarch64" lang="aarch64" %}}
 
-    Or:
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+```
 
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
-    ```
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Configure YugabyteDB
 

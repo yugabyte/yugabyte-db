@@ -71,35 +71,33 @@ Because each tablet maps to its own file, you can create a very large number of 
 
 ### Download
 
-YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
-
 The following instructions are for downloading the Preview release of YugabyteDB, which is recommended for development and testing only. For other versions, see [Releases](/preview/releases/).
 
-Download YugabyteDB as follows:
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-1. Download the YugabyteDB package using one of the following `wget` commands:
+Download and extract YugabyteDB as follows:
 
-    ```sh
-    wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
-    ```
+{{< tabpane text=true >}}
 
-    Or:
+  {{% tab header="x86" lang="x86" %}}
 
-    ```sh
-    wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
-    ```
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+```
 
-1. Extract the package and then change directories to the YugabyteDB home.
+  {{% /tab %}}
 
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
+  {{% tab header="aarch64" lang="aarch64" %}}
 
-    Or:
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+```
 
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ### Configure
 
