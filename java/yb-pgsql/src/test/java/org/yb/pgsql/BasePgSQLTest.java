@@ -742,8 +742,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // getBackendPID(), a JDBC api, caches the pid of the backend process at
       // the time of creating a connection. With connection manager it do not
       // return a valid pid as no dedicated backend process is attached to
-      // connection. Therefore execute sql query to find out.
-      assertTrue(warmupMode == ConnectionManagerWarmupMode.NONE);
+      // connection. Therefore execute sql query to find one of the pid out of
+      // pool of physical connections (backend processes). It can return a pid
+      // of any one of the backend process out of the pool depends which physical
+      // connection is free to attach to logical connection to excute 'SELECT
+      // pg_backend_pid()'.
       try (Statement stmt = connection.createStatement()) {
         ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
         assertTrue(rs.next());
@@ -1106,6 +1109,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       throws SQLException, TimeoutException, InterruptedException {
     // Maintain our map saying how many statements are being run by each backend pid.
     // Later we can determine (possibly) stuck backends based on this.
+    // With connection manager, getPgBackendPid can return the PID of any
+    // backend process out of pool of physical connections it is maintaining.
+    // Therefore use it carefully depending on the context.
     final int backendPid = getPgBackendPid(statement.getConnection());
 
     AtomicReference<SQLException> sqlExceptionWrapper = new AtomicReference<>();
