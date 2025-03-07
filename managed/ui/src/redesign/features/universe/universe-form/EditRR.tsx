@@ -1,4 +1,5 @@
 import { FC, useContext, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -17,6 +18,7 @@ import {
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
+import { useIsTaskNewUIEnabled } from '../../tasks/TaskUtils';
 import {
   editReadReplica,
   getAsyncCluster,
@@ -44,6 +46,7 @@ interface EditReadReplicaProps {
 export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) => {
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
+  const dispatch = useDispatch();
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
 
   //Local states
@@ -54,6 +57,8 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
   const [showK8Modal, setK8Modal] = useState(false);
   const [showDeleteRRModal, setShowDeleteRRModal] = useState(false);
   const [universePayload, setUniversePayload] = useState<UniverseDetails | null>(null);
+
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
 
   const { isLoading, data: universe } = useQuery(
     [QUERY_KEY.fetchUniverse, uuid],
@@ -184,7 +189,9 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
                 setSRModal(false);
                 setRNModal(true);
               }}
-              handleFullMove={() => editReadReplica(universePayload)}
+              handleFullMove={(runOnlyPrechecks: boolean) =>
+                editReadReplica(universePayload, dispatch, isNewTaskUIEnabled, runOnlyPrechecks)
+              }
             />
           )}
           {showFMModal && (
@@ -194,7 +201,9 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
               oldConfigData={universe.universeDetails}
               newConfigData={universePayload}
               onClose={() => setFMModal(false)}
-              onSubmit={() => editReadReplica(universePayload)}
+              onSubmit={(runOnlyPrechecks: boolean) =>
+                editReadReplica(universePayload, dispatch, isNewTaskUIEnabled, runOnlyPrechecks)
+              }
             />
           )}
           {showPlacementModal && (
@@ -204,7 +213,9 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
               oldConfigData={universe.universeDetails}
               newConfigData={universePayload}
               onClose={() => setPlacementModal(false)}
-              onSubmit={() => editReadReplica(universePayload)}
+              onSubmit={(runOnlyPrechecks: boolean) =>
+                editReadReplica(universePayload, dispatch, isNewTaskUIEnabled, runOnlyPrechecks)
+              }
             />
           )}
           {showK8Modal && (
@@ -214,7 +225,9 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
               oldConfigData={universe.universeDetails}
               newConfigData={universePayload}
               onClose={() => setK8Modal(false)}
-              onSubmit={() => editReadReplica(universePayload)}
+              onSubmit={(runOnlyPrechecks: boolean) =>
+                editReadReplica(universePayload, dispatch, isNewTaskUIEnabled, runOnlyPrechecks)
+              }
             />
           )}
         </>

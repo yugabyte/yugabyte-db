@@ -8,6 +8,7 @@
  */
 
 import { FC, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import clsx from 'clsx';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
@@ -25,7 +26,8 @@ import {
   YBModal,
   YBSelectField
 } from '../../../../../redesign/components';
-import { fetchTaskUntilItCompletes } from '../../../../../actions/xClusterReplication';
+import { useIsTaskNewUIEnabled } from '../../../../../redesign/features/tasks/TaskUtils';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
 import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
 import { UPGRADE_TYPE } from '../../../../../redesign/features/universe/universe-actions/rollback-upgrade/utils/types';
 import { ClusterType, Universe } from '../../../../../redesign/helpers/dtos';
@@ -85,10 +87,13 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
   onHide,
   universeData
 }) => {
-  const [isPrecheckPolling, setIsPrecheckPolling] = useState<boolean>(false);
+  const dispatch = useDispatch();
+
   const { t } = useTranslation('translation', {
     keyPrefix: 'linuxVersion.upgradeModal'
   });
+
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const interceptBackupLink = useInterceptBackupTaskLinks();
 
   const allProviders = useSelector((data: any) => data.cloud.providers) ?? [];
@@ -109,15 +114,6 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
   const targetVersionValue = watch('targetVersion');
 
   const classes = useStyles();
-
-  const handleTaskCompletion = (error: boolean) => {
-    if (error) {
-      toast.error('VM Upgrade pre-check failed, please check the task logs');
-    } else {
-      toast.success('VM Upgrade pre-checks completed successfully');
-    }
-    setIsPrecheckPolling(false);
-  };
 
   const doUpgradeVM = useMutation(
     ({
@@ -144,11 +140,12 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     },
     {
       onSuccess: (resp, { runOnlyPrechecks }) => {
-        if (!runOnlyPrechecks) {
-          setIsPrecheckPolling(false);
-          const taskUUID = resp.data.taskUUID;
-          toast.success(
-            <span>
+        const taskUUID = resp.data.taskUUID;
+        toast.success(
+          <span>
+            {runOnlyPrechecks ? (
+              t('precheckInitiatedMsg', { keyPrefix: 'universeActions' })
+            ) : (
               <Trans
                 i18nKey="linuxVersion.upgradeModal.successMsg"
                 components={[
@@ -159,13 +156,15 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
                   )
                 ]}
               ></Trans>
-            </span>
-          );
-          onHide();
+            )}
+          </span>
+        );
+        if (isNewTaskUIEnabled) {
+          dispatch(showTaskInDrawer(taskUUID));
         }
+        onHide();
       },
       onError: (resp: any) => {
-        setIsPrecheckPolling(false);
         const errMsg = createErrorMessage(resp);
         toast.error(errMsg);
         onHide();
@@ -201,19 +200,13 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     handleSubmit(async (values) => {
       try {
         await validationSchema.validate(values);
-        const response = doUpgradeVM.mutateAsync({
+        doUpgradeVM.mutateAsync({
           imageBundleUUID: values.targetVersion!,
           nodePrefix: universeData.universeDetails.nodePrefix,
           sleepAfterInSeconds: values.sleepAfterInSeconds,
           runOnlyPrechecks
         });
-        if (runOnlyPrechecks && 'taskUUID' in response) {
-          const taskUUID = response.taskUUID;
-          setIsPrecheckPolling(true);
-          fetchTaskUntilItCompletes(taskUUID as string, handleTaskCompletion);
-        }
       } catch (e) {
-        setIsPrecheckPolling(false);
         setError('targetVersion', {
           message: (e as yup.ValidationError)?.message
         });
@@ -232,24 +225,42 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
       }}
       overrideWidth={'886px'}
       overrideHeight={'720px'}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
-      submitLabel={t('submitLabel')}
-      buttonProps={{
-        primary: {
-          disabled: !isEmpty(errors) || isPrecheckPolling
-        }
-      }}
-      onSubmit={handleFormSubmit()}
       footerAccessory={
-        <YBButton
-          disabled={isPrecheckPolling || !targetVersionValue}
-          variant="secondary"
-          onClick={() => handleFormSubmit(true)}
-          showSpinner={isPrecheckPolling}
-          data-testid={'UpgradeLinuxVersionModal-RunPrechecksButton'}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
         >
-          {t('runPrechecksButton')}
-        </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="UpgradeLinuxVersionModal-CancelButton"
+            onClick={onHide}
+          >
+            {t('cancel', { keyPrefix: 'common' })}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            disabled={!targetVersionValue}
+            onClick={handleFormSubmit(true)}
+            data-testid="UpgradeLinuxVersionModal-PrecheckButton"
+          >
+            {t('runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            variant="primary"
+            disabled={!isEmpty(errors) || !targetVersionValue}
+            onClick={handleFormSubmit()}
+            data-testid="UpgradeLinuxVersionModal-UpgradeButton"
+          >
+            {t('submitLabel')}
+          </YBButton>
+        </div>
       }
     >
       <Grid container>
