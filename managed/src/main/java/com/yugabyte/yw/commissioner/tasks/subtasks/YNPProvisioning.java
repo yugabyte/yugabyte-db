@@ -11,10 +11,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
@@ -41,6 +41,7 @@ public class YNPProvisioning extends AbstractTaskBase {
   private final NodeAgentManager nodeAgentManager;
   private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
+  private final FileHelperService fileHelperService;
   // Create ObjectMapper instance
   private final ObjectMapper mapper = new ObjectMapper();
   private ShellProcessContext shellContext =
@@ -52,12 +53,14 @@ public class YNPProvisioning extends AbstractTaskBase {
       NodeUniverseManager nodeUniverseManager,
       NodeAgentManager nodeAgentManager,
       RuntimeConfGetter confGetter,
-      CloudQueryHelper queryHelper) {
+      CloudQueryHelper queryHelper,
+      FileHelperService fileHelperService) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
     this.confGetter = confGetter;
     this.queryHelper = queryHelper;
+    this.fileHelperService = fileHelperService;
   }
 
   public static class Params extends NodeTaskParams {
@@ -152,7 +155,7 @@ public class YNPProvisioning extends AbstractTaskBase {
 
       // "logging" JSON Object
       ObjectNode loggingNode = mapper.createObjectNode();
-      loggingNode.put("level", "DEBUG");
+      loggingNode.put("level", "INFO");
       rootNode.set("logging", loggingNode);
 
       // Convert to JSON string
@@ -167,7 +170,6 @@ public class YNPProvisioning extends AbstractTaskBase {
           jsonString.getBytes(StandardCharsets.UTF_8),
           StandardOpenOption.CREATE,
           StandardOpenOption.TRUNCATE_EXISTING);
-
     } catch (Exception e) {
       log.error("Failed generating JSON file: ", e);
     }
@@ -195,10 +197,10 @@ public class YNPProvisioning extends AbstractTaskBase {
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
     String tmpDirectory =
-        confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath) + "/config.json";
+        fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
     getProvisionArguments(universe, node, provider, tmpDirectory, Paths.get(nodeAgent.getHome()));
     nodeUniverseManager.uploadFileToNode(
-        node, universe, tmpDirectory, nodeAgent.getHome() + "/", "755", shellContext);
+        node, universe, tmpDirectory, nodeAgent.getHome() + "/config.json", "755", shellContext);
 
     String buildRelease = nodeAgentManager.getSoftwareVersion();
     sb = new StringBuilder();

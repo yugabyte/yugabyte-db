@@ -81,6 +81,7 @@ class ProvisionCommand(Command):
         logger.info("Output: %s", result.stdout)
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
+        return result
 
     def add_results_helper(self, file):
         file.write(
@@ -257,9 +258,11 @@ class ProvisionCommand(Command):
 
     def execute(self):
         run_combined_script, precheck_combined_script = self._generate_template()
-        self._run_script(run_combined_script)
-        self._run_script(precheck_combined_script)
+        provision_result = self._run_script(run_combined_script)
+        precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
+        if precheck_result.returncode != 0 or provision_result.returncode != 0:
+            sys.exit(1)
 
     def _save_ynp_version(self):
         key = next(iter(self.config), None)
