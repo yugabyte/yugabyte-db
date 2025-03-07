@@ -128,16 +128,6 @@ export default function (state = INITIAL_STATE, action) {
       return {
         ...state
       };
-    case HIDE_ALL_TASK_BANNERS:
-      state.taskBannerInfo[action.payload.universeUUID] = mapValues(
-        state.taskBannerInfo[action.payload.universeUUID],
-        (value) => {
-          return { ...value, visible: false };
-        }
-      );
-      return {
-        ...state,
-      };
     default:
       return state;
   }
