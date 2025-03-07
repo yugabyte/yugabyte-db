@@ -16,7 +16,7 @@ interface SRModalProps {
   oldConfigData: UniverseDetails;
   open: boolean;
   isPrimary: boolean;
-  handleFullMove: () => void;
+  handleFullMove: (runOnlyPrechecks: boolean) => void;
   handleSmartResize: () => void;
   onClose: () => void;
 }
@@ -46,17 +46,46 @@ export const SmartResizeModal: FC<SRModalProps> = ({
       open={open}
       onClose={onClose}
       size="sm"
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('universeForm.fullMoveModal.submitLabel')}
       dialogContentProps={{ style: { paddingTop: 20 } }}
-      onSubmit={handleFullMove}
       titleSeparator
-      submitTestId="SmartResizeModal-FM"
-      cancelTestId="SmartResizeModal-Cancel"
       footerAccessory={
-        <YBButton data-testid="SmartResizeModal-SR" variant="primary" onClick={handleSmartResize}>
-          {t('universeForm.smartResizeModal.buttonLabel')}
-        </YBButton>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
+        >
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="SmartResizeModal-CancelButton"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            onClick={() => handleFullMove(true)}
+            data-testid="SmartResizeModal-RunPrechecksButton"
+          >
+            {t('universeActions.runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton data-testid="SmartResizeModal-SR" variant="primary" onClick={handleSmartResize}>
+            {t('universeForm.smartResizeModal.buttonLabel')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="primary"
+            onClick={() => handleFullMove(false)}
+            data-testid="UpgradeLinuxVersionModal-SubmitButton"
+          >
+            {t('universeForm.fullMoveModal.submitLabel')}
+          </YBButton>
+        </div>
       }
     >
       <Box display="flex" width="100%" flexDirection="column" data-testid="smart-resize-modal">

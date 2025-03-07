@@ -248,6 +248,7 @@ export interface UniverseDetails {
   prevYBSoftwareConfig: { softwareVersion: string };
   universePaused: boolean;
   xclusterInfo: any;
+  runOnlyPrechecks?: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;

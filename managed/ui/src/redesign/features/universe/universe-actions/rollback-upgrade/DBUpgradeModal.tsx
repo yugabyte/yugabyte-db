@@ -252,7 +252,9 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     {
       onSuccess: (resp, variabes) => {
         toast.success(
-          variabes.runOnlyPrechecks ? 'Running Prechecks...' : 'Database upgrade initiated',
+          variabes.runOnlyPrechecks
+            ? t('universeActions.precheckInitiatedMsg')
+            : t('universeActions.dbRollbackUpgrade.dbUpgradeInitiated'),
           TOAST_OPTIONS
         );
         dispatch(fetchCustomerTasks() as any).then((response: any) => {
@@ -431,7 +433,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
             }}
             data-testid="DBUpgradeModal-Precheck"
           >
-            {t('universeActions.dbRollbackUpgrade.precheckAction')}
+            {t('universeActions.runPrecheckOnlyButton')}
           </YBButton>
           <YBButton
             variant="primary"
