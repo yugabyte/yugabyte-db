@@ -12012,10 +12012,11 @@ Status CatalogManager::CollectTable(
     std::vector<TableDescription>* all_tables,
     std::unordered_set<TableId>* parent_colocated_table_ids) {
   auto lock = table_description.table_info->LockForRead();
-  if (lock->started_hiding()) {
+  if (!flags.Test(CollectFlag::kIncludeHiddenTables) && lock->started_hiding()) {
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Rejected hidden table: " << AsString(table_description.table_info);
     return Status::OK();
+
   }
   if (lock->started_deleting()) {
     VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -12881,6 +12882,47 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
   // xCluster and CDCSDK do not retain dropped tables.
 
   return retainer;
+}
+
+void CatalogManager::MarkTabletAsHiddenPostReload(TabletId tablet_id, const LeaderEpoch& epoch) {
+  auto tablet = GetTabletInfo(tablet_id);
+  if (!tablet.ok()) {
+    WARN_NOT_OK(tablet.status(), Format("Tablet: $0 not found", tablet_id));
+    return;
+  }
+  auto table = GetTableInfo((*tablet)->table()->id());
+  if (!table) {
+    LOG(WARNING) << Format("Table: $0 not found", (*tablet)->table()->id());
+    return;
+  }
+  auto schedules_to_tables_map =
+      master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(
+          SysRowEntryType::TABLE, IncludeHiddenTables::kTrue);
+  if (!schedules_to_tables_map.ok()) {
+    WARN_NOT_OK(
+        schedules_to_tables_map.status(), Format(
+                                              "Error creating Snapshot Schedules To ObjectIds Map "
+                                              "for post reload Hide task of tablet: $0",
+                                              tablet_id));
+    return;
+  }
+  const auto delete_retainer = GetDeleteRetainerInfoForTableDrop(*table, *schedules_to_tables_map);
+  if (!delete_retainer.ok()) {
+    WARN_NOT_OK(
+        delete_retainer.status(),
+        Format("Unable to get the delete retainer for tablet: $0", tablet_id));
+    return;
+  }
+  auto l = (*tablet)->LockForWrite();
+  // Each tablet will have a different hide_hybrid_time. However, all of them will be earlier
+  // than the time we set the hide_hybrid_time of the table.
+  MarkTabletAsHidden(l.mutable_data()->pb, Clock()->Now(), *delete_retainer);
+  WARN_NOT_OK(
+      sys_catalog_->Upsert(epoch, *tablet),
+      Format("Failed to upsert tablet info with id: $0 into sys catalog.", tablet_id));
+  l.Commit();
+  LockGuard lock(mutex_);
+  hidden_tablets_.push_back(*tablet);
 }
 
 void CatalogManager::MarkTabletAsHidden(

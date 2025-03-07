@@ -988,7 +988,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntryType type) {
+      SysRowEntryType type, IncludeHiddenTables includeHiddenTables) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
       std::lock_guard lock(mutex_);
@@ -1000,7 +1000,7 @@ class MasterSnapshotCoordinator::Impl {
     }
     SnapshotSchedulesToObjectIdsMap result;
     for (const auto& [schedule_id, filter] : schedules) {
-      auto entries = VERIFY_RESULT(CollectEntries(filter));
+      auto entries = VERIFY_RESULT(CollectEntries(filter, includeHiddenTables));
       auto& ids = result[schedule_id];
       for (const auto& entry : entries.entries()) {
         if (entry.type() == type) {
@@ -1949,8 +1949,10 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  Result<SysRowEntries> CollectEntries(const SnapshotScheduleFilterPB& filter) const {
-    return context_.CollectEntriesForSnapshot(filter.tables().tables());
+  Result<SysRowEntries> CollectEntries(
+      const SnapshotScheduleFilterPB& filter,
+      IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse) const {
+    return context_.CollectEntriesForSnapshot(filter.tables().tables(), includeHiddenTables);
   }
 
   Status ForwardRestoreCheck(
@@ -2392,8 +2394,9 @@ docdb::HistoryCutoff MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
 }
 
 Result<SnapshotSchedulesToObjectIdsMap>
-    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type) {
-  return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
+MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(
+    SysRowEntryType type, IncludeHiddenTables includeHiddenTables) {
+  return impl_->MakeSnapshotSchedulesToObjectIdsMap(type, includeHiddenTables);
 }
 
 Result<std::vector<SnapshotScheduleId>> MasterSnapshotCoordinator::GetSnapshotSchedules(
