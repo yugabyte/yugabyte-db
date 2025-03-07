@@ -4,7 +4,7 @@ headerTitle: Instant database cloning
 linkTitle: Instant database cloning
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   preview:
     identifier: instant-db-clone
@@ -27,7 +27,7 @@ Cloning has two main use cases:
 
 ## Enable database cloning
 
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/tp idea="990">}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
+To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/ea idea="990">}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
 
 For example, to set these flags when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
 
