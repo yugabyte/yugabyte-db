@@ -69,7 +69,7 @@ You need to customize the default universal image to include the YugabyteDB bina
 # default universal image
 FROM gitpod/workspace-full
 
-ARG YB_VERSION=2.7.1.1
+ARG YB_VERSION={{< yb-version version="v2.20" format="build" >}}
 ARG ROLE=gitpod
 
 USER root
@@ -77,7 +77,7 @@ USER root
 RUN apt-get update && apt-get install -y \
   netcat --no-install-recommends
 # download and initialize the file structure
-RUN curl -sSLo ./yugabyte.tar.gz https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz \
+RUN curl -sSLo ./yugabyte.tar.gz https://software.yugabyte.com/releases/{{< yb-version version="v2.20">}}/yugabyte-${YB_VERSION}-linux-x86_64.tar.gz \
   && mkdir yugabyte \
   && tar -xvf yugabyte.tar.gz -C yugabyte --strip-components=1 \
   && mv ./yugabyte /usr/local/ \

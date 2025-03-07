@@ -64,7 +64,8 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
-export YB_VERSION={{<yb-version version="preview" format="version">}}
+export YB_VERSION={{<yb-version version="stable" format="version">}}
+export YB_VERSION_BUILD={{<yb-version version="stable" format="build">}}
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
@@ -316,8 +317,8 @@ for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
-       curl -k -o yugabyte-${YB_VERSION}-linux.tar.gz \
-         https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz"; \
+       curl -Lo yugabyte-${YB_VERSION}-linux.tar.gz \
+         https://software.yugabyte.com/releases/${YB_VERSION}/yugabyte-${YB_VERSION_BUILD}-linux-x86_64.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
        tar xvfz yugabyte-${YB_VERSION}-linux.tar.gz"; \
