@@ -3352,6 +3352,7 @@ class YbAdminSnapshotScheduleTestWithYsqlRetention : public YbAdminSnapshotSched
         "--timestamp_syscatalog_history_retention_interval_sec=0");
     opts->extra_master_flags.emplace_back(
         "--timestamp_syscatalog_history_retention_interval_sec=0");
+    opts->extra_master_flags.emplace_back("--enable_db_clone=true");
   }
 };
 
@@ -3408,6 +3409,43 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
   // Tables should exist now.
   for (int i = 1; i <= 10; i++) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
+// Clone to a time earlier than the creation time of the last 2 snapshots of the schedule.
+// The default retention is disabled to make sure the schedule retention is the only factor
+// controlling the retention policy.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, SysCatalogRetentionWithClone,
+    YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 30s, 600s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Create 10 tables.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+
+  // Wait for at least one more snapshot.
+  ASSERT_OK(WaitForMoreSnapshots(schedule_id, 300s, 2, "Wait for 2 more snapshots"));
+
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Clone to time noted above.
+  auto target_db_name = "target_db";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", target_db_name,
+      client::kTableName.namespace_name(), time.ToInt64()));
+  auto target_conn = ASSERT_RESULT(PgConnect(target_db_name));
+  // Tables should exist now.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(target_conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
   }
 }
 
