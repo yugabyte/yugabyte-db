@@ -1,6 +1,7 @@
 import Clipboard from 'clipboard';
 
 const $ = window.jQuery;
+let yugabytePageFinderList = [];
 
 /**
  * Create Cookie.
@@ -105,12 +106,10 @@ function yugabyteScrollLeftNav(activeLink) {
  * based on the container width.
  */
 function yugabytePageFinderWidth() {
-  document.querySelectorAll('.page-finder .finder-panel .inner-container').forEach((finderContainer) => {
-    if (finderContainer.parentNode) {
+  yugabytePageFinderList.forEach(({width, parent}) => {
+    if (parent) {
       const innerContainer = document.querySelector('.content-area');
-      const innerWidth = finderContainer.offsetWidth;
-      const parent = finderContainer.parentNode;
-      if (innerWidth > innerContainer.offsetWidth) {
+      if (width > innerContainer.offsetWidth) {
         parent.classList.add('vertical');
         parent.classList.remove('horizontal');
       } else {
@@ -176,6 +175,14 @@ $(document).ready(() => {
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
     $('body').addClass('is-safari');
+  }
+
+  const pageFinderContainer = document.querySelectorAll('.page-finder .finder-panel .inner-container');
+  if (pageFinderContainer) {
+    yugabytePageFinderList = Array.from(pageFinderContainer).map((element) => ({
+      width: element.offsetWidth,
+      parent: element.parentElement,
+    }));
   }
 
   let searchValue = '';

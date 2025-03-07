@@ -12,6 +12,11 @@
   background: #FFF;
 }
 
+.page-finder .finder-panel .head {
+  padding: 9px 16px;
+  border-bottom: 1px solid #E9EEF2;
+}
+
 .page-finder .finder-panel .head p {
   color: #97A5B0;
   font-size: 11.5px;
@@ -26,9 +31,13 @@
   color: #6D7C88;
 }
 
-.page-finder .finder-panel .head {
-  padding: 9px 16px;
-  border-bottom: 1px solid #E9EEF2;
+.page-finder .finder-panel.vertical .inner-container {
+  max-width: 100%;
+  width: 420px;
+}
+
+.page-finder .finder-panel.vertical .inner-container .head p {
+  line-height: 1.4;
 }
 
 .page-finder .finder-panel .body {
@@ -42,14 +51,6 @@
   align-items: flex-start;
 }
 
-.page-finder .finder-panel.vertical .inner-container .head p {
-  line-height: 1.4;
-}
-.page-finder .finder-panel.vertical .inner-container {
-  max-width: 100%;
-  width: 420px;
-}
-
 .page-finder .finder-panel .body a {
   padding: 6px 12px;
   display: flex;
@@ -58,19 +59,12 @@
   position: relative;
 }
 
-.page-finder .finder-panel .body a:not(:hover):not(:first-child) .icon img {
-  filter: brightness(0) invert(30%);
-}
-
-.page-finder .finder-panel .body a:first-child .icon img {
-  filter: brightness(0) invert(30%);
-}
-
 .page-finder .finder-panel .body a .icon {
   width: 16px;
   height: 16px;
   line-height: 0;
 }
+
 .page-finder .finder-panel .body a .icon svg {
   width: 16px;
   height: 16px;
@@ -90,32 +84,70 @@
   text-underline-position: from-font;
   white-space: nowrap
 }
-.page-finder .finder-panel .body a:not(:first-child):hover .icon svg path {
-  fill: #507CE1;
-}
 
 .page-finder .finder-panel .body a  .icon svg path {
   fill: #6D7C88;
 }
 
-.page-finder .finder-panel .body a:not(:first-child):hover .title {
+.page-finder .finder-panel .body a .icon img {
+  filter: brightness(0) invert(30%);
+}
+
+.page-finder .finder-panel .body a.active ~ .active:hover .icon img,
+.page-finder .finder-panel .body a:hover .icon img {
+  filter: none;
+}
+
+.page-finder .finder-panel .body a.active .icon img {
+  filter: brightness(0) invert(30%);
+}
+
+.page-finder .finder-panel .body a:hover .title {
   color: #507CE1;
 }
 
-.page-finder .finder-panel .body a:first-child {
+.page-finder .finder-panel .body a.active {
   border-radius: 6px;
   border: 1px solid #E9EEF2;
   background: #F7F9FB;
   padding-right: 8px;
 }
 
-.page-finder .finder-panel .body a:first-child .title {
+.page-finder .finder-panel .body a.active ~ .active {
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  padding-right: 12px;
+}
+
+.page-finder .finder-panel .body a.active .title {
   color: #4E5F6D;
   font-size: 11.5px;
   font-style: normal;
   font-weight: 500;
   line-height: normal;
   text-decoration: none;
+}
+.page-finder .finder-panel .body a.active ~ .active:hover .title {
+  color: #507CE1;
+}
+
+.page-finder .finder-panel .body a.active ~ .active .title {
+  color: #6D7C88;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: normal;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-skip-ink: none;
+  text-decoration-thickness: auto;
+  text-underline-offset: auto;
+  text-underline-position: from-font;
+}
+
+.page-finder .finder-panel .body a.active ~ .active .bookmark-icon {
+  display: none;
 }
 
 .page-finder .finder-panel .body .bookmark-icon {
