@@ -40,8 +40,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/function.hpp>
-
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/version_info.h"
@@ -60,6 +58,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tserver/master_leader_poller.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -101,83 +100,63 @@ using std::vector;
 namespace yb {
 namespace tserver {
 
-// Most of the actual logic of the heartbeater is inside this inner class,
-// to avoid having too many dependencies from the header itself.
-//
-// This is basically the "PIMPL" pattern.
-class Heartbeater::Thread {
+class Heartbeater::Impl {
  public:
-  Thread(
-      const TabletServerOptions& opts, TabletServer* server,
+  Impl(
+      const TabletServerOptions& opts, TabletServer& server,
       std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
-  Thread(const Thread& other) = delete;
-  void operator=(const Thread& other) = delete;
+  Impl(const Impl& other) = delete;
+  void operator=(const Impl& other) = delete;
 
   Status Start();
   Status Stop();
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    std::lock_guard l(master_meta_mtx_);
-    master_addresses_ = std::move(master_addresses);
-    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
+    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses);
+    finder_.set_master_addresses(std::move(master_addresses));
   }
 
-  std::string get_leader_master_hostport() {
-    std::lock_guard l(master_meta_mtx_);
-    return leader_master_hostport_.ToString();
+  HostPort get_master_leader_hostport() {
+    return finder_.get_master_leader_hostport();
   }
 
  private:
-  void RunThread();
-  Status FindLeaderMaster(CoarseTimePoint deadline,
-                          HostPort* leader_hostport) REQUIRES(master_meta_mtx_);;
-  Status ConnectToMaster();
-  int GetMinimumHeartbeatMillis() const;
-  int GetMillisUntilNextHeartbeat() const;
-  Status DoHeartbeat();
+  const std::string& LogPrefix() const {
+    return server_.LogPrefix();
+  }
+
+  TabletServer& server_;
+  MasterLeaderFinder finder_;
+  MasterLeaderPollScheduler poll_scheduler_;
+};
+
+class HeartbeatPoller : public MasterLeaderPollerInterface {
+ public:
+  HeartbeatPoller(
+      TabletServer& server, MasterLeaderFinder& finder,
+      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
+  ~HeartbeatPoller() = default;
+  Status Poll() override;
+  MonoDelta IntervalToNextPoll(int32_t consecutive_failures) override;
+  void Init() override;
+  void ResetProxy() override;
+  std::string category() override;
+  std::string name() override;
+  const std::string& LogPrefix() const override;
+
+ private:
   Status TryHeartbeat();
   Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
-  bool IsCurrentThread() const;
-  const std::string& LogPrefix() const {
-    return server_->LogPrefix();
-  }
+  MonoDelta GetMinimumHeartbeatMillis(int32_t consecutive_failures) const;
 
-  server::MasterAddressesPtr get_master_addresses_unlocked() {
-    CHECK_NOTNULL(master_addresses_.get());
-    return master_addresses_;
-  }
-
-  server::MasterAddressesPtr get_master_addresses() {
-    std::lock_guard l(master_meta_mtx_);
-    return get_master_addresses_unlocked();
-  }
-
-  // Protecting master list and leader.
-  std::mutex master_meta_mtx_;
-
-  // The hosts/ports of masters that we may heartbeat to.
-  //
-  // We keep the HostPort around rather than a Sockaddr because the
-  // masters may change IP addresses, and we'd like to re-resolve on
-  // every new attempt at connecting.
-  server::MasterAddressesPtr master_addresses_;
-
-  // The server for which we are heartbeating.
-  TabletServer* const server_;
+  TabletServer& server_;
+  MasterLeaderFinder& finder_;
+  std::optional<master::MasterHeartbeatProxy> proxy_;
 
   // Roundtrip time of previous heartbeat to yb-master.
   MonoDelta heartbeat_rtt_ = MonoDelta::kZero;
-
-  // The actual running thread (NULL before it is started)
-  scoped_refptr<yb::Thread> thread_;
-
-  // Host and port of the most recent leader master.
-  HostPort leader_master_hostport_;
-
-  // Current RPC proxy to the leader master.
-  std::unique_ptr<master::MasterHeartbeatProxy> proxy_;
 
   // The most recent response from a heartbeat.
   master::TSHeartbeatResponsePB last_hb_response_;
@@ -185,21 +164,6 @@ class Heartbeater::Thread {
   // Full reports can take multiple heartbeats.
   // Flag to indicate if next heartbeat is part of a full report.
   bool sending_full_report_ = false;
-
-  // The number of heartbeats which have failed in a row.
-  // This is tracked so as to back-off heartbeating.
-  int consecutive_failed_heartbeats_ = 0;
-
-  // Mutex/condition pair to trigger the heartbeater thread
-  // to either heartbeat early or exit.
-  Mutex mutex_;
-  ConditionVariable cond_;
-
-  // Protected by mutex_.
-  bool should_run_ = false;
-  bool heartbeat_asap_ = false;
-
-  rpc::Rpcs rpcs_;
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
@@ -211,170 +175,142 @@ class Heartbeater::Thread {
 Heartbeater::Heartbeater(
     const TabletServerOptions& opts, TabletServer* server,
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
-  : thread_(new Thread(opts, server, std::move(data_providers))) {
+  : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
 }
 
 Heartbeater::~Heartbeater() {
   WARN_NOT_OK(Stop(), "Unable to stop heartbeater thread");
 }
 
-Status Heartbeater::Start() { return thread_->Start(); }
-Status Heartbeater::Stop() { return thread_->Stop(); }
-void Heartbeater::TriggerASAP() { thread_->TriggerASAP(); }
+Status Heartbeater::Start() { return impl_->Start(); }
+Status Heartbeater::Stop() { return impl_->Stop(); }
+void Heartbeater::TriggerASAP() { impl_->TriggerASAP(); }
 
 void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_addresses) {
-  thread_->set_master_addresses(std::move(master_addresses));
+  impl_->set_master_addresses(std::move(master_addresses));
 }
 
-std::string Heartbeater::get_leader_master_hostport() {
-  return thread_->get_leader_master_hostport();
+HostPort Heartbeater::get_master_leader_hostport() {
+  return impl_->get_master_leader_hostport();
 }
 
 
 ////////////////////////////////////////////////////////////
-// Heartbeater::Thread
+// Heartbeater::Impl
 ////////////////////////////////////////////////////////////
 
-Heartbeater::Thread::Thread(
-    const TabletServerOptions& opts, TabletServer* server,
+Heartbeater::Impl::Impl(
+    const TabletServerOptions& opts, TabletServer& server,
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
-  : master_addresses_(opts.GetMasterAddresses()),
-    server_(server),
-    cond_(&mutex_),
-    data_providers_(std::move(data_providers)) {
-  CHECK_NOTNULL(master_addresses_.get());
-  CHECK(!master_addresses_->empty());
+    : server_(server),
+      finder_(server.messenger(), server.proxy_cache(), opts.GetMasterAddresses()),
+      poll_scheduler_(
+          finder_,
+          std::make_unique<HeartbeatPoller>(server_, finder_, std::move(data_providers))) {
+  auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
+  CHECK(!master_addresses->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
-          << yb::ToString(master_addresses_);
+                      << yb::ToString(master_addresses);
 }
 
-namespace {
+Status Heartbeater::Impl::Start() {
+  return poll_scheduler_.Start();
+}
 
-struct FindLeaderMasterData {
-  HostPort result;
-  Synchronizer sync;
-  std::shared_ptr<GetLeaderMasterRpc> rpc;
-};
+Status Heartbeater::Impl::Stop() {
+  return poll_scheduler_.Stop();
+}
 
-void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
-                          const Status& status,
-                          const HostPort& result) {
-  if (status.ok()) {
-    data->result = result;
+void Heartbeater::Impl::TriggerASAP() {
+  poll_scheduler_.TriggerASAP();
+}
+
+const std::string& HeartbeatDataProvider::LogPrefix() const {
+  return server_.LogPrefix();
+}
+
+void PeriodicalHeartbeatDataProvider::AddData(
+    const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
+  // Save that fact that we will need to send a full report the next time we run.
+  needs_full_tablet_report_ |= last_resp.needs_full_tablet_report();
+
+  if (prev_run_time_ + Period() < CoarseMonoClock::Now()) {
+    DoAddData(needs_full_tablet_report_, req);
+    prev_run_time_ = CoarseMonoClock::Now();
+    needs_full_tablet_report_ = false;
   }
-  data->sync.StatusCB(status);
 }
 
-} // anonymous namespace
+////////////////////////////////////////////////////////////
+// HeartbeatPoller
+////////////////////////////////////////////////////////////
 
-Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline,
-                                             HostPort* leader_hostport) {
-  Status s = Status::OK();
-  const auto master_addresses = get_master_addresses_unlocked();
-  if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
-    // "Shortcut" the process when a single master is specified.
-    *leader_hostport = (*master_addresses)[0][0];
+HeartbeatPoller::HeartbeatPoller(
+    TabletServer& server, MasterLeaderFinder& finder,
+    std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
+    : server_(server), finder_(finder), data_providers_(std::move(data_providers)) {}
+
+Status HeartbeatPoller::Poll() {
+  if (PREDICT_FALSE(server_.fail_heartbeats_for_tests())) {
+    return STATUS(IOError, "failing all heartbeats for tests");
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_tserver_disable_heartbeat)) {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Heartbeat disabled for testing.";
     return Status::OK();
   }
-  auto master_sock_addrs = *master_addresses;
-  if (master_sock_addrs.empty()) {
-    return STATUS(NotFound, "Unable to resolve any of the master addresses!");
-  }
-  auto data = std::make_shared<FindLeaderMasterData>();
-  data->rpc = std::make_shared<GetLeaderMasterRpc>(
-      Bind(&LeaderMasterCallback, data),
-      master_sock_addrs,
-      deadline,
-      server_->messenger(),
-      &server_->proxy_cache(),
-      &rpcs_,
-      true /* should_timeout_to_follower_ */);
-  data->rpc->SendRpc();
-  auto status = data->sync.WaitFor(deadline - CoarseMonoClock::Now() + 1s);
-  if (status.ok()) {
-    *leader_hostport = data->result;
-  }
-  rpcs_.RequestAbortAll();
-  return status;
-}
 
-Status Heartbeater::Thread::ConnectToMaster() {
-  std::lock_guard l(master_meta_mtx_);
-  auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
-  // TODO send heartbeats without tablet reports to non-leader masters.
-  Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
-  if (!s.ok()) {
-    LOG_WITH_PREFIX(INFO) << "Find leader master " <<  leader_master_hostport_.ToString()
-                          << " hit error " << s;
-    return s;
+  if (!proxy_) {
+    VLOG_WITH_PREFIX(1) << "No valid master proxy. Connecting...";
+
+    auto hostport = VERIFY_RESULT(finder_.UpdateMasterLeaderHostPort(
+        MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms)));
+    LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << hostport;
+    proxy_ = master::MasterHeartbeatProxy(&server_.proxy_cache(), hostport);
   }
 
-  // Reset report state if we have master failover.
-  sending_full_report_ = false;
-
-  // Pings are common for both Master and Tserver.
-  auto new_proxy = std::make_unique<server::GenericServiceProxy>(
-      &server_->proxy_cache(), leader_master_hostport_);
-
-  // Ping the master to verify that it's alive.
-  server::PingRequestPB req;
-  server::PingResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
-  RETURN_NOT_OK_PREPEND(new_proxy->Ping(req, &resp, &rpc),
-                        Format("Failed to ping master at $0", leader_master_hostport_));
-  LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << leader_master_hostport_;
-
-  // Save state in the instance.
-  proxy_ = std::make_unique<master::MasterHeartbeatProxy>(
-      &server_->proxy_cache(), leader_master_hostport_);
-  return Status::OK();
-}
-
-void Heartbeater::Thread::SetupCommonField(master::TSToMasterCommonPB* common) {
-  common->mutable_ts_instance()->CopyFrom(server_->instance_pb());
-}
-
-Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
-  reg->Clear();
-  RETURN_NOT_OK(server_->GetRegistration(reg->mutable_common()));
-  auto* resources = reg->mutable_resources();
-  resources->set_core_count(base::NumCPUs());
-  int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
-  if (tablet_overhead_limit > 0) {
-    resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
+  for (;;) {
+    auto status = TryHeartbeat();
+    if (!status.ok() && status.IsTryAgain()) {
+      continue;
+    }
+    return status;
   }
-  VersionInfo::GetVersionInfoPB(reg->mutable_version_info());
 
   return Status::OK();
 }
 
-int Heartbeater::Thread::GetMinimumHeartbeatMillis() const {
-  // If we've failed a few heartbeats in a row, back off to the normal
-  // interval, rather than retrying in a loop.
-  if (consecutive_failed_heartbeats_ == FLAGS_heartbeat_max_failures_before_backoff) {
-    LOG_WITH_PREFIX(WARNING) << "Failed " << consecutive_failed_heartbeats_  <<" heartbeats "
-                             << "in a row: no longer allowing fast heartbeat attempts.";
-  }
-
-  return consecutive_failed_heartbeats_ > FLAGS_heartbeat_max_failures_before_backoff ?
-    FLAGS_heartbeat_interval_ms : 0;
-}
-
-int Heartbeater::Thread::GetMillisUntilNextHeartbeat() const {
-  // If the master needs something from us, we should immediately
-  // send another heartbeat with that info, rather than waiting for the interval.
-  if (sending_full_report_ ||
-      last_hb_response_.needs_reregister() ||
+MonoDelta HeartbeatPoller::IntervalToNextPoll(int32_t consecutive_failures) {
+  if (sending_full_report_ || last_hb_response_.needs_reregister() ||
       last_hb_response_.needs_full_tablet_report()) {
-    return GetMinimumHeartbeatMillis();
+    return GetMinimumHeartbeatMillis(consecutive_failures);
   }
 
-  return FLAGS_heartbeat_interval_ms;
+  return MonoDelta::FromMilliseconds(FLAGS_heartbeat_interval_ms);
 }
 
+void HeartbeatPoller::Init() {
+  // Config the "last heartbeat response" to indicate that we need to register
+  // -- since we've never registered before, we know this to be true.
+  last_hb_response_.set_needs_reregister(true);
 
-Status Heartbeater::Thread::TryHeartbeat() {
+  // Have the Master request a full tablet report on 2nd HB.
+  last_hb_response_.set_needs_full_tablet_report(false);
+}
+
+void HeartbeatPoller::ResetProxy() { proxy_ = std::nullopt; }
+
+std::string HeartbeatPoller::category() {
+  return "heartbeater";
+}
+
+std::string HeartbeatPoller::name() {
+  return "heartbeat";
+}
+
+const std::string& HeartbeatPoller::LogPrefix() const { return server_.LogPrefix(); }
+
+Status HeartbeatPoller::TryHeartbeat() {
   master::TSHeartbeatRequestPB req;
 
   SetupCommonField(req.mutable_common());
@@ -386,7 +322,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   if (last_hb_response_.needs_full_tablet_report()) {
     LOG_WITH_PREFIX(INFO) << "Sending a full tablet report to master...";
-    server_->tablet_manager()->StartFullTabletReport(req.mutable_tablet_report());
+    server_.tablet_manager()->StartFullTabletReport(req.mutable_tablet_report());
     sending_full_report_ = true;
   } else {
     if (sending_full_report_) {
@@ -394,27 +330,27 @@ Status Heartbeater::Thread::TryHeartbeat() {
     } else {
       VLOG_WITH_PREFIX(2) << "Sending an incremental tablet report to master...";
     }
-    server_->tablet_manager()->GenerateTabletReport(req.mutable_tablet_report(),
-                                                    !sending_full_report_ /* include_bootstrap */);
+    server_.tablet_manager()->GenerateTabletReport(
+        req.mutable_tablet_report(), !sending_full_report_ /* include_bootstrap */);
   }
 
   auto universe_uuid = VERIFY_RESULT(
-      server_->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata());
+      server_.fs_manager()->GetUniverseUuidFromTserverInstanceMetadata());
   if (!universe_uuid.empty()) {
     req.set_universe_uuid(universe_uuid);
   }
 
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
-  req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
-  req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
+  req.set_num_live_tablets(server_.tablet_manager()->GetNumLiveTablets());
+  req.set_leader_count(server_.tablet_manager()->GetLeaderCount());
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    auto fingerprint = server_->GetCatalogVersionsFingerprint();
+    auto fingerprint = server_.GetCatalogVersionsFingerprint();
     if (fingerprint.has_value()) {
       req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
     }
   }
 
-  RETURN_NOT_OK(server_->XClusterPopulateMasterHeartbeatRequest(
+  RETURN_NOT_OK(server_.XClusterPopulateMasterHeartbeatRequest(
       req, last_hb_response_.needs_full_tablet_report()));
 
   for (auto& data_provider : data_providers_) {
@@ -424,21 +360,21 @@ Status Heartbeater::Thread::TryHeartbeat() {
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
 
-  req.set_config_index(server_->GetCurrentMasterIndex());
-  req.set_cluster_config_version(server_->cluster_config_version());
-  auto result = server_->XClusterConfigVersion();
+  req.set_config_index(server_.GetCurrentMasterIndex());
+  req.set_cluster_config_version(server_.cluster_config_version());
+  auto result = server_.XClusterConfigVersion();
   if (result.ok()) {
     req.set_xcluster_config_version(*result);
   } else if (!result.status().IsNotFound()) {
     return result.status();
   }
   req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
-  if (server_->has_faulty_drive()) {
+  if (server_.has_faulty_drive()) {
     req.set_faulty_drive(true);
   }
 
   // Include the hybrid time of this tablet server in the heartbeat.
-  auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());
+  auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_.Clock());
   HybridTime heartbeat_send_time;
   if (hybrid_clock) {
     heartbeat_send_time = hybrid_clock->Now();
@@ -456,7 +392,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     req.set_ts_physical_time(0);
   }
 
-  req.set_auto_flags_config_version(server_->GetAutoFlagConfigVersion());
+  req.set_auto_flags_config_version(server_.GetAutoFlagConfigVersion());
 
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
@@ -467,13 +403,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
                           "Failed to send heartbeat");
     MonoTime end_time = MonoTime::Now();
     if (!resp.universe_uuid().empty()) {
-      auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
-      RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
-    }
-    if (resp.has_op_lease_update()) {
-      WARN_NOT_OK(
-          server_->ProcessLeaseUpdate(resp.op_lease_update(), start_time),
-          "Error processing lease update. Not expected.");
+      RETURN_NOT_OK(server_.ValidateAndMaybeSetUniverseUuid(
+          VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()))));
     }
 
     if (resp.has_error()) {
@@ -502,7 +433,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     if (resp.has_master_config()) {
       LOG_WITH_PREFIX(INFO) << "Received heartbeat response with config " << resp.DebugString();
 
-      RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
+      RETURN_NOT_OK(server_.UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
     }
 
     if (!resp.leader_master()) {
@@ -515,12 +446,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
     // Check for a universe key registry for encryption.
     if (resp.has_universe_key_registry()) {
-      RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
+      RETURN_NOT_OK(server_.SetUniverseKeyRegistry(resp.universe_key_registry()));
     }
 
-    server_->set_oid_cache_invalidations_count(resp.oid_cache_invalidations_count());
+    server_.set_oid_cache_invalidations_count(resp.oid_cache_invalidations_count());
 
-    RETURN_NOT_OK(server_->XClusterHandleMasterHeartbeatResponse(resp));
+    RETURN_NOT_OK(server_.XClusterHandleMasterHeartbeatResponse(resp));
 
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
@@ -530,12 +461,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   if (last_hb_response_.has_cluster_uuid() && !last_hb_response_.cluster_uuid().empty()) {
-    server_->set_cluster_uuid(last_hb_response_.cluster_uuid());
+    server_.set_cluster_uuid(last_hb_response_.cluster_uuid());
   }
 
   // The Master responds with the max entries for a single Tablet Report to avoid overwhelming it.
   if (last_hb_response_.has_tablet_report_limit()) {
-    server_->tablet_manager()->SetReportLimit(last_hb_response_.tablet_report_limit());
+    server_.tablet_manager()->SetReportLimit(last_hb_response_.tablet_report_limit());
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {
@@ -545,7 +476,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   // Handle TSHeartbeatResponsePB (e.g. tablets ack'd by master as processed)
   bool all_processed = req.tablet_report().remaining_tablet_count() == 0 &&
                        !last_hb_response_.tablet_report().processing_truncated();
-  server_->tablet_manager()->MarkTabletReportAcknowledged(
+  server_.tablet_manager()->MarkTabletReportAcknowledged(
       req.tablet_report().sequence_number(), last_hb_response_.tablet_report(), all_processed);
 
   // Trigger another heartbeat ASAP if we didn't process all tablets on this request.
@@ -565,17 +496,17 @@ Status Heartbeater::Thread::TryHeartbeat() {
                           << " db inval messages: "
                           << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
-      server_->SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
+      server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
       if (FLAGS_TEST_yb_enable_invalidation_messages) {
         if (last_hb_response_.has_db_catalog_inval_messages_data()) {
-          server_->SetYsqlDBCatalogInvalMessages(
+          server_.SetYsqlDBCatalogInvalMessages(
               last_hb_response_.db_catalog_inval_messages_data());
         } else {
           // If we only have catalog versions but not invalidation messages, it means that the last
           // heartbeat response was only able to read pg_yb_catalog_version, but the reading of
           // pg_yb_invalidation_messages failed. Clear the fingerprint so that next heartbeat
           // can read pg_yb_invalidation_messages again.
-          server_->ResetCatalogVersionsFingerprint();
+          server_.ResetCatalogVersionsFingerprint();
         }
       }
     } else {
@@ -603,11 +534,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
                               : "(none)");
       }
       if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
-        server_->SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
+        server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                        last_hb_response_.ysql_last_breaking_catalog_version());
       } else {
         /* Assuming all changes are breaking if last breaking version not explicitly set. */
-        server_->SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
+        server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                        last_hb_response_.ysql_catalog_version());
       }
     } else if (last_hb_response_.has_db_catalog_version_data()) {
@@ -636,170 +567,54 @@ Status Heartbeater::Thread::TryHeartbeat() {
       DCHECK_EQ(version_data.db_catalog_versions_size(), 1);
       DCHECK_EQ(version_data.db_catalog_versions(0).db_oid(), kTemplate1Oid);
 
-      server_->SetYsqlCatalogVersion(version_data.db_catalog_versions(0).current_version(),
+      server_.SetYsqlCatalogVersion(version_data.db_catalog_versions(0).current_version(),
                                      version_data.db_catalog_versions(0).last_breaking_version());
     }
   }
 
-  RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
+  RETURN_NOT_OK(server_.tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
   if (last_hb_response_.has_transaction_tables_version()) {
-    server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
+    server_.UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
   std::optional<AutoFlagsConfigPB> new_config;
   if (last_hb_response_.has_auto_flags_config()) {
     new_config = last_hb_response_.auto_flags_config();
   }
-  server_->HandleMasterHeartbeatResponse(heartbeat_send_time, std::move(new_config));
+  server_.HandleMasterHeartbeatResponse(heartbeat_send_time, std::move(new_config));
 
   // Update the live tserver list.
-  return server_->PopulateLiveTServers(last_hb_response_);
+  return server_.PopulateLiveTServers(last_hb_response_);
 }
 
-Status Heartbeater::Thread::DoHeartbeat() {
-  if (PREDICT_FALSE(server_->fail_heartbeats_for_tests())) {
-    return STATUS(IOError, "failing all heartbeats for tests");
+Status HeartbeatPoller::SetupRegistration(master::TSRegistrationPB* reg) {
+  reg->Clear();
+  RETURN_NOT_OK(server_.GetRegistration(reg->mutable_common()));
+  auto* resources = reg->mutable_resources();
+  resources->set_core_count(base::NumCPUs());
+  int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
+  if (tablet_overhead_limit > 0) {
+    resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
   }
-
-  if (PREDICT_FALSE(FLAGS_TEST_tserver_disable_heartbeat)) {
-    YB_LOG_EVERY_N_SECS(INFO, 1) << "Heartbeat disabled for testing.";
-    return Status::OK();
-  }
-
-  CHECK(IsCurrentThread());
-
-  if (!proxy_) {
-    VLOG_WITH_PREFIX(1) << "No valid master proxy. Connecting...";
-    RETURN_NOT_OK(ConnectToMaster());
-    DCHECK(proxy_);
-  }
-
-  for (;;) {
-    auto status = TryHeartbeat();
-    if (!status.ok() && status.IsTryAgain()) {
-      continue;
-    }
-    return status;
-  }
-
+  VersionInfo::GetVersionInfoPB(reg->mutable_version_info());
   return Status::OK();
 }
 
-void Heartbeater::Thread::RunThread() {
-  CHECK(IsCurrentThread());
-  VLOG_WITH_PREFIX(1) << "Heartbeat thread starting";
+void HeartbeatPoller::SetupCommonField(master::TSToMasterCommonPB* common) {
+  common->mutable_ts_instance()->CopyFrom(server_.instance_pb());
+}
 
-  // Config the "last heartbeat response" to indicate that we need to register
-  // -- since we've never registered before, we know this to be true.
-  last_hb_response_.set_needs_reregister(true);
-
-  // Have the Master request a full tablet report on 2nd HB.
-  last_hb_response_.set_needs_full_tablet_report(false);
-
-  while (true) {
-    MonoTime next_heartbeat = MonoTime::Now();
-    next_heartbeat.AddDelta(MonoDelta::FromMilliseconds(GetMillisUntilNextHeartbeat()));
-
-    // Wait for either the heartbeat interval to elapse, or for an "ASAP" heartbeat,
-    // or for the signal to shut down.
-    {
-      MutexLock l(mutex_);
-      while (true) {
-        MonoDelta remaining = next_heartbeat.GetDeltaSince(MonoTime::Now());
-        if (remaining.ToMilliseconds() <= 0 ||
-            heartbeat_asap_ ||
-            !should_run_) {
-          break;
-        }
-        cond_.TimedWait(remaining);
-      }
-
-      heartbeat_asap_ = false;
-
-      if (!should_run_) {
-        VLOG_WITH_PREFIX(1) << "Heartbeat thread finished";
-        return;
-      }
-    }
-
-    Status s = DoHeartbeat();
-    if (!s.ok()) {
-      const auto master_addresses = get_master_addresses();
-      LOG_WITH_PREFIX(WARNING)
-          << "Failed to heartbeat to " << get_leader_master_hostport()
-          << ": " << s << " tries=" << consecutive_failed_heartbeats_
-          << ", num=" << master_addresses->size()
-          << ", masters=" << yb::ToString(master_addresses)
-          << ", code=" << s.CodeAsString();
-      consecutive_failed_heartbeats_++;
-      // If there's multiple masters...
-      if (master_addresses->size() > 1 || (*master_addresses)[0].size() > 1) {
-        // If we encountered a network error (e.g., connection refused) or reached our failure
-        // threshold.  Try determining the leader master again.  Heartbeats function as a watchdog,
-        // so timeouts should be considered normal failures.
-        if (s.IsNetworkError() ||
-            consecutive_failed_heartbeats_ == FLAGS_heartbeat_max_failures_before_backoff) {
-          proxy_.reset();
-        }
-      }
-      continue;
-    }
-    consecutive_failed_heartbeats_ = 0;
+MonoDelta HeartbeatPoller::GetMinimumHeartbeatMillis(int32_t consecutive_failures) const {
+  // If we've failed a few heartbeats in a row, back off to the normal
+  // interval, rather than retrying in a loop.
+  if (consecutive_failures == FLAGS_heartbeat_max_failures_before_backoff) {
+    LOG_WITH_PREFIX(WARNING) << "Failed " << consecutive_failures << " heartbeats "
+                             << "in a row: no longer allowing fast heartbeat attempts.";
   }
-}
-
-bool Heartbeater::Thread::IsCurrentThread() const {
-  return thread_.get() == yb::Thread::current_thread();
-}
-
-Status Heartbeater::Thread::Start() {
-  CHECK(thread_ == nullptr);
-
-  should_run_ = true;
-  return yb::Thread::Create("heartbeater", "heartbeat",
-      &Heartbeater::Thread::RunThread, this, &thread_);
-}
-
-Status Heartbeater::Thread::Stop() {
-  if (!thread_) {
-    return Status::OK();
-  }
-
-  {
-    MutexLock l(mutex_);
-    should_run_ = false;
-    YB_PROFILE(cond_.Signal());
-  }
-
-  rpcs_.Shutdown();
-
-  RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
-  thread_ = nullptr;
-  return Status::OK();
-}
-
-void Heartbeater::Thread::TriggerASAP() {
-  MutexLock l(mutex_);
-  heartbeat_asap_ = true;
-  YB_PROFILE(cond_.Signal());
-}
-
-
-const std::string& HeartbeatDataProvider::LogPrefix() const {
-  return server_.LogPrefix();
-}
-
-void PeriodicalHeartbeatDataProvider::AddData(
-    const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
-  // Save that fact that we will need to send a full report the next time we run.
-  needs_full_tablet_report_ |= last_resp.needs_full_tablet_report();
-
-  if (prev_run_time_ + Period() < CoarseMonoClock::Now()) {
-    DoAddData(needs_full_tablet_report_, req);
-    prev_run_time_ = CoarseMonoClock::Now();
-    needs_full_tablet_report_ = false;
-  }
+  return consecutive_failures > FLAGS_heartbeat_max_failures_before_backoff
+             ? MonoDelta::FromMilliseconds(FLAGS_heartbeat_interval_ms)
+             : MonoDelta::kZero;
 }
 
 } // namespace tserver

@@ -136,7 +136,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
-  void ProcessLeaseUpdate(const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
 
   size_t TEST_SessionsCount();
 

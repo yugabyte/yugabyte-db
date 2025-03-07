@@ -5815,6 +5815,22 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
+                                        RefreshYsqlLeaseResponsePB* resp,
+                                        rpc::RpcContext* rpc,
+                                        const LeaderEpoch& epoch) {
+  auto lease_update =
+      VERIFY_RESULT(master_->ts_manager()->RefreshYsqlLease(epoch, req->instance()));
+  *resp->mutable_info() = lease_update.ToPB();
+  if (resp->info().new_lease()) {
+    *resp->mutable_info()->mutable_ddl_lock_entries() =
+        object_lock_info_manager()->ExportObjectLockInfo();
+    object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
+        req->instance().permanent_uuid(), resp->info().lease_epoch());
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::TruncateTable(const TableId& table_id,
                                      TruncateTableResponsePB* resp,
                                      rpc::RpcContext* rpc,

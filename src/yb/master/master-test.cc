@@ -43,6 +43,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
@@ -55,6 +56,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ddl_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
@@ -2852,6 +2854,60 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
     ASSERT_TRUE(local_ts);
   }
+}
+
+TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
+  const char* kTsUUID = "my-ts-uuid";
+  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto result = ddl_client.RefreshYsqlLease(kTsUUID, 1);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsNotFound());
+}
+
+TEST_F(MasterTest, RefreshYsqlLease) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
+  const char *kTsUUID = "my-ts-uuid";
+
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+  auto universe_uuid = config.universe_uuid();
+
+  // Register the fake TS, without sending any tablet report.
+  TSRegistrationPB fake_reg;
+  *fake_reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
+  *fake_reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000);
+  *fake_reg.mutable_resources() = master::ResourcesPB();
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+  {
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    req.mutable_registration()->CopyFrom(fake_reg);
+    req.set_universe_uuid(universe_uuid);
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+
+    ASSERT_FALSE(resp.needs_reregister());
+    ASSERT_TRUE(resp.needs_full_tablet_report());
+    ASSERT_TRUE(resp.has_tablet_report_limit());
+  }
+
+  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
+  auto reg = descs[0]->GetTSRegistrationPB();
+  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
+      << "Master got different registration";
+
+  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
+  ASSERT_EQ(ts_desc, descs[0]);
+
+  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, /* instance_seqno */1));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), 1);
 }
 
 } // namespace master

@@ -41,6 +41,7 @@
 
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
@@ -153,8 +154,7 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
   // The new incarnation heartbeating does not have a live lease. If the previous incarnation did,
-  // set live_client_operation_lease to false so UpdateFromHeartbeat will grant the new incarnation
-  // a new lease.
+  // set live_client_operation_lease to false.
   if (instance.instance_seqno() != latest_seqno && l->pb.live_client_operation_lease()) {
     // todo(zdrudi): kick off an async task to clear out all locks held by the previous incarnation.
     last_ysql_lease_refresh_ = MonoTime();
@@ -177,11 +177,10 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-Result<std::optional<ClientOperationLeaseUpdate>> TSDescriptor::UpdateFromHeartbeat(
-    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock) {
+Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
+                                         const TSDescriptor::WriteLock& lock) {
   DCHECK_GE(req.num_live_tablets(), 0);
   DCHECK_GE(req.leader_count(), 0);
-  std::optional<ClientOperationLeaseUpdate> lease_delta;
   {
     std::lock_guard l(mutex_);
     RETURN_NOT_OK(IsReportCurrentUnlocked(
@@ -201,10 +200,6 @@ Result<std::optional<ClientOperationLeaseUpdate>> TSDescriptor::UpdateFromHeartb
     if (req.has_faulty_drive()) {
       has_faulty_drive_ = req.faulty_drive();
     }
-    if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
-      lease_delta = ClientOperationLeaseUpdate();
-      last_ysql_lease_refresh_ = MonoTime::Now();
-    }
   }
   if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
     return STATUS_FORMAT(
@@ -213,19 +208,7 @@ Result<std::optional<ClientOperationLeaseUpdate>> TSDescriptor::UpdateFromHeartb
   if (lock->pb.state() != SysTabletServerEntryPB::LIVE) {
     lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::LIVE);
   }
-  // If this heartbeat included registration data with a later instance_seqno, the registration
-  // code signals we should grant a new lease to this tserver instance by setting
-  // live_client_operation_lease to false on the write copy of the protobuf.
-  // So we check both read and write copies here.
-  if (lease_delta && (!lock->pb.live_client_operation_lease() ||
-                      !lock.mutable_data()->pb.live_client_operation_lease())) {
-    lock.mutable_data()->pb.set_live_client_operation_lease(true);
-    uint64_t new_lease_epoch = lock->pb.lease_epoch() + 1;
-    lock.mutable_data()->pb.set_lease_epoch(new_lease_epoch);
-    lease_delta->new_lease = true;
-    lease_delta->lease_epoch = new_lease_epoch;
-  }
-  return lease_delta;
+  return Status::OK();
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
@@ -538,12 +521,31 @@ TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   return std::nullopt;
 }
 
-bool TSDescriptor::HasLiveClientOperationLease() const {
+std::pair<YsqlLeaseUpdate, std::optional<TSDescriptor::WriteLock>>
+TSDescriptor::RefreshYsqlLease() {
+  YsqlLeaseUpdate lease_update;
+  auto l = LockForWrite();
+  {
+    std::lock_guard spinlock(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+  if (l->pb.live_client_operation_lease()) {
+    return std::make_pair(lease_update, std::nullopt);
+  }
+  l.mutable_data()->pb.set_live_client_operation_lease(true);
+  uint64_t new_lease_epoch = l.mutable_data()->pb.lease_epoch() + 1;
+  l.mutable_data()->pb.set_lease_epoch(new_lease_epoch);
+  lease_update.new_lease = true;
+  lease_update.lease_epoch = new_lease_epoch;
+  return std::make_pair(lease_update, std::move(l));
+}
+
+bool TSDescriptor::HasLiveYsqlOperationLease() const {
   return LockForRead()->pb.live_client_operation_lease();
 }
 
-ClientOperationLeaseUpdatePB ClientOperationLeaseUpdate::ToPB() {
-  ClientOperationLeaseUpdatePB pb;
+RefreshYsqlLeaseInfoPB YsqlLeaseUpdate::ToPB() {
+  RefreshYsqlLeaseInfoPB pb;
   pb.set_new_lease(new_lease);
   pb.set_lease_epoch(lease_epoch);
   return pb;

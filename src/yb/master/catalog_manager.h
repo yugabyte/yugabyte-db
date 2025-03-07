@@ -392,6 +392,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
+  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
+                          RefreshYsqlLeaseResponsePB* resp,
+                          rpc::RpcContext* rpc,
+                          const LeaderEpoch& epoch);
+
   // Get the information about an in-progress truncate operation.
   Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                              IsTruncateTableDoneResponsePB* resp);

@@ -689,7 +689,7 @@ UpdateAllTServers<Req, Resp>::UpdateAllTServers(
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::Done(size_t i, const Status& s) {
-  if (ts_descriptors_[i]->HasLiveClientOperationLease()) {
+  if (ts_descriptors_[i]->HasLiveYsqlOperationLease()) {
     statuses_[i] = s;
   } else {
     statuses_[i] = Status::OK();
@@ -726,6 +726,7 @@ void UpdateAllTServers<Req, Resp>::Launch() {
     return;
   }
 
+  // todo(zdrudi): special case for 0 tservers with a live lease. This doesn't work.
   ts_descriptors_ = master_->ts_manager()->GetAllDescriptorsWithALiveLease();
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
   LaunchFrom(0);

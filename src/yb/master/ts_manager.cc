@@ -37,6 +37,7 @@
 
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -230,18 +231,17 @@ Status TSManager::RegisterFromRaftConfig(
   return Status::OK();
 }
 
-Result<HeartbeatResult>
-TSManager::LookupAndUpdateTSFromHeartbeat(
+Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const {
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
-  auto lease_delta = VERIFY_RESULT(desc->UpdateFromHeartbeat(heartbeat_request, lock));
+  RETURN_NOT_OK(desc->UpdateFromHeartbeat(heartbeat_request, lock));
   RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
-  return HeartbeatResult(std::move(desc), std::move(lease_delta));
+  return desc;
 }
 
-Result<HeartbeatResult> TSManager::RegisterFromHeartbeat(
+Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
     CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache) {
   return RegisterInternal(
@@ -249,29 +249,41 @@ Result<HeartbeatResult> TSManager::RegisterFromHeartbeat(
       std::cref(heartbeat_request), std::move(local_cloud_info), epoch, proxy_cache);
 }
 
-Result<HeartbeatResult> TSManager::RegisterInternal(
+Result<YsqlLeaseUpdate> TSManager::RefreshYsqlLease(
+    const LeaderEpoch& epoch, const NodeInstancePB& instance) {
+  if (!FLAGS_TEST_enable_ysql_operation_lease) {
+    return STATUS(NotSupported, "The ysql lease is currently a test feature.");
+  }
+  auto ts_desc = VERIFY_RESULT(LookupTS(instance));
+  auto [lease_update, lock_opt] = ts_desc->RefreshYsqlLease();
+  if (lock_opt) {
+    RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, ts_desc));
+    lock_opt->Commit();
+  }
+  return lease_update;
+}
+
+Result<TSDescriptorPtr> TSManager::RegisterInternal(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
     CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache) {
   TSCountCallback callback;
-  HeartbeatResult result;
-  auto registered_through_heartbeat = RegisteredThroughHeartbeat(request.has_value());
+  TSDescriptorPtr ts_desc = nullptr;
   {
     MutexLock l(registration_lock_);
     auto reg_data = VERIFY_RESULT(ComputeRegistrationMutationData(
         instance, registration, std::move(local_cloud_info), proxy_cache,
-        registered_through_heartbeat));
+        RegisteredThroughHeartbeat(request.has_value())));
     if (request.has_value()) {
-      result.lease_update = VERIFY_RESULT(
-          reg_data.desc->UpdateFromHeartbeat(*request, reg_data.registered_desc_lock));
+      RETURN_NOT_OK(reg_data.desc->UpdateFromHeartbeat(*request, reg_data.registered_desc_lock));
     }
-    std::tie(result.desc, callback) =
+    std::tie(ts_desc, callback) =
         VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
   }
   if (callback) {
     callback();
   }
-  return result;
+  return ts_desc;
 }
 
 Result<std::pair<TSDescriptorPtr, TSCountCallback>> TSManager::DoRegistrationMutation(
@@ -358,7 +370,7 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
 
 TSDescriptorVector TSManager::GetAllDescriptorsWithALiveLease() const {
   TSDescriptorVector descs;
-  GetDescriptors([](const auto& ts) -> bool { return ts->HasLiveClientOperationLease(); }, &descs);
+  GetDescriptors([](const auto& ts) -> bool { return ts->HasLiveYsqlOperationLease(); }, &descs);
   return descs;
 }
 
@@ -564,12 +576,6 @@ Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {
 
   return Status::OK();
 }
-
-HeartbeatResult::HeartbeatResult() : desc(nullptr), lease_update(std::nullopt) { }
-
-HeartbeatResult::HeartbeatResult(
-    TSDescriptorPtr&& desc_param, std::optional<ClientOperationLeaseUpdate>&& lease_update_param)
-    : desc(std::move(desc_param)), lease_update(std::move(lease_update_param)) {}
 
 namespace {
 

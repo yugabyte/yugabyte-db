@@ -44,25 +44,32 @@
 
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
+
 #include "yb/consensus/metadata.pb.h"
-#include "yb/cdc/xrepl_types.h"
+
 #include "yb/cdc/cdc_consumer.fwd.h"
+#include "yb/cdc/xrepl_types.h"
+
 #include "yb/client/client_fwd.h"
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/server/webserver_options.h"
+
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
-#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -90,6 +97,12 @@ class CDCServiceImpl;
 
 }
 
+namespace master {
+
+class RefreshYsqlLeaseInfoPB;
+
+}
+
 namespace stateful_service {
 class PgCronLeaderService;
 }  // namespace stateful_service
@@ -101,6 +114,7 @@ class TserverXClusterContext;
 class TserverXClusterContextIf;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
+class YsqlLeaseClient;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -189,7 +203,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
-      const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
+      const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -437,6 +451,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
+
+  std::unique_ptr<YsqlLeaseClient> ysql_lease_poller_;
 
   std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 

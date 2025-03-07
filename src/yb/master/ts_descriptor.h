@@ -84,12 +84,14 @@ namespace master {
 class TSRegistrationPB;
 class TSInformationPB;
 class TServerMetricsPB;
+class RefreshYsqlLeaseInfoPB;
 
-struct ClientOperationLeaseUpdate {
+struct YsqlLeaseUpdate {
+
   bool new_lease = false;
   uint64_t lease_epoch = 0;
 
-  ClientOperationLeaseUpdatePB ToPB();
+  RefreshYsqlLeaseInfoPB ToPB();
 };
 
 using ProxyTuple = util::SharedPtrTuple<
@@ -142,8 +144,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // from the heartbeat request. This method also validates that this is the latest heartbeat
   // request received from the tserver. If not, this method does no mutations and returns an error
   // status.
-  Result<std::optional<ClientOperationLeaseUpdate>> UpdateFromHeartbeat(
-      const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
+  Status UpdateFromHeartbeat(const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
 
   // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
@@ -344,7 +345,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>> MaybeUpdateLiveness(
       MonoTime time) EXCLUDES(mutex_);
 
-  bool HasLiveClientOperationLease() const;
+  std::pair<YsqlLeaseUpdate, std::optional<TSDescriptor::WriteLock>> RefreshYsqlLease();
+
+  bool HasLiveYsqlOperationLease() const;
 
  private:
   mutable rw_spinlock mutex_;
