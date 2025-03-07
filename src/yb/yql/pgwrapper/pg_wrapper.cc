@@ -893,6 +893,10 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
+
+  const std::string initdb_log_path = Format("$0/$1", FLAGS_log_dir, "initdb.log");
+  initdb_subprocess.SetEnv("YB_INITDB_LOG_FILE_PATH", initdb_log_path);
+
   if (global_initdb) {
     const auto& global_initdb_params = std::get<GlobalInitdbParams>(initdb_params);
 
@@ -905,7 +909,12 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  RETURN_NOT_OK(initdb_subprocess.Run());
+  Status initdb_status = initdb_subprocess.Run();
+  if (!initdb_status.ok()) {
+    LOG(ERROR) << "Initdb failed. Initdb log file path: "
+               << boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", getenv("TEST_TMPDIR"));
+    return initdb_status;
+  }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
   return Status::OK();
@@ -1129,7 +1138,6 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   proc->SetEnv("YB_PG_ADDRESS_NEGOTIATOR_FD", Format("$0", address_negotiator_fd_));
   proc->SetEnv("FLAGS_pggate_tserver_shared_memory_uuid", shared_mem_uuid_);
-  proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {
