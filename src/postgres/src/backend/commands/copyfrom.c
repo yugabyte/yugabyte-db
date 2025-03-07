@@ -555,7 +555,6 @@ CopyFrom(CopyFromState cstate)
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
-	bool orig_yb_disable_transactional_writes = yb_disable_transactional_writes;
 
 	/* Yb variables */
 	bool		useNonTxnInsert = false;
@@ -756,9 +755,12 @@ CopyFrom(CopyFromState cstate)
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
 		!has_rule_or_trigger && !IsTransactionBlock())
 	{
-		elog(LOG,"using non-txn for copy from colocated table");
+		elog(LOG,"using non-txn for copy from colocated table, yb_disable_transactional_writes=%d",
+				yb_disable_transactional_writes);
 		useNonTxnInsert = true;
-		yb_disable_transactional_writes = true;
+		/* the value will be reset automatically once the current top transaction ends */
+		set_config_option("yb_disable_transactional_writes", "true", PGC_USERSET, PGC_S_SESSION,
+				GUC_ACTION_LOCAL, true, 0, false);
 		cstate->opts.batch_size = 0;
 		YBAdjustOperationsBuffering(YBCRelInfoGetSecondaryIndicesCount(resultRelInfo) + 1);
 	}
@@ -1425,7 +1427,6 @@ yb_no_more_tuples:
 
 	FreeExecutorState(estate);
 
-	yb_disable_transactional_writes = orig_yb_disable_transactional_writes;
 	return processed;
 }
 
