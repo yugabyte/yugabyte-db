@@ -202,6 +202,8 @@ CreateExecutorState(void)
 	estate->yb_exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
 	estate->yb_exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
 
+	estate->yb_exec_params.yb_index_check = false;
+
 	return estate;
 }
 

@@ -928,7 +928,12 @@ ExecEndIndexScan(IndexScanState *node)
 	if (indexScanDesc)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
+	{
+		if (node->ss.ps.state->yb_exec_params.yb_index_check &&
+			indexRelationDesc->rd_rel->relkind == RELKIND_RELATION)
+			yb_free_dummy_baserel_index(indexRelationDesc);
 		index_close(indexRelationDesc, NoLock);
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -1089,8 +1094,12 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
-	indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
 
+	if (!estate->yb_exec_params.yb_index_check)
+		indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
+	else
+		indexstate->iss_RelationDesc =
+			yb_dummy_baserel_index_open(node->indexid, lockmode);
 	/*
 	 * Initialize index-specific scan state
 	 */

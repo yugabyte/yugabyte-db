@@ -405,6 +405,15 @@ void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Sli
   SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids));
 }
 
+void PgDmlRead::SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids) {
+  HoldingYbctidProvider ybctid_holder(&arena());
+  size_t size = ybctids.size();
+  ybctid_holder.reserve(size);
+  for (size_t i = 0; i < size; i++)
+    ybctid_holder.append(ybctids[i]);
+  SetYbctidProvider(std::make_unique<HoldingYbctidProvider>(ybctid_holder));
+}
+
 Status PgDmlRead::ANNBindVector(PgExpr* vector) {
   auto vec_options = read_req_->mutable_vector_idx_options();
   return vector->EvalTo(vec_options->mutable_vector());

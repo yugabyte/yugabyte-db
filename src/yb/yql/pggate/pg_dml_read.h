@@ -108,6 +108,7 @@ class PgDmlRead : public PgDml {
   // Execute.
   Status Exec(const YbcPgExecParameters* exec_params);
   void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
+  void SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids);
 
   Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);

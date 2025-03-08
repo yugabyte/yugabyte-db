@@ -34,6 +34,7 @@
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_pg_inherits_scan.h"
+#include "catalog/heap.h"
 #include "commands/dbcommands.h"
 #include "commands/tablegroup.h"
 #include "catalog/index.h"
@@ -227,20 +228,8 @@ ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 static Oid
 ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 {
-	Oid			atttypid;
-
-	if (attnum > 0)
-	{
-		/* Get the type from the description */
-		atttypid = TupleDescAttr(bind_desc, attnum - 1)->atttypid;
-	}
-	else
-	{
-		/* This must be an OID column. */
-		atttypid = OIDOID;
-	}
-
-	return atttypid;
+	return attnum > 0 ? TupleDescAttr(bind_desc, attnum - 1)->atttypid :
+						SystemAttributeDefinition(attnum)->atttypid;
 }
 
 /*
@@ -756,6 +745,9 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 					INDEXTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybbasectid);
 					ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
 				}
+				if (syscols.ybuniqueidxkeysuffix != NULL)
+						tuple->t_ybuniqueidxkeysuffix =
+							PointerGetDatum(syscols.ybuniqueidxkeysuffix);
 			}
 			break;
 		}
@@ -1253,6 +1245,7 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
+	bool sk_cols_has_ybctid = false;
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
@@ -1262,6 +1255,11 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
+		if (attnum == YBTupleIdAttributeNumber)
+		{
+			sk_cols_has_ybctid = true;
+			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+		}
 		/*
 		 * TODO: Can we have bound keys on non-pkey columns here?
 		 *       If not we do not need the is_primary_key below.
@@ -1276,12 +1274,14 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/*
-	 * If hash key is not fully set, we must do a full-table scan so clear all
-	 * the scan keys if the hash code was explicitly specified as a
-	 * scan key then we also shouldn't be clearing the scan keys
+	 * If hash key is not fully set and ybctid is not set either, we must do a
+	 * full-table scan so clear all the scan keys if the hash code was
+	 * explicitly specified as a scan key then we also shouldn't be clearing the
+	 * scan keys.
 	 */
 	if (ybScan->hash_code_keys == NIL &&
-		!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols))
+		!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols) &&
+		!sk_cols_has_ybctid)
 	{
 		bms_free(scan_plan->sk_cols);
 		scan_plan->sk_cols = NULL;
@@ -1920,6 +1920,11 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
 							   length_of_key - 1, attnums,
 							   num_elems, elem_values);
+	}
+	else if (scan_plan->bind_key_attnums[i] == YBTupleIdAttributeNumber)
+	{
+		Assert(num_elems == num_valid);
+		YBCPgBindYbctids(ybScan->handle, num_elems, elem_values);
 	}
 	else
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
