@@ -168,9 +168,6 @@ public class RestartXClusterConfig extends EditXClusterConfig {
             createRemoveTableFromXClusterConfigSubtasks(
                 xClusterConfig, tableIds, true /* keepEntry */);
 
-            createXClusterConfigSetStatusForTablesTask(
-                xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
-
             addSubtasksToAddTablesToXClusterConfig(
                 xClusterConfig, tableInfoList, taskParams().getMainTableIndexTablesMap(), tableIds);
           } else {

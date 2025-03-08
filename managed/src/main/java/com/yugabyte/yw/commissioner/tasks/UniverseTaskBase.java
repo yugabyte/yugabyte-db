@@ -918,13 +918,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           throw new UniverseInProgressException(msg);
         }
         if (taskParams().getPreviousTaskUUID() != null) {
-          // If the task is retried, check if the task UUID is same as the one in the universe.
           // Check this condition only on retry to retain same behavior as before.
-          boolean isLastTaskOrLastPlacementTaskRetry =
-              Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
-                  || Objects.equals(
-                      taskParams().getPreviousTaskUUID(),
-                      universeDetails.placementModificationTaskUuid);
+          boolean isLastTaskOrLastPlacementTaskRetry = true;
+          // For xCluster tasks, don't perform this check because the updatingTaskUUID is not set
+          // on one of the participating universes.
+          if (!(taskParams() instanceof XClusterConfigTaskParams)) {
+            // If the task is retried, check if the task UUID is same as the one in the universe.
+            isLastTaskOrLastPlacementTaskRetry =
+                Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
+                    || Objects.equals(
+                        taskParams().getPreviousTaskUUID(),
+                        universeDetails.placementModificationTaskUuid);
+          }
           if (!isLastTaskOrLastPlacementTaskRetry) {
             String msg =
                 "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
@@ -3693,17 +3698,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isLoadBalancerAltered) {
     if (!CollectionUtils.isEmpty(backupList)) {
       for (Backup backup : backupList) {
-        if (backup != null && !isAbort && backup.getState().equals(BackupState.InProgress)) {
-          backup.transitionState(BackupState.Failed);
-          backup.setCompletionTime(new Date());
-          backup.save();
+        if (backup != null && !isAbort) {
+          backup.refresh();
+          if (backup.getState() == BackupState.InProgress) {
+            backup.transitionState(BackupState.Failed);
+            backup.setCompletionTime(new Date());
+            backup.save();
+          }
         }
       }
     }
     if (!CollectionUtils.isEmpty(restoreList)) {
       for (Restore restore : restoreList) {
-        if (restore != null && !isAbort && restore.getState().equals(Restore.State.InProgress)) {
-          restore.update(restore.getTaskUUID(), Restore.State.Failed);
+        if (restore != null && !isAbort) {
+          // Some of the restore related code, fetch the restore object from the DB by task UUID and
+          // directly updates the DB without affecting the object that is already retrieved in the
+          // parent task.
+          restore.refresh();
+          if (restore.getState() == Restore.State.InProgress) {
+            restore.update(restore.getTaskUUID(), Restore.State.Failed);
+          }
         }
       }
     }
