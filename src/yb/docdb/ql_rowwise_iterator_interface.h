@@ -29,6 +29,8 @@ class Slice;
 
 namespace docdb {
 
+YB_DEFINE_ENUM(ReadKey, (kCurrent)(kNext));
+
 class YQLRowwiseIteratorIf {
  public:
   typedef std::unique_ptr<YQLRowwiseIteratorIf> UniPtr;
@@ -69,7 +71,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key);
+  virtual Result<dockv::SubDocKey> GetSubDocKey(ReadKey read_key = ReadKey::kNext);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Slice GetTupleId() const;

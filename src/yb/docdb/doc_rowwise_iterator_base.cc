@@ -262,23 +262,34 @@ bool DocRowwiseIteratorBase::IsFetchedRowStatic() const {
   return fetched_row_static_;
 }
 
-Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) {
+Result<dockv::SubDocKey> DocRowwiseIteratorBase::GetSubDocKey(ReadKey read_key) {
   if (!is_initialized_) {
     return STATUS(Corruption, "Iterator not initialized.");
   }
 
-  // There are no more rows to fetch, so no next SubDocKey to read.
-  auto res = table_type_ == TableType::PGSQL_TABLE_TYPE ? PgFetchNext(nullptr) : FetchNext(nullptr);
-  if (!VERIFY_RESULT(std::move(res))) {
-    DVLOG(3) << "No Next SubDocKey";
-    return Status::OK();
+  bool handled = false;
+  switch (read_key) {
+    case ReadKey::kNext:
+      if (!VERIFY_RESULT(table_type_ == TableType::PGSQL_TABLE_TYPE
+                           ? PgFetchNext(nullptr) : FetchNext(nullptr))) {
+        DVLOG(3) << "No Next SubDocKey";
+        return dockv::SubDocKey();
+      }
+      handled = true;
+      break;
+    case ReadKey::kCurrent:
+      handled = true;
+      break;
+  }
+  if (!handled) {
+    FATAL_INVALID_ENUM_VALUE(ReadKey, read_key);
   }
 
   DocKey doc_key;
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
-  *sub_doc_key = dockv::SubDocKey(doc_key, read_operation_data_.read_time.read);
-  DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
-  return Status::OK();
+  auto sub_doc_key = dockv::SubDocKey(doc_key, read_operation_data_.read_time.read);
+  DVLOG(3) << "Next SubDocKey: " << sub_doc_key.ToString();
+  return sub_doc_key;
 }
 
 Slice DocRowwiseIteratorBase::GetTupleId() const {
