@@ -123,6 +123,9 @@ class SharedMemSegment::Impl {
       return;
     }
 
+    auto status = CleanupPrepareState();
+    DCHECK_OK(status);
+
 #ifdef YB_ADDRESS_SANITIZER
     CleanupSegment(asan_fd_, ASANMakeShadowSegmentName(name_));
 #endif
@@ -159,8 +162,7 @@ class SharedMemSegment::Impl {
 
   Status Init(void* base_address) {
     if (base_address_) {
-      // Unmap the temporary mappings from Prepare().
-      RETURN_ON_ERRNO_FN_CALL(munmap, base_address_, max_size_);
+      old_base_address_ = base_address_;
     }
     base_address_ = base_address;
 
@@ -179,6 +181,14 @@ class SharedMemSegment::Impl {
         asan_fd_, ASANMakeShadowSegmentName(name_), ASANMemoryToShadow(base_address_),
         ASANMemorySizeToShadowSize(max_size_)));
 #endif
+    return Status::OK();
+  }
+
+  Status CleanupPrepareState() {
+    if (old_base_address_) {
+      RETURN_ON_ERRNO_FN_CALL(munmap, old_base_address_, max_size_);
+      old_base_address_ = nullptr;
+    }
     return Status::OK();
   }
 
@@ -263,6 +273,7 @@ class SharedMemSegment::Impl {
   size_t max_size_;
 
   void* base_address_ = nullptr;
+  void* old_base_address_ = nullptr;
 
   int fd_ = -1;
 #ifdef YB_ADDRESS_SANITIZER
@@ -300,6 +311,10 @@ Status SharedMemSegment::Prepare() {
 
 Status SharedMemSegment::Init(void* address) {
   return impl_->Init(address);
+}
+
+Status SharedMemSegment::CleanupPrepareState() {
+  return impl_->CleanupPrepareState();
 }
 
 Status SharedMemSegment::Grow(size_t new_size) {

@@ -208,7 +208,7 @@ Status Master::Init() {
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
   if (!bound_addresses.empty()) {
-    shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
+    shared_object()->SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
   cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(

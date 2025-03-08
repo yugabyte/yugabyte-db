@@ -148,7 +148,7 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
   }
 }
 
-tserver::TServerSharedData& MasterTabletServer::SharedObject() {
+ConcurrentPointerReference<tserver::TServerSharedData> MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }
 

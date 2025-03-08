@@ -598,7 +598,9 @@ PgApiImpl::PgApiImpl(
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
       explicit_row_lock_buffer_(ybctid_reader_provider_) {
   PgBackendSetupSharedMemory();
-  tserver_shared_object_ = &PgSharedMemoryManager().SharedData();
+  // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
+  // it's safe to just save the pointer.
+  tserver_shared_object_ = PgSharedMemoryManager().SharedData().get();
 
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());

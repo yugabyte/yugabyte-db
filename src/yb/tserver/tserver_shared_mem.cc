@@ -216,8 +216,9 @@ Status TServerSharedData::WaitAllocatorsInitialized() {
 
 SharedMemoryManager::~SharedMemoryManager() {
   CHECK_OK(ShutdownNegotiator());
-  if (is_parent_ && data_) {
-    data_->~TServerSharedData();
+  auto data = data_.get();
+  if (is_parent_ && data) {
+    data->~TServerSharedData();
   }
 }
 
@@ -264,7 +265,7 @@ Status SharedMemoryManager::InitializePgBackend(std::string_view uuid) {
   }
   RETURN_NOT_OK(InitializeChildAllocatorsAndObjects(uuid));
   if (pointer_support) {
-    RETURN_NOT_OK(SharedData().WaitAllocatorsInitialized());
+    RETURN_NOT_OK(SharedData()->WaitAllocatorsInitialized());
   }
   return Status::OK();
 }
@@ -294,7 +295,7 @@ Status SharedMemoryManager::PrepareAllocators(std::string_view uuid) {
 
   prepare_state_ = VERIFY_RESULT(allocator_.Prepare(
       VERIFY_RESULT(MakeAllocatorName(uuid)), sizeof(TServerSharedData)));
-  data_ = new (prepare_state_.UserData()) TServerSharedData();
+  data_.Set(new (prepare_state_.UserData()) TServerSharedData());
   return Status::OK();
 }
 
@@ -325,8 +326,9 @@ Status SharedMemoryManager::InitializeParentAllocatorsAndObjects() {
     return Status::OK();
   }
   RETURN_NOT_OK(allocator_.InitOwner(address_segment_, std::move(prepare_state_)));
-  data_ = allocator_.UserData<TServerSharedData>();
-  RETURN_NOT_OK(data_->AllocatorsInitialized(allocator_));
+  auto* data = allocator_.UserData<TServerSharedData>();
+  data_.Set(data);
+  RETURN_NOT_OK(data->AllocatorsInitialized(allocator_));
   ready_.store(true);
   return Status::OK();
 }
@@ -336,7 +338,7 @@ Status SharedMemoryManager::InitializeChildAllocatorsAndObjects(std::string_view
     return Status::OK();
   }
   RETURN_NOT_OK(allocator_.InitChild(address_segment_, VERIFY_RESULT(MakeAllocatorName(uuid))));
-  data_ = allocator_.UserData<TServerSharedData>();
+  data_.Set(allocator_.UserData<TServerSharedData>());
   ready_.store(true);
   return Status::OK();
 }

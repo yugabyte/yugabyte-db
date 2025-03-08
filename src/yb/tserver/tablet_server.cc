@@ -538,21 +538,22 @@ Status TabletServer::Init() {
   initted_.store(true, std::memory_order_release);
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
+  auto shared = shared_object();
   if (!bound_addresses.empty()) {
     ServerRegistrationPB reg;
     RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
-    shared_object().SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
+    shared->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
   }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
   if (PREDICT_FALSE(FLAGS_TEST_pg_auth_key != 0)) {
-    shared_object().SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
+    shared->SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
   } else {
-    shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+    shared->SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
 
-  shared_object().SetTserverUuid(fs_manager()->uuid());
+  shared->SetTserverUuid(fs_manager()->uuid());
 
   return Status::OK();
 }
@@ -948,7 +949,7 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
 }
 
 uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
-  return shared_object().postgres_auth_key();
+  return shared_object()->postgres_auth_key();
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
@@ -985,7 +986,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
       return;
     }
     ysql_catalog_version_ = new_version;
-    shared_object().SetYsqlCatalogVersion(new_version);
+    shared_object()->SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
   }
   if (FLAGS_log_ysql_catalog_versions) {
@@ -1042,7 +1043,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
           !catalog_version_table_in_perdb_mode_.value()) {
         LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
         catalog_version_table_in_perdb_mode_ = true;
-        shared_object().SetCatalogVersionTableInPerdbMode(true);
+        shared_object()->SetCatalogVersionTableInPerdbMode(true);
       }
     } else {
       DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
@@ -1123,7 +1124,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     if (row_inserted || row_updated) {
       catalog_changed = true;
       // Set the new catalog version in shared memory at slot shm_index.
-      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
+      shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
       if (FLAGS_log_ysql_catalog_versions) {
         LOG_WITH_FUNC(INFO) << "set db " << db_oid
                             << " catalog version: " << new_version
@@ -1142,7 +1143,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       // issue.
       if (db_oid == kTemplate1Oid) {
         ysql_catalog_version_ = new_version;
-        shared_object().SetYsqlCatalogVersion(new_version);
+        shared_object()->SetYsqlCatalogVersion(new_version);
         ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
       // Create the entry of db_oid if not exists.
@@ -1157,7 +1158,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     // true (i.e., from global mode to perdb mode).
     LOG(INFO) << "set pg_yb_catalog_version table in global mode";
     catalog_version_table_in_perdb_mode_ = false;
-    shared_object().SetCatalogVersionTableInPerdbMode(false);
+    shared_object()->SetCatalogVersionTableInPerdbMode(false);
   }
 
   // We only do full catalog report for now, remove entries that no longer exist.
@@ -1179,7 +1180,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
-      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
+      shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
     } else {
       ++it;
     }
@@ -1756,7 +1757,7 @@ Result<std::vector<TserverMetricsInfoPB>> TabletServer::GetMetrics() const {
 }
 
 void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-  SharedObject().SetCronLeaderLease(cron_leader_lease_end);
+  SharedObject()->SetCronLeaderLease(cron_leader_lease_end);
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(

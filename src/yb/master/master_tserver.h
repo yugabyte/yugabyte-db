@@ -68,7 +68,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   client::TransactionPool& TransactionPool() override;
 
-  tserver::TServerSharedData& SharedObject() override;
+  ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;
 
