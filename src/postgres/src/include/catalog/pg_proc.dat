@@ -12161,4 +12161,8 @@
   proargnames => '{pid}',
   prosrc => 'yb_log_catcache_stats'},
 
+{ oid => '8090', descr => 'returns whether the index is logically consistent with its base relation',
+  proname => 'yb_index_check', provolatile => 's',
+  prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'yb_index_check' },
 ]

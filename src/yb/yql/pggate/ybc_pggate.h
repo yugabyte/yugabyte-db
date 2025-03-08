@@ -682,6 +682,7 @@ YbcStatus YBCPgRetrieveYbctids(YbcPgStatement handle, const YbcPgExecParameters 
                                bool *exceeded_work_mem);
 YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParameters *exec_params,
                                      YbcConstSliceVector ybctids);
+YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(

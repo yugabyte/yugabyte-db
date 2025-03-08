@@ -230,6 +230,7 @@ typedef struct {
   // Yugabyte system columns.
   uint8_t *ybctid;
   uint8_t *ybbasectid;
+  uint8_t *ybuniqueidxkeysuffix;
 } YbcPgSysColumns;
 
 // Structure to hold parameters for preparing query plan.
@@ -340,6 +341,7 @@ typedef struct YbcPgExecParameters {
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
+  int yb_index_check;
 #endif
 } YbcPgExecParameters;
 
