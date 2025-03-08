@@ -924,14 +924,16 @@ public class XClusterConfigController extends AuthenticatedController {
         bootstrapParams,
         xClusterConfig.getReplicationGroupName());
 
-    return new XClusterConfigTaskParams(
-        xClusterConfig,
-        bootstrapParams,
-        requestedTableInfoList,
-        mainTableIndexTablesMap,
-        sourceTableIdTargetTableIdMap,
-        isForceDelete,
-        isForceBootstrap);
+    XClusterConfigTaskParams taskParams =
+        new XClusterConfigTaskParams(
+            xClusterConfig,
+            bootstrapParams,
+            requestedTableInfoList,
+            mainTableIndexTablesMap,
+            sourceTableIdTargetTableIdMap,
+            isForceDelete,
+            isForceBootstrap);
+    return taskParams;
   }
 
   static XClusterConfigTaskParams getDbScopedRestartTaskParams(

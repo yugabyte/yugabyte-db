@@ -27358,6 +27358,14 @@
     },
     "XClusterNamespaceConfig" : {
       "properties" : {
+        "backupUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "restoreUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "sourceNamespaceId" : {
           "type" : "string"
         },
@@ -27384,6 +27392,8 @@
         }
       },
       "required" : [
+        "backupUuid",
+        "restoreUuid",
         "sourceNamespaceId"
       ],
       "type" : "object"

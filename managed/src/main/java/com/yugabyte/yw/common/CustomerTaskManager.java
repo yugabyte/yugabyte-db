@@ -89,6 +89,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -600,6 +601,13 @@ public class CustomerTaskManager {
             CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID());
             return lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
           }
+
+          JsonNode xClusterConfigNode = taskInfo.getTaskParams().get("xClusterConfig");
+          if (xClusterConfigNode != null && !xClusterConfigNode.isNull()) {
+            XClusterConfig xClusterConfig = Json.fromJson(xClusterConfigNode, XClusterConfig.class);
+            return isXClusterTaskRetryable(tf.getUuid(), xClusterConfig);
+          }
+
           // Rest are all tasks on universe, but the target may be a node or backup etc.
           JsonNode node = taskInfo.getTaskParams().get("universeUUID");
           if (node == null || node.isNull()) {
@@ -623,7 +631,12 @@ public class CustomerTaskManager {
   private String verifyTaskRetryability(CustomerTask customerTask, AbstractTaskParams taskParams) {
     UUID retriedTaskUuid = customerTask.getTaskUUID();
     UUID targetUUID = customerTask.getTargetUUID();
-    if (taskParams instanceof UniverseTaskParams) {
+    if (taskParams instanceof XClusterConfigTaskParams) {
+      XClusterConfig xClusterConfig = ((XClusterConfigTaskParams) taskParams).getXClusterConfig();
+      if (!isXClusterTaskRetryable(retriedTaskUuid, xClusterConfig)) {
+        return "Invalid task state: Task " + retriedTaskUuid + " cannot be retried";
+      }
+    } else if (taskParams instanceof UniverseTaskParams) {
       Universe universe = Universe.getOrBadRequest(targetUUID);
       if (!retriedTaskUuid.equals(universe.getUniverseDetails().updatingTaskUUID)
           && !retriedTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
@@ -641,6 +654,38 @@ public class CustomerTaskManager {
       return "Unknown type for task params " + taskParams;
     }
     return null;
+  }
+
+  public static boolean isXClusterTaskRetryable(
+      UUID retriedTaskUuid, @Nullable XClusterConfig xClusterConfig) {
+    // For xCluster tasks, check both universes for the task uuid.
+    if (Objects.nonNull(xClusterConfig)) {
+      Optional<Universe> sourceUniverseOptional =
+          Universe.maybeGet(xClusterConfig.getSourceUniverseUUID());
+      Optional<Universe> targetUniverseOptional =
+          Universe.maybeGet(xClusterConfig.getTargetUniverseUUID());
+      if (sourceUniverseOptional.isPresent()
+          && (retriedTaskUuid.equals(
+                  sourceUniverseOptional.get().getUniverseDetails().updatingTaskUUID)
+              || retriedTaskUuid.equals(
+                  sourceUniverseOptional
+                      .get()
+                      .getUniverseDetails()
+                      .placementModificationTaskUuid))) {
+        return true;
+      }
+      if (targetUniverseOptional.isPresent()
+          && (retriedTaskUuid.equals(
+                  targetUniverseOptional.get().getUniverseDetails().updatingTaskUUID)
+              || retriedTaskUuid.equals(
+                  targetUniverseOptional
+                      .get()
+                      .getUniverseDetails()
+                      .placementModificationTaskUuid))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public CustomerTask rollbackCustomerTask(UUID customerUUID, UUID taskUUID) {
@@ -932,6 +977,10 @@ public class CustomerTaskManager {
       case FailoverDrConfig:
       case SwitchoverDrConfig:
       case DeleteDrConfig:
+      case CreateDrConfig:
+      case EditDrConfig:
+      case SetDatabasesDrConfig:
+      case SetTablesDrConfig:
         taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
         DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
         drConfigTaskParams.refreshIfExists();
@@ -940,10 +989,11 @@ public class CustomerTaskManager {
         //  is retried.
         break;
       case DeleteXClusterConfig:
+      case CreateXClusterConfig:
+      case EditXClusterConfig:
         taskParams = Json.fromJson(oldTaskParams, XClusterConfigTaskParams.class);
         XClusterConfigTaskParams xClusterConfigTaskParams = (XClusterConfigTaskParams) taskParams;
         xClusterConfigTaskParams.refreshIfExists();
-        break;
       default:
         String errMsg =
             String.format(

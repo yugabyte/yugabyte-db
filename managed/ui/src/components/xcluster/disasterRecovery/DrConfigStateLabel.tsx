@@ -59,6 +59,7 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
+    case DrConfigState.UPDATING:
       stateLabel = (
         <Typography
           variant={variant}

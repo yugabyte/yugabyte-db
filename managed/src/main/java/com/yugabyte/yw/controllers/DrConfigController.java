@@ -466,6 +466,10 @@ public class DrConfigController extends AuthenticatedController {
         setTablesForm.bootstrapParams = drConfig.getBootstrapBackupParams();
       }
     }
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "This operation is not supported for db-scoped xCluster configs.");
+    }
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -1843,6 +1847,10 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "This operation is only supported for db-scoped xCluster configs.");
     }
     DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
     Set<String> existingDatabaseIds = xClusterConfig.getDbIds();

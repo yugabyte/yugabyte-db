@@ -14,6 +14,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskParams;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
 import java.time.Duration;
@@ -358,6 +360,14 @@ public class Commissioner {
                 CustomerTask lastTask = lastTaskByTarget.get(task.getTargetUUID());
                 return lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
               }
+
+              JsonNode xClusterConfigNode = taskInfo.getTaskParams().get("xClusterConfig");
+              if (xClusterConfigNode != null && !xClusterConfigNode.isNull()) {
+                XClusterConfig xClusterConfig =
+                    Json.fromJson(xClusterConfigNode, XClusterConfig.class);
+                return CustomerTaskManager.isXClusterTaskRetryable(tf.getUuid(), xClusterConfig);
+              }
+
               Set<String> taskUuidsToAllowRetry =
                   updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());

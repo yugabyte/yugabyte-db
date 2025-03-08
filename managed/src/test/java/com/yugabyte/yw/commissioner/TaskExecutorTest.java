@@ -144,7 +144,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.DeleteXClusterConfig,
           TaskType.DecommissionNode,
           TaskType.EditBackupScheduleKubernetes,
-          TaskType.CreateBackupScheduleKubernetes);
+          TaskType.CreateBackupScheduleKubernetes,
+          TaskType.CreateXClusterConfig,
+          TaskType.EditXClusterConfig,
+          TaskType.CreateDrConfig,
+          TaskType.EditDrConfig,
+          TaskType.SetDatabasesDrConfig,
+          TaskType.SetTablesDrConfig,
+          TaskType.RestartXClusterConfig,
+          TaskType.RestartDrConfig,
+          TaskType.DecommissionNode);
 
   @Override
   protected Application provideApplication() {

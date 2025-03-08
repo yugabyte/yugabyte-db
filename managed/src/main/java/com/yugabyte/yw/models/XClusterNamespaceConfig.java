@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import io.ebean.Finder;
 import io.ebean.annotation.DbEnumValue;
@@ -72,6 +74,18 @@ public class XClusterNamespaceConfig {
     }
   }
 
+  @ApiModelProperty(value = "The backup config used to do bootstrapping for this table")
+  @ManyToOne
+  @JoinColumn(name = "backup_uuid", referencedColumnName = "backup_uuid")
+  @JsonIgnore
+  private Backup backup;
+
+  @ApiModelProperty(value = "The restore config used to do bootstrapping for this table")
+  @ManyToOne
+  @JoinColumn(name = "restore_uuid", referencedColumnName = "restore_uuid")
+  @JsonIgnore
+  private Restore restore;
+
   @Transient
   @ApiModelProperty(value = "namespaceInfo from source universe", required = false)
   private NamespaceInfoResp sourceNamespaceInfo;
@@ -84,6 +98,46 @@ public class XClusterNamespaceConfig {
     this.setConfig(config);
     this.setSourceNamespaceId(sourceNamespaceId);
     this.setStatus(Status.Validated);
+  }
+
+  @JsonSetter("backupUuid")
+  private void setBackupFromUuid(UUID backupUuid) {
+    if (backupUuid == null) {
+      setBackup(null);
+      return;
+    }
+    setBackup(Backup.maybeGet(backupUuid).orElse(null));
+  }
+
+  @JsonGetter("backupUuid")
+  UUID getBackupUuid() {
+    if (getBackup() == null) {
+      return null;
+    }
+    return getBackup().getBackupUUID();
+  }
+
+  @JsonSetter("restoreUuid")
+  private void setRestoreFromUuid(UUID restoreUuid) {
+    if (restoreUuid == null) {
+      restore = null;
+      return;
+    }
+    setRestore(Restore.maybeGet(restoreUuid).orElse(null));
+  }
+
+  @JsonGetter("restoreUuid")
+  UUID getRestoreUuid() {
+    if (getRestore() == null) {
+      return null;
+    }
+    return getRestore().getRestoreUUID();
+  }
+
+  public void reset() {
+    this.setStatus(Status.Validated);
+    // We intentionally do not reset backup and restore objects in the xCluster config because
+    // restart parent task sets these attributes and its subtasks use this method.
   }
 
   /** This class is the primary key for XClusterNamespaceConfig. */

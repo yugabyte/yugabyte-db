@@ -391,12 +391,12 @@ public enum TaskType {
       CustomerTask.TaskType.Sync,
       CustomerTask.TargetType.DrConfig),
 
-  SetTablesDrConfig(
+  SetDatabasesDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
-  SetDatabasesDrConfig(
+  SetTablesDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
