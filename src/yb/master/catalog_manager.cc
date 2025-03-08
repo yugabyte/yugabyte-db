@@ -10135,7 +10135,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
       versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
     LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
     catalog_version_table_in_perdb_mode_ = true;
-    master_->shared_object().SetCatalogVersionTableInPerdbMode(true);
+    master_->shared_object()->SetCatalogVersionTableInPerdbMode(true);
   }
   return Status::OK();
 }

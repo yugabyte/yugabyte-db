@@ -39,12 +39,15 @@ class SharedMemSegment {
 
   void* BaseAddress() const;
 
-  // Create the shared memory file. Init() may be called/the segment used by any process
-  // after this has been called. The shared memory is mapped at an arbitrary address until
-  // Init() is called.
+  // Create the shared memory file. Once this has been called, any process may call Init() and
+  // use the segment. The shared memory is mapped in the parent process at an arbitrary address
+  // until Init() is called.
   Status Prepare();
 
   Status Init(void* address);
+
+  // Unmap shared memory from the temporary address Prepare() mapped it to.
+  Status CleanupPrepareState();
 
   // Caller must ensure this is only called in one process at a time.
   Status Grow(size_t new_size);

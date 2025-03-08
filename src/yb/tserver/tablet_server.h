@@ -199,7 +199,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
-  tserver::TServerSharedData& SharedObject() override { return shared_object(); }
+  ConcurrentPointerReference<TServerSharedData> SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(

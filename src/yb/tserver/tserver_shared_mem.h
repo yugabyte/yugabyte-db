@@ -25,6 +25,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/concurrent_value.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
@@ -178,8 +179,8 @@ class SharedMemoryManager {
     return ready_;
   }
 
-  TServerSharedData& SharedData() const {
-    return *data_;
+  auto SharedData() {
+    return data_.get();
   }
 
  private:
@@ -198,7 +199,7 @@ class SharedMemoryManager {
 
   std::atomic<bool> ready_{false};
   SharedMemoryAllocatorPrepareState prepare_state_;
-  TServerSharedData* data_ = nullptr;
+  ConcurrentPointer<TServerSharedData> data_{nullptr};
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);

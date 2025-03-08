@@ -33,6 +33,8 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 
+#include "yb/util/concurrent_value.h"
+
 namespace yb {
 
 class MemTracker;
@@ -81,7 +83,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
 
-  virtual tserver::TServerSharedData& SharedObject() = 0;
+  virtual ConcurrentPointerReference<TServerSharedData> SharedObject() = 0;
 
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;

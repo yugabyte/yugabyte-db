@@ -159,11 +159,11 @@ class PgCatalogVersionTest : public LibPqTestBase {
       tserver::SharedMemoryManager shared_mem_manager;
       RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
 
-      auto& tserver_shared_data = shared_mem_manager.SharedData();
+      auto tserver_shared_data = shared_mem_manager.SharedData();
 
       size_t initialized_slots_count = 0;
       for (size_t i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
-        if (tserver_shared_data.ysql_db_catalog_version(i)) {
+        if (tserver_shared_data->ysql_db_catalog_version(i)) {
           ++initialized_slots_count;
         }
       }
@@ -187,7 +187,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
         SCHECK(entry.has_db_oid() && entry.has_shm_index(), IllegalState, "missed fields");
         auto db_oid = entry.db_oid();
         auto shm_index = entry.shm_index();
-        const auto current_version = tserver_shared_data.ysql_db_catalog_version(shm_index);
+        const auto current_version = tserver_shared_data->ysql_db_catalog_version(shm_index);
         SCHECK_NE(current_version, 0UL, IllegalState, "uninitialized version is not expected");
         catalog_versions.emplace(db_oid, current_version);
         if (!output.empty()) {

@@ -27,7 +27,6 @@ class PgWrapperContext {
   virtual Status StartSharedMemoryNegotiation() = 0;
   virtual Status StopSharedMemoryNegotiation() = 0;
   virtual int SharedMemoryNegotiationFd() = 0;
-  virtual tserver::TServerSharedData& shared_object() const = 0;
   virtual const std::string& permanent_uuid() const = 0;
 };
 
