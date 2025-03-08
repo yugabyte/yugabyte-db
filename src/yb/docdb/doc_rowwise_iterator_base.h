@@ -95,7 +95,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
+  Result<dockv::SubDocKey> GetSubDocKey(ReadKey read_key) override;
 
   Slice GetRowKey() const override;
 

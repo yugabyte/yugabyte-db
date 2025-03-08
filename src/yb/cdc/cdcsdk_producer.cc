@@ -2529,8 +2529,7 @@ Status HandleGetChangesForSnapshotRequest(
           throughput_metrics));
       fetched++;
     }
-    dockv::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&sub_doc_key));
+    dockv::SubDocKey sub_doc_key = VERIFY_RESULT(iter->GetSubDocKey());
 
     // Snapshot ends when next key is empty.
     if (sub_doc_key.doc_key().empty()) {
