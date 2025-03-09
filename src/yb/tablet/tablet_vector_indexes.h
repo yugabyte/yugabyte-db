@@ -33,6 +33,7 @@ class VectorIndexList {
   VectorIndexList() = default;
   explicit VectorIndexList(docdb::DocVectorIndexesPtr list) : list_(std::move(list)) {}
 
+  void Compact();
   void Flush();
   Status WaitForFlush();
 
@@ -62,7 +63,14 @@ class TabletVectorIndexes : public TabletComponent {
   Status CreateIndex(
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
       EXCLUDES(vector_indexes_mutex_);
+
+  // Returns a collection of vector indexes for the given vector index table ids. Returns nullptr
+  // if at least one vector indexes is not found by the give table id. The order of vector indexes
+  // in the returned collection is not guaranteed to be preserved.
+  docdb::DocVectorIndexesPtr Collect(const std::vector<TableId>& table_ids);
+
   docdb::DocVectorIndexesPtr List() const EXCLUDES(vector_indexes_mutex_);
+
   void LaunchBackfillsIfNecessary();
   void CompleteShutdown(std::vector<std::string>& out_paths);
   std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
@@ -89,6 +97,9 @@ class TabletVectorIndexes : public TabletComponent {
   Status DoCreateIndex(
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)
       REQUIRES(vector_indexes_mutex_);
+
+  docdb::DocVectorIndexPtr IndexForTableUnlocked(
+      const TableId& table_id) const REQUIRES_SHARED(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
 

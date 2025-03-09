@@ -678,6 +678,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;
+  bool is_vector_index() const;
 
   void set_is_system() { is_system_ = true; }
   bool is_system() const { return is_system_; }

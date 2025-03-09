@@ -4548,8 +4548,7 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
       std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
-    std::function<void()> on_compaction_completion) {
+Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
   if (!admin_triggered_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
   }
@@ -4560,19 +4559,26 @@ Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return admin_full_compaction_task_pool_token_->SubmitFunc([this, on_compaction_completion]() {
-    TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
-    on_compaction_completion();
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
+    // TODO(vector_index): since full vector index compaction is not optimizaed and may take a
+    // significat amount of time, let's trigger it separately from regular manual compaction.
+    // This logic should be revised later.
+    if (options.vector_index_ids) {
+      TriggerVectorIndexCompactionSync(*options.vector_index_ids);
+    } else {
+      TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
+    }
+    if (options.compaction_completion_callback) {
+      options.compaction_completion_callback();
+    }
   });
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeeded() {
-  return TriggerAdminFullCompactionIfNeededHelper();
-}
-
-Status Tablet::TriggerAdminFullCompactionWithCallbackIfNeeded(
-    std::function<void()> on_compaction_completion) {
-  return TriggerAdminFullCompactionIfNeededHelper(on_compaction_completion);
+void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
+  tablet::VectorIndexList{
+    vector_index_ids.empty() ? vector_indexes().List() : vector_indexes().Collect(vector_index_ids)
+  }.Compact();
 }
 
 void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {

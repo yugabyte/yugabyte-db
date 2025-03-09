@@ -388,8 +388,8 @@ void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) 
   // Wait actual shutdown.
 }
 
-docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table_id) const {
-  SharedLock lock(vector_indexes_mutex_);
+
+docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTableUnlocked(const TableId& table_id) const {
   auto it = vector_indexes_map_.find(table_id);
   if (it != vector_indexes_map_.end()) {
     return it->second;
@@ -400,6 +400,31 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table
       << table_id << ", all vector indexes: "
       << CollectionToString(vector_indexes_map_, [](const auto& pair) { return pair.first; });
   return nullptr;
+}
+
+docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table_id) const {
+  SharedLock lock(vector_indexes_mutex_);
+  return IndexForTableUnlocked(table_id);
+}
+
+docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
+  if (table_ids.empty() || !has_vector_indexes_.load(std::memory_order_acquire)) {
+    return nullptr;
+  }
+
+  auto result = std::make_shared<docdb::DocVectorIndexes>();
+  result->reserve(table_ids.size());
+  {
+    SharedLock lock(vector_indexes_mutex_);
+    for (const auto& table_id : table_ids) {
+      auto index = IndexForTableUnlocked(table_id);
+      if (!index) {
+        return nullptr;
+      }
+      result->push_back(std::move(index));
+    }
+  }
+  return result;
 }
 
 docdb::DocVectorIndexesPtr TabletVectorIndexes::List() const {
@@ -492,6 +517,16 @@ void VectorIndexList::Flush() {
   // TODO(vector_index) Check flush order between vector indexes and intents db
   for (const auto& index : *list_) {
     WARN_NOT_OK(index->Flush(), "Flush vector index");
+  }
+}
+
+void VectorIndexList::Compact() {
+  if (!list_) {
+    return;
+  }
+
+  for (const auto& index : *list_) {
+    WARN_NOT_OK(index->Compact(), "Compact vector index");
   }
 }
 

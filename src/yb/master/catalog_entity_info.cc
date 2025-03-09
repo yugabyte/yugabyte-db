@@ -550,6 +550,11 @@ bool TableInfo::is_unique_index() const {
                                 : l->pb.is_unique_index();
 }
 
+bool TableInfo::is_vector_index() const {
+  auto l = LockForRead();
+  return l->is_vector_index();
+}
+
 Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
   return GetPgsqlTableOid(id());
 }
@@ -1197,7 +1202,7 @@ bool PersistentTableInfo::is_index() const {
 }
 
 bool PersistentTableInfo::is_vector_index() const {
-  return pb.index_info().has_vector_idx_options();
+  return pb.has_index_info() && pb.index_info().has_vector_idx_options();
 }
 
 const std::string& PersistentTableInfo::indexed_table_id() const {
