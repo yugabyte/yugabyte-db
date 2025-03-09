@@ -853,7 +853,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vecto
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
-  VLOG_WITH_PREFIX_AND_FUNC(4) << "wait: " << wait;
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "wait: " << wait;
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);

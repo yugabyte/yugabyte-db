@@ -2196,31 +2196,35 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   tablet_metadata_validator_->ScheduleValidation(*tablet->metadata());
 }
 
-Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
+Status TSTabletManager::TriggerAdminCompaction(
+  const TabletPtrs& tablets, const AdminCompactionOptions& options) {
   CountDownLatch latch(tablets.size());
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
+
+  tablet::AdminCompactionOptions tablet_compaction_options {
+      .compaction_completion_callback =
+          options.should_wait ? latch.CountDownCallback() : std::function<void()>{},
+      .vector_index_ids = options.vector_index_ids,
+  };
+
   for (auto tablet : tablets) {
-    Status status;
-    if (should_wait) {
-      status = tablet->TriggerAdminFullCompactionWithCallbackIfNeeded(latch.CountDownCallback());
-    } else {
-      status = tablet->TriggerAdminFullCompactionIfNeeded();
-    }
-    RETURN_NOT_OK(status);
+    RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
+
   VLOG(1) << yb::Format(
       "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
 
-  if (should_wait) {
+  if (options.should_wait) {
     latch.Wait();
     LOG(INFO) << yb::Format(
         "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
         total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
   }
+
   return Status::OK();
 }
 

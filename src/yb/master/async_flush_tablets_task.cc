@@ -108,6 +108,10 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   }
   req.set_regular_only(regular_only_);
 
+  if (table()->is_vector_index()) {
+    req.add_vector_index_ids(table()->id());
+  }
+
   response_handling_ = false;
   ts_admin_proxy_->FlushTabletsAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send flush tablets request to " << permanent_uuid_

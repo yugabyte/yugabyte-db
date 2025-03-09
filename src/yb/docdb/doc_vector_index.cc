@@ -234,6 +234,11 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
   }
 
+  Status Compact() override {
+    LOG_WITH_FUNC(WARNING) << "Vector index compaction is not supported yet";
+    return Status::OK();
+  }
+
   Status Flush() override {
     return lsm_.Flush(false);
   }
