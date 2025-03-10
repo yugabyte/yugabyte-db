@@ -1887,7 +1887,8 @@ class TabletsFlusher final : public TabletsFlusherBase {
 };
 
 inline auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
-  return TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
+  return req.all_vector_indexes() ?
+      TableIds{} : TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
 }
 
 class VectorIndexFlusher : public TabletsFlusherBase {
@@ -1907,8 +1908,7 @@ class VectorIndexFlusher : public TabletsFlusherBase {
   Status Flush(const tablet::TabletPtr& tablet) override {
     auto [it, inserted] = tablet_vector_indexes_.try_emplace(
       tablet->tablet_id(),
-      vector_index_ids_.empty() ? tablet->vector_indexes().List()
-                                : tablet->vector_indexes().Collect(vector_index_ids_)
+      tablet->vector_indexes().Collect(vector_index_ids_)
     );
 
     if (!inserted) {
@@ -1935,15 +1935,17 @@ class VectorIndexFlusher : public TabletsFlusherBase {
   std::unordered_map<TabletId, tablet::VectorIndexList> tablet_vector_indexes_;
 };
 
+bool HasVectorIndex(const FlushTabletsRequestPB& req) {
+  return req.all_vector_indexes() || req.vector_index_ids_size();
+}
+
 Status TriggerFlush(
     const TabletServiceAdminImpl& service,
     const TSTabletManager::TabletPtrs& tablets,
     const FlushTabletsRequestPB& req,
     FlushTabletsResponsePB& resp) {
-  if (req.vector_index_ids_size()) {
-    return VectorIndexFlusher{ service, tablets, req, resp }.Run();
-  }
-  return TabletsFlusher{ service, tablets, req, resp }.Run();
+  return HasVectorIndex(req) ? VectorIndexFlusher{ service, tablets, req, resp }.Run()
+                             : TabletsFlusher{ service, tablets, req, resp }.Run();
 }
 
 } // namespace
@@ -1993,8 +1995,9 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     }
     case FlushTabletsRequestPB::COMPACT: {
       AdminCompactionOptions options { /* should_wait = */ true };
-      if (req->vector_index_ids_size()) {
-        options.vector_index_ids = std::make_shared<TableIds>(CopyVectorIndexIds(*req));
+      if (HasVectorIndex(*req)) {
+        options.vector_index_ids = std::make_shared<TableIds>(
+            req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
       }
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, options),

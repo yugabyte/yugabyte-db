@@ -252,8 +252,11 @@ message FlushTabletsRequestPB {
   // Only flush/compact regular RocksDB, not intents RocksDB.
   optional bool regular_only = 6;
 
-  // Performs operation only for the given vector indexes of the specified tablets.
+  // Performs operation only for the given vector indexes for the specified tablets.
   repeated bytes vector_index_ids = 7;
+
+  // Whether we want to perform operation for all vector indexes for the specified tablets.
+  optional bool all_vector_indexes = 8;
 }
 
 message FlushTabletsResponsePB {
