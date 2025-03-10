@@ -4,12 +4,18 @@ private = true
 +++
 -->
 
-## Included markdown
+### includeMarkdown
 
 This content is included from a separate file (called, in this case, `include-markdown.md`) using an `includeMarkdown` shortcode.
 
+Use includeMarkdown to add repetitive text to multiple pages.
+
 Headings in included markdown files _do_ appear in the right navigation.
 
-### Another heading in the included markdown
+However, shortcodes _do not_ render correctly:
 
-Use includeMarkdown to add repetitive text to multiple pages.
+{{<yb-version version="preview">}}
+
+#### Another heading in the includeMarkdown
+
+This heading does appear in the right navigation.

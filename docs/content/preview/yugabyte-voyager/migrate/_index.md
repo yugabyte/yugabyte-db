@@ -17,10 +17,10 @@ You can perform migration by taking your applications offline to perform the mig
 {{<index/block>}}
 
   {{<index/item
-    title="Assess Migration"
+    title="Assess migration"
     body="Generate a Migration Assessment Report to ensure a successful migration."
     href="assess-migration/"
-    icon="fa-solid fa fa-file">}}
+    icon="fa-light fa-file">}}
 
   {{<index/item
     title="Offline migration"
