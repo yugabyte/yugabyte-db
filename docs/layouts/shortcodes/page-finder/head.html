@@ -3,7 +3,7 @@
     <div class="inner-container">
       <div class="head">
         {{- if and (.Params.text) (.Params.subtle) -}}
-          <p><b>{{- .Params.text -}} &nbsp; &#x2192;</b> &nbsp; {{- .Params.subtle -}}</p>
+          <p><b>{{- .Params.text }} &#x2192;</b> &nbsp; {{- .Params.subtle -}}</p>
         {{- else -}}
           <p><b>{{- .Params.text -}}</b></p>
         {{- end -}}
