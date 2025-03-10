@@ -1,6 +1,6 @@
 ---
 title: Manage tables and indexes for disaster recovery in Aeon
-headerTitle: Manage tables and indexes
+headerTitle: Manage tables and indexes in DR
 linkTitle: Tables and indexes
 description: Manage tables and indexes in clusters with disaster recovery in Aeon
 headContent: Add and remove tables and indexes in clusters with disaster recovery
@@ -12,42 +12,14 @@ menu:
 type: docs
 ---
 
-When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
-
-- Performed at the SQL level on both the DR primary and replica.
-- In [Manual mode](../#manual-mode), also updated at the YugabyteDB Anywhere level in the DR configuration.
-
-{{<tabpane text=true >}}
-
-  {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
+When making DDL changes to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), you must perform the changes at the SQL level on both the DR primary and replica.
 
 For each DDL statement:
 
 1. Execute the DDL on the DR primary, waiting for it to complete.
 1. Execute the DDL on the DR replica, waiting for it to complete.
 
-After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
-
-  {{% /tab %}}
-
-  {{% tab header="Manual mode" lang="manual-mode" %}}
-
-You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
-
-| DDL | Step 1 | Step 2 | Step 3 |
-| :-- | :----- | :----- | :----- |
-| CREATE TABLE | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
-| DROP TABLE   | [Remove table from replication](#remove-a-table-from-dr) | Execute on Replica | Execute on Primary |
-| CREATE TABLE foo<br>PARTITION OF bar | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
-| CREATE INDEX | Execute on Primary | Execute&nbsp;on&nbsp;Replica | [Reconcile configuration](#reconcile-configuration) |
-| DROP INDEX   | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
-| ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
-| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
-| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
-
-  {{% /tab %}}
-
-{{</tabpane >}}
+After both steps are complete, the YugabyteDB Aeon should reflect any added/removed tables in the Tables listing for this DR configuration.
 
 In addition, keep in mind the following:
 
@@ -71,7 +43,7 @@ Add tables to DR in the following sequence:
 
 1. Create the table on the DR primary (if it doesn't already exist).
 1. Create the table on the DR replica.
-1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary universe **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
@@ -93,7 +65,7 @@ When dropping a table, remove the table from DR before dropping the table in the
 
 Remove tables from DR in the following sequence:
 
-1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary universe **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
@@ -174,7 +146,7 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 ## Reconcile configuration
 
-To ensure changes made outside of YugabyteDB Anywhere are reflected in YugabyteDB Anywhere, you need to reconcile the configuration as follows:
+To ensure changes made outside of YugabyteDB Aeon are reflected in YugabyteDB Aeon, you need to reconcile the configuration as follows:
 
-1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary universe **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
