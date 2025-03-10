@@ -13,6 +13,21 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.13 - March 11, 2025
+
+### Enhancements
+
+- Merged the ALTER TABLE ADD constraints DDL (Primary Key, Unique Key, and Check Constraints) with the CREATE TABLE statement, reducing the number of DDLs to analyze/review and improving overall import schema performance.
+- Introduced a guardrails check to ensure live migration uses a single, fixed table list throughout the migration, preventing any changes to the table list once the migration has started.
+
+#### Bug Fixes
+
+- Fixed an issue where the `iops-capture-interval` flag in the assess-migration command did not honor the user-defined value and always defaulted to its preset.
+- Fixed an issue in the IOPs calculation logic, ensuring it counts the number of scans (both sequential and index) instead of using `seq_tup_read` for read statistics.
+- Fixed an issue causing a NumberFormatException during the cutover phase of live migration if a sequence was assigned to a non-integer column.
+- Fixed an issue leading to a nil pointer exception when sending the diagnostics for import data to the source/source-replica.
+- Fixed an issue where importing data to the target for a new migration (if CDC was enabled in a previous run) failed due to ALTER operations on metadata tables carrying over from the last migration.
+
 ## v1.8.12 - February 25, 2025
 
 ### Enhancements
