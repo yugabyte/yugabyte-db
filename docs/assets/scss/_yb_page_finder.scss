@@ -18,8 +18,8 @@
 }
 
 .page-finder .finder-panel .head p {
-  color: #97A5B0;
-  font-size: 11.5px;
+  color: #6D7C88;
+  font-size: 13px;
   font-style: normal;
   font-weight: 500;
   line-height: normal;
@@ -28,7 +28,7 @@
 
 .page-finder .finder-panel .head p b {
   font-weight: 600;
-  color: #6D7C88;
+  color: $yb-font-dark;
 }
 
 .page-finder .finder-panel.vertical .inner-container {
@@ -103,7 +103,7 @@
 }
 
 .page-finder .finder-panel .body a:hover .title {
-  color: #507CE1;
+  color: $yb-anchor-color;
 }
 
 .page-finder .finder-panel .body a.active {
@@ -121,7 +121,7 @@
 }
 
 .page-finder .finder-panel .body a.active .title {
-  color: #4E5F6D;
+  color: $yb-font-gray;
   font-size: 11.5px;
   font-style: normal;
   font-weight: 500;
@@ -129,7 +129,7 @@
   text-decoration: none;
 }
 .page-finder .finder-panel .body a.active ~ .active:hover .title {
-  color: #507CE1;
+  color: $yb-anchor-color;
 }
 
 .page-finder .finder-panel .body a.active ~ .active .title {

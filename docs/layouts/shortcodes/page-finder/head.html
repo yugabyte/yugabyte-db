@@ -2,7 +2,11 @@
   <div class="finder-panel">
     <div class="inner-container">
       <div class="head">
-        <p><b>{{- .Params.text -}}</b> &nbsp; {{- .Params.subtle -}} </p>
+        {{- if and (.Params.text) (.Params.subtle) -}}
+          <p><b>{{- .Params.text -}} &nbsp; &#x2192;</b> &nbsp; {{- .Params.subtle -}}</p>
+        {{- else -}}
+          <p><b>{{- .Params.text -}}</b></p>
+        {{- end -}}
       </div>
       <div class="body">{{ .Inner }}</div>
     </div>
