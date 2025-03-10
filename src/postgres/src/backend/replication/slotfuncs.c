@@ -844,6 +844,11 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 static Datum
 copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 {
+	ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("copy_replication_slot is unavailable."),
+			 errdetail("Copy of a replication slot is currently not supported.")));
+
 	Name		src_name = PG_GETARG_NAME(0);
 	Name		dst_name = PG_GETARG_NAME(1);
 	ReplicationSlot *src = NULL;
