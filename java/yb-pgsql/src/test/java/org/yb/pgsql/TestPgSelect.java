@@ -1298,6 +1298,12 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testDistinctWithMultipleTypes() throws Exception {
+    // This tests checks whether results get cached on a backend process.
+    // And there are expected cache hits on running same query on same
+    // backend process. With connection manager run in NONE mode so that single
+    // physical connection is used where cache results get populated and cache
+    // hits are expected.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE multi_type_tbl(t1 text, u2 uuid, t3 text)");
       stmt.execute("CREATE INDEX idx ON multi_type_tbl(t1 ASC, u2 ASC, t3 ASC)");
@@ -1305,6 +1311,9 @@ public class TestPgSelect extends BasePgSQLTest {
         " WHERE u2 = '00000000-0000-0000-0000-000000000000'::uuid AND t1 = 'foo'";
 
       // Populate catalog cache.
+      // With connection manager, running in NONE mode, would populate the
+      // cache of same physical connection where subsequent calls will arrive
+      // So cache hit would be there.
       testExplain(stmt, distinctQuery, makeTopLevelBuilder().build());
 
       // No catalog reads in the next execution of the query.
