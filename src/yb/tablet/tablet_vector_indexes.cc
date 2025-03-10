@@ -408,8 +408,12 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table
 }
 
 docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
-  if (table_ids.empty() || !has_vector_indexes_.load(std::memory_order_acquire)) {
+  if (!has_vector_indexes_.load(std::memory_order_acquire)) {
     return nullptr;
+  }
+
+  if (table_ids.empty()) {
+    return List();
   }
 
   auto result = std::make_shared<docdb::DocVectorIndexes>();

@@ -67,7 +67,8 @@ class TabletVectorIndexes : public TabletComponent {
   // Returns a collection of vector indexes for the given vector index table ids. Returns nullptr
   // if at least one vector indexes is not found by the give table id. The order of vector indexes
   // in the returned collection is not guaranteed to be preserved.
-  docdb::DocVectorIndexesPtr Collect(const std::vector<TableId>& table_ids);
+  docdb::DocVectorIndexesPtr Collect(
+      const std::vector<TableId>& table_ids) EXCLUDES(vector_indexes_mutex_);
 
   docdb::DocVectorIndexesPtr List() const EXCLUDES(vector_indexes_mutex_);
 
@@ -75,7 +76,8 @@ class TabletVectorIndexes : public TabletComponent {
   void CompleteShutdown(std::vector<std::string>& out_paths);
   std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
 
-  docdb::DocVectorIndexPtr IndexForTable(const TableId& table_id) const;
+  docdb::DocVectorIndexPtr IndexForTable(
+      const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
 
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);

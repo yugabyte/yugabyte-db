@@ -4576,9 +4576,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
 
 void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList{
-    vector_index_ids.empty() ? vector_indexes().List() : vector_indexes().Collect(vector_index_ids)
-  }.Compact();
+  tablet::VectorIndexList{ vector_indexes().Collect(vector_index_ids) }.Compact();
 }
 
 void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
