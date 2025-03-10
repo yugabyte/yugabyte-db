@@ -1387,6 +1387,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("gflags", gflagOverrides);
     }
 
+    Map<String, Object> masterOverrides = new HashMap<>();
+    Map<String, Object> tserverOverrides = new HashMap<>();
+
     // Gflags checksum override
     if (taskParams().usePreviousGflagsChecksum) {
       if (MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
@@ -1394,14 +1397,32 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
       String masterGflagsChecksum =
           taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.MASTER, "");
+      masterOverrides.put("gflagsChecksum", masterGflagsChecksum);
       String tserverGflagsChecksum =
           taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.TSERVER, "");
-      Map<String, Object> masterOverrides = new HashMap<>();
-      masterOverrides.put("gflagsChecksum", masterGflagsChecksum);
-      overrides.put("master", masterOverrides);
-
-      Map<String, Object> tserverOverrides = new HashMap<>();
       tserverOverrides.put("gflagsChecksum", tserverGflagsChecksum);
+    }
+
+    if (taskParams().ysqlMajorVersionUpgradeState != null
+        && taskParams()
+            .ysqlMajorVersionUpgradeState
+            .equals(YsqlMajorVersionUpgradeState.IN_PROGRESS)) {
+      List<Object> masterExtraEnv = new ArrayList<>();
+      masterExtraEnv.add(
+          ImmutableMap.of(
+              "name",
+              "PGPASSFILE",
+              "value",
+              Util.getDataDirectoryPath(
+                      universeFromDB, universeFromDB.getMasterLeaderNode(), this.config)
+                  + "/yw-data/.pgpass"));
+      masterOverrides.put("extraEnv", masterExtraEnv);
+    }
+
+    if (!masterOverrides.isEmpty()) {
+      overrides.put("master", masterOverrides);
+    }
+    if (!tserverOverrides.isEmpty()) {
       overrides.put("tserver", tserverOverrides);
     }
 
