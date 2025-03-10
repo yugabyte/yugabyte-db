@@ -998,6 +998,7 @@ public class CustomerTaskManager {
         break;
       case FailoverDrConfig:
       case SwitchoverDrConfig:
+      case SwitchoverDrConfigRollback:
       case DeleteDrConfig:
       case CreateDrConfig:
       case EditDrConfig:
