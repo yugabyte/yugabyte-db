@@ -75,9 +75,11 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte |
 | user | Database user | yugabyte |
 | password | User password | yugabyte |
-| `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false (disabled) |
 | `ybServersRefreshInterval` | If `loadBalance` is true, the interval in seconds to refresh the node list | 300
-| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `topologyKeys` | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). It can be set to comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `loadBalance` is false. | Empty |
+| `fallbackToTopologyKeysOnly` | If set to true and `topologyKeys` are specified, the driver only tries to connect to nodes specified in `topologyKeys` | false |
+| `failedHostReconnectDelaySecs` | Time, in seconds, to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
 
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 

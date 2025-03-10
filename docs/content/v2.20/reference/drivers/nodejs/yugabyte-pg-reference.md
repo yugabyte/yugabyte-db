@@ -59,7 +59,7 @@ Learn how to perform the common tasks required for Node.js application developme
 
 The following connection properties need to be added to enable load balancing:
 
-- `loadBalance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `loadBalance` - enable [cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing) by setting this property to one of the allowed values other than `false`; disabled by default.
 - `topologyKeys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `ybServersRefreshInterval` parameter.
@@ -70,10 +70,10 @@ To use the driver, do the following:
 
 - Pass new connection properties for load balancing in the connection URL.
 
-    To enable uniform load balancing across all servers, set the `loadBalance` property to `true` in the URL, as per the following connection string:
+    To enable uniform load balancing across all servers, set the `loadBalance` property to `true` or `any` in the URL, as per the following connection string:
 
     ```javascript
-    const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true"
+    const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=any"
     const client = new Client(connectionString);
     client.connect()
     ```
@@ -83,7 +83,7 @@ To use the driver, do the following:
 - To specify topology keys, set the `topologyKeys` property to comma separated values, as per the following connection string:
 
     ```js
-    const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true&topologyKeys=cloud1.datacenter1.rack1,cloud1.datacenter1.rack2"
+    const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=any&topologyKeys=cloud1.datacenter1.rack1,cloud1.datacenter1.rack2"
     const client = new Client(connectionString);
     client.conn
     ```
@@ -96,7 +96,7 @@ To use the driver, do the following:
         password: 'yugabyte',
         host: 'localhost',
         port: 5433,
-        loadBalance: true,
+        loadBalance: 'any',
         database: 'yugabyte',
         max: 100
     })
