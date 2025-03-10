@@ -17,6 +17,12 @@ weight: 650
 type: indexpage
 ---
 
+{{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../manage/backup-restore/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="../../yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+{{< /page-finder/head >}}
+
 You can use YugabyteDB to schedule and manage backups of your universe data. This includes the following features:
 
 - On-demand [backup](back-up-universe-data/) and [restore](restore-universe-data/).
