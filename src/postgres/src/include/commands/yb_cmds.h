@@ -139,7 +139,8 @@ extern void YBCDropReplicationSlot(const char *slot_name);
 extern void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations,
-						const YbcReplicationSlotHashRange *slot_hash_range);
+						const YbcReplicationSlotHashRange *slot_hash_range,
+						uint64_t active_pid);
 
 extern void YBCUpdatePublicationTableList(const char *stream_id,
 										  Oid *relations,
@@ -157,3 +158,5 @@ extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   YbcPgXLogRecPtr *restart_lsn);
 
 extern void YBCDropColumn(Relation rel, AttrNumber attnum);
+
+extern void YBCGetLagMetrics(const char *stream_id, int64_t *lag_metric);

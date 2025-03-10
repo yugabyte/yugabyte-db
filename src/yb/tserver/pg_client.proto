@@ -598,6 +598,7 @@ message PgReplicationSlotInfoPB {
   uint64 last_pub_refresh_time = 10;
   string output_plugin_name = 11;
   PGReplicationSlotLsnType yb_lsn_type = 12;
+  uint64 active_pid = 13;
 }
 
 message PgListReplicationSlotsResponsePB {

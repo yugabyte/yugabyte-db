@@ -1274,11 +1274,12 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range) {
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
+    req.set_active_pid(active_pid);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
     }
@@ -1298,6 +1299,17 @@ class PgClient::Impl : public BigDataFetcher {
     cdc::InitVirtualWALForCDCResponsePB resp;
     RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t* lag_metric) {
+    cdc::GetLagMetricsRequestPB req;
+    req.set_stream_id(stream_id);
+    cdc::GetLagMetricsResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->GetLagMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    *lag_metric = resp.lag_metric();
     return resp;
   }
 
@@ -1755,8 +1767,13 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-    const YbcReplicationSlotHashRange* slot_hash_range) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
+    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range, active_pid);
+}
+
+Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
+    const std::string& stream_id, int64_t* lag_metric) {
+  return impl_->GetLagMetrics(stream_id, lag_metric);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(

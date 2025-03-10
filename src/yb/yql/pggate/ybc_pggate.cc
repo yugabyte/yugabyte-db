@@ -2555,7 +2555,8 @@ YbcStatus YBCPgListReplicationSlots(
           .replica_identities = replica_identities,
           .replica_identities_count = replica_identities_count,
           .last_pub_refresh_time = info.last_pub_refresh_time(),
-          .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get())
+          .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
+          .active_pid = info.active_pid(),
       };
       ++dest;
     }
@@ -2609,7 +2610,8 @@ YbcStatus YBCPgGetReplicationSlot(
       .replica_identities = replica_identities,
       .replica_identities_count = replica_identities_count,
       .last_pub_refresh_time = slot_info.last_pub_refresh_time(),
-      .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get())
+      .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
+      .active_pid = slot_info.active_pid(),
   };
 
   return YBCStatusOK();
@@ -2673,7 +2675,7 @@ void YBCStoreTServerAshSamples(
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range) {
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
@@ -2682,11 +2684,20 @@ YbcStatus YBCPgInitVirtualWalForCDC(
     tables.push_back(std::move(table_id));
   }
 
-  const auto result = pgapi->InitVirtualWALForCDC(std::string(stream_id), tables, slot_hash_range);
+  const auto result = pgapi->InitVirtualWALForCDC(
+    std::string(stream_id), tables, slot_hash_range, active_pid);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
 
+  return YBCStatusOK();
+}
+
+YbcStatus YBCPgGetLagMetrics(const char* stream_id, int64_t* lag_metric) {
+  const auto result = pgapi->GetLagMetrics(std::string(stream_id), lag_metric);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
   return YBCStatusOK();
 }
 

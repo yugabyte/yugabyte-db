@@ -796,7 +796,7 @@ class PgApiImpl {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -805,6 +805,9 @@ class PgApiImpl {
 
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
       const std::string& stream_id);
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t *lag_metric);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
       const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);

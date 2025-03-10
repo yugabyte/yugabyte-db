@@ -2210,8 +2210,14 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-    const YbcReplicationSlotHashRange* slot_hash_range) {
-  return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
+    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
+  return pg_session_->pg_client().InitVirtualWALForCDC(
+    stream_id, table_ids, slot_hash_range, active_pid);
+}
+
+Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
+    const std::string& stream_id, int64_t* lag_metric) {
+  return pg_session_->pg_client().GetLagMetrics(stream_id, lag_metric);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
