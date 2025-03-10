@@ -182,9 +182,12 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
-  "org.pac4j" %% "play-pac4j" % "9.0.2",
-  "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
+  // pac4j and nimbusds libraries need to be upgraded together.
+  "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
+  "org.pac4j" % "pac4j-oauth" % "5.7.7" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
+  "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
+  "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
   "org.playframework" %% "play-json" % "3.0.4",
   "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
@@ -203,7 +206,6 @@ libraryDependencies ++= Seq(
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
-  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -519,9 +521,6 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
 dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
-// SSO functionality only works on the older version of nimbusds.
-// Azure library upgrade tries to upgrade nimbusds to latest version.
-dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 
 // This is a custom version, built based on 1.0.3 with the following commit added on top:

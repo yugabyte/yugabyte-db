@@ -21,6 +21,7 @@ import org.apache.pekko.util.ByteString;
 import org.junit.After;
 import org.junit.BeforeClass;
 import org.mockito.Mockito;
+import org.pac4j.play.LogoutController;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Http;
 import play.mvc.Http.MultipartFormData.Part;
@@ -36,6 +37,7 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
   protected AlertsGarbageCollector mockAlertsGarbageCollector;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected AWSCloudImpl mockAWSCloudImpl;
+  protected LogoutController mockLogoutController;
 
   protected Request fakeRequest = Helpers.fakeRequest().build();
 
@@ -45,12 +47,14 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockAlertsGarbageCollector = mock(AlertsGarbageCollector.class);
     mockAWSCloudImpl = mock(AWSCloudImpl.class);
+    mockLogoutController = mock(LogoutController.class);
 
     return builder
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl))
+        .overrides(bind(LogoutController.class).toInstance(mockLogoutController))
         .overrides(bind(AlertsGarbageCollector.class).toInstance(mockAlertsGarbageCollector));
   }
 

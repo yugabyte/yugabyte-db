@@ -62,9 +62,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -102,7 +102,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         .configure(testDatabase())
         .overrides(bind(ShellKubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }

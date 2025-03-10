@@ -34,6 +34,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.pac4j.play.LogoutController;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Result;
@@ -47,6 +48,7 @@ public class PackagesControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Override
   protected Application provideApplication() {
+    LogoutController mockLogoutController = mock(LogoutController.class);
     when(mockConfig.getString("ybc.releases.path")).thenReturn(fakeYbcReleasesPath);
     return new GuiceApplicationBuilder()
         .configure(testDatabase())
@@ -55,6 +57,7 @@ public class PackagesControllerTest extends PlatformGuiceApplicationBaseTest {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(bind(LogoutController.class).toInstance(mockLogoutController))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();

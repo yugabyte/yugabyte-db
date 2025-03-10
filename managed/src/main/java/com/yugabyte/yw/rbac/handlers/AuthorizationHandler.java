@@ -30,7 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.pac4j.play.store.PlaySessionStore;
+import org.pac4j.core.context.session.SessionStore;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -48,7 +48,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
 
   private final Config config;
   private final RuntimeConfigCache runtimeConfigCache;
-  private final PlaySessionStore sessionStore;
+  private final SessionStore sessionStore;
   private final JWTVerifier jwtVerifier;
   private final TokenAuthenticator tokenAuthenticator;
 
@@ -58,7 +58,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   @Inject
   public AuthorizationHandler(
       Config config,
-      PlaySessionStore sessionStore,
+      SessionStore sessionStore,
       RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier,
       TokenAuthenticator tokenAuthenticator) {
