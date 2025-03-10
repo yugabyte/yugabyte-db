@@ -9,7 +9,6 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.*;
@@ -55,6 +54,7 @@ import org.junit.After;
 import org.junit.Test;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.http.url.DefaultUrlResolver;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -64,7 +64,6 @@ import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.java.SecureAction;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -81,7 +80,7 @@ public class SessionControllerTest {
     @Inject
     public HandlerWithEmailFromCtx(
         Environment env,
-        PlaySessionStore playSessionStore,
+        SessionStore playSessionStore,
         RuntimeConfGetter confGetter,
         RoleBindingUtil roleBindingUtil,
         ApiHelper apiHelper) {
@@ -147,7 +146,7 @@ public class SessionControllerTest {
     AlertConfigurationWriter mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     ldapUtil = mock(LdapUtil.class);
     final Clients clients =
-        new Clients("/api/v1/callback", new OidcClient<>(new OidcConfiguration()));
+        new Clients("/api/v1/callback", new OidcClient(new OidcConfiguration()));
     clients.setUrlResolver(new DefaultUrlResolver(true));
     final Config config = new Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
@@ -160,7 +159,7 @@ public class SessionControllerTest {
             .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
             .overrides(bind(CallHome.class).toInstance(mockCallHome))
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-            .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+            .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
@@ -252,10 +251,12 @@ public class SessionControllerTest {
     CommonProfile mockProfile = mock(CommonProfile.class);
     when(mockProfile.getEmail()).thenReturn("test@yugabyte.com");
     final Config pac4jConfig = app.injector().instanceOf(Config.class);
-    ProfileManager<CommonProfile> mockProfileManager = mock(ProfileManager.class);
-    doReturn(ImmutableList.of(mockProfile)).when(mockProfileManager).getAll(anyBoolean());
-    doReturn(Optional.of(mockProfile)).when(mockProfileManager).get(anyBoolean());
-    pac4jConfig.setProfileManagerFactory("test", webContext -> mockProfileManager);
+    ProfileManager mockProfileManager = mock(ProfileManager.class);
+    doReturn(ImmutableList.of(mockProfile)).when(mockProfileManager).getProfiles();
+    doReturn(Optional.of(mockProfile)).when(mockProfileManager).getProfile(CommonProfile.class);
+    pac4jConfig.setProfileManagerFactory((webContext, mockSessionStore) -> mockProfileManager);
+    PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
+    pac4jConfig.setSessionStoreFactory(p -> mockSessionStore);
     doReturn(new PlatformHttpActionAdapter()).when(mockPac4jConfig).getHttpActionAdapter();
   }
 

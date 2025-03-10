@@ -442,9 +442,8 @@ public class SessionController extends AbstractPlatformController {
 
     try {
       // Persist the JWT auth token in case of successful login.
-      ProfileManager<CommonProfile> profileManager =
-          thirdPartyLoginHandler.getProfileManager(request);
-      CommonProfile profile = profileManager.get(true).get();
+      ProfileManager profileManager = thirdPartyLoginHandler.getProfileManager(request);
+      CommonProfile profile = profileManager.getProfile(CommonProfile.class).get();
       String refreshTokenEndpoint = confGetter.getGlobalConf(GlobalConfKeys.ybSecuritySecret);
       if (profile.containsAttribute("refresh_token") && refreshTokenEndpoint != null) {
         refreshAccessToken.start(profileManager, user);
