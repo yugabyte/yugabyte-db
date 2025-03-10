@@ -188,7 +188,7 @@ Unregistration is the process of removing the node agent entry from YugabyteDB A
 
 ### Why does node agent installation ask for provider and other details during legacy on-premises manual node agent setup?
 
-Node agent is used to run pre-flight checks on the node during various day-0 and day-2 operations. These checks need information like the non-root user's home directory, expected port number for Prometheus Node Exporter, the NTP servers, and so on. These are attributes configured with a provider. As a result, to run these pre-flight checks the node agent needs to be configured to a provider in YugabyteDB Anywhere, and these details are needed to make the node agent aware of the YugabyteDB Anywhere provider which the node will become a part of.
+Node agent is used to run preflight checks on the node during various day-0 and day-2 operations. These checks need information like the non-root user's home directory, expected port number for Prometheus Node Exporter, the NTP servers, and so on. These are attributes configured with a provider. As a result, to run these preflight checks the node agent needs to be configured to a provider in YugabyteDB Anywhere, and these details are needed to make the node agent aware of the YugabyteDB Anywhere provider which the node will become a part of.
 
 ### How do I move a node provisioned for one provider to a different provider?
 
@@ -206,7 +206,7 @@ Note that first removing the node instance from the provider is very important, 
 
 Prior to adding a node that you have provisioned as an instance to your provider, you run a preflight check to determine if the node satisfies the requirements for YugabyteDB.
 
-A node agent does the following when the preflight-check command is run:
+A node agent does the following when the preflight check command is run:
 
 1. Runs the [preflight_check](https://github.com/yugabyte/yugabyte-db/blob/master/managed/node-agent/resources/preflight_check.sh) script.
 1. Collects the output and converts it to a well-formatted JSON payload.
