@@ -1233,6 +1233,7 @@ class PgClientServiceImpl::Impl {
         stream_to_metadata;
     // stream id -> last_pub_refresh_time
     std::unordered_map<xrepl::StreamId, uint64_t> stream_to_last_pub_refresh_time;
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_active_pid;
 
     if (!streams.empty()) {
       Status iteration_status;
@@ -1243,7 +1244,8 @@ class PgClientServiceImpl::Impl {
               .IncludeRestartLSN()
               .IncludeXmin()
               .IncludeRecordIdCommitTime()
-              .IncludeLastPubRefreshTime(),
+              .IncludeLastPubRefreshTime()
+              .IncludeActivePid(),
           &iteration_status));
 
       int cdc_state_table_result_count = 0;
@@ -1273,6 +1275,7 @@ class PgClientServiceImpl::Impl {
               std::make_pair(*entry.confirmed_flush_lsn, *entry.restart_lsn),
               std::make_pair(*entry.xmin, *entry.record_id_commit_time));
           stream_to_last_pub_refresh_time[stream_id] = *entry.last_pub_refresh_time;
+          stream_to_active_pid[stream_id] = entry.active_pid.has_value() ? *entry.active_pid : 0;
           continue;
         }
 
@@ -1320,6 +1323,7 @@ class PgClientServiceImpl::Impl {
         replication_slot->set_xmin(slot_metadata.second.first);
         replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
         replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+        replication_slot->set_active_pid(stream_to_active_pid[*stream_id]);
       } else {
         // TODO(#21780): This should never happen, so make this a DCHECK. We can do that after every
         // unit test that uses replication slots is updated to consistent snapshot stream.
@@ -1370,9 +1374,10 @@ class PgClientServiceImpl::Impl {
     uint32_t xmin = 0;
     uint64_t record_id_commit_time_ht;
     uint64_t last_pub_refresh_time = 0;
+    uint64_t active_pid = 0;
     RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
         stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht, &last_pub_refresh_time));
+        &record_id_commit_time_ht, &last_pub_refresh_time, &active_pid));
     resp->mutable_replication_slot_info()->set_replication_slot_status(
         (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
@@ -1389,13 +1394,14 @@ class PgClientServiceImpl::Impl {
     slot_info->set_xmin(xmin);
     slot_info->set_record_id_commit_time_ht(record_id_commit_time_ht);
     slot_info->set_last_pub_refresh_time(last_pub_refresh_time);
+    slot_info->set_active_pid(active_pid);
     return Status::OK();
   }
 
   Status GetReplicationSlotInfoFromCDCState(
       const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
       uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
-      uint64_t* last_pub_refresh_time) {
+      uint64_t* last_pub_refresh_time, uint64_t* active_pid) {
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
@@ -1405,7 +1411,8 @@ class PgClientServiceImpl::Impl {
             .IncludeRestartLSN()
             .IncludeXmin()
             .IncludeRecordIdCommitTime()
-            .IncludeLastPubRefreshTime(),
+            .IncludeLastPubRefreshTime()
+            .IncludeActivePid(),
         &iteration_status));
 
     // Find the latest active time for the stream across all tablets.
@@ -1431,6 +1438,7 @@ class PgClientServiceImpl::Impl {
         *DCHECK_NOTNULL(xmin) = *entry.xmin;
         *DCHECK_NOTNULL(record_id_commit_time_ht) = *entry.record_id_commit_time;
         *DCHECK_NOTNULL(last_pub_refresh_time) = *entry.last_pub_refresh_time;
+        *DCHECK_NOTNULL(active_pid) = entry.active_pid.has_value() ? *entry.active_pid : 0;
         continue;
       }
 

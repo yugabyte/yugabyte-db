@@ -398,6 +398,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
 			yb_restart_commit_ht = slot->record_id_commit_time_ht;
 			slot_contents.data.xmin = slot->xmin;
+			slot_contents.active_pid = slot->active_pid;
 			/*
 			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
 			 * It is not used in our implementation.
@@ -405,7 +406,6 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			slot_contents.data.catalog_xmin = slot->xmin;
 
 			/* Fill in the dummy/constant values. */
-			slot_contents.active_pid = 0;
 			slot_contents.data.persistency = RS_PERSISTENT;
 			slot_contents.data.invalidated_at = InvalidXLogRecPtr;
 			slot_contents.data.two_phase_at = InvalidXLogRecPtr;

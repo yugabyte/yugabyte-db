@@ -56,6 +56,10 @@ class CDCSDKVirtualWAL {
       const std::unordered_set<TableId>& new_tables, const HostPort hostport,
       const CoarseTimePoint deadline);
 
+  xrepl::StreamId GetStreamId();
+
+  std::vector<TabletId> GetTabletIdsFromVirtualWAL();
+
  private:
   struct GetChangesRequestInfo {
     int64_t safe_hybrid_time;
