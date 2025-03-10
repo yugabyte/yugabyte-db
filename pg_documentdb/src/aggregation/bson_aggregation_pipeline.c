@@ -2551,11 +2551,10 @@ HandleAddFields(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_ADD_FIELDS);
 
-	Oid (*addFieldsWithLetAndCollationFuncOid)(void) = NULL;
 	return HandleSimpleProjectionStage(existingValue, query, context, "$addFields",
 									   BsonDollarAddFieldsFunctionOid(),
 									   BsonDollarAddFieldsWithLetFunctionOid,
-									   addFieldsWithLetAndCollationFuncOid);
+									   BsonDollarAddFieldsWithLetAndCollationFunctionOid);
 }
 
 

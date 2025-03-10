@@ -281,6 +281,7 @@ Oid BsonCovariancePopAggregateFunctionOid(void);
 Oid BsonCovarianceSampAggregateFunctionOid(void);
 Oid BsonDollarAddFieldsFunctionOid(void);
 Oid BsonDollarAddFieldsWithLetFunctionOid(void);
+Oid BsonDollarAddFieldsWithLetAndCollationFunctionOid(void);
 Oid BsonDollarMergeDocumentAtPathFunctionOid(void);
 Oid BsonDollaMergeDocumentsFunctionOid(void);
 Oid BsonDollarProjectGeonearFunctionOid(void);

@@ -633,6 +633,9 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_dollar_add_fields with let function */
 	Oid ApiCatalogBsonDollarAddFieldsWithLetFunctionOid;
 
+	/* OID of the bson_dollar_add_fields with let and collation function */
+	Oid ApiCatalogBsonDollarAddFieldsWithLetAndCollationFunctionOid;
+
 	/* OID of the bson_dollar_inverse_match function */
 	Oid ApiCatalogBsonDollarInverseMatchFunctionOid;
 
@@ -3126,6 +3129,17 @@ BsonDollarAddFieldsWithLetFunctionOid(void)
 		DocumentDBApiInternalSchemaName, "bson_dollar_add_fields",
 		DocumentDBCoreBsonTypeId(),
 		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId());
+}
+
+
+Oid
+BsonDollarAddFieldsWithLetAndCollationFunctionOid(void)
+{
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiCatalogBsonDollarAddFieldsWithLetAndCollationFunctionOid,
+		DocumentDBApiInternalSchemaName, "bson_dollar_add_fields",
+		DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(), TEXTOID);
 }
 
 

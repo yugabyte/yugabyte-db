@@ -151,7 +151,8 @@ static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 static void BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 												bson_iter_t *addFieldsSpec,
 												bool skipParseAggregationExpressions,
-												pgbson *variableSpec);
+												pgbson *variableSpec,
+												const char *collationString);
 static void BuildBsonPathTreeForDollarUnset(BsonProjectionQueryState *state,
 											const bson_value_t *unsetValue,
 											bool forceProjectId);
@@ -538,7 +539,9 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 
 	pgbson *variableSpec = NULL;
-	int argPosition[2] = { 1, 0 };
+	char *collationString = NULL;
+
+	int argPosition[3] = { 1, 0, 0 };
 	int numArgs = 1;
 
 	if (PG_NARGS() > 2)
@@ -546,6 +549,13 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
 		argPosition[1] = 2;
 		numArgs = 2;
+	}
+
+	if (EnableCollation && PG_NARGS() == 4)
+	{
+		collationString = PG_ARGISNULL(3) ? NULL : text_to_cstring(PG_GETARG_TEXT_P(3));
+		argPosition[2] = 3;
+		numArgs = 3;
 	}
 
 	/* bson_dollar_add_fields with empty projection spec is a no-op */
@@ -567,14 +577,14 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 		BuildBsonPathTreeForDollarAddFields,
 		&pathSpecIter,
 		skipParseAggregationExpressions,
-		variableSpec);
+		variableSpec, collationString);
 
 	if (state == NULL)
 	{
 		BsonProjectionQueryState projectionState = { 0 };
 		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
 											skipParseAggregationExpressions,
-											variableSpec);
+											variableSpec, collationString);
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
 	}
 	else
@@ -614,6 +624,7 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
 	pgbson *variableSpec = NULL;
+	const char *collationString = NULL;
 	SetCachedFunctionState(
 		state,
 		BsonProjectionQueryState,
@@ -621,14 +632,15 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 		BuildBsonPathTreeForDollarAddFields,
 		&pathSpecIter,
 		skipParseAggregationExpressions,
-		variableSpec);
+		variableSpec,
+		collationString);
 
 	if (state == NULL)
 	{
 		BsonProjectionQueryState projectionState = { 0 };
 		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
 											skipParseAggregationExpressions,
-											variableSpec);
+											variableSpec, collationString);
 		PG_RETURN_POINTER(MergeDocumentWithArrayOverride(document, projectionState.root,
 														 overrideNestedArrays));
 	}
@@ -698,10 +710,15 @@ const BsonProjectionQueryState *
 GetProjectionStateForBsonAddFields(bson_iter_t *projectionSpecIter)
 {
 	bool skipParseAggregationExpressions = false;
+
+	/* TODO: pass in correct values after support let and collation with update command. */
 	pgbson *variableSpec = NULL;
+	const char *collationString = NULL;
+
 	BsonProjectionQueryState *projectionState = palloc0(sizeof(BsonProjectionQueryState));
 	BuildBsonPathTreeForDollarAddFields(projectionState, projectionSpecIter,
-										skipParseAggregationExpressions, variableSpec);
+										skipParseAggregationExpressions, variableSpec,
+										collationString);
 	return projectionState;
 }
 
@@ -1655,7 +1672,7 @@ static void
 BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 									bson_iter_t *projectionSpecIter,
 									bool skipParseAggregationExpressions,
-									pgbson *variableSpec)
+									pgbson *variableSpec, const char *collationString)
 {
 	BuildBsonPathTreeContext context = { 0 };
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
@@ -1665,6 +1682,11 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	GetTimeSystemVariablesFromVariableSpec(variableSpec,
 										   &context.parseAggregationContext.
 										   timeSystemVariables);
+
+	if (IsCollationApplicable(collationString))
+	{
+		context.parseAggregationContext.collationString = collationString;
+	}
 
 	bool hasFields = false;
 	bool forceLeafExpression = true;

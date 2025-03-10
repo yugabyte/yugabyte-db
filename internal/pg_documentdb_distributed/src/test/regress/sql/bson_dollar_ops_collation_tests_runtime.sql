@@ -140,7 +140,6 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filte
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 3, "caseLevel": true, "caseFirst": "off", "numericOrdering": true } }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1.93 } }');
 
-
 -- (8) a. collation has no effect on $regex
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "a": { "$regex": "^c", "$options": "" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1 } }');
 
@@ -465,7 +464,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6
 -- unsupported $merge
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search7", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
 
--- support for $expr
+-- $expr
 SELECT documentdb_api.insert_one('db', 'coll_agg_proj', '{ "_id": 1, "a": "cat" }');
 SELECT documentdb_api.insert_one('db', 'coll_agg_proj', '{ "_id": 2, "a": "dog" }');
 SELECT documentdb_api.insert_one('db', 'coll_agg_proj', '{ "_id": 3, "a": "cAt" }');
@@ -496,6 +495,18 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "coll_agg_proj", "fi
 SELECT document FROM bson_aggregation_find('db', '{ "find": "coll_agg_proj", "filter": { "$expr": {"$in": ["$a", ["CAT", "DOG"]]} }, "sort": { "_id": 1 }, "skip": 0, "collation": { "locale": "en", "strength" : 3 } }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "coll_agg_proj", "filter": { "$expr": {"$in": ["$_id", ["HEN", "BAT"]]} }, "sort": { "_id": 1 }, "skip": 0, "collation": { "locale": "en", "strength" : 1 } }');
 SELECT document FROM bson_aggregation_find('db', '{ "find": "coll_agg_proj", "filter": { "$expr": {"$in": ["$_id", ["HEN", "BAT"]]} }, "sort": { "_id": 1 }, "skip": 0, "collation": { "locale": "en", "strength" : 3 } }');
+
+-- $addFields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$addFields": { "newField": { "$ne": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$addFields": { "newField": { "$lte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$addFields": { "newField": { "$gte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 3} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$addFields": { "newField": { "$gte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+
+-- $set
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$set": { "newField": { "$ne": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$set": { "newField": { "$lte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$set": { "newField": { "$gte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 3} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$set": { "newField": { "$gte": ["$a", "CAT"] } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
 
 -- project
 SELECT documentdb_api_internal.bson_dollar_project(document, '{ "newField": { "$eq": ["$a", "CAT"] } }', NULL, 'en-u-ks-level1') FROM documentdb_api.collection('db', 'coll_agg_proj');
