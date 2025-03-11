@@ -26,6 +26,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -131,8 +132,8 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private static final List<TaskType> CLUSTER_DELETE_TASK_SEQUENCE =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
           TaskType.CheckLeaderlessTablets,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
           TaskType.DeleteClusterFromUniverse,
@@ -198,5 +199,24 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(6, univUTP.nodeDetailsSet.size());
+  }
+
+  @Test
+  public void testClusterDeleteRetries() {
+    UniverseDefinitionTaskParams universeDetails =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(2, universeDetails.clusters.size());
+    assertEquals(6, universeDetails.nodeDetailsSet.size());
+    ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusterUUID = readOnlyCluster.uuid;
+    taskParams.expectedUniverseVersion = -1;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Delete,
+        CustomerTask.TargetType.Cluster,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ReadOnlyClusterDelete,
+        taskParams);
   }
 }

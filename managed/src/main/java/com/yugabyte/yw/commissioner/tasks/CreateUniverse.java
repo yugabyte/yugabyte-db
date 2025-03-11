@@ -155,10 +155,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(universe, taskParams().clusters);
+      createPreflightNodeCheckTasks(taskParams().clusters);
 
       // Create certificate config check tasks for on-prem nodes.
-      createCheckCertificateConfigTask(universe, taskParams().clusters);
+      createCheckCertificateConfigTask(taskParams().clusters);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.

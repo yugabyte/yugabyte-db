@@ -76,18 +76,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(
-        taskParams().clusters,
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
-        null,
-        null);
+    createPreflightNodeCheckTasks(taskParams().clusters);
 
-    createCheckCertificateConfigTask(
-        taskParams().clusters,
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
-        taskParams().rootCA,
-        taskParams().getClientRootCA(),
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    createCheckCertificateConfigTask(taskParams().clusters);
   }
 
   protected void freezeUniverseInTxn(Universe universe) {
