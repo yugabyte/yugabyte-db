@@ -19,16 +19,16 @@ Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failove
 
 A DR configuration consists of the following:
 
-- a DR primary universe, which serves both reads and writes.
-- a DR replica universe, which can also serve reads.
+- a DR primary cluster, which serves both reads and writes.
+- a DR replica cluster, which can also serve reads.
 
 ## RPO and RTO for failover and switchover
 
-Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data not yet committed on the DR replica _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and no data is lost, because the switchover waits for all data to be committed on the DR replica _before_ switching over.
+Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data not yet committed on the DR replica _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the clusters. By contrast, during a switchover RPO is zero, and no data is lost, because the switchover waits for all data to be committed on the DR replica _before_ switching over.
 
-The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
+The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one cluster to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
-DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
+DR further allows for the role of each cluster to switch during planned switchover and unplanned failover scenarios.
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
@@ -42,7 +42,7 @@ DR further allows for the role of each universe to switch during planned switcho
 
   {{<index/item
     title="Set up Disaster Recovery"
-    body="Designate a universe to act as a DR replica."
+    body="Designate a cluster to act as a DR replica."
     href="disaster-recovery-setup/"
     icon="fa-thin fa-umbrella">}}
 
@@ -70,8 +70,8 @@ DR further allows for the role of each universe to switch during planned switcho
 
 Table and index-level schema changes must be performed in the same order as follows:
 
-1. The DR primary universe.
-2. The DR replica universe.
+1. The DR primary cluster.
+2. The DR replica cluster.
 
 You don't need to make any changes to the DR configuration.
 
@@ -79,18 +79,8 @@ You don't need to make any changes to the DR configuration.
 To learn more, refer to [Manage tables and indexes](./disaster-recovery-tables/)
 {{</lead>}}
 
-## Upgrading universes in DR
-
-Use the same version of YugabyteDB on both the DR primary and DR replica.
-
-When [upgrading universes](../../manage-deployments/upgrade-software-install/) in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
-
-Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
-
 ## Limitations
 
 - Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Manage tables and indexes](./disaster-recovery-tables/).
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
-
-For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../../architecture/docdb-replication/async-replication/#limitations).

@@ -41,7 +41,6 @@ After DR is configured, the DR replica is only be available for reads.
 
 - Monitor CPU and keep its use below 65%.
 - Monitor disk space and keep its use under 65%.
-- [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
@@ -86,15 +85,15 @@ After DR is set up, the **Disaster Recovery** tab displays the DR status.
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-status.png)
 
+YugabyteDB Aeon also automatically sets up safe time and replication lag alerts.
+
 ### Metrics
 
 In addition, you can monitor the following metrics on the **Disaster Recovery > Metrics** tab:
 
 - Async Replication Lag
 
-    The network lag in microseconds between any two communicating nodes.
-
-    If you have [set an alert for replication lag](#set-up-replication-lag-alerts), you can also display the alert threshold.
+    The network lag in microseconds between any two communicating nodes, and the replication lag alert threshold.
 
 - Consumer Safe Time Lag
 
@@ -168,38 +167,27 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading clusters that are in replication. Upgrade the other cluster to the same version. |
 
-### Set up replication lag alerts
+### Disaster recovery alerts
+
+YugabyteDB Aeon sends a notification when lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
 
 Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
-To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a cluster alert for Replication Lag. Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
+Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
 
-To create an alert:
-
-1. Navigate to **Admin > Alert Configurations > Alert Policies**.
-1. Click **Create Alert Policy** and choose **cluster Alert**.
-1. Set **Policy Template** to **Replication Lag**.
-1. Enter a name and description for the alert policy.
-1. Set **Target** to **Selected clusters** and select the DR primary.
-1. Set the conditions for the alert.
-
-    - Enter a duration threshold. The alert is triggered when the lag exceeds the threshold for the specified duration.
-    - Set the **Severity** option to Severe.
-    - Set the **Condition** option to Greater Than.
-    - Set the threshold to an acceptable value for your deployment. The default threshold is 3 minutes (180000ms).
-
-1. Click **Save** when you are done.
-
-When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
+<!--When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
 - there is a table schema mismatch between DR primary and replica.
-- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
+- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.-->
 
-When you receive an alert, navigate to the replication configuration [Tables tab](#tables) to see the table status.
+When you receive an alert, navigate to the Disaster Recovery [Tables tab](#tables) to see the table status.
 
 YugabyteDB Anywhere collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
 
-For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
+For more information on alerting in YugabyteDB Aeon, refer to [Alerts](../../../cloud-monitor/cloud-alerts/).
 
 ## Manage replication
 

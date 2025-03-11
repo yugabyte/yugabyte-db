@@ -27,7 +27,7 @@ In addition, keep in mind the following:
 - If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
 - TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
 
-Use the following guidance when managing tables and indexes in universes with DR configured.
+Use the following guidance when managing tables and indexes in clusters with DR configured.
 
 ## Tables
 
@@ -43,7 +43,7 @@ Add tables to DR in the following sequence:
 
 1. Create the table on the DR primary (if it doesn't already exist).
 1. Create the table on the DR replica.
-1. Navigate to your DR primary universe **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary cluster **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
@@ -65,7 +65,7 @@ When dropping a table, remove the table from DR before dropping the table in the
 
 Remove tables from DR in the following sequence:
 
-1. Navigate to your DR primary universe **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary cluster **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
@@ -148,5 +148,5 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 To ensure changes made outside of YugabyteDB Aeon are reflected in YugabyteDB Aeon, you need to reconcile the configuration as follows:
 
-1. Navigate to your DR primary universe **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary cluster **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
