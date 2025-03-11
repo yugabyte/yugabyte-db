@@ -400,6 +400,9 @@ message SysClusterConfigEntryPB {
   // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
   // the VisitSysCatalog path.
   optional string universe_uuid = 8;
+  // This field is bumped to invalidate all the TServer OID caches.
+  // Note that this is for every database and applies only to YSQL.
+  optional uint32 oid_cache_invalidations_count = 9 [default = 0];
 }
 
 message SysObjectLockEntryPB {

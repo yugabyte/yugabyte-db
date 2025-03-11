@@ -53,6 +53,7 @@ DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 *
     "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
 
 DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::master {
@@ -1201,7 +1202,8 @@ Status XClusterTargetManager::AlterUniverseReplication(
 Status XClusterTargetManager::DeleteUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
     bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
-    const LeaderEpoch& epoch) {
+    const LeaderEpoch& epoch,
+    std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above) {
   {
     // If a setup is in progress, then cancel it.
     std::lock_guard l(replication_setup_tasks_mutex_);
@@ -1222,6 +1224,36 @@ Status XClusterTargetManager::DeleteUniverseReplication(
 
   auto ri = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK(ri != nullptr, NotFound, "Universe replication $0 does not exist", replication_group_id);
+
+  {
+    auto l = ri->LockForRead();
+    auto& pb = l->pb;
+    if (pb.has_db_scoped_info()) {
+      std::unordered_map<NamespaceId, NamespaceId> source_to_target;
+      for (const auto& namespace_infos : pb.db_scoped_info().namespace_infos()) {
+        source_to_target[namespace_infos.producer_namespace_id()] =
+            namespace_infos.consumer_namespace_id();
+      }
+      auto* yb_client = master_.client_future().get();
+      SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
+      for (const auto& [source_namespace_id, oid_to_bump] :
+           source_namespace_id_to_oid_to_bump_above) {
+        NamespaceId target_namespace_id = source_to_target[source_namespace_id];
+        SCHECK(
+            !source_to_target.empty(), InvalidArgument,
+            "DeleteUniverseReplication called with a namespace ID $0 that is not present in the "
+            "replication group ($1)",
+            source_namespace_id, replication_group_id);
+        // Ensure next OID allocated from normal space will be above oid_to_bump.
+        uint32_t begin_oid;
+        uint32_t end_oid;
+        RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+            target_namespace_id, oid_to_bump, /*count=*/1, &begin_oid, &end_oid,
+            /*use_secondary_space=*/false));
+      }
+      RETURN_NOT_OK(master_.catalog_manager()->InvalidateTserverOidCaches());
+    }
+  }
 
   RETURN_NOT_OK(master::DeleteUniverseReplication(
       *ri, ignore_errors, skip_producer_stream_deletion, resp, catalog_manager_, epoch));

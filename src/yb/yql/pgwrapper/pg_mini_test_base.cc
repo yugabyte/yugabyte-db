@@ -109,6 +109,10 @@ Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
   return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
 }
 
+Result<master::CatalogManager*> PgMiniTestBase::catalog_manager_impl() const {
+  return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
+}
+
 void PgMiniTestBase::EnableYSQLFlags() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;

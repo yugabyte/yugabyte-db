@@ -518,6 +518,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
       RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
     }
 
+    server_->set_oid_cache_invalidations_count(resp.oid_cache_invalidations_count());
+
     RETURN_NOT_OK(server_->XClusterHandleMasterHeartbeatResponse(resp));
 
     // At this point we know resp is a successful heartbeat response from the master so set it as

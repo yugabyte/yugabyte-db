@@ -91,6 +91,8 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const = 0;
 
+  virtual Status InvalidateTserverOidCaches() = 0;
+
   virtual Result<uint64_t> IncrementYsqlCatalogVersion() = 0;
 
   virtual Result<std::vector<TableDescription>> CollectTables(

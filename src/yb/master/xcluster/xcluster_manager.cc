@@ -901,9 +901,14 @@ Status XClusterManager::DeleteUniverseReplication(
 
   RETURN_NOT_OK(ValidateUniverseUUID(req, catalog_manager_));
 
+  std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above;
+  for (const auto& [consumer_namespace_id, oid_to_bump_above] : req->producer_namespace_oids()) {
+    source_namespace_id_to_oid_to_bump_above[consumer_namespace_id] = oid_to_bump_above;
+  }
+
   RETURN_NOT_OK(XClusterTargetManager::DeleteUniverseReplication(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(),
-      req->skip_producer_stream_deletion(), resp, epoch));
+      req->skip_producer_stream_deletion(), resp, epoch, source_namespace_id_to_oid_to_bump_above));
 
   LOG(INFO) << "Successfully completed DeleteUniverseReplication request from "
             << RequestorString(rpc);

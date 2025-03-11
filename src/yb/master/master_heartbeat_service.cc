@@ -457,6 +457,14 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
   }
 
+  auto cluster_config = server_->catalog_manager()->GetClusterConfig();
+  if (cluster_config) {
+    resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+  } else {
+    LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+                 << cluster_config.status().ToUserMessage();
+  }
+
   uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
   resp->set_transaction_tables_version(transaction_tables_version);
 

@@ -140,7 +140,8 @@ class XClusterClient {
 
   Status DeleteUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
-      const UniverseUuid& target_universe_uuid);
+      const UniverseUuid& target_universe_uuid,
+      std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above = {});
 
   // Starts the checkpointing of the given namespace. IsBootstrapRequired or
   // GetXClusterStreams must be called on each namespace in order to wait for the operation to

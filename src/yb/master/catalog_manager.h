@@ -767,6 +767,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
 
+  // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
+  // will be effectively invalidated when that TServer receives a heartbeat response from master.
+  Status InvalidateTserverOidCaches() override;
+
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
 
   // Check if the initdb operation has been completed. This is intended for use by whoever wants

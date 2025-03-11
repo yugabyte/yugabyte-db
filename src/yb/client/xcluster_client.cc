@@ -341,7 +341,8 @@ Status XClusterClient::RemoveNamespaceFromUniverseReplication(
 
 Status XClusterClient::DeleteUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
-    const UniverseUuid& target_universe_uuid) {
+    const UniverseUuid& target_universe_uuid,
+    std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
 
   master::DeleteUniverseReplicationRequestPB req;
@@ -349,6 +350,10 @@ Status XClusterClient::DeleteUniverseReplication(
   req.set_ignore_errors(ignore_errors);
   if (!target_universe_uuid.IsNil()) {
     req.set_universe_uuid(target_universe_uuid.ToString());
+  }
+  for (const auto& [namespace_id, oid_to_bump] : source_namespace_id_to_oid_to_bump_above) {
+    auto& producer_namespace_oids = *req.mutable_producer_namespace_oids();
+    producer_namespace_oids[namespace_id] = oid_to_bump;
   }
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(DeleteUniverseReplication, req);
