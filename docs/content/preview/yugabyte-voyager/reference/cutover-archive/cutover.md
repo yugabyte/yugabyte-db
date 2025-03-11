@@ -34,11 +34,11 @@ Usage: yb-voyager initiate cutover to target [ <arguments> ... ]
 
 The valid *arguments* for initiate cutover to target are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for initiate cutover to target. |
-| &#8209;&#8209;prepare&#8209;for&#8209;fall&#8209;back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --prepare-for-fall-back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
 <!--| --use-yb-grpc-connector | Use the [gRPC Replication Protocol](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) for export. If set to false, [PostgreSQL Replication Protocol](../../../../develop/change-data-capture/using-logical-replication/) (supported in YugabyteDB v2024.1.1+) is used. For PostgreSQL Replication Protocol, ensure no ALTER TABLE commands causing table rewrites (for example, adding primary keys) are present in the schema during import.<br>Default: true<br>Accepted parameters: true, false, yes, no, 0, 1. | -->
 
 ### Example
@@ -61,9 +61,9 @@ Usage: yb-voyager initiate cutover to source [ <arguments> ... ]
 
 The valid *arguments* for initiate cutover to source are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
 
 ### Example
@@ -86,9 +86,9 @@ Usage: yb-voyager initiate cutover to source-replica [ <arguments> ... ]
 
 The valid *arguments* for initiate cutover to source-replica are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
 
 ### Example
@@ -111,9 +111,9 @@ Usage: yb-voyager cutover status [ <arguments> ... ]
 
 The valid *arguments* for cutover status are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover status. |
 
 ### Example
