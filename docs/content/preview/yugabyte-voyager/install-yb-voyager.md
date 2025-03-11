@@ -19,7 +19,7 @@ The following sections describe the prerequisites for installing YugabyteDB Voya
 
 You can install YugabyteDB Voyager on the following:
 
-- RHEL 8
+- RHEL 8, 9
 - CentOS 8
 - Ubuntu 18.04, 20.04, 22.04
 - macOS (for MySQL/Oracle source databases on macOS, [install yb-voyager](#install-yb-voyager) using the Docker option.)
