@@ -270,6 +270,10 @@ size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
   return impl_->TEST_GrantedLocksSize();
 }
 
+bool TSLocalLockManager::IsBootstrapped() const {
+  return impl_->IsBootstrapped();
+}
+
 size_t TSLocalLockManager::TEST_WaitingLocksSize() const {
   return impl_->TEST_WaitingLocksSize();
 }

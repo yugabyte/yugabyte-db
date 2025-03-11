@@ -1121,12 +1121,13 @@ class PgClientSession::Impl {
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
-      uint64_t lease_epoch, rpc::Scheduler& scheduler)
+      uint64_t lease_epoch, tserver::TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
         id_(id),
         lease_epoch_(lease_epoch),
+        ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
         big_shared_mem_expiration_task_(&scheduler),
         read_point_history_(PrefixLogger(id_)) {}
@@ -2151,8 +2152,8 @@ class PgClientSession::Impl {
     return context_.stats_exchange_response_size;
   }
 
-  tserver::TSLocalLockManager* ts_lock_manager() const {
-    return context_.ts_lock_manager;
+  const tserver::TSLocalLockManagerPtr& ts_lock_manager() const {
+    return ts_lock_manager_;
   }
 
   const std::string instance_uuid() const {
@@ -3000,13 +3001,14 @@ class PgClientSession::Impl {
         RenewSignature(used_read_time));
   }
 
-  [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager(); }
+  [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager() != nullptr; }
 
   client::YBClient& client_;
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
   const uint64_t lease_epoch_;
+  const tserver::TSLocalLockManagerPtr ts_lock_manager_;
   TransactionProvider transaction_provider_;
   std::mutex big_shared_mem_mutex_;
   std::atomic<CoarseTimePoint> last_big_shared_memory_access_;
@@ -3029,10 +3031,11 @@ class PgClientSession::Impl {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
     client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-    uint64_t id, uint64_t lease_epoch, rpc::Scheduler& scheduler)
+    uint64_t id, uint64_t lease_epoch,
+    tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
     : impl_(new Impl(
         std::move(transaction_builder), {std::move(shared_this_source), this}, client, context, id,
-        lease_epoch, scheduler)) {
+        lease_epoch, std::move(ts_local_lock_manager), scheduler)) {
 }
 
 PgClientSession::~PgClientSession() = default;

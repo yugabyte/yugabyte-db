@@ -144,7 +144,7 @@ class ObjectLockInfoManager::Impl {
   when the master assumes leadership. This will be done by clearing the TSLocalManager and
   replaying the DDL lock requests
   */
-  std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager() EXCLUDES(mutex_) {
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager() EXCLUDES(mutex_) {
     catalog_manager_->AssertLeaderLockAcquiredForReading();
     LockGuard lock(mutex_);
     return local_lock_manager_;

@@ -464,13 +464,7 @@ class PgClientServiceImpl::Impl {
             .sequence_cache = sequence_cache_,
             .shared_mem_pool = shared_mem_pool_,
             .stats_exchange_response_size = stats_exchange_response_size_,
-            .instance_uuid = instance_id_,
-            .ts_lock_manager =
-                tablet_server_opts.server_type == TabletServerOptions::kServerType &&
-                FLAGS_TEST_enable_object_locking_for_table_locks
-                    ? tablet_server_.ts_local_lock_manager()
-                    : nullptr
-        },
+            .instance_uuid = instance_id_},
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -528,8 +522,9 @@ class PgClientServiceImpl::Impl {
     }
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
-        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
-        client(), session_context_, session_id, lease_epoch, messenger_.scheduler());
+        FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
+        session_context_, session_id, lease_epoch, tablet_server_.ts_local_lock_manager(),
+        messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);

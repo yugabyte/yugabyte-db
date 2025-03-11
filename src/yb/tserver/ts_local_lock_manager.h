@@ -85,6 +85,7 @@ class TSLocalLockManager {
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& resp);
 
+  bool IsBootstrapped() const;
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
   void TEST_MarkBootstrapped();

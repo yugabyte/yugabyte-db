@@ -163,8 +163,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
-  tserver::TSLocalLockManager* ts_local_lock_manager() const override {
-    return ts_local_lock_manager_.get();
+  TSLocalLockManagerPtr ts_local_lock_manager() const override {
+    std::lock_guard l(lock_);
+    return ts_local_lock_manager_;
   }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
@@ -204,6 +205,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -588,7 +590,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
   // Lock Manager to maintain table/object locking activity in memory.
-  std::unique_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_;
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

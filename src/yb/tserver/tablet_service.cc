@@ -3577,7 +3577,7 @@ void TabletServiceImpl::AcquireObjectLocks(
   TRACE("Start AcquireObjectLocks");
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
 
-  auto* ts_local_lock_manager = server_->ts_local_lock_manager();
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
     SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
@@ -3602,7 +3602,7 @@ void TabletServiceImpl::ReleaseObjectLocks(
   TRACE("Start ReleaseObjectLocks");
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 
-  auto* ts_local_lock_manager = server_->ts_local_lock_manager();
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
     resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
     SetupErrorAndRespond(

@@ -358,8 +358,11 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
   }
-  if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_unique<tserver::TSLocalLockManager>(clock_);
+  if (opts.server_type == TabletServerOptions::kServerType &&
+      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_);
+  } else {
+    ts_local_lock_manager_ = nullptr;
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -779,17 +782,26 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
+tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
+  std::lock_guard l(lock_);
+  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_);
+  return ts_local_lock_manager_;
+}
+
 Status TabletServer::ProcessLeaseUpdate(
     const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
   VLOG(2) << __func__;
-  if (lease_refresh_info.has_ddl_lock_entries() && ts_local_lock_manager_) {
-    // todo(amit):
-    // BootstrapDdlObjectLocks must release all locks held and acquire all locks passed in,
-    // regardless of whether it has been called in the past or not. Currently this method does
-    // nothing when called after the first time on the same object.
-    RETURN_NOT_OK(
-        ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_refresh_info.ddl_lock_entries()));
+  auto lock_manager = ts_local_lock_manager();
+  if (lease_refresh_info.has_ddl_lock_entries() && lock_manager) {
+    if (lock_manager->IsBootstrapped()) {
+      // Reset the local lock manager to bootstrap from the given DDL lock entries.
+      lock_manager = ResetAndGetTSLocalLockManager();
+    }
+    RETURN_NOT_OK(lock_manager->BootstrapDdlObjectLocks(lease_refresh_info.ddl_lock_entries()));
   }
+  // It is safer to end the pg-sessions after resetting the local lock manager.
+  // This way, if a new session gets created it will also be reset. But that is better than
+  // having it the other way around, and having an old-session that is not reset.
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
     pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);

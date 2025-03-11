@@ -165,6 +165,7 @@ class ExternalObjectLockTest : public YBMiniClusterTestBase<ExternalMiniCluster>
   Result<pgwrapper::PGConn> ConnectToTabletServer(ExternalTabletServer* ts, size_t timeout_seconds);
   ExternalTabletServer* tablet_server(size_t index);
   Status WaitForTServerLeaseToExpire(const std::string& ts_uuid, MonoDelta timeout);
+  Status WaitForTServerLease(const std::string& ts_uuid, MonoDelta timeout);
 };
 
 class ExternalObjectLockTestOneTS : public ExternalObjectLockTest {
@@ -886,24 +887,41 @@ TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {
   EXPECT_THAT(status, EqualsStatus(BuildLeaseEpochMismatchErrorStatus(kLeaseEpoch, lease_epoch)));
 }
 
-TEST_F(ExternalObjectLockTest, TServerHeldExclusiveLocksReleasedAfterExpiry) {
+class ExternalObjectLockTestExpiry : public ExternalObjectLockTest,
+                                     public ::testing::WithParamInterface<bool> {};
+
+TEST_P(ExternalObjectLockTestExpiry, TServerHeldLocksReleasedAfterExpiry) {
   auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(20);
   ASSERT_GT(kLeaseTimeoutDeadline.ToMilliseconds(), FLAGS_master_ysql_operation_lease_ttl_ms);
-  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
   auto ts = tablet_server(0);
-  ASSERT_OK(AcquireLockGlobally(
-      &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr, std::nullopt,
-      kTimeout));
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  if (GetParam()) {
+    LOG(INFO) << "Acquiring locally for txn-1";
+    auto tserver_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(0);
+    ASSERT_OK(AcquireLockAt(
+        &tserver_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr,
+        std::nullopt, kTimeout));
+  } else {
+    // Requires fixing #25832.
+    LOG(INFO) << "Acquiring globally for txn-1";
+    ASSERT_OK(AcquireLockGlobally(
+        &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr,
+        std::nullopt, kTimeout));
+  }
   ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
   ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), kLeaseTimeoutDeadline));
   ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
-  // The task to release the locks should be kicked off when the master marks the tserver's lease as
-  // expired.
+  // Wait for the TServer to get a new lease.
+  ASSERT_OK(WaitForTServerLease(ts->uuid(), kTimeout));
+  // We expect that the locks held locally at the TServer are released when the lease expires.
+  LOG(INFO) << "Acquiring globally for txn-2";
   auto other_ts = tablet_server(1);
   ASSERT_OK(AcquireLockGlobally(
-      &master_proxy, other_ts->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr,
+      &master_proxy, other_ts->uuid(), kTxn2, kDatabaseID, kObjectId, kLeaseEpoch, nullptr,
       std::nullopt, kTimeout));
 }
+
+INSTANTIATE_TEST_CASE_P(DmlOrDdlLocks, ExternalObjectLockTestExpiry, ::testing::Values(true));
 
 TEST_F(ExternalObjectLockTest, TServerCanAcquireLocksAfterLeaseExpiry) {
   auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(20);
@@ -1209,6 +1227,7 @@ TEST_P(MultiMasterObjectLockTestOutOfOrder, IgnoreDDLAcquireAfterRelease) {
       break;
     }
     case ReleaseOptions::RestartTServer: {
+      // Requires fixing #25832.
       ASSERT_OK(ddl_host_tserver->Restart());
       ASSERT_OK(WaitFor(
           [master_local_lock_manager]() -> bool {
@@ -1327,6 +1346,17 @@ Status ExternalObjectLockTest::WaitForTServerLeaseToExpire(
         return !ts_opt->lease_info().is_live();
       },
       timeout, "Wait for master to revoke tserver's lease");
+}
+
+Status ExternalObjectLockTest::WaitForTServerLease(const std::string& ts_uuid, MonoDelta timeout) {
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  return WaitFor(
+      [&cluster_client, &ts_uuid]() -> Result<bool> {
+        auto ts_opt = VERIFY_RESULT(cluster_client.GetTabletServer(ts_uuid));
+        return ts_opt && ts_opt->has_lease_info() && ts_opt->lease_info().is_live();
+      },
+      timeout, "Wait for master to establish tserver's lease");
 }
 
 }  // namespace yb
