@@ -127,6 +127,9 @@ DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_int32(ysql_yb_ash_sample_size);
 
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint64(rpc_max_message_size);
+
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
 METRIC_DECLARE_histogram(handler_latency_outbound_transfer);
@@ -2238,6 +2241,32 @@ TEST_F(PgMiniTest, ReadHugeRow) {
   const auto res = conn.Fetch("SELECT * FROM test LIMIT 1");
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
+}
+
+// Check that fetch of data amount exceeding the message size automatically paginates and succeeds
+TEST_F(PgMiniTest, ReadHugeRows) {
+  // kNumRows should be less than default yb_fetch_row_limit, but not too low, so system can work
+  constexpr size_t kNumRows = 1000;
+  constexpr size_t kColumnSize = 100000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kColumnSize * kNumRows;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) =
+      kColumnSize * kNumRows - 1_KB - 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  // One tablet to make sure that the node has enough data to exceed the message size
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test(pk INT PRIMARY KEY, i INT, t TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE INDEX on test(i ASC)"));
+  for (size_t i = 0; i < kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES($0, $0 * 2, repeat('0', $1))", i, kColumnSize));
+  }
+
+  // SeqScan, direct fetch from the main table
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  // IndexScan, fetch from the main table by ybctids
+  ASSERT_OK(conn.Fetch("SELECT * FROM test ORDER BY i"));
 }
 
 TEST_F_EX(

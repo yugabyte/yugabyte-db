@@ -774,6 +774,11 @@ template<class Container, class Functor>
       [&schema](int32_t col_id) { return IsNonKeyColumn(schema, col_id); });
 }
 
+// NotReached - iteration finished at the upper bound or the end of the tablet
+// Reached - a limit was reached and current record made it into result
+// Exceeded - a limit was reached and current record did not make it into result (no room)
+YB_DEFINE_ENUM(FetchLimit, (kNotReached)(kReached)(kExceeded));
+
 } // namespace
 
 class PgsqlWriteOperation::RowPackContext {
@@ -1949,7 +1954,10 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
   // Return paging state if scan has not been completed
   if (request_.return_paging_state() && scan_time_exceeded) {
     *has_paging_state = VERIFY_RESULT(SetPagingState(
-        table_iter_.get(), doc_read_context.schema(), read_operation_data.read_time));
+        table_iter_.get(),
+        doc_read_context.schema(),
+        read_operation_data.read_time,
+        ReadKey::kNext));
   }
 
   VLOG(2) << "End sampling with new_sampling_state=" << new_sampling_state->ShortDebugString();
@@ -2085,18 +2093,13 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     bool* has_paging_state) {
   // Requests normally have a limit on how many rows to return
   auto row_count_limit = std::numeric_limits<std::size_t>::max();
-
   if (request_.has_limit() && request_.limit() > 0) {
     row_count_limit = request_.limit();
   }
 
-  // We also limit the response's size. Responses that exceed rpc_max_message_size will error
-  // anyways, so we use that as an upper bound for the limit. This limit only applies on the data
-  // in the response, and excludes headers, etc., but since we add rows until we *exceed*
-  // the limit, this already won't avoid hitting rpc max size and is just an effort to limit the
-  // damage.
+  // The response size should not exceed the rpc_max_message_size, so use it as a default size
+  // limit. Reduce it to the number requested by the client, if it is stricter.
   auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
-
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
@@ -2131,7 +2134,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
   bool scan_time_exceeded = false;
   auto stop_scan = read_operation_data.deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
   size_t match_count = 0;
-  bool limit_exceeded = false;
+  auto fetch_limit = FetchLimit::kNotReached;
   size_t fetched_rows = 0;
   dockv::PgTableRow row(doc_projection);
   const auto& table_id = request_.index_request().table_id();
@@ -2148,16 +2151,25 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
       if (request_.is_aggregate()) {
         RETURN_NOT_OK(EvalAggregate(row));
       } else {
+        auto row_start = result_buffer->Position();
         RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+        if (fetched_rows > 0 && result_buffer->size() > response_size_limit) {
+          RETURN_NOT_OK(result_buffer->Truncate(row_start));
+          fetch_limit = FetchLimit::kExceeded;
+          // skips the fetched_rows increment and the other limit's check, which may change
+          // the fetch_limit value
+          break;
+        }
         ++fetched_rows;
       }
     }
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
-    limit_exceeded =
-      (scan_time_exceeded ||
-       fetched_rows >= row_count_limit ||
-       result_buffer->size() >= response_size_limit);
-  } while (!limit_exceeded);
+    if (scan_time_exceeded ||
+        fetched_rows >= row_count_limit ||
+        result_buffer->size() >= response_size_limit) {
+      fetch_limit = FetchLimit::kReached;
+    }
+  } while (fetch_limit == FetchLimit::kNotReached);
 
   // Output aggregate values accumulated while looping over rows
   if (request_.is_aggregate() && match_count > 0) {
@@ -2178,7 +2190,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
   *has_paging_state = false;
   // Unless iterated to the end, pack current iterator position into response, so follow up request
   // can seek to correct position and continue
-  if (request_.return_paging_state() && limit_exceeded) {
+  if (request_.return_paging_state() && fetch_limit != FetchLimit::kNotReached) {
     auto* iterator = table_iter_.get();
     const auto* read_context = &doc_read_context;
     if (index_state) {
@@ -2187,7 +2199,8 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     }
     DCHECK(iterator && read_context);
     *has_paging_state = VERIFY_RESULT(SetPagingState(
-        iterator, read_context->schema(), read_operation_data.read_time));
+        iterator, read_context->schema(), read_operation_data.read_time,
+        fetch_limit == FetchLimit::kExceeded ? ReadKey::kCurrent : ReadKey::kNext));
   }
 
   if (index_state) {
@@ -2208,10 +2221,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
     KeyProvider* key_provider) {
 
   // We limit the response's size.
-  auto response_size_limit = std::numeric_limits<std::size_t>::max();
-
+  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
-    response_size_limit = request_.size_limit();
+    response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
 
   auto projection = CreateProjection(doc_read_context.schema(), request_);
@@ -2221,6 +2233,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
   size_t fetched_rows = 0;
   size_t filtered_rows = 0;
   size_t not_found_rows = 0;
+  size_t processed_keys = 0;
 
   for (;;) {
     auto key = key_provider->FetchKey();
@@ -2250,25 +2263,36 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
         break;
       case FetchResult::FilteredOut:
         ++filtered_rows;
+        ++scanned_table_rows_;
         break;
       case FetchResult::Found:
         ++found_rows;
+        ++scanned_table_rows_;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
+          auto row_start = result_buffer->Position();
           RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+          if (fetched_rows > 0 && result_buffer->size() > response_size_limit) {
+            VLOG(1) << "Response size exceeded after " << found_rows << " rows fetched (out of "
+                    << request_.batch_arguments_size() << " matches). Also " << filtered_rows
+                    << " rows filtered, " << not_found_rows << " rows not found. "
+                    << "Response buffer size: " << result_buffer->size()
+                    << ", response size limit: " << response_size_limit;
+            RETURN_NOT_OK(result_buffer->Truncate(row_start));
+            // TODO GHI #25788, for now fail instead of returning incomplete results
+            RSTATUS_DCHECK_NE(request_.batch_arguments_size(), 0,
+                              IllegalState, "Pagination is required, but not supported");
+            DCHECK(processed_keys < static_cast<size_t>(request_.batch_arguments_size()));
+            response_.set_batch_arg_count(processed_keys);
+            return fetched_rows;
+          }
           key_provider->AddedKeyToResultSet();
           ++fetched_rows;
         }
         break;
     }
-
-    if (result_buffer->size() >= response_size_limit) {
-      VLOG(1) << "Stopped iterator after " << found_rows << " rows fetched (out of "
-              << request_.batch_arguments_size() << " matches). Response buffer size: "
-              << result_buffer->size() << ", response size limit: " << response_size_limit;
-      break;
-    }
+    ++processed_keys;
   }
 
   // Output aggregate values accumulated while looping over rows
@@ -2277,39 +2301,41 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
     ++fetched_rows;
   }
 
-  // Set status for this batch.
-  if (result_buffer->size() >= response_size_limit)
-    response_.set_batch_arg_count(found_rows + filtered_rows + not_found_rows);
-  else
-    // Mark all rows were processed even in case some of the ybctids were not found.
-    response_.set_batch_arg_count(request_.batch_arguments_size());
+  VLOG(1) << "Request completed after " << found_rows << " rows fetched (out of "
+          << request_.batch_arguments_size() << " matches). Also " << filtered_rows
+          << " rows filtered, " << not_found_rows << " rows not found. "
+          << "Response buffer size: " << result_buffer->size()
+          << ", response size limit: " << response_size_limit;
 
-  scanned_table_rows_ += filtered_rows + found_rows;
+  // TODO GHI #25789 the KeyProvider should track processed_keys and paginate
+  if (request_.batch_arguments_size() > 0) {
+    DCHECK(processed_keys == static_cast<size_t>(request_.batch_arguments_size()));
+    response_.set_batch_arg_count(processed_keys);
+  }
+
   return fetched_rows;
 }
 
 Result<bool> PgsqlReadOperation::SetPagingState(
-    YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time) {
-  // Set the paging state for next row.
-  SubDocKey next_row_key;
-  RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
-  // When the "limit" number of rows are returned and we are asked to return the paging state,
-  // return the partition key and row key of the next row to read in the paging state if there are
-  // still more rows to read. Otherwise, leave the paging state empty which means we are done
-  // reading from this tablet.
-  if (next_row_key.doc_key().empty()) {
+    YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time,
+    ReadKey page_from_read_key) {
+  // Get the key of the requested row
+  SubDocKey row_key = VERIFY_RESULT(iter->GetSubDocKey(page_from_read_key));
+
+  // If iterator is at the last row and next row is requested, no need to send back paging info
+  if (row_key.doc_key().empty()) {
     return false;
   }
 
   auto* paging_state = response_.mutable_paging_state();
-  auto encoded_next_row_key = next_row_key.Encode().ToStringBuffer();
+  auto encoded_row_key = row_key.Encode().ToStringBuffer();
   if (schema.num_hash_key_columns() > 0) {
     paging_state->set_next_partition_key(
-        dockv::PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+        dockv::PartitionSchema::EncodeMultiColumnHashValue(row_key.doc_key().hash()));
   } else {
-    paging_state->set_next_partition_key(encoded_next_row_key);
+    paging_state->set_next_partition_key(encoded_row_key);
   }
-  paging_state->set_next_row_key(std::move(encoded_next_row_key));
+  paging_state->set_next_row_key(std::move(encoded_row_key));
 
   BindReadTimeToPagingState(read_time);
 
