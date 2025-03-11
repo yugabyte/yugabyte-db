@@ -81,7 +81,7 @@ You can instruct yb-voyager to connect to the source or target database over an 
 
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection for PostgreSQL or MySQL.
 
- | <div style="width:200px">Argument</div> | Description |
+ | <div style="width:150px">Argument</div> | Description |
  | :-------- | :---------- |
  | --source-ssl-mode | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul> |
 | --source-ssl-cert <br /> --source-ssl-key | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. Note: If using [accelerated data export](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), ensure that the keys are in the PKCS8 standard PEM format. |
@@ -92,7 +92,7 @@ The following table summarizes the arguments and options you can pass to yb-voya
 
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection for Oracle:
 
-| <div style="width:200px">Argument</div> | Description |
+| <div style="width:150px">Argument</div> | Description |
 | :-------- | :---------- |
 | --oracle-tns-alias | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [--oracle-tns-alias](../schema-migration/export-schema/#arguments), you cannot use any other arguments to connect to your Oracle instance including [--source-db-schema](../schema-migration/export-schema/#arguments) and [--oracle-db-sid](../schema-migration/export-schema/#arguments). Note: By default, the expectation is that the wallet files (.sso, .pk12, and so on) are in the TNS_ADMIN directory (the one containing tnsnames.ora). If the wallet files are in a different directory, ensure that you update the wallet location in the `sqlnet.ora` file. If using [accelerated data export](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), to specify a different wallet location, also create a `ojdbc.properties` file in the TNS_ADMIN directory, and add the following: `oracle.net.wallet_location=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=/path/to/wallet)))`. |
 
@@ -100,7 +100,7 @@ The following table summarizes the arguments and options you can pass to yb-voya
 
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection for YugabyteDB.
 
-| <div style="width:200px">Argument</div> | Description |
+| <div style="width:150px">Argument</div> | Description |
 | :-------- | :---------- |
 | --target-ssl-mode | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul> <br />  Only certain modes are supported by [export-data-from-target](../data-migration/export-data/#export-data-from-target).|
 | --target-ssl-cert <br /> --target-ssl-key | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. These arguments are not supported by `export-data-from-target`.|

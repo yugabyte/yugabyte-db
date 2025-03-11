@@ -46,7 +46,7 @@ Usage: yb-voyager export data from source [ <arguments> ... ]
 
 The valid *arguments* for export data are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --disable-pb |Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
@@ -153,7 +153,7 @@ Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
@@ -183,7 +183,7 @@ Usage: yb-voyager export data from target [ <arguments> ... ]
 
 The valid *arguments* for export data from target are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --disable-pb | Use this argument to disable the progress bar during data export and printing statistics during the streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|

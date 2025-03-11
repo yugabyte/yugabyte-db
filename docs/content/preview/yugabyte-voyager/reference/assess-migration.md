@@ -32,7 +32,7 @@ Usage: yb-voyager assess-migration [ <arguments> ... ]
 
 The valid *arguments* for assess migration are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --assessment-metadata-dir | Directory path where assessment metadata like source database metadata and statistics are stored. Optional flag, if not provided, it will be assumed to be present at default path inside the export directory. |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
@@ -81,7 +81,7 @@ Usage: yb-voyager assess-migration-bulk [ <arguments> ... ]
 
 The valid *arguments* for assess migration bulk are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --bulk-assessment-dir | Directory path where assessment data is output. |
 | --continue-on-error | Print the error message to the console and continue to next schema assessment.<br>Default: true.<br>Accepted parameters: true, false, yes, no, 0, 1. |

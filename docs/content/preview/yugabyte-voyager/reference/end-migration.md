@@ -23,7 +23,7 @@ Usage: yb-voyager end migration [ <arguments> ... ]
 
 The valid *arguments* for end migration are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --backup-data-files | Back up snapshot data files. <br>Accepted parameters: true, false, yes, no, 0, 1 |
 | --backup-log-files | Back up yb-voyager log files for the current migration. <br>Accepted parameters: true, false, yes, no, 0, 1 |

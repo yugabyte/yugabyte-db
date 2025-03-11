@@ -31,7 +31,7 @@ Usage: yb-voyager import schema [ <arguments> ... ]
 
 The valid *arguments* for import schema are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --continue-on-error | Continue to import all the exported schema even if there are errors, and output all the erroneous DDLs to the `failed.sql` file in the `export-dir/schema` directory. <br>Default: false <br> Example: `yb-voyager import schema ... --continue-on-error true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --enable-orafce | Enables Orafce extension on target (if source database type is Oracle). <br>Default: true <br> Accepted parameters: true, false, yes, no, 0, 1 |

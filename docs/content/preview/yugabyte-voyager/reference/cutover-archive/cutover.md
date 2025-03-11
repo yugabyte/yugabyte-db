@@ -61,7 +61,7 @@ Usage: yb-voyager initiate cutover to source [ <arguments> ... ]
 
 The valid *arguments* for initiate cutover to source are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
@@ -86,7 +86,7 @@ Usage: yb-voyager initiate cutover to source-replica [ <arguments> ... ]
 
 The valid *arguments* for initiate cutover to source-replica are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |

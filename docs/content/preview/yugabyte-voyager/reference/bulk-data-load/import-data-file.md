@@ -23,7 +23,7 @@ Usage: yb-voyager import data file [ <arguments> ... ]
 
 The valid *arguments* for import data file are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :--- | :---- |
 | --batch-size | Size of batches in the number of rows generated for ingestion during import data. <br> Default: 20000 rows |
 | --data-dir | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location such as an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../../migrate/bulk-data-load/).|

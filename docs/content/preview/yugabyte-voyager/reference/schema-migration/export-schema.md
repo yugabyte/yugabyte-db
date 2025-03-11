@@ -23,7 +23,7 @@ Usage: yb-voyager export schema [ <arguments> ... ]
 
 The valid *arguments* for export schema are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --assessment-report-path | Path to the generated assessment report file (JSON format) to be used for applying recommendation to exported schema. |
 | --skip-recommendations | Disable applying recommendations in the exported schema suggested by the migration assessment report. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |

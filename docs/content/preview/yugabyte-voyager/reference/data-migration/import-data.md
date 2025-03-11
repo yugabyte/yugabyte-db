@@ -48,7 +48,7 @@ Usage: yb-voyager import data to target [ <arguments> ... ]
 
 The valid *arguments* for import data are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --batch-size | Size of batches in the number of rows generated for ingestion during import data. <br>Default: 20000 rows<br>Example: `yb-voyager import data ... --batch-size 20000` |
 | --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
@@ -152,7 +152,7 @@ Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
@@ -182,7 +182,7 @@ Usage: yb-voyager import data to source [ <arguments> ... ]
 
 The valid *arguments* for import data to source are described in the following table:
 
-| <div style="width:180px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for import data to source. |
@@ -215,7 +215,7 @@ Usage: yb-voyager import data to source-replica [ <arguments> ... ]
 
 The valid *arguments* for import data to source-replica are described in the following table:
 
-| <div style="width:200px">Argument</div> | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --batch-size | Size of batches in the number of rows generated for ingestion when you import data to source-replica database. <br> Default: 10000000 (Oracle) or 100000 (PostgreSQL) |
 | --disable-pb | Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
