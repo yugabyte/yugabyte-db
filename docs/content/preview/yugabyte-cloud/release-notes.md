@@ -622,7 +622,7 @@ This release includes the following features:
 
 - **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
 - **Slow Queries Reset** - When resetting Slow Queries, the query used for the reset remains in the table.
-- **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
+- **Tables** - In some instances in Sandbox clusters, the [Tables tab](../cloud-monitor/monitor-tables/) will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
