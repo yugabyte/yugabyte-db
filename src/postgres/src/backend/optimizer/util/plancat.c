@@ -303,6 +303,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->amcanmarkpos = (amroutine->ammarkpos != NULL &&
 								  amroutine->amrestrpos != NULL);
 			info->amcostestimate = amroutine->amcostestimate;
+			info->yb_amiscopartitioned = amroutine->yb_amiscopartitioned;
 			info->yb_cached_ybctid_size = 0;
 			Assert(info->amcostestimate != NULL);
 
