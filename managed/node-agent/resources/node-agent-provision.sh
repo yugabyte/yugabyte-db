@@ -113,8 +113,12 @@ install_pywheels() {
             python3 -m pip install \
                     --no-index --no-build-isolation \
                     --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
-                echo "Error installing $package" >&2
-                exit 1
+                echo "Retrying without --no-build-isolation for $package..."
+                python3 -m pip install --no-index \
+                        --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
+                    echo "Error installing $package" >&2
+                    exit 1
+                }
             }
         else
             echo "Warning: Package $package not found in PACKAGE_FILES."
