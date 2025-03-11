@@ -573,4 +573,54 @@ TEST_F(PgFKeyTest, SameTableReference) {
   }
 }
 
+// Test checks that fk cache is dropped during subransaction rollback
+TEST_F(PgFKeyTest, SubtransactionRollback) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE pk_t(k INT PRIMARY KEY )"));
+  ASSERT_OK(conn.Execute("CREATE TABLE fk_t(k INT PRIMARY KEY, pk INT REFERENCES pk_t(k), v INT)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES(1)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES(2)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.Execute("INSERT INTO fk_t VALUES(1, 1, 0)"));
+  ASSERT_NOK(conn.Execute("INSERT INTO fk_t VALUES(2, 2, 0)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.Execute("INSERT INTO fk_t VALUES(1, 1, 1)"));
+  ASSERT_OK(conn.CommitTransaction());
+  auto pk_row = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM pk_t"));
+  ASSERT_EQ(pk_row, 1);
+  auto fk_row = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t, int32_t>("SELECT * FROM fk_t")));
+  ASSERT_EQ(fk_row, (decltype(fk_row){1, 1, 1}));
+}
+
+// Test checks that deferred fk constraint doesn't create undesired conflicts in case of
+// subtransaction rollback.
+TEST_F(PgFKeyTest, DeferredConstraintWithSubTxn) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE pk_t(k INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE fk_t(k INT, "
+      "pk INT REFERENCES pk_t(k) DEFERRABLE INITIALLY DEFERRED, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES (1), (2)"));
+
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(aux_conn.Execute("DELETE FROM pk_t WHERE k = 2"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO fk_t VALUES(1, 1)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT s"));
+  ASSERT_OK(conn.Execute("INSERT INTO fk_t VALUES(2, 2)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s"));
+
+  // Both txns commits without the conflict, because deferred constraint for
+  // INSERT INTO fk_t VALUES(2, 2) will not be executed due to ROLLBACK TO SAVEPOINT s
+  ASSERT_OK(aux_conn.CommitTransaction());
+  ASSERT_OK(conn.CommitTransaction());
+
+  const auto row = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t>("SELECT * FROM fk_t")));
+  ASSERT_EQ(row, (decltype(row){1, 1}));
+}
+
 } // namespace yb::pgwrapper
