@@ -2184,13 +2184,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Create preflight node check tasks for on-prem nodes in the universe if the nodes are in
+   * Create preflight node check tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
+  public void createPreflightNodeCheckTasks(Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
         clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
@@ -2201,14 +2200,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
-    applyOnNodesWithStatus(
-        universe,
-        nodesToProvision,
-        false,
-        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
-        filteredNodes -> {
-          createPreflightNodeCheckTasks(clusters, filteredNodes, null, null);
-        });
+    if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      createPreflightNodeCheckTasks(
+          clusters, nodesToProvision, null /*rootCA*/, null /*clientRootCA*/);
+    }
+  }
+
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt) {
+    createCheckCertificateConfigTask(
+        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 
   /**
@@ -2289,13 +2294,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Create check certificate config tasks for on-prem nodes in the universe if the nodes are in
+   * Create check certificate config tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
+  public void createCheckCertificateConfigTask(Collection<Cluster> clusters) {
     log.info("Checking certificate config for on-prem nodes in the universe.");
     Set<Cluster> onPremClusters =
         clusters.stream()
@@ -2320,15 +2324,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
-    applyOnNodesWithStatus(
-        universe,
-        nodesToProvision,
-        false,
-        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
-        filteredNodes -> {
-          createCheckCertificateConfigTask(
-              clusters, filteredNodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
-        });
+    if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      createCheckCertificateConfigTask(
+          clusters, nodesToProvision, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
+    }
   }
 
   /**
