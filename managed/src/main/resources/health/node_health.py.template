@@ -1859,8 +1859,8 @@ class NodeChecker():
         # metrics[1] is ntp service status
         # Initialize both with default values
         metrics = [
-            Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK).add_value(0),
-            Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS).add_value(0)
+            Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK),
+            Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS)
         ]
 
         # Ensure 1 service is active
@@ -1872,6 +1872,8 @@ class NodeChecker():
         if active_service is None:
             msgs = ["Found ntp services {}, but none are running".format(
                ", ".join([s.name() for s in found_services]))]
+            for metric in metrics:
+                metric.add_value(0)
             return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
         msgs = ["Ntp service {} is running".format(active_service.name())]
 
@@ -1879,6 +1881,8 @@ class NodeChecker():
         in_sync = get_timedatectl_sync()
         if not in_sync:
             msgs.append("System clock is not synchronized")
+            for metric in metrics:
+                metric.add_value(0)
             return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
 
         # Service is running and clock is synced.
@@ -1889,6 +1893,7 @@ class NodeChecker():
             drift_ms = active_service.drift_ms()
         except Exception as ex:
             msgs.append("Failed to get clock drift: {}".format(str(ex)))
+            metrics[0].add_value(0)
             return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
 
         metrics[0].add_value(drift_ms)
