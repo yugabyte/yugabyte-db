@@ -197,11 +197,12 @@ stats_lock_check_privileges(Oid reloid)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot modify statistics for shared relation")));
 
-	if (!object_ownercheck(DatabaseRelationId, MyDatabaseId, GetUserId()))
+	if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
 	{
+		/* YB: Replace with ACL_MAINTAIN once available */
 		AclResult	aclresult = pg_class_aclcheck(RelationGetRelid(table),
 												  GetUserId(),
-												  ACL_MAINTAIN);
+												  ACL_UPDATE);
 
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult,
