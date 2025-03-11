@@ -438,6 +438,10 @@ ExecInsert(ModifyTableState *mtstate,
 		TupleTableSlot *returnSlot = YbFlushSlotsFromBatch(&context,
 														   blockInsertStmt);
 
+		/* Restore plan slot */
+		context.planSlot = planSlot;
+		EvalPlanQualSetSlot(&mtstate->mt_epqstate, planSlot);
+
 		if (returnSlot)
 		{
 			mtstate->yb_ioc_state->pickup_slot = slot;
