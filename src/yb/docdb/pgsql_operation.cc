@@ -78,6 +78,7 @@
 #include "yb/vector_index/vectorann.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;
 
@@ -604,9 +605,14 @@ class FilteringIterator {
     if (where_clauses.empty()) {
       return Status::OK();
     }
+
+    std::optional<int> version = request.has_expression_serialization_version()
+      ? std::optional<int>(request.expression_serialization_version())
+      : std::nullopt;
+
     DocPgExprExecutorBuilder builder(schema, projection);
     for (const auto& exp : where_clauses) {
-      RETURN_NOT_OK(builder.AddWhere(exp));
+      RETURN_NOT_OK(builder.AddWhere(exp, version));
     }
     filter_.emplace(VERIFY_RESULT(builder.Build(request.col_refs())));
     return Status::OK();
@@ -749,7 +755,7 @@ class ExpressionHelper {
     DocPgExprExecutorBuilder builder(schema, projection);
     for (const auto& column_value : request.column_new_values()) {
       if (IsExpression(column_value)) {
-        RETURN_NOT_OK(builder.AddTarget(column_value.expr()));
+        RETURN_NOT_OK(builder.AddTarget(column_value.expr(), std::nullopt /* version */));
       }
     }
     auto executor = VERIFY_RESULT(builder.Build(request.col_refs()));

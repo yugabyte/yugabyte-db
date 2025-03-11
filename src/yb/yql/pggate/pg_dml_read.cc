@@ -47,6 +47,8 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+#include "ybgate/ybgate_api.h"
+
 namespace yb::pggate {
 namespace {
 
@@ -259,6 +261,11 @@ Status PgDmlRead::AppendQual(PgExpr* qual, bool is_for_secondary_index) {
     return DCHECK_NOTNULL(SecondaryIndexQuery())->AppendQual(
         qual, /* is_for_secondary_index= */ false);
   }
+
+  auto version = yb_major_version_upgrade_compatibility > 0
+      ? yb_major_version_upgrade_compatibility
+      : YbgGetPgVersion();
+  read_req_->set_expression_serialization_version(version);
 
   // Populate the expr_pb with data from the qual expression.
   // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in

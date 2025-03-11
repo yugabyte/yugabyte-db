@@ -549,6 +549,7 @@ message PgsqlReadRequestPB {
   // Per scanned row, expressions are evaluated by PGgate one by one, and if any is evaluated to
   // false the row is skipped.
   repeated PgsqlExpressionPB where_clauses = 33;
+  optional uint32 expression_serialization_version = 43;
 
   // Columns referenced by this write operation.
   // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
