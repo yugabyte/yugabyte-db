@@ -255,7 +255,7 @@ extern void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
  * PG Version
  *-----------------------------------------------------------------------------
  */
-extern YbgStatus YbgGetPgVersion(const char **version);
+extern int YbgGetPgVersion();
 
 #ifdef __cplusplus
 }
