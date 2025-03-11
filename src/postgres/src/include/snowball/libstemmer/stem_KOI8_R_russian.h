@@ -12,3 +12,4 @@ extern int russian_KOI8_R_stem(struct SN_env * z);
 #ifdef __cplusplus
 }
 #endif
+
