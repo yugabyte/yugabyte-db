@@ -26,7 +26,7 @@ fi
 py_version=$($python_interpreter --version 2>&1)
 
 # Download python3-distutils if required
-if [[ ! "{{ is_airgap }}" == "true" && "$py_version" == "Python 3."* && "{{ ansible_os_family }}" == "Debian" ]]; then
+if [[ ! {{ is_airgap }} == 'True' && "$py_version" == "Python 3."* && "{{ ansible_os_family }}" == "Debian" ]]; then
   apt-get update
   apt-get install -y python3-distutils
 fi
