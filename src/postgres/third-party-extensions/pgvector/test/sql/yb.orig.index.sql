@@ -86,6 +86,9 @@ INSERT INTO items (embedding) VALUES
 -- Wrong dimensionality, shouldn't work.
 SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 
+-- IndexOnlyScan on the ybhnsw index should not work.
+/*+IndexOnlyScan(items items_embedding_idx)*/ EXPLAIN (COSTS OFF) SELECT count(*) FROM items;
+
 DROP INDEX items_embedding_idx;
 
 -- Dummy implementation, should only provide Exact ANN within a tablet.

@@ -278,6 +278,15 @@ INSERT INTO items (embedding) VALUES
 -- Wrong dimensionality, shouldn't work.
 SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 ERROR:  different vector dimensions 10 and 3
+-- IndexOnlyScan on the ybhnsw index should not work.
+/*+IndexOnlyScan(items items_embedding_idx)*/ EXPLAIN (COSTS OFF) SELECT count(*) FROM items;
+           QUERY PLAN            
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on items
+         Partial Aggregate: true
+(3 rows)
+
 DROP INDEX items_embedding_idx;
 -- Dummy implementation, should only provide Exact ANN within a tablet.
 CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
