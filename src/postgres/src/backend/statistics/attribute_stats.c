@@ -689,14 +689,11 @@ text_to_stavalues(const char *staname, FmgrInfo *array_in, Datum d, Oid typid,
 	LOCAL_FCINFO(fcinfo, 8);
 	char	   *s;
 	Datum		result;
-	ErrorSaveContext escontext = {T_ErrorSaveContext};
-
-	escontext.details_wanted = true;
 
 	s = TextDatumGetCString(d);
 
 	InitFunctionCallInfoData(*fcinfo, array_in, 3, InvalidOid,
-							 (Node *) &escontext, NULL);
+							 NULL, NULL);
 
 	fcinfo->args[0].value = CStringGetDatum(s);
 	fcinfo->args[0].isnull = false;
@@ -708,14 +705,6 @@ text_to_stavalues(const char *staname, FmgrInfo *array_in, Datum d, Oid typid,
 	result = FunctionCallInvoke(fcinfo);
 
 	pfree(s);
-
-	if (escontext.error_occurred)
-	{
-		escontext.error_data->elevel = WARNING;
-		ThrowErrorData(escontext.error_data);
-		*ok = false;
-		return (Datum) 0;
-	}
 
 	if (array_contains_nulls(DatumGetArrayTypeP(result)))
 	{
@@ -809,6 +798,9 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 {
 	HeapTuple	newtup;
 
+	if (IsYugaByteEnabled())
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
+
 	if (HeapTupleIsValid(oldtup))
 	{
 		newtup = heap_modify_tuple(oldtup, RelationGetDescr(starel),
@@ -820,6 +812,9 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 		newtup = heap_form_tuple(RelationGetDescr(starel), values, nulls);
 		CatalogTupleInsert(starel, newtup);
 	}
+
+	if (IsYugaByteEnabled())
+		YBDecrementDdlNestingLevel();
 
 	heap_freetuple(newtup);
 
@@ -842,12 +837,18 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 							 Int16GetDatum(attnum),
 							 BoolGetDatum(stainherit));
 
+	if (IsYugaByteEnabled())
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
+
 	if (HeapTupleIsValid(oldtup))
 	{
-		CatalogTupleDelete(sd, &oldtup->t_self);
+		CatalogTupleDelete(sd, oldtup);
 		ReleaseSysCache(oldtup);
 		result = true;
 	}
+
+	if (IsYugaByteEnabled())
+		YBDecrementDdlNestingLevel();
 
 	table_close(sd, RowExclusiveLock);
 

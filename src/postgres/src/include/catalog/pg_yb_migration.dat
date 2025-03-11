@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V74__25818__yb_servers_function_universe_uuid.sql
-{ major => '74', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V75__26335__pg_set_relation_stats.sql
+{ major => '75', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]
