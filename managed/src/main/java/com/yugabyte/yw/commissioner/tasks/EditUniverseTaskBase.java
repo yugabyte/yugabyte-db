@@ -24,7 +24,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -36,7 +35,6 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -78,18 +76,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(
-        taskParams().clusters,
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
-        null,
-        null);
+    createPreflightNodeCheckTasks(taskParams().clusters);
 
-    createCheckCertificateConfigTask(
-        taskParams().clusters,
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
-        taskParams().rootCA,
-        taskParams().getClientRootCA(),
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    createCheckCertificateConfigTask(taskParams().clusters);
   }
 
   protected void freezeUniverseInTxn(Universe universe) {
@@ -540,16 +529,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       postCreateChangeConfigTask.accept(
           ChangeMasterConfig.OpType.RemoveMaster, mastersToRemove.get(idx));
     }
-  }
-
-  public void createCheckCertificateConfigTask(
-      Collection<Cluster> clusters,
-      Set<NodeDetails> nodes,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA,
-      boolean enableClientToNodeEncrypt) {
-    createCheckCertificateConfigTask(
-        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 
   protected void setToBeRemovedState(NodeDetails currentNode) {
