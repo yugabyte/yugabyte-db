@@ -46,15 +46,15 @@ Usage: yb-voyager export data from source [ <arguments> ... ]
 
 The valid *arguments* for export data are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --disable-pb |Use this argument to disable progress bar during data export and statistics printing during streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | --export-type | Specify the migration type as `snapshot-only` (offline) or `snapshot-and-changes` (live, with fall-forward and fall-back). <br>Default: `snapshot-only` |
 | -h, --help | Command line help. |
-| --oracle&#8209;cdb&#8209;name | Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
+| --oracle-cdb-name | Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-cdb-sid | Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
-| &#8209;&#8209;oracle&#8209;cdb&#8209;tns&#8209;alias | Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
+| --oracle-cdb-tns-alias | Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-db-sid | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#oracle-options) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
@@ -76,7 +76,7 @@ The valid *arguments* for export data are described in the following table:
 | --table-list | Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
-| &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
+| --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example
@@ -126,9 +126,9 @@ Usage: yb-voyager export data status [ <arguments> ... ]
 
 The valid *arguments* for export data status are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
 
 ### Example
@@ -153,12 +153,12 @@ Usage: yb-voyager get data-migration-report [ <arguments> ... ]
 
 The valid *arguments* for get data-migration-report are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
-| &#8209;&#8209;source&#8209;db&#8209;password | Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
-| &#8209;&#8209;source&#8209;replica&#8209;db&#8209;password | Password to connect to the source-replica database. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --source-db-password | Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --source-replica-db-password | Password to connect to the source-replica database. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --target-db-password | Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 
 ### Example
@@ -183,16 +183,16 @@ Usage: yb-voyager export data from target [ <arguments> ... ]
 
 The valid *arguments* for export data from target are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --disable-pb | Use this argument to disable the progress bar during data export and printing statistics during the streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for synchronize. |
-| --send&#8209;diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
-| --table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
-| &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
+| --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
+| --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | --target-db-password | Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>require: Only try an SSL connection; fail if that can’t be established</li><li> verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.</li></ul> |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the target YugabyteDB SSL Root Certificate. If the target cluster has SSL enabled, this flag is required. |
