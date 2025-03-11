@@ -3,9 +3,9 @@ mod tests {
     use std::vec;
 
     use crate::pgrx_tests::common::{
-        assert_double, assert_float, assert_int_text_map, extension_exists,
-        timetz_array_to_utc_time_array, timetz_to_utc_time, TestResult, TestTable,
-        LOCAL_TEST_FILE_PATH,
+        assert_double, assert_float, assert_int_text_map, assert_json, assert_jsonb,
+        extension_exists, timetz_array_to_utc_time_array, timetz_to_utc_time, TestResult,
+        TestTable, LOCAL_TEST_FILE_PATH,
     };
     use crate::type_compat::fallback_to_text::FallbackToText;
     use crate::type_compat::geometry::{
@@ -21,7 +21,7 @@ mod tests {
         datum::{Date, Time, TimeWithTimeZone, Timestamp, TimestampWithTimeZone},
         AnyNumeric, Spi,
     };
-    use pgrx::{pg_test, JsonB};
+    use pgrx::{pg_test, Json, JsonB, Uuid};
 
     #[pg_test]
     fn test_int2() {
@@ -691,62 +691,85 @@ mod tests {
 
     #[pg_test]
     fn test_uuid() {
-        let test_table = TestTable::<FallbackToText>::new("uuid".into());
-        test_table.insert("INSERT INTO test_expected (a) VALUES ('00000000-0000-0000-0000-000000000001'), ('00000000-0000-0000-0000-000000000002'), (null);");
+        let test_table = TestTable::<Uuid>::new("uuid".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (gen_random_uuid()), (gen_random_uuid()), (null);");
         test_table.assert_expected_and_result_rows();
     }
 
     #[pg_test]
     fn test_uuid_array() {
-        let test_table = TestTable::<Vec<Option<FallbackToText>>>::new("uuid[]".into());
-        test_table.insert("INSERT INTO test_expected (a) VALUES (array['00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002',null]::uuid[]), (null), (array[]::uuid[]);");
+        let test_table = TestTable::<Vec<Option<Uuid>>>::new("uuid[]".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (array[gen_random_uuid(),gen_random_uuid(),null]), (null), (array[]::uuid[]);",
+        );
         test_table.assert_expected_and_result_rows();
     }
 
     #[pg_test]
     fn test_json() {
-        let test_table =
-            TestTable::<FallbackToText>::new("json".into()).with_order_by_col("a->>'a'".into());
+        let test_table = TestTable::<Json>::new("json".into()).with_order_by_col("a->>'a'".into());
         test_table.insert("INSERT INTO test_expected (a) VALUES ('{\"a\":\"test_json_1\"}'), ('{\"a\":\"test_json_2\"}'), (null);");
         let TestResult { expected, result } = test_table.select_expected_and_result_rows();
 
-        for ((expected,), (actual,)) in expected.into_iter().zip(result.into_iter()) {
-            assert_eq!(expected, actual);
-        }
+        let expected = expected.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        let result = result.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        assert_json(expected, result);
     }
 
     #[pg_test]
     fn test_json_array() {
-        let test_table = TestTable::<Vec<Option<FallbackToText>>>::new("json[]".into())
+        let test_table = TestTable::<Vec<Option<Json>>>::new("json[]".into())
             .with_order_by_col("a::text[]".into());
         test_table.insert("INSERT INTO test_expected (a) VALUES (array['{\"a\":\"test_json_1\"}','{\"a\":\"test_json_2\"}',null]::json[]), (null), (array[]::json[]);");
         let TestResult { expected, result } = test_table.select_expected_and_result_rows();
 
-        for ((expected,), (actual,)) in expected.into_iter().zip(result.into_iter()) {
-            assert_eq!(expected, actual);
+        for ((expected,), (result,)) in expected.into_iter().zip(result.into_iter()) {
+            if expected.is_none() {
+                assert!(result.is_none());
+            }
+
+            if expected.is_some() {
+                assert!(result.is_some());
+
+                let expected = expected.unwrap();
+                let result = result.unwrap();
+
+                assert_json(expected, result);
+            }
         }
     }
 
     #[pg_test]
     fn test_jsonb() {
         let test_table =
-            TestTable::<FallbackToText>::new("jsonb".into()).with_order_by_col("a->>'a'".into());
+            TestTable::<JsonB>::new("jsonb".into()).with_order_by_col("a->>'a'".into());
         test_table.insert("INSERT INTO test_expected (a) VALUES ('{\"a\":\"test_jsonb_1\"}'), ('{\"a\":\"test_jsonb_2\"}'), (null);");
         let TestResult { expected, result } = test_table.select_expected_and_result_rows();
 
-        for ((expected,), (actual,)) in expected.into_iter().zip(result.into_iter()) {
-            assert_eq!(expected, actual);
-        }
+        let expected = expected.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        let result = result.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        assert_jsonb(expected, result);
     }
 
     #[pg_test]
     fn test_jsonb_array() {
-        let test_table = TestTable::<Vec<Option<FallbackToText>>>::new("jsonb[]".into());
+        let test_table = TestTable::<Vec<Option<JsonB>>>::new("jsonb[]".into());
         test_table.insert("INSERT INTO test_expected (a) VALUES (array['{\"a\":\"test_jsonb_1\"}','{\"a\":\"test_jsonb_2\"}',null]::jsonb[]), (null), (array[]::jsonb[]);");
         let TestResult { expected, result } = test_table.select_expected_and_result_rows();
 
-        for ((expected,), (actual,)) in expected.into_iter().zip(result.into_iter()) {
-            assert_eq!(expected, actual);
+        for ((expected,), (result,)) in expected.into_iter().zip(result.into_iter()) {
+            if expected.is_none() {
+                assert!(result.is_none());
+            }
+
+            if expected.is_some() {
+                assert!(result.is_some());
+
+                let expected = expected.unwrap();
+                let result = result.unwrap();
+
+                assert_jsonb(expected, result);
+            }
         }
     }
 

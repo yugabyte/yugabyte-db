@@ -233,6 +233,10 @@ name = "arrow-schema"
 version = "54.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85934a9d0261e0fa5d4e2a5295107d743b543a6e0484a835d4b8db2da15306f9"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "arrow-select"

@@ -269,7 +269,9 @@ There is currently only one GUC parameter to enable/disable the `pg_parquet`:
 | `double`          | DOUBLE                    |                  |
 | `numeric`(1)      | FIXED_LEN_BYTE_ARRAY(16)  | DECIMAL(128)     |
 | `text`            | BYTE_ARRAY                | STRING           |
-| `json`            | BYTE_ARRAY                | STRING           |
+| `json`            | BYTE_ARRAY                | JSON             |
+| `jsonb`           | BYTE_ARRAY                | JSON             |
+| `uuid`            | FIXED_LEN_BYTE_ARRAY(16)  | UUID             |
 | `bytea`           | BYTE_ARRAY                |                  |
 | `date` (2)        | INT32                     | DATE             |
 | `timestamp`       | INT64                     | TIMESTAMP_MICROS |

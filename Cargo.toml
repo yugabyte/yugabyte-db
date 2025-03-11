@@ -22,7 +22,7 @@ pg_test = []
 [dependencies]
 arrow = {version = "54", default-features = false}
 arrow-cast = {version = "54", default-features = false}
-arrow-schema = {version = "54", default-features = false}
+arrow-schema = {version = "54", default-features = false, features = ["canonical_extension_types"]}
 aws-config = { version = "1", default-features = false, features = ["rustls","rt-tokio"] }
 aws-credential-types = {version = "1", default-features = false}
 azure_storage = {version = "0.21", default-features = false}
@@ -38,6 +38,7 @@ parquet = {version = "54", default-features = false, features = [
     "lz4",
     "zstd",
     "object_store",
+    "arrow_canonical_extension_types",
 ]}
 pgrx = "=0.13.1"
 rust-ini = "0.21"

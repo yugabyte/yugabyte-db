@@ -8,9 +8,10 @@ use pgrx::{
     heap_tuple::PgHeapTuple,
     pg_sys::{
         Oid, BOOLOID, BYTEAOID, CHAROID, DATEOID, FLOAT4OID, FLOAT8OID, INT2OID, INT4OID, INT8OID,
-        NUMERICOID, OIDOID, TEXTOID, TIMEOID, TIMESTAMPOID, TIMESTAMPTZOID, TIMETZOID,
+        JSONBOID, JSONOID, NUMERICOID, OIDOID, TEXTOID, TIMEOID, TIMESTAMPOID, TIMESTAMPTZOID,
+        TIMETZOID, UUIDOID,
     },
-    AllocatedByRust, AnyNumeric, FromDatum,
+    AllocatedByRust, AnyNumeric, FromDatum, Json, JsonB, Uuid,
 };
 
 use crate::{
@@ -41,6 +42,8 @@ pub(crate) mod geometry;
 pub(crate) mod int2;
 pub(crate) mod int4;
 pub(crate) mod int8;
+pub(crate) mod json;
+pub(crate) mod jsonb;
 pub(crate) mod map;
 pub(crate) mod numeric;
 pub(crate) mod oid;
@@ -49,6 +52,7 @@ pub(crate) mod time;
 pub(crate) mod timestamp;
 pub(crate) mod timestamptz;
 pub(crate) mod timetz;
+pub(crate) mod uuid;
 
 pub(crate) trait PgTypeToArrowArray<T: FromDatum + UnboxDatum> {
     fn to_arrow_array(self, context: &PgToArrowAttributeContext) -> ArrayRef;
@@ -130,6 +134,7 @@ fn to_arrow_primitive_array(
         INT2OID => to_arrow_primitive_array!(i16, tuples, attribute_context),
         INT4OID => to_arrow_primitive_array!(i32, tuples, attribute_context),
         INT8OID => to_arrow_primitive_array!(i64, tuples, attribute_context),
+        UUIDOID => to_arrow_primitive_array!(Uuid, tuples, attribute_context),
         NUMERICOID => {
             let precision = attribute_context.precision();
 
@@ -154,6 +159,8 @@ fn to_arrow_primitive_array(
         }
         CHAROID => to_arrow_primitive_array!(i8, tuples, attribute_context),
         TEXTOID => to_arrow_primitive_array!(String, tuples, attribute_context),
+        JSONOID => to_arrow_primitive_array!(Json, tuples, attribute_context),
+        JSONBOID => to_arrow_primitive_array!(JsonB, tuples, attribute_context),
         BYTEAOID => to_arrow_primitive_array!(&[u8], tuples, attribute_context),
         OIDOID => to_arrow_primitive_array!(Oid, tuples, attribute_context),
         _ => {
@@ -224,6 +231,7 @@ fn to_arrow_list_array(
         INT2OID => to_arrow_list_array!(pgrx::Array<i16>, tuples, element_context),
         INT4OID => to_arrow_list_array!(pgrx::Array<i32>, tuples, element_context),
         INT8OID => to_arrow_list_array!(pgrx::Array<i64>, tuples, element_context),
+        UUIDOID => to_arrow_list_array!(pgrx::Array<Uuid>, tuples, element_context),
         NUMERICOID => {
             let precision = element_context.precision();
 
@@ -249,6 +257,8 @@ fn to_arrow_list_array(
         }
         CHAROID => to_arrow_list_array!(pgrx::Array<i8>, tuples, element_context),
         TEXTOID => to_arrow_list_array!(pgrx::Array<String>, tuples, element_context),
+        JSONOID => to_arrow_list_array!(pgrx::Array<Json>, tuples, element_context),
+        JSONBOID => to_arrow_list_array!(pgrx::Array<JsonB>, tuples, element_context),
         BYTEAOID => to_arrow_list_array!(pgrx::Array<&[u8]>, tuples, element_context),
         OIDOID => to_arrow_list_array!(pgrx::Array<Oid>, tuples, element_context),
         _ => {

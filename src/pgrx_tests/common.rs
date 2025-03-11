@@ -11,6 +11,7 @@ use pgrx::{
     datum::{Time, TimeWithTimeZone},
     FromDatum, IntoDatum, Spi,
 };
+use pgrx::{Json, JsonB};
 
 pub(crate) enum CopyOptionValue {
     StringOption(String),
@@ -278,6 +279,40 @@ pub(crate) fn assert_double(expected_result: Vec<Option<f64>>, result: Vec<Optio
             } else {
                 assert_eq!(expected, actual);
             }
+        }
+    }
+}
+
+pub(crate) fn assert_json(expected: Vec<Option<Json>>, result: Vec<Option<Json>>) {
+    for (expected, actual) in expected.into_iter().zip(result.into_iter()) {
+        if expected.is_none() {
+            assert!(actual.is_none());
+        }
+
+        if expected.is_some() {
+            assert!(actual.is_some());
+
+            let expected = expected.unwrap();
+            let actual = actual.unwrap();
+
+            assert_eq!(expected.0, actual.0);
+        }
+    }
+}
+
+pub(crate) fn assert_jsonb(expected: Vec<Option<JsonB>>, result: Vec<Option<JsonB>>) {
+    for (expected, actual) in expected.into_iter().zip(result.into_iter()) {
+        if expected.is_none() {
+            assert!(actual.is_none());
+        }
+
+        if expected.is_some() {
+            assert!(actual.is_some());
+
+            let expected = expected.unwrap();
+            let actual = actual.unwrap();
+
+            assert_eq!(expected.0, actual.0);
         }
     }
 }

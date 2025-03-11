@@ -8,8 +8,8 @@ use pg_sys::{
     can_coerce_type,
     CoercionContext::{self, COERCION_EXPLICIT},
     FormData_pg_attribute, InvalidOid, Oid, BOOLOID, BYTEAOID, CHAROID, DATEOID, FLOAT4OID,
-    FLOAT8OID, INT2OID, INT4OID, INT8OID, NUMERICOID, OIDOID, TEXTOID, TIMEOID, TIMESTAMPOID,
-    TIMESTAMPTZOID, TIMETZOID,
+    FLOAT8OID, INT2OID, INT4OID, INT8OID, JSONBOID, JSONOID, NUMERICOID, OIDOID, TEXTOID, TIMEOID,
+    TIMESTAMPOID, TIMESTAMPTZOID, TIMETZOID, UUIDOID,
 };
 use pgrx::{check_for_interrupts, prelude::*, PgTupleDesc};
 
@@ -225,6 +225,12 @@ fn parse_primitive_schema(
         INT2OID => Field::new(elem_name, arrow::datatypes::DataType::Int16, nullable),
         INT4OID => Field::new(elem_name, arrow::datatypes::DataType::Int32, nullable),
         INT8OID => Field::new(elem_name, arrow::datatypes::DataType::Int64, nullable),
+        UUIDOID => Field::new(
+            elem_name,
+            arrow::datatypes::DataType::FixedSizeBinary(16),
+            nullable,
+        )
+        .with_extension_type(arrow_schema::extension::Uuid),
         NUMERICOID => {
             let (precision, scale) = extract_precision_and_scale_from_numeric_typmod(typmod);
 
@@ -268,6 +274,8 @@ fn parse_primitive_schema(
         )])),
         CHAROID => Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable),
         TEXTOID => Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable),
+        JSONOID | JSONBOID => Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable)
+            .with_extension_type(arrow_schema::extension::Json::default()),
         BYTEAOID => Field::new(elem_name, arrow::datatypes::DataType::Binary, nullable),
         OIDOID => Field::new(elem_name, arrow::datatypes::DataType::UInt32, nullable),
         _ => {
@@ -419,7 +427,12 @@ pub(crate) fn ensure_file_schema_match_tupledesc_schema(
             continue;
         }
 
-        if !is_coercible(from_type, to_type, attribute.atttypid, attribute.atttypmod) {
+        if !is_coercible(
+            &file_schema_field,
+            tupledesc_schema_field,
+            attribute.atttypid,
+            attribute.atttypmod,
+        ) {
             panic!(
                 "type mismatch for column \"{}\" between table and parquet file.\n\n\
                  table has \"{}\"\n\nparquet file has \"{}\"",
@@ -448,8 +461,13 @@ pub(crate) fn ensure_file_schema_match_tupledesc_schema(
 // Arrow supports casting struct fields by field position instead of field name,
 // which is not the intended behavior for pg_parquet. Hence, we make sure the field names
 // match for structs.
-fn is_coercible(from_type: &DataType, to_type: &DataType, to_typoid: Oid, to_typmod: i32) -> bool {
-    match (from_type, to_type) {
+fn is_coercible(
+    from_field: &FieldRef,
+    to_field: &FieldRef,
+    to_typoid: Oid,
+    to_typmod: i32,
+) -> bool {
+    match (from_field.data_type(), to_field.data_type()) {
         (DataType::Struct(from_fields), DataType::Struct(to_fields)) => {
             if from_fields.len() != to_fields.len() {
                 return false;
@@ -468,8 +486,8 @@ fn is_coercible(from_type: &DataType, to_type: &DataType, to_typoid: Oid, to_typ
                 }
 
                 if !is_coercible(
-                    from_field.data_type(),
-                    to_field.data_type(),
+                    from_field,
+                    to_field,
                     to_attribute.type_oid().value(),
                     to_attribute.type_mod(),
                 ) {
@@ -483,12 +501,7 @@ fn is_coercible(from_type: &DataType, to_type: &DataType, to_typoid: Oid, to_typ
             let element_oid = array_element_typoid(to_typoid);
             let element_typmod = to_typmod;
 
-            is_coercible(
-                from_field.data_type(),
-                to_field.data_type(),
-                element_oid,
-                element_typmod,
-            )
+            is_coercible(from_field, to_field, element_oid, element_typmod)
         }
         (DataType::Map(from_entries_field, _), DataType::Map(to_entries_field, _)) => {
             // entries field cannot be null
@@ -499,19 +512,19 @@ fn is_coercible(from_type: &DataType, to_type: &DataType, to_typoid: Oid, to_typ
             let (entries_typoid, entries_typmod) = domain_array_base_elem_type(to_typoid);
 
             is_coercible(
-                from_entries_field.data_type(),
-                to_entries_field.data_type(),
+                from_entries_field,
+                to_entries_field,
                 entries_typoid,
                 entries_typmod,
             )
         }
         _ => {
             // check if arrow-cast can cast the types
-            if !can_cast_types(from_type, to_type) {
+            if !can_cast_types(from_field.data_type(), to_field.data_type()) {
                 return false;
             }
 
-            let from_typoid = pg_type_for_arrow_primitive_type(from_type);
+            let from_typoid = pg_type_for_arrow_primitive_field(from_field);
 
             // pg_parquet could not recognize that arrow type
             if from_typoid == InvalidOid {
@@ -539,10 +552,10 @@ fn can_pg_coerce_types(from_typoid: Oid, to_typoid: Oid, ccontext: CoercionConte
     }
 }
 
-// pg_type_for_arrow_primitive_type returns Postgres type for given
-// primitive arrow type. It returns InvalidOid if the arrow type is not recognized.
-fn pg_type_for_arrow_primitive_type(data_type: &DataType) -> Oid {
-    match data_type {
+// pg_type_for_arrow_primitive_field returns Postgres type for given
+// primitive arrow field. It returns InvalidOid if the arrow field's type is not recognized.
+fn pg_type_for_arrow_primitive_field(field: &FieldRef) -> Oid {
+    match field.data_type() {
         DataType::Float32 | DataType::Float16 => FLOAT4OID,
         DataType::Float64 => FLOAT8OID,
         DataType::Int16 | DataType::UInt16 | DataType::Int8 | DataType::UInt8 => INT2OID,
@@ -554,8 +567,22 @@ fn pg_type_for_arrow_primitive_type(data_type: &DataType) -> Oid {
         DataType::Time64(_) => TIMEOID,
         DataType::Timestamp(_, None) => TIMESTAMPOID,
         DataType::Timestamp(_, Some(_)) => TIMESTAMPTZOID,
-        DataType::Utf8 | DataType::LargeUtf8 => TEXTOID,
+        DataType::Utf8 | DataType::LargeUtf8 if field.extension_type_name().is_none() => TEXTOID,
+        DataType::Utf8 | DataType::LargeUtf8
+            if field
+                .try_extension_type::<arrow_schema::extension::Json>()
+                .is_ok() =>
+        {
+            JSONOID
+        }
         DataType::Binary | DataType::LargeBinary => BYTEAOID,
+        DataType::FixedSizeBinary(16)
+            if field
+                .try_extension_type::<arrow_schema::extension::Uuid>()
+                .is_ok() =>
+        {
+            UUIDOID
+        }
         _ => InvalidOid,
     }
 }
