@@ -87,7 +87,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
     return Status::OK();
   }
-  auto& thread_pool = *thread_pool_provider_();
+  auto& thread_pool = *thread_pool_provider_(VectorIndexThreadPoolType::kInsert);
   auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), thread_pool,
@@ -306,7 +306,7 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
 void TabletVectorIndexes::ScheduleBackfill(
     const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht,
     const TableInfoPtr& indexed_table, std::shared_ptr<ScopedRWOperation> read_op) {
-  thread_pool_provider_()->EnqueueFunctor(
+  thread_pool_provider_(VectorIndexThreadPoolType::kBackfill)->EnqueueFunctor(
       [this, vector_index, backfill_ht, indexed_table, read_op = std::move(read_op)] {
     auto status = Backfill(vector_index, *indexed_table, Slice(), backfill_ht);
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok())

@@ -183,9 +183,18 @@ class VectorLSMInsertRegistry {
     InsertTaskList result;
     {
       UniqueLock lock(mutex_);
-      while (allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
+      while (allocated_tasks_ &&
+             allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
         // TODO(vector_index) Pass timeout here.
-        allocated_tasks_cond_.wait(GetLockForCondition(lock));
+        if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
+                std::cv_status::timeout) {
+          auto allocated_tasks = allocated_tasks_;
+          lock.unlock();
+          LOG_WITH_FUNC(WARNING)
+              << "Long wait to allocate " << num_tasks << " tasks, allocated: " << allocated_tasks
+              << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
+          lock.lock();
+        }
       }
       allocated_tasks_ += num_tasks;
       for (size_t left = num_tasks; left-- > 0;) {
