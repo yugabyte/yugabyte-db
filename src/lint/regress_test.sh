@@ -76,7 +76,7 @@ if [[ "$1" =~ /yb.port.[^/]+$ ]]; then
       diff "$1" "$pg_orig_test" \
         | perl -ne 'print if /^(< (?!.*(YB|Yb|yb))|\d)/' \
         | grep -B1 '^<' \
-        | grep -Eo '^[0-9]+,[0-9]+' \
+        | grep -Eo '^[0-9]+' \
         | while read -r line_ranges; do
             grep -n '' "$1" \
               | sed -n "$line_ranges"p \
