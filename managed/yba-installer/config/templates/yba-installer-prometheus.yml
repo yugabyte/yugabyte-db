@@ -186,7 +186,7 @@
       ExecStart=/usr/local/bin/prometheus \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
-      --storage.tsdb.retention={{ yamlPath "prometheus.retentionTime" }} \
+      --storage.tsdb.retention.time={{ yamlPath "prometheus.retentionTime" }} \
       --web.console.templates={{ .PromDir }}/consoles \
       --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
