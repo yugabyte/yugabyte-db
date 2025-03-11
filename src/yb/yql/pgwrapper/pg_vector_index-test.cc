@@ -45,6 +45,7 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_insert_tasks);
 
 namespace yb::tablet {
 
@@ -400,6 +401,8 @@ TEST_P(PgVectorIndexTest, ManyRows) {
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = 1;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
 }
 

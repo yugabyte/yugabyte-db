@@ -637,7 +637,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void UpdateCompactFlushRateLimitBytesPerSec();
 
-  rpc::ThreadPool* VectorIndexThreadPool();
+  rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
 
   const CoarseTimePoint start_time_;
 
@@ -818,7 +818,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   FlagCallbackRegistration rate_limiter_flag_callback_;
 
   std::mutex vector_index_thread_pool_mutex_;
-  AtomicUniquePtr<rpc::ThreadPool> vector_index_thread_pool_;
+  std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
+      vector_index_thread_pools_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
