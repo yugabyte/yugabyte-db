@@ -851,6 +851,8 @@ class PgApiImpl {
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
  private:
+  void ClearSessionState();
+
   class Interrupter;
 
   class TupleIdBuilder {
