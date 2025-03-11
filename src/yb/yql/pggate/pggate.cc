@@ -1955,12 +1955,12 @@ Status PgApiImpl::BeginTransaction(int64_t start_time) {
 }
 
 Status PgApiImpl::RecreateTransaction() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->RecreateTransaction();
 }
 
 Status PgApiImpl::RestartTransaction() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->RestartTransaction();
 }
 
@@ -1981,12 +1981,19 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 }
 
 Status PgApiImpl::CommitPlainTransaction() {
-  RETURN_NOT_OK(CommitTransactionScopedSessionState());
+  RSTATUS_DCHECK(
+      explicit_row_lock_buffer_.IsEmpty(),
+      IllegalState, "Expected row lock buffer to be empty");
+  RSTATUS_DCHECK(
+      pg_session_->IsInsertOnConflictBufferEmpty(),
+      IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
+  fk_reference_cache_.Clear();
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitPlainTransaction();
 }
 
 Status PgApiImpl::AbortPlainTransaction() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->AbortPlainTransaction();
 }
 
@@ -2039,7 +2046,7 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modificati
 }
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->ExitSeparateDdlTxnModeWithAbort();
 }
 
@@ -2049,7 +2056,7 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgApiImpl::RollbackToSubTransaction(SubTransactionId id) {
-  RollbackSubTransactionScopedSessionState();
+  ClearSessionState();
   return pg_session_->RollbackToSubTransaction(id);
 }
 
@@ -2361,29 +2368,11 @@ Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
     return pg_session_->ServersMetrics();
 }
 
-void PgApiImpl::RollbackSubTransactionScopedSessionState() {
+void PgApiImpl::ClearSessionState() {
+  fk_reference_cache_.Clear();
   pg_session_->DropBufferedOperations();
   explicit_row_lock_buffer_.Clear();
   pg_session_->ClearAllInsertOnConflictBuffers();
-}
-
-void PgApiImpl::RollbackTransactionScopedSessionState() {
-  RollbackSubTransactionScopedSessionState();
-  fk_reference_cache_.Clear();
-}
-
-Status PgApiImpl::CommitTransactionScopedSessionState() {
-  RSTATUS_DCHECK(
-      explicit_row_lock_buffer_.IsEmpty(),
-      IllegalState,
-      "Expected row lock buffer to be empty");
-  RSTATUS_DCHECK(
-      pg_session_->IsInsertOnConflictBufferEmpty(),
-      IllegalState,
-      "Expected INSERT ... ON CONFLICT buffer to be empty");
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  fk_reference_cache_.Clear();
-  return Status::OK();
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }

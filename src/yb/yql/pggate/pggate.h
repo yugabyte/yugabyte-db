@@ -849,6 +849,7 @@ class PgApiImpl {
   void ForceAllowCatalogModifications(bool allowed);
 
  private:
+  void ClearSessionState();
 
   class Interrupter;
 
