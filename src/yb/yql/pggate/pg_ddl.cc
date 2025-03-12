@@ -75,7 +75,8 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
                                    PgOid next_oid,
                                    YbcCloneInfo *yb_clone_info,
                                    bool colocated,
-                                   bool use_transaction)
+                                   bool use_transaction,
+                                   bool use_regular_transaction_block)
     : BaseType(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
@@ -83,6 +84,7 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
   req_.set_next_oid(next_oid);
   req_.set_colocated(colocated);
   req_.set_use_transaction(use_transaction);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
   if (yb_clone_info) {
     req_.set_source_database_name(yb_clone_info->src_db_name);
     req_.set_clone_time(yb_clone_info->clone_time);
@@ -127,9 +129,10 @@ void PgAlterDatabase::RenameDatabase(const char *newname) {
 
 PgCreateTablegroup::PgCreateTablegroup(
     const PgSession::ScopedRefPtr& pg_session, const char* database_name, const PgOid database_oid,
-    const PgOid tablegroup_oid, const PgOid tablespace_oid)
+    const PgOid tablegroup_oid, const PgOid tablespace_oid, bool use_regular_transaction_block)
     : BaseType(pg_session) {
   req_.set_database_name(database_name);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
   PgObjectId(database_oid, tablespace_oid).ToPB(req_.mutable_tablespace_id());
 }
@@ -139,8 +142,10 @@ Status PgCreateTablegroup::Exec() {
 }
 
 PgDropTablegroup::PgDropTablegroup(
-    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid)
+    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
+    bool use_regular_transaction_block)
     : BaseType(pg_session) {
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
 }
 
@@ -170,7 +175,8 @@ PgCreateTableBase::PgCreateTableBase(
     const PgObjectId& pg_table_oid,
     const PgObjectId& old_relfilenode_oid,
     bool is_truncate,
-    bool use_transaction)
+    bool use_transaction,
+    bool use_regular_transaction_block)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -191,6 +197,7 @@ PgCreateTableBase::PgCreateTableBase(
   old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
   req_.set_is_truncate(is_truncate);
   req_.set_use_transaction(use_transaction);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   switch (ybrowid_mode) {
@@ -297,12 +304,13 @@ PgCreateTable::PgCreateTable(
     const PgObjectId& pg_table_oid,
     const PgObjectId& old_relfilenode_oid,
     bool is_truncate,
-    bool use_transaction)
+    bool use_transaction,
+    bool use_regular_transaction_block)
     : BaseType(
           pg_session, database_name, schema_name, table_name, table_id, is_shared_table,
           is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-          old_relfilenode_oid, is_truncate, use_transaction) {}
+          old_relfilenode_oid, is_truncate, use_transaction, use_regular_transaction_block) {}
 
 PgCreateIndex::PgCreateIndex(
     const PgSession::ScopedRefPtr& pg_session,
@@ -323,6 +331,7 @@ PgCreateIndex::PgCreateIndex(
     const PgObjectId& old_relfilenode_oid,
     bool is_truncate,
     bool use_transaction,
+    bool use_regular_transaction_block,
     const PgObjectId& base_table_id,
     bool is_unique_index,
     bool skip_index_backfill)
@@ -330,7 +339,7 @@ PgCreateIndex::PgCreateIndex(
           pg_session, database_name, schema_name, table_name, table_id, is_shared_table,
           is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-          old_relfilenode_oid, is_truncate, use_transaction) {
+          old_relfilenode_oid, is_truncate, use_transaction, use_regular_transaction_block) {
   base_table_id.ToPB(req_.mutable_base_table_id());
   req_.set_is_unique_index(is_unique_index);
   req_.set_skip_index_backfill(skip_index_backfill);
@@ -399,10 +408,14 @@ Status PgDropIndex::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgAlterTable::PgAlterTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool use_transaction)
+    const PgSession::ScopedRefPtr& pg_session,
+    const PgObjectId& table_id,
+    bool use_transaction,
+    bool use_regular_transaction_block)
     : BaseType(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_use_transaction(use_transaction);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
 }
 
 Status PgAlterTable::AddColumn(const char *name,

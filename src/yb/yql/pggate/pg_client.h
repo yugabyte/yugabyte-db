@@ -53,6 +53,7 @@ namespace yb::pggate {
 struct DdlMode {
   bool has_docdb_schema_changes{false};
   std::optional<uint32_t> silently_altered_db;
+  bool use_regular_transaction_block{true};
 
   std::string ToString() const;
   void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;

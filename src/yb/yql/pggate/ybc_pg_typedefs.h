@@ -423,6 +423,7 @@ typedef struct {
   const bool*     TEST_yb_enable_invalidation_messages;
   const int32_t*  TEST_yb_invalidation_message_expiration_secs;
   const int32_t*  TEST_yb_max_num_invalidation_messages;
+  const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
 } YbcPgGFlagsAccessor;
 
 typedef struct {

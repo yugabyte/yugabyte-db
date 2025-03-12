@@ -813,7 +813,8 @@ Status PgApiImpl::NewCreateDatabase(
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateDatabase>(
           pg_session_, database_name, database_oid, source_database_oid, next_oid, yb_clone_info,
-          colocated, pg_txn_manager_->IsDdlMode()),
+          colocated, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
       handle);
 }
 
@@ -889,7 +890,8 @@ Status PgApiImpl::NewCreateTablegroup(
          "Tablegroup is being created outside of DDL mode");
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateTablegroup>(
-          pg_session_, database_name, database_oid, tablegroup_oid, tablespace_oid),
+          pg_session_, database_name, database_oid, tablegroup_oid, tablespace_oid,
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
       handle);
 }
 
@@ -903,9 +905,11 @@ Status PgApiImpl::NewDropTablegroup(
          IllegalState,
          "Tablegroup is being dropped outside of DDL mode");
   return AddToCurrentPgMemctx(
-      std::make_unique<PgDropTablegroup>(pg_session_, database_oid, tablegroup_oid), handle);
+      std::make_unique<PgDropTablegroup>(
+          pg_session_, database_oid, tablegroup_oid,
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
-
 
 Status PgApiImpl::ExecDropTablegroup(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgDropTablegroup>(handle, *pg_session_);
@@ -936,7 +940,8 @@ Status PgApiImpl::NewCreateTable(const char* database_name,
           pg_session_, database_name, schema_name, table_name, table_id, is_shared_table,
           is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-          old_relfilenode_oid, is_truncate, pg_txn_manager_->IsDdlMode()),
+          old_relfilenode_oid, is_truncate, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
       handle);
 }
 
@@ -963,7 +968,10 @@ Status PgApiImpl::ExecCreateTable(PgStatement* handle) {
 
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id, PgStatement** handle) {
   return AddToCurrentPgMemctx(
-      std::make_unique<PgAlterTable>(pg_session_, table_id, pg_txn_manager_->IsDdlMode()), handle);
+      std::make_unique<PgAlterTable>(
+          pg_session_, table_id, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
 
 Status PgApiImpl::AlterTableAddColumn(
@@ -1132,7 +1140,8 @@ Status PgApiImpl::NewCreateIndex(const char* database_name,
           pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
           is_sys_catalog_index, if_not_exist, PG_YBROWID_MODE_NONE, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, false /* is_matview */, pg_table_id,
-          old_relfilenode_id, false /* is_truncate */, pg_txn_manager_->IsDdlMode(), base_table_id,
+          old_relfilenode_id, false /* is_truncate */, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), base_table_id,
           is_unique_index, skip_index_backfill),
       handle);
 }
@@ -1868,6 +1877,13 @@ Status PgApiImpl::CommitPlainTransaction() {
   return pg_txn_manager_->CommitPlainTransaction();
 }
 
+Status PgApiImpl::CommitPlainTransactionContainingDDL(
+    PgOid ddl_db_oid, bool ddl_is_silent_modification) {
+  RETURN_NOT_OK(CommitTransactionScopedSessionState());
+  return pg_txn_manager_->CommitPlainTransactionContainingDDL(
+      ddl_db_oid, ddl_is_silent_modification);
+}
+
 Status PgApiImpl::AbortPlainTransaction() {
   ClearSessionState();
   return pg_txn_manager_->AbortPlainTransaction();
@@ -1899,6 +1915,11 @@ Status PgApiImpl::SetInTxnBlock(bool in_txn_blk) {
 
 Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
   return pg_txn_manager_->SetReadOnlyStmt(read_only_stmt);
+}
+
+Status PgApiImpl::SetDdlStateInPlainTransaction() {
+  pg_session_->ResetHasWriteOperationsInDdlMode();
+  return pg_txn_manager_->SetDdlStateInPlainTransaction();
 }
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
