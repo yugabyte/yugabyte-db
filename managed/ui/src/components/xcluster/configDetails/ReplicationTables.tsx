@@ -1,35 +1,25 @@
 import { useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
-import { toast } from 'react-toastify';
-import { AxiosError } from 'axios';
 import moment from 'moment';
 import { Box, useTheme } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
-import {
-  editXClusterConfigTables,
-  fetchTablesInUniverse,
-  fetchTaskUntilItCompletes
-} from '../../../actions/xClusterReplication';
+import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
 import {
   formatBytes,
   augmentTablesWithXClusterDetails,
-  getStrictestReplicationLagAlertThreshold,
-  shouldAutoIncludeIndexTables,
-  getInConfigTableUuid
+  getStrictestReplicationLagAlertThreshold
 } from '../ReplicationUtils';
 import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
 import {
   alertConfigQueryKey,
   api,
-  drConfigQueryKey,
   metricQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
+  universeQueryKey
 } from '../../../redesign/helpers/api';
 import {
   BROKEN_XCLUSTER_CONFIG_STATUSES,
@@ -44,7 +34,6 @@ import {
 } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
-import { handleServerError } from '../../../utils/errorHandlingUtils';
 import {
   getTableName,
   getIsTableInfoMissing,
@@ -89,7 +78,6 @@ const TABLE_MIN_PAGE_SIZE = 10;
 
 export function ReplicationTables(props: ReplicationTablesProps) {
   const { xClusterConfig, isTableInfoIncludedInConfig, isActive = true } = props;
-  const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterReplicationTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<
     XClusterReplicationTable
   >();
@@ -146,64 +134,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     }
   );
 
-  const removeTableFromXCluster = useMutation(
-    (replication: XClusterConfig) => {
-      return props.isDrInterface
-        ? api.updateTablesInDr(props.drConfigUuid, { tables: replication.tables })
-        : editXClusterConfigTables(replication.uuid, {
-            tables: replication.tables,
-            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig)
-          });
-    },
-    {
-      onSuccess: (response, xClusterConfig) => {
-        fetchTaskUntilItCompletes(response.taskUUID, (err: boolean) => {
-          if (!err) {
-            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
-            if (props.isDrInterface) {
-              queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
-              toast.success(
-                deleteTableDetails
-                  ? `"${getTableName(deleteTableDetails)}" table removed successfully.`
-                  : 'Table removed successfully.'
-              );
-            } else {
-              toast.success(
-                deleteTableDetails
-                  ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
-                      xClusterConfig.name
-                    }.`
-                  : `Table removed successfully from ${xClusterConfig.name}`
-              );
-            }
-            dispatch(closeDialog());
-          } else {
-            toast.error(
-              <span className="alertMsg">
-                <i className="fa fa-exclamation-circle" />
-                <span>
-                  {deleteTableDetails
-                    ? `Failed to remove table "${getTableName(deleteTableDetails)}"${
-                        props.isDrInterface ? '.' : ` from ${xClusterConfig.name}.`
-                      }`
-                    : `Failed to remove table${
-                        props.isDrInterface ? '.' : ` from ${xClusterConfig.name}.`
-                      }`}
-                </span>
-                <a href={`/tasks/${response.taskUUID}`} target="_blank" rel="noopener noreferrer">
-                  View Details
-                </a>
-              </span>
-            );
-          }
-        });
-      },
-      onError: (error: Error | AxiosError) => {
-        handleServerError(error, { customErrorLabel: 'Remove table request failed' });
-      }
-    }
-  );
-
   if (
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
@@ -235,7 +165,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     isTableInfoIncludedInConfig,
     { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
-  const inConfigTableUuids = new Set<string>(getInConfigTableUuid(xClusterConfig.tableDetails));
 
   const sourceUniverse = sourceUniverseQuery.data;
   const filteredTablesInConfig = xClusterTables.filter((table) =>

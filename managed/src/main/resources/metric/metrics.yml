@@ -2444,6 +2444,17 @@ consumer_safe_time_skew:
   function: "max_over_time|max"
   range: true
 
+xcluster_consumer_replication_error_count:
+  metric: "xcluster_consumer_replication_error_count"
+  function: "max_over_time|max"
+  range: true
+
+cdc_service_get_changes_throughput_mbps:
+  metric: "service_response_bytes_yb_cdc_CDCService_GetChanges"
+  operator: "/ 1000000"
+  function: "rate|sum"
+  range: true
+
 master_overall_rpc_rate:
   metric: "rpc_inbound_calls_created_irate"
   function: "avg_over_time|avg"

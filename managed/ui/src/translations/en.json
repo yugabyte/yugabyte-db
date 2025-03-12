@@ -54,7 +54,8 @@
       "unitAbbreviation": {
         "milliseconds": "ms",
         "seconds": "s",
-        "megabyte": "MB"
+        "megabyte": "MB",
+        "megabytesPerSecond": "MBps"
       }
     },
     "imgAltText": {
@@ -89,8 +90,10 @@
       "async_replication_sent_lag_micros": "Async Replication Lag",
       "consumer_safe_time_lag": "Consumer Safe Time Lag",
       "consumer_safe_time_skew": "Consumer Safe Time Skew",
+      "xcluster_consumer_replication_error_count": "Consumer Replication Error Count",
+      "service_response_bytes_yb_cdc_CDCService_GetChanges": "CDC Service Get Changes Throughput (MBps)",
       "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
-      "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
+      "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     },
     "dashboard": {
       "nodeAgentReminderBanner": {
@@ -1026,7 +1029,7 @@
               },
               "bootstrapSummary": {
                 "instruction": "Confirm full copy creation plan",
-                "submitButton": "Next: Confirm Alert Threshold"
+                "submitButton": "Next: Configure PITR Settings"
               },
               "configurePitr": {
                 "instruction": "Configure point-in-time recovery (PITR) settings",
@@ -1470,7 +1473,9 @@
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
-            "consumerSafeTimeSkew": "Consumer Safe Time Skew"
+            "consumerSafeTimeSkew": "Consumer Safe Time Skew",
+            "consumerReplicationErrorCount": "Consumer Replication Error Count",
+            "cdcGetChangesThroughput": "CDC Service Get Changes Throughput"
           }
         },
         "error": {
