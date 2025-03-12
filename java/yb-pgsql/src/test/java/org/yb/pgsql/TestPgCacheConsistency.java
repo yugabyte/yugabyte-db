@@ -590,6 +590,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         assertEquals(getRowList(stmt1, query).size(), getRowList(stmt2, query).size());
       }
 
+      String enable_invalidation_messages = miniCluster.getClient().getFlag(
+            miniCluster.getTabletServers().keySet().iterator().next(),
+            "TEST_yb_enable_invalidation_messages");
+      LOG.info("enable_invalidation_messages: " + enable_invalidation_messages);
+
       // Now repeat the same test as above, but start a transaction in stmt2 in
       // the loop. Snapshot isolation guarantees here should ensure that the
       // transaction in stmt2 should not see the new partition or the data inserted
@@ -605,7 +610,20 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
               "INSERT INTO prt_p%d(a,b) VALUES (%d, 'abc')",
               ii + 1, startPartition + 1));
         waitForTServerHeartbeat();
-        assertEquals(getRowList(stmt1, query).size() - 1, getRowList(stmt2, query).size());
+        // When we do invalidation messages instead of full catalog cache refresh,
+        // we can defer the loading of the parent table until referenced on stmt2.
+        // At this time the new partition is already created and it will be reflected
+        // on the metadata of the parent table. That's why on stmt2 we will see the
+        // new partition and the data inserted on stmt1. The ii == numIterations case
+        // is special because there was no catalog version increment between the
+        // previous assertEquals and "BEGIN", so the getRowList(stmt2, query) above
+        // made a reference of the parent table which loaded it into the cache.
+        // Therefore the cached entry does not have the next new partition reflected.
+        if (ii == numIterations || enable_invalidation_messages.equals("false")) {
+          assertEquals(getRowList(stmt1, query).size() - 1, getRowList(stmt2, query).size());
+        } else {
+          assertEquals(getRowList(stmt1, query).size(), getRowList(stmt2, query).size());
+        }
         stmt2.execute("END");
       }
 

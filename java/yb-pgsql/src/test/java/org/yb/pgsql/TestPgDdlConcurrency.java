@@ -4,6 +4,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 import org.yb.util.BuildTypeUtil;
 
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgDdlConcurrency extends BasePgSQLTest {
@@ -36,8 +38,28 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
     return 1;
   }
 
+  private boolean timeoutReached = false;
+  private long currentTimeMs = 0;
+  private boolean hasTimedout(final long startTimeMs) {
+    final long timeoutMs = 1500000;
+    if (timeoutReached) {
+      return true;
+    }
+    currentTimeMs = System.currentTimeMillis();
+    if (currentTimeMs - startTimeMs < timeoutMs) {
+      return false;
+    }
+    timeoutReached = true;
+    return true;
+  }
+
   @Test
   public void testModifiedTableWrite() throws Exception {
+    final long startTimeMs = System.currentTimeMillis();
+    String enable_invalidation_messages = miniCluster.getClient().getFlag(
+          miniCluster.getTabletServers().keySet().iterator().next(),
+          "TEST_yb_enable_invalidation_messages");
+    LOG.info("enable_invalidation_messages: " + enable_invalidation_messages);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t(k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT 20)");
       final int count = 10;
@@ -55,7 +77,8 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
       final AtomicInteger expectedExceptionsCount = new AtomicInteger(0);
       threads[0] = new Thread(() -> {
         try (Statement lstmt = connections[0].createStatement()) {
-          while (!stopped.get() && !errorsDetected.get() && expectedExceptionsCount.get() == 0) {
+          while (!stopped.get() && !errorsDetected.get() && expectedExceptionsCount.get() == 0 &&
+                 !hasTimedout(startTimeMs)) {
             barrier.await();
             for (int i = 0; i < 20; ++i) {
               lstmt.execute("ALTER TABLE t DROP COLUMN IF EXISTS v");
@@ -63,8 +86,20 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
             }
           }
         } catch (SQLException e) {
+          final String msg = e.getMessage();
           LOG.error("Unexpected exception", e);
-          errorsDetected.set(true);
+          if (msg.matches(".*tables can have at most \\d+ columns.*") &&
+              enable_invalidation_messages.equals("true")) {
+            // With incremental catalog cache refresh, it is not easy to hit one of the
+            // normal expected errors. Because dropped columns also count towards the
+            // PG's 1600-column limit, we may hit this error first before test timeout.
+            // However, tsan or asan build types do not run as fast to hit 1600-column
+            // error before they run out of test time.
+            assertTrue(!BuildTypeUtil.isSanitizerBuild());
+            expectedExceptionsCount.incrementAndGet();
+          } else {
+            errorsDetected.set(true);
+          }
           return;
         } catch (InterruptedException | BrokenBarrierException throwables) {
           LOG.info("Infrastructure exception, can be ignored", throwables);
@@ -77,8 +112,8 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
         threads[i] = new Thread(() -> {
           try (Statement lstmt = connections[idx].createStatement()) {
             for (int item_idx = 0;
-                 !stopped.get() && !errorsDetected.get() && expectedExceptionsCount.get() == 0;
-                 item_idx += 2) {
+                 !stopped.get() && !errorsDetected.get() && expectedExceptionsCount.get() == 0 &&
+                 !hasTimedout(startTimeMs); item_idx += 2) {
               barrier.await();
               try {
                 lstmt.execute(String.format("INSERT INTO t(k) VALUES(%d), (%d)",
@@ -106,6 +141,11 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
                   errorsDetected.set(true);
                   return;
                 }
+                if (e.getSQLState().equals(SERIALIZATION_FAILURE_PSQL_STATE)) {
+                  LOG.info("found SERIALIZATION_FAILURE_PSQL_STATE");
+                } else {
+                  LOG.info("Expected exception", e);
+                }
               }
             }
           } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
@@ -116,18 +156,26 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
         });
       }
       Arrays.stream(threads).forEach(t -> t.start());
-      final long startTimeMs = System.currentTimeMillis();
-      while (!errorsDetected.get() && expectedExceptionsCount.get() == 0) {
+      while (!errorsDetected.get() && expectedExceptionsCount.get() == 0 &&
+             !hasTimedout(startTimeMs)) {
         Thread.sleep(1000);
       }
       stopped.set(true);
       for (Thread t : threads) {
         t.join();
       }
+      LOG.info("startTimeMs: " + startTimeMs + ", currentTimeMs: " + currentTimeMs +
+               ", timeoutReached: " + Boolean.toString(timeoutReached));
       assertFalse(errorsDetected.get());
       Row row = getSingleRow(stmt, "SELECT COUNT(*) FROM t");
       assertGreaterThan(row.getLong(0), 0L);
-      assertGreaterThan(expectedExceptionsCount.get(), 0);
+      if (enable_invalidation_messages.equals("false")) {
+        assertGreaterThan(expectedExceptionsCount.get(), 0);
+      } else if (expectedExceptionsCount.get() == 0) {
+        // With incremental catalog cache refresh, we may not hit any of the expected errors
+        // before timeout is reached.
+        assertTrue(timeoutReached);
+      }
     }
   }
 }

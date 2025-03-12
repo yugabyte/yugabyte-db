@@ -4668,8 +4668,10 @@ YBCheckSharedCatalogCacheVersion()
 		const uint32_t num_catalog_versions =
 			shared_catalog_version - local_catalog_version;
 		YbcCatalogMessageLists message_lists = {0};
-		if (YBIsDBCatalogVersionMode() &&
-			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages)
+		const bool enable_inval_messages =
+			YBIsDBCatalogVersionMode() &&
+			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages;
+		if (enable_inval_messages)
 		{
 			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
 															local_catalog_version,
@@ -4683,14 +4685,17 @@ YBCheckSharedCatalogCacheVersion()
 		if (message_lists.num_lists > 0 && YbApplyInvalidationMessages(&message_lists))
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
-			elog(DEBUG1, "YBRefreshCache skipped");
+			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+				 message_lists.num_lists,
+				 local_catalog_version, shared_catalog_version);
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			/* TODO(myang): only invalidate affected entries in the pggate cache? */
 			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
 			return;
 		}
 
-		ereport(LOG,
+		ereport(enable_inval_messages ? LOG : DEBUG1,
 				(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
 						message_lists.num_lists, local_catalog_version,
 						shared_catalog_version, num_catalog_versions)));

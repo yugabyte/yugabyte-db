@@ -2497,12 +2497,12 @@ YBCommitTransactionContainingDDL()
 			YBC_LOG_INFO("num_committed_pg_txns: %d",
 						 ddl_transaction_state.num_committed_pg_txns);
 
-		/* Clear sender_pid for unit test to have a stable result. */
+		/* Clear yb_sender_pid for unit test to have a stable result. */
 		if (yb_test_inval_message_portability && currentInvalMessages)
 			for (int i = 0; i < nmsgs; ++i)
 			{
 				SharedInvalidationMessage *msg = &currentInvalMessages[i];
-				msg->yb_header.sender_pid = 0;
+				msg->yb_header.yb_sender_pid = 0;
 			}
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
@@ -6836,12 +6836,22 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 		for (SharedInvalidationMessage *msg = invalMessages;
 			 msg < invalMessages + nmsgs; ++msg)
 		{
+			if (msg->id >= SysCacheSize)
+			{
+				/*
+				 * This represents a message to invalidate a new catcache from
+				 * a newer release that does not exist in this backend.
+				 */
+				elog(WARNING, "skip non-existent catcache %d", msg->id);
+				continue;
+			}
+
 			/*
-			 * Set sender_pid to mypid because LocalExecuteInvalidationMessage
-			 * can only apply a message when its sender_pid indicates that it
+			 * Set yb_sender_pid to mypid because LocalExecuteInvalidationMessage
+			 * can only apply a message when its yb_sender_pid indicates that it
 			 * is sent by this process.
 			 */
-			msg->yb_header.sender_pid = mypid;
+			msg->yb_header.yb_sender_pid = mypid;
 			LocalExecuteInvalidationMessage(msg);
 		}
 	}
