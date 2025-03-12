@@ -296,7 +296,10 @@ public class UserTaskDetails {
     PauseReplication,
 
     // Persist use clockbound
-    PersistUseClockbound
+    PersistUseClockbound,
+
+    // Support bundle component download
+    SupportBundleComponentDownload
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -687,6 +690,9 @@ public class UserTaskDetails {
       case PauseReplication:
         title = "Pause Replication";
         description = "Pause replication from source to target universe";
+      case SupportBundleComponentDownload:
+        title = "Downloading support bundle content";
+        description = "Downloading support bundle content from DB nodes";
         break;
       case PersistUseClockbound:
         title = "Persist useClockbound";

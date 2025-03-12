@@ -137,7 +137,6 @@ public class NodeUniverseManager extends DevopsBase {
       String ybHomeDir,
       List<String> sourceNodeFiles,
       String targetLocalFile) {
-    universeLock.acquireLock(universe.getUniverseUUID());
     String filesListFilePath = "", remoteFilesListPath = "";
     try {
       filesListFilePath = createTempFileWithSourceFiles(sourceNodeFiles);
@@ -178,7 +177,6 @@ public class NodeUniverseManager extends DevopsBase {
       }
     } finally {
       FileUtils.deleteQuietly(new File(filesListFilePath));
-      universeLock.releaseLock(universe.getUniverseUUID());
     }
   }
 
