@@ -23,7 +23,6 @@ import string
 import glob
 import tarfile
 import ipaddress
-import psutil
 from datetime import datetime, timedelta
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -3897,21 +3896,13 @@ class ControlScript(object):
     # find the cmdline for a given pid
     def get_cmdline_from_pid(self, pid):
         try:
-            process = psutil.Process(pid)
-            details = {
-                'pid': process.pid,
-                'name': process.name(),
-                'cmdline': process.cmdline(),
-            }
-            Output.log("Process details for pid {}: {}".format(pid, details), logging.DEBUG)
-            return details.get("cmdline")
-        except psutil.NoSuchProcess:
-            Output.log(f"No process with PID {pid} found.", logging.ERROR)
-        except psutil.AccessDenied:
-            Output.log(f"Permission denied to access process with PID {pid}.", logging.ERROR)
+            with open(f"/proc/{pid}/cmdline", 'r') as f:
+                cmdline = f.read().split('\0')[:-1]
+            return cmdline
+        except FileNotFoundError:
+            return None
         except Exception as e:
-            Output.log(f"An error occurred: {e}", logging.ERROR)
-        return None
+            return None
 
     # Returns value of flag_name in flags.
     # Returns None is none exists.
