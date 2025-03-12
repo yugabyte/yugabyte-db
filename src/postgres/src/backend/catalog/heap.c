@@ -1390,7 +1390,8 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (!OidIsValid(relid))
 	{
-		bool		heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+		bool		heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_extension_upgrade;
 
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
 			heap_pg_class_oids_supplied = true;
