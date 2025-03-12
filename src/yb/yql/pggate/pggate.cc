@@ -1879,7 +1879,14 @@ Status PgApiImpl::CommitPlainTransaction() {
 
 Status PgApiImpl::CommitPlainTransactionContainingDDL(
     PgOid ddl_db_oid, bool ddl_is_silent_modification) {
-  RETURN_NOT_OK(CommitTransactionScopedSessionState());
+  RSTATUS_DCHECK(
+      explicit_row_lock_buffer_.IsEmpty(),
+      IllegalState, "Expected row lock buffer to be empty");
+  RSTATUS_DCHECK(
+      pg_session_->IsInsertOnConflictBufferEmpty(),
+      IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
+  fk_reference_cache_.Clear();
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitPlainTransactionContainingDDL(
       ddl_db_oid, ddl_is_silent_modification);
 }
