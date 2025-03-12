@@ -40,9 +40,9 @@ Enter a password for the default database admin user (`yugabyte` for YSQL, and `
 Save your password in a secure location. Your password is not stored in YugabyteDB Anywhere, and if you lose it, you won't be able to access the database.
 {{< /warning >}}
 
-You can also enable and disable the endpoints and authorization after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+You can also enable and disable the endpoints and authorization, as well as rotate your admin user password, after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
 
-To disable YSQL or YCQL authorization, you will need your `yugabyte` and `cassandra` database user passwords respectively.
+To disable YSQL or YCQL authorization or rotate the password, you will need your `yugabyte` or `cassandra` database user password.
 
 For YCQL, you can modify the YCQL API and admin UI endpoint ports by selecting the **Override YCQL Default Ports** option.
 
