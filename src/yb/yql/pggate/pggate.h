@@ -645,6 +645,7 @@ class PgApiImpl {
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   Status CommitPlainTransaction();
+  Status CommitPlainTransactionContainingDDL(PgOid ddl_db_oid, bool ddl_is_silent_modification);
   Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
@@ -653,6 +654,7 @@ class PgApiImpl {
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
   Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+  Status SetDdlStateInPlainTransaction();
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);

@@ -242,6 +242,7 @@ message PgAlterTableRequestPB {
   bool increment_schema_version = 8;
   PgReplicaIdentityPB replica_identity = 9;
   AshMetadataPB ash_metadata = 10;
+  bool use_regular_transaction_block = 11;
 }
 
 message PgAlterTableResponsePB {
@@ -261,6 +262,7 @@ message PgCreateDatabaseRequestPB {
   string source_owner = 10;
   string target_owner = 11;
   AshMetadataPB ash_metadata = 12;
+  bool use_regular_transaction_block = 13;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -329,6 +331,7 @@ message PgCreateTableRequestPB {
   uint64 session_id = 1;
 
   bool use_transaction = 2;
+  bool use_regular_transaction_block = 26;
   PgObjectIdPB table_id = 3;
   string database_name = 4;
   string table_name = 5;
@@ -383,6 +386,7 @@ message PgCreateTablegroupRequestPB {
   PgObjectIdPB tablespace_id = 4;
 
   AshMetadataPB ash_metadata = 5;
+  bool use_regular_transaction_block = 6;
 }
 
 message PgCreateTablegroupResponsePB {
@@ -415,6 +419,7 @@ message PgDropTableRequestPB {
   PgObjectIdPB table_id = 2;
   bool index = 3;
   AshMetadataPB ash_metadata = 4;
+  bool use_regular_transaction_block = 5;
 }
 
 message PgDropTableResponsePB {
@@ -426,6 +431,7 @@ message PgDropTablegroupRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB tablegroup_id = 2;
   AshMetadataPB ash_metadata = 3;
+  bool use_regular_transaction_block = 4;
 }
 
 message PgDropTablegroupResponsePB {
@@ -440,6 +446,11 @@ message PgFinishTransactionRequestPB {
     // This transaction contains changes to the DocDB schema protobufs.
     bool has_docdb_schema_changes = 1;
     OptionalUint32PB silently_altered_db = 2;
+    // Use transaction block for DDL operations instead of a separate autonomous
+    // DDL transaction.
+    // Set to false if ysql_yb_ddl_transaction_block_enabled is false or if this
+    // is an online schema change operation.
+    bool use_regular_transaction_block = 3;
   }
 
   uint64 session_id = 1;
@@ -666,6 +677,7 @@ message PgPerformOptionsPB {
   // Replace with IsolationLevel after migration to proto3.
   uint32 isolation = 2;
   bool ddl_mode = 3;
+  bool ddl_use_regular_transaction_block = 25;
   uint64 txn_serial_no = 4;
   uint64 read_time_serial_no = 20;
 

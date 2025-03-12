@@ -176,6 +176,7 @@ DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(TEST_yb_enable_invalidation_messages);
 DECLARE_int32(TEST_yb_invalidation_message_expiration_secs);
 DECLARE_int32(TEST_yb_max_num_invalidation_messages);
+DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -1914,6 +1915,12 @@ YbcStatus YBCPgCommitPlainTransaction() {
   return ToYBCStatus(pgapi->CommitPlainTransaction());
 }
 
+YbcStatus YBCPgCommitPlainTransactionContainingDDL(
+    YbcPgOid ddl_db_oid, bool ddl_is_silent_altering) {
+  return ToYBCStatus(
+      pgapi->CommitPlainTransactionContainingDDL(ddl_db_oid, ddl_is_silent_altering));
+}
+
 YbcStatus YBCPgAbortPlainTransaction() {
   return ToYBCStatus(pgapi->AbortPlainTransaction());
 }
@@ -1944,6 +1951,10 @@ YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
 
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt) {
   return ToYBCStatus(pgapi->SetReadOnlyStmt(read_only_stmt));
+}
+
+YbcStatus YBCPgSetDdlStateInPlainTransaction() {
+  return ToYBCStatus(pgapi->SetDdlStateInPlainTransaction());
 }
 
 YbcStatus YBCPgEnterSeparateDdlTxnMode() {
@@ -2252,6 +2263,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_yb_invalidation_message_expiration_secs,
       .TEST_yb_max_num_invalidation_messages =
           &FLAGS_TEST_yb_max_num_invalidation_messages,
+      .TEST_ysql_yb_ddl_transaction_block_enabled =
+          &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
   };
   // clang-format on
   return &accessor;

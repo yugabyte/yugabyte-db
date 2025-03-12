@@ -798,6 +798,7 @@ bool		YBIsInitDbAlreadyDone();
 
 extern int YBGetDdlNestingLevel();
 extern NodeTag YBGetDdlOriginalNodeTag();
+extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 
@@ -805,7 +806,8 @@ typedef enum YbSysCatalogModificationAspect
 {
 	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
 	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
-	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4,
+	YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE = 8,
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
@@ -820,10 +822,17 @@ typedef enum YbDdlMode
 	YB_DDL_MODE_BREAKING_CHANGE = (YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 								   YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
 								   YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE),
+
+	YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT =
+		(YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
+		 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
+		 YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE),
 } YbDdlMode;
 
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
+
+extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
 {

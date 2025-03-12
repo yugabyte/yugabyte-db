@@ -710,6 +710,8 @@ YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
 YbcStatus YBCPgCommitPlainTransaction();
+YbcStatus YBCPgCommitPlainTransactionContainingDDL(
+    YbcPgOid ddl_db_oid, bool ddl_is_silent_altering);
 YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
@@ -718,6 +720,7 @@ YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
 YbcStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+YbcStatus YBCPgSetDdlStateInPlainTransaction();
 YbcStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YbcStatus YBCPgExitSeparateDdlTxnMode(YbcPgOid db_oid, bool is_silent_altering);

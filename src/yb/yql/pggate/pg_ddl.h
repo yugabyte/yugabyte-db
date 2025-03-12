@@ -37,7 +37,8 @@ class PgCreateDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kCreate
                    PgOid next_oid,
                    YbcCloneInfo* yb_clone_info,
                    bool colocated,
-                   bool use_transaction);
+                   bool use_transaction,
+                   bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -74,7 +75,7 @@ class PgCreateTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kCrea
  public:
   PgCreateTablegroup(
       const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid,
-      PgOid tablegroup_oid, PgOid tablespace_oid);
+      PgOid tablegroup_oid, PgOid tablespace_oid, bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -85,7 +86,8 @@ class PgCreateTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kCrea
 class PgDropTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTablegroup> {
  public:
   PgDropTablegroup(
-      const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid);
+      const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
+      bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -138,7 +140,8 @@ class PgCreateTableBase : public PgDdl {
                     const PgObjectId& pg_table_oid,
                     const PgObjectId& old_relfilenode_oid,
                     bool is_truncate,
-                    bool use_transaction);
+                    bool use_transaction,
+                    bool use_regular_transaction_block);
 
   tserver::PgCreateTableRequestPB req_;
 
@@ -168,7 +171,8 @@ class PgCreateTable final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
       const PgObjectId& pg_table_oid,
       const PgObjectId& old_relfilenode_oid,
       bool is_truncate,
-      bool use_transaction);
+      bool use_transaction,
+      bool use_regular_transaction_block);
 };
 
 class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp::kCreateIndex> {
@@ -192,6 +196,7 @@ class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
       const PgObjectId& old_relfilenode_oid,
       bool is_truncate,
       bool use_transaction,
+      bool use_regular_transaction_block,
       const PgObjectId& base_table_id,
       bool is_unique_index,
       bool skip_index_backfill);
@@ -234,8 +239,10 @@ class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> 
 
 class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable> {
  public:
-  PgAlterTable(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool use_transaction);
+  PgAlterTable(const PgSession::ScopedRefPtr& pg_session,
+               const PgObjectId& table_id,
+               bool use_transaction,
+               bool use_regular_transaction_block);
 
   Status AddColumn(const char *name,
                    const YbcPgTypeEntity *attr_type,
