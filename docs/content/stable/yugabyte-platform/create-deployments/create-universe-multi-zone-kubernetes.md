@@ -85,7 +85,7 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 
 Enable the YSQL and YCQL endpoints and database authentication.
 
-Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
+Enter the password to use for the default database admin superuser (for YSQL the user is `yugabyte`, and for YCQL `cassandra`). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
 
 By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration).
 

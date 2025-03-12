@@ -11,12 +11,12 @@ menu:
 type: docs
 ---
 
-When you deploy a universe, you can set up the database admin credentials for YSQL and YCQL. You use this account to access the YugabyteDB database installed on your universe.
+When you deploy a universe, you can set up the database admin credentials for YSQL and YCQL. You use the admin user to access the YugabyteDB database installed on your universe.
 
 - On YSQL, this user is named `yugabyte` and has superuser privileges.
 - On YCQL, this user is named `cassandra`.
 
-Use this account to administer your database, including:
+Use this user to administer your database, including:
 
 - add more database users
 - assign privileges to database users
