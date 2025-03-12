@@ -28,6 +28,7 @@ public class OnPremCloudInfo implements CloudInfoInterface {
   public String ybHomeDir;
 
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
+  @ApiModelProperty(value = "WARNING: This is a preview API that could change.")
   @EditableInUseProvider(name = "Configure and use clockbound", allowed = true)
   public boolean useClockbound;
 
