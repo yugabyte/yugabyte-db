@@ -158,6 +158,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda, Runnable onFailureTask) {
     Throwable th = null;
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     checkUniverseVersion();
     Universe universe =
         lockAndFreezeUniverseForUpdate(
