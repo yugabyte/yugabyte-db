@@ -94,3 +94,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1
 SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
 
 DROP TABLE items;
+
+-- Make sure we can't create an index with unspecified dimensions.
+CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
+DROP TABLE items;
