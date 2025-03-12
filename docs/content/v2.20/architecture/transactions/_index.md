@@ -91,5 +91,5 @@ To understand how Read committed is implement and how to use it, see [Read commi
 Read restart errors, also known as read skew or read consistency errors, are a type of concurrency control issue that can occur when using certain isolation levels. Although YugabyteDB has optimizations to resolve most scenarios automatically, depending on the level of clock skew, it can throw this error.
 
 {{<lead link="read-restart-error/">}}
-To understand when this error could be thrown, see [Read restart error](read-restart-error/)
+To understand when this error could be thrown, see [Read restart error](./read-committed/#read-restart-errors)
 {{</lead>}}.
