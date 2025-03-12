@@ -1323,11 +1323,23 @@ SELECT bson_dollar_json_schema('{"data" : 1 }','{ "$jsonSchema": { "properties":
 --                         $jsonSchema in query condition                    --
 ---------------------------------------------------------------------
 -- All docs Match
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
-ERROR:  $jsonSchema is not allowed in this context
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                        cursorpage                                                                                                                                                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.colJsonSchQry", "firstBatch" : [ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }, { "_id" : { "$numberInt" : "1" }, "vehicle" : { "$numberInt" : "20" }, "seats" : "many", "ac" : "1 ton", "height" : "very high", "width" : { "upper" : { "$numberInt" : "10" }, "lower" : { "$numberInt" : "20" } }, "model" : { "$numberInt" : "2010" }, "options" : null, "engine" : { "$numberInt" : "1500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
 -- -- No Match
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
-ERROR:  $jsonSchema is not allowed in this context
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
+                                                              cursorpage                                                               
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.colJsonSchQry", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
 -- -- Matches where "vehicle" is "string"
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');
-ERROR:  $jsonSchema is not allowed in this context
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');
+                                                                                                                                                                                                                                                                              cursorpage                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.colJsonSchQry", "firstBatch" : [ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+

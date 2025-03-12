@@ -596,3 +596,115 @@ SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "q
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""foo"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
+-- schema validation
+set documentdb.enableSchemaValidation = on;
+SELECT documentdb_api_catalog.bson_dollar_project(document,'{"_id":0,"a":1,"b":1}') FROM documentdb_api.collection('fam', 'collection') ORDER BY document;
+                      bson_dollar_project                       
+----------------------------------------------------------------
+ { "b" : { "$numberInt" : "1" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "7" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "5" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "6" } }
+(4 rows)
+
+SELECT documentdb_api.coll_mod('fam', 'collection', '{"collMod": "collection", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}}');
+             coll_mod              
+-----------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- expect to fail since "a" is not an int
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$set": {"a": "hello"}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+ERROR:  Document failed validation
+-- expect to succeed, upsert
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 2}, "update": {"$set": {"a": 200}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+                                                                                                                                   find_and_modify                                                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""2"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""2"" }, ""foo"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- expect to succeed, update
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$set": {"a": 10}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+                                                                                                             find_and_modify                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""foo"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select documentdb_api.coll_mod('fam', 'collection', '{"collMod": "collection", "validationLevel": "moderate", "validationAction": "warn"}');
+             coll_mod              
+-----------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+select documentdb_api.insert_one('fam', 'collection', '{"_id": 3, "a": "hello", "b": 11}');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select documentdb_api.coll_mod('fam', 'collection', '{"collMod": "collection", "validationAction": "error"}');
+             coll_mod              
+-----------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- expect to succeed, validationLevel=moderate
+select documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 3}, "update": {"$set": {"a": "test"}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+                                                                                                             find_and_modify                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""3"" }, ""foo"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_catalog.bson_dollar_project(document,'{"_id":0,"a":1,"b":1}') FROM documentdb_api.collection('fam', 'collection') ORDER BY document;
+                       bson_dollar_project                       
+-----------------------------------------------------------------
+ { "b" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "10" } }
+ { "a" : { "$numberInt" : "200" } }
+ { "a" : "test", "b" : { "$numberInt" : "11" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "7" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "5" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "6" } }
+(6 rows)
+
+-- shard collection
+SELECT documentdb_api.shard_collection('fam','collection', '{"_id":"hashed"}', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 3}, "update": {"$set": {"a": "plus"}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+                                                                                                             find_and_modify                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""3"" }, ""foo"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- expect to fail
+select  documentdb_api.coll_mod('fam', 'collection', '{"collMod": "collection", "validationLevel": "strict"}');
+             coll_mod              
+-----------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+select documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 3}, "update": {"$set": {"a": "zero"}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+ERROR:  Document failed validation
+set documentdb.enableBypassDocumentValidation = on;
+select documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 3}, "update": {"$set": {"a": "zero"}}, "new": true, "upsert": true, "bypassDocumentValidation": true, "fields": {"foo": {"$pow": [1, 2]}}}');
+                                                                                                             find_and_modify                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""3"" }, ""foo"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_catalog.bson_dollar_project(document,'{"_id":0,"a":1,"b":1}') FROM documentdb_api.collection('fam', 'collection') ORDER BY document;
+                       bson_dollar_project                       
+-----------------------------------------------------------------
+ { "b" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "10" } }
+ { "a" : { "$numberInt" : "200" } }
+ { "a" : "zero", "b" : { "$numberInt" : "11" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "7" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "5" } }
+ { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "6" } }
+(6 rows)
+
+set documentdb.enableSchemaValidation = off;
+set documentdb.enableBypassDocumentValidation = off;

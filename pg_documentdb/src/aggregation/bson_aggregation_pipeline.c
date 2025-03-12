@@ -1416,6 +1416,8 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		else if (StringViewEqualsCString(&keyView, "projection"))
 		{
 			/* Validation handled in the stage processing */
+			/* TODO - Mongo validates projection even if collection is not present */
+			/* to align with that we may need to validate projection here, like $elemMatch envolve $jsonSchema */
 			projection = *value;
 		}
 		else if (StringViewEqualsCString(&keyView, "skip"))

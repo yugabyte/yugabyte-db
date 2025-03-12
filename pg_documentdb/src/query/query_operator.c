@@ -57,6 +57,7 @@
 #include "commands/commands_common.h"
 #include "utils/version_utils.h"
 #include "collation/collation.h"
+#include "jsonschema/bson_json_schema_tree.h"
 
 
 /*
@@ -1426,14 +1427,6 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 
 	if (operatorType == QUERY_OPERATOR_JSONSCHEMA)
 	{
-		/* prevent abuse of $jsonSchema */
-		if (!context->hasOperatorRestrictions)
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg(
-								"$jsonSchema is not allowed in this context")));
-		}
-
 		if (context->inputType != MongoQueryOperatorInputType_Bson)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
@@ -1442,6 +1435,13 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		}
 
 		/* Special case for $jsonSchema */
+		/* validate $jsonSchema syntax*/
+		SchemaTreeState localTreeStateIgnore = { };
+		bson_iter_t schemaIter;
+		const bson_value_t *queryDocValue = bson_iter_value(queryDocIterator);
+		BsonValueInitIterator(queryDocValue, &schemaIter);
+		BuildSchemaTree(&localTreeStateIgnore, &schemaIter);
+
 		const char *path = "";
 		return CreateFuncExprForQueryOperator(context,
 											  path,

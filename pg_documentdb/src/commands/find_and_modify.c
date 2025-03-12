@@ -25,6 +25,7 @@
 #include "query/query_operator.h"
 #include "sharding/sharding.h"
 #include "utils/feature_counter.h"
+#include "schema_validation/schema_validation.h"
 
 
 /* Represents bson message passed to a findAndModify command */
@@ -61,6 +62,9 @@ typedef struct
 
 	/* "upsert" field */
 	bool upsert;
+
+	/* "bypassDocumentValidation" field */
+	bool bypassDocumentValidation;
 } FindAndModifySpec;
 
 
@@ -120,6 +124,8 @@ static FindAndModifyResult ProcessFindAndModifySpec(MongoCollection *collection,
 static pgbson * BuildResponseMessage(FindAndModifyResult *result);
 
 extern bool SkipFailOnCollation;
+extern bool EnableBypassDocumentValidation;
+extern bool EnableSchemaValidation;
 
 /*
  * command_find_and_modify implements findAndModify command.
@@ -228,6 +234,7 @@ static FindAndModifySpec
 ParseFindAndModifyMessage(pgbson *message)
 {
 	FindAndModifySpec spec = { 0 };
+	spec.bypassDocumentValidation = false;
 
 	bson_iter_t messageIter;
 	PgbsonInitIterator(message, &messageIter);
@@ -343,6 +350,15 @@ ParseFindAndModifyMessage(pgbson *message)
 			EnsureTopLevelFieldIsNumberLike("findAndModify.maxTimeMS", bson_iter_value(
 												&messageIter));
 			SetExplicitStatementTimeout(BsonValueAsInt32(bson_iter_value(&messageIter)));
+		}
+		else if (EnableSchemaValidation && EnableBypassDocumentValidation &&
+				 strcmp(key, "bypassDocumentValidation") == 0)
+		{
+			EnsureTopLevelFieldType("findAndModify.bypassDocumentValidation",
+									&messageIter,
+									BSON_TYPE_BOOL);
+
+			spec.bypassDocumentValidation = bson_iter_bool(&messageIter);
 		}
 		else
 		{
@@ -507,10 +523,15 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 		UpdateOneResult updateOneResult = { 0 };
 		bool forceInlineWrites = false;
 
-		/*todo: constrct evalState to support schema validation in command find_and_modify */
-		ExprEvalState *emptyEvalState = NULL;
+		ExprEvalState *evalState = NULL;
+		if (CheckSchemaValidationEnabled(collection, spec->bypassDocumentValidation))
+		{
+			evalState = PrepareForSchemaValidation(collection->schemaValidator.validator,
+												   CurrentMemoryContext);
+		}
+
 		UpdateOne(collection, &updateOneParams, shardKeyHash, transactionId,
-				  &updateOneResult, forceInlineWrites, emptyEvalState);
+				  &updateOneResult, forceInlineWrites, evalState);
 
 		bool performedUpdateOrUpsert = updateOneResult.isRowUpdated ||
 									   updateOneResult.upsertedObjectId != NULL;
@@ -548,6 +569,7 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 			}
 		};
 
+		FreeExprEvalState(evalState, CurrentMemoryContext);
 		return result;
 	}
 }

@@ -416,10 +416,10 @@ SELECT bson_dollar_json_schema('{"data" : 1 }','{ "$jsonSchema": { "properties":
 -------------------------------------------------------------------------------
 
 -- All docs Match
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { } } }, "$db" : "db" }');
 
 -- -- No Match
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }, "$db" : "db" }');
 
 -- -- Matches where "vehicle" is "string"
-SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "queryWithJsonSchema", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "colJsonSchQry", "filter" : { "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }, "$db" : "db" }');
