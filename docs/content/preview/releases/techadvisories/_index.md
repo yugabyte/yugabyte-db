@@ -22,7 +22,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<ta 14696>}}
 | DDL Atomicity Health Check Alert is Wrong
 | {{<product "yba">}}
-| {{<release "2.18.9.0, 2.20.6.0, 2.23.0.0, 2024.1.2.0">}}
+| {{<release "2.20.8.1, 2024.1.3.1, 2024.2.0.0, 2.23.1.0">}}
 | {{<nobreak "19 February 2025">}}
 |
 | {{<ta 25193>}}
