@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,6 +18,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/tsan_util.h"
@@ -41,8 +42,8 @@ namespace yb::pgwrapper {
 // even if the write has a commit time within the ambiguity window
 // (read_time, global_limit].
 //
-// Whenever, a read RPC arrives at a node for the first time, it picks
-// a local time based on the safe time of the node. This is the local limit
+// Whenever a read RPC arrives at a tablet for the first time, it picks
+// a local time based on the safe time of the tablet. This is the local limit
 // for that node. Any writes that were replicated AFTER this local limit
 // happen strictly after the user issued the read.
 //
@@ -80,11 +81,11 @@ namespace yb::pgwrapper {
 //    should not raise a read restart error.
 //
 // However, in fast path writes, the intent time is the same as
-// the commit time. Therefore, we can check whether
-// intent time \in (read_time, local_limit].
+// the commit time. Therefore, reading the fast path write leads to
+// a read restart error iff intent time \in (read_time, local_limit].
 //
-// In the special case where the read time is the same or higher than
-// the local limit, we see no read restart errors against fast path writes.
+// Note that reading distributed writes can lead to read restart errors
+// even when local limit <= read time.
 class PgLocalLimitOptimizationTest : public PgMiniTestBase {
  public:
   void SetUp() override {
@@ -98,24 +99,15 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     // Disable colocation so that dummy tables do not interfere with
     // the 'keys' table.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_colocate_database_by_default) = false;
-    // Easier debugging.
-    // google::SetVLOGLevel("read_query", 1);
-    // google::SetVLOGLevel("pgsql_operation", 1);
-    // google::SetVLOGLevel("pg_client_session", 3);
+    // vmodule on read_query is necessary to pick read time in the log.
+    ASSERT_OK(SET_FLAG(vmodule, "read_query=1"));
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_statement) = "all";
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_min_duration_statement) = 0;
     PgMiniTestBase::SetUp();
   }
 
  protected:
   // 100k is a good number in practice.
   static constexpr auto kNumInitialRows = 100000;
-  // Chosen to ensure that the insert is concurrent with the read.
-  // To elaborate, we ensure that the INSERT statement is issued after the
-  // SELECT statement but the INSERT completes before the read reaches the
-  // last row (the newly inserted one).
-  // This is done to verify visibility of the inserted row.
-  static constexpr auto kInsertDelay = 10;
 
   enum class ScanCmd {
     kOrdered, // Sequential RPCs to all tablets, read time is picked on docdb
@@ -157,6 +149,10 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
   // insert is concurrent with the read.
   void InsertRowConcurrentlyWithTableScan() {
     auto setup_conn = ASSERT_RESULT(Connect());
+    if (is_read_time_picked_before_table_scan_) {
+      // For PickReadTime
+      ASSERT_OK(setup_conn.Execute("CREATE TABLE IF NOT EXISTS dummy()"));
+    }
     ASSERT_OK(setup_conn.Execute(Format(
       "CREATE TABLE keys (k INT, PRIMARY KEY(k ASC))$0",
       is_single_tablet_ ? "" : " SPLIT AT VALUES ((1))")));
@@ -175,6 +171,7 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
         "SET yb_fetch_row_limit = $0", kNumInitialRows / 100)));
     }
     PopulateReadConnCache(read_conn);
+    ASSERT_OK(read_conn.Execute("SET yb_max_query_layer_retries = 0"));
 
     // Setup insert connection and populate catalog cache.
     // This inserts one additional row, so the number of rows
@@ -186,6 +183,10 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     if (is_read_time_picked_before_table_scan_) {
       PickReadTime(read_conn);
     }
+    // Wait for read query to pick read time.
+    // Telegraphed by Read time: in the log.
+    // Requires vmodule=read_query=1
+    StringWaiterLogSink wait_for_read_time("Read time: ");
     CountDownLatch read_thread_started(1);
     auto table_scan = std::async(std::launch::async, [&]() {
       // Signal insert to proceed
@@ -204,13 +205,10 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
       // happened concurrently with the scan, from local limit.
       RunScanCmd(read_conn);
       stopwatch.stop();
-      // Assert that the select ran for long enough for the insert to
-      // finish before the select finished.
-      EXPECT_GT(stopwatch.elapsed().wall_millis(), 3 * kInsertDelay);
     });
 
     read_thread_started.Wait();
-    SleepFor(kInsertDelay * 1ms);
+    ASSERT_OK(wait_for_read_time.WaitFor(10s));
     ASSERT_OK(insert_conn.Execute(Format(
       "INSERT INTO keys(k) VALUES ($0)", 3 * kNumInitialRows)));
 
@@ -261,7 +259,6 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
   }
 
   void PickReadTime(PGConn &read_conn) {
-    ASSERT_OK(read_conn.Execute("CREATE TABLE dummy()"));
     // We pick read time by starting a REPEATABLE READ transaction,
     // and executing a statement that picks a read time.
     ASSERT_OK(read_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
