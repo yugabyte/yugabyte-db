@@ -6,6 +6,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -17,6 +18,8 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -73,6 +76,58 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
     verifyPayload();
+  }
+
+  @Test
+  public void testChangeIB() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    details.setRegions(regionImageInfo);
+    details.setArch(PublicCloudConstants.Architecture.x86_64);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle imageBundle = ImageBundle.create(provider, "ib-1", details, true);
+
+    ImageBundleDetails details2 = new ImageBundleDetails();
+    details2.setRegions(regionImageInfo);
+    details2.setArch(PublicCloudConstants.Architecture.x86_64);
+    details2.setGlobalYbImage("yb_image2");
+    ImageBundle imageBundle2 = ImageBundle.create(provider, "ib-1", details2, false);
+
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.imageBundleUUID = imageBundle.getUuid();
+
+    Universe universe = createUniverse(userIntent);
+    Map<String, String> gg =
+        localNodeManager.getProvisionedArgs(
+            universe.getUniverseDetails().nodeDetailsSet.iterator().next().nodeName);
+    assertEquals("yb_image", gg.get("--machine_image"));
+    initYSQL(universe);
+    verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.imageBundleUUID = imageBundle2.getUuid();
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 3, 3);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+
+    verifyUniverseTaskSuccess(taskInfo);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    gg =
+        localNodeManager.getProvisionedArgs(
+            universe.getUniverseDetails().nodeDetailsSet.iterator().next().nodeName);
+    assertEquals("yb_image2", gg.get("--machine_image"));
+    verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    verifyYSQL(universe);
   }
 
   @Test

@@ -988,6 +988,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       sb.append(", staticPublicIP=").append(assignStaticPublicIP);
       sb.append(", tags=").append(instanceTags);
       sb.append(", masterInstanceType=").append(masterInstanceType);
+      sb.append(", imageBundleUUID=").append(imageBundleUUID);
       sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
       return sb.toString();
     }
