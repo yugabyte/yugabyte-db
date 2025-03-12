@@ -521,10 +521,15 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
+    uint64_t lease_epoch;
+    {
+      std::lock_guard lock(mutex_);
+      lease_epoch = lease_epoch_;
+    }
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
-        client(), session_context_, session_id, messenger_.scheduler());
+        client(), session_context_, session_id, lease_epoch, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);

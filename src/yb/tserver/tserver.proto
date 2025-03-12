@@ -431,7 +431,7 @@ message AcquireObjectLockResponsePB {
 message ReleaseObjectLockRequestPB {
   optional bytes txn_id = 1;
   // When set, only locks owned by the given subtxn id are released. If unset, releases
-  // all locks held by <txn_id> irrespective of value in 'release_all_locks'.
+  // all locks held by <txn_id>.
   optional uint32 subtxn_id = 2;
 
   optional bytes session_host_uuid = 3;
