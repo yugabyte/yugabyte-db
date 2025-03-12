@@ -52,7 +52,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<ta 22802>}}
 |Inconsistencies between system catalog and DocDB schema during DDL operations
 | {{<product "ysql">}}
-| [v2.14.0.0](/preview/releases/ybdb-releases/end-of-life/v2.14/#v2.14.0.0), [v2.16.0.0](/preview/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), [v2.18.0.0](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), [v2.20.0.0](/preview/releases/ybdb-releases/end-of-life/v2.20/#v2.20.0.0)
+| [v2.14.0.0](/preview/releases/ybdb-releases/end-of-life/v2.14/#v2.14.0.0), [v2.16.0.0](/preview/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), [v2.18.0.0](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0">}}
 | {{<nobreak "11 June 2024">}}
 |
 | {{<ta 22057>}}
