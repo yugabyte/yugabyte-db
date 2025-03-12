@@ -3036,6 +3036,8 @@ void MasterPathHandlers::HandleXCluster(
           Format("Group: $0", outbound_replication_group.replication_group_id));
 
       output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
+      output << "\nddl_mode: "
+             << (outbound_replication_group.automatic_ddl_mode ? "automatic" : "semi-automatic");
       if (!outbound_replication_group.target_universe_info.empty()) {
         output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
       }

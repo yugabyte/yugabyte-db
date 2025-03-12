@@ -1087,6 +1087,7 @@ Status XClusterSourceManager::PopulateXClusterStatus(
     group_status.replication_group_id = replication_info->Id();
     group_status.state = SysXClusterOutboundReplicationGroupEntryPB::State_Name(metadata.state());
     group_status.target_universe_info = metadata.target_universe_info().DebugString();
+    group_status.automatic_ddl_mode = metadata.automatic_ddl_mode();
 
     for (const auto& [namespace_id, namespace_status] : metadata.namespace_infos()) {
       XClusterOutboundReplicationGroupNamespaceStatus ns_status;
