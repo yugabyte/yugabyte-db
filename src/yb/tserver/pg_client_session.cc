@@ -113,6 +113,8 @@ DECLARE_string(ysql_sequence_cache_method);
 
 DECLARE_uint64(rpc_max_message_size);
 
+DECLARE_int32(tserver_yb_client_default_timeout_ms);
+
 namespace yb::tserver {
 namespace {
 
@@ -1089,6 +1091,29 @@ Status MergeStatus(Status&& main, Status&& aux) {
   return std::move(main.ok() ? aux : main);
 }
 
+template <typename Request>
+Request AcquireRequestFor(
+    const std::string& session_host_uuid, const TransactionId& txn_id, SubTransactionId subtxn_id,
+    uint64_t database_id, uint64_t object_id, TableLockType lock_type, uint64_t lease_epoch,
+    ClockBase* clock, CoarseTimePoint deadline) {
+  auto now = clock->Now();
+  Request req;
+  req.set_txn_id(txn_id.data(), txn_id.size());
+  req.set_subtxn_id(subtxn_id);
+  req.set_session_host_uuid(session_host_uuid);
+  req.set_lease_epoch(lease_epoch);
+  auto deadline_ht = now.AddSeconds(ToSeconds(deadline - ToCoarse(MonoTime::Now())));
+  req.set_ignore_after_hybrid_time(deadline_ht.ToUint64());
+  if (clock) {
+    req.set_propagated_hybrid_time(now.ToUint64());
+  }
+  auto* lock = req.add_object_locks();
+  lock->set_database_oid(database_id);
+  lock->set_object_oid(object_id);
+  lock->set_lock_type(lock_type);
+  return req;
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1096,11 +1121,12 @@ class PgClientSession::Impl {
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
-      rpc::Scheduler& scheduler)
+      uint64_t lease_epoch, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
         id_(id),
+        lease_epoch_(lease_epoch),
         transaction_provider_(std::move(transaction_builder)),
         big_shared_mem_expiration_task_(&scheduler),
         read_point_history_(PrefixLogger(id_)) {}
@@ -2046,32 +2072,34 @@ class PgClientSession::Impl {
     RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
 
     const auto& options = req.options();
-    // TODO(table-locks): Global lock request should be sent to the master.
-    if (options.ddl_mode()) {
-      return Status::OK();
-    }
-
     const auto deadline = context->GetClientDeadline();
     auto setup_session_result = VERIFY_RESULT(SetupSession(
         options, deadline, GetInTxnLimit(options, clock().get())));
-    RSTATUS_DCHECK(setup_session_result.is_plain, IllegalState, "Expected kPlain session");
+    RSTATUS_DCHECK(
+        setup_session_result.is_plain ||
+        (options.ddl_mode() && setup_session_result.session_data.transaction),
+        IllegalState, "Expected kPlain/kDdl session");
     auto& txn_id = setup_session_result.session_data.transaction
         ? setup_session_result.session_data.transaction->id()
         : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline));
     VLOG_WITH_PREFIX_AND_FUNC(1)
         << "txn_id " << txn_id << " req: " << req.ShortDebugString();
 
-    tserver::AcquireObjectLockRequestPB lock_req;
-    lock_req.set_txn_id(txn_id.data(), txn_id.size());
-    lock_req.set_subtxn_id(options.active_sub_transaction_id());
-    lock_req.set_session_host_uuid(instance_uuid());
-    auto& lock = *lock_req.add_object_locks();
-    lock.set_database_oid(req.database_oid());
-    lock.set_object_oid(req.object_oid());
     const auto lock_type = static_cast<TableLockType>(req.lock_type());
-    lock.set_lock_type(lock_type);
-    RSTATUS_DCHECK(
-        !IsTableLockTypeGlobal(lock_type), IllegalState, "Unexpected exclusive object lock req");
+    if (IsTableLockTypeGlobal(lock_type)) {
+      auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
+          instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
+          req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
+      auto status_future = MakeFuture<Status>([&](auto callback) {
+        client_.AcquireObjectLocksGlobalAsync(
+            lock_req, callback,
+            MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
+      });
+      return status_future.get();
+    }
+    auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
+        instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
+        req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
     return ts_lock_manager()->AcquireObjectLocks(lock_req, deadline);
   }
 
@@ -2978,6 +3006,7 @@ class PgClientSession::Impl {
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
+  const uint64_t lease_epoch_;
   TransactionProvider transaction_provider_;
   std::mutex big_shared_mem_mutex_;
   std::atomic<CoarseTimePoint> last_big_shared_memory_access_;
@@ -3000,10 +3029,10 @@ class PgClientSession::Impl {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
     client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-    uint64_t id, rpc::Scheduler& scheduler)
+    uint64_t id, uint64_t lease_epoch, rpc::Scheduler& scheduler)
     : impl_(new Impl(
         std::move(transaction_builder), {std::move(shared_this_source), this}, client, context, id,
-        scheduler)) {
+        lease_epoch, scheduler)) {
 }
 
 PgClientSession::~PgClientSession() = default;

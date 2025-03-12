@@ -98,6 +98,7 @@ class ObjectLockInfoManager::Impl {
       const tserver::ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
       std::optional<LeaderEpoch> leader_epoch, StdStatusCallback callback,
       bool remove_lease_epoch_entry = false);
+  void UnlockObject(const TransactionId& txn_id);
 
   void ReleaseLocksHeldByExpiredLeaseEpoch(
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait,
@@ -125,6 +126,10 @@ class ObjectLockInfoManager::Impl {
 
   std::shared_ptr<ObjectLockInfo> GetOrCreateObjectLockInfo(const std::string& key)
       EXCLUDES(mutex_);
+  void UpdateTxnHostSessionMap(
+      const TransactionId& txn_id, const std::string& host_session_uuid, uint64_t lease_epoch)
+      EXCLUDES(mutex_);
+  void RemoveTxnFromHostSessionMap(const TransactionId& txn_id) EXCLUDES(mutex_);
 
   std::shared_ptr<tserver::TSLocalLockManager> TEST_ts_local_lock_manager() EXCLUDES(mutex_) {
     // No need to acquire the leader lock for testing.
@@ -164,6 +169,11 @@ class ObjectLockInfoManager::Impl {
   mutable MutexType mutex_;
   std::unordered_map<std::string, std::shared_ptr<ObjectLockInfo>> object_lock_infos_map_
       GUARDED_BY(mutex_);
+  struct TxnHostInfo {
+    std::string host_session_uuid;
+    uint64_t lease_epoch;
+  };
+  std::unordered_map<TransactionId, TxnHostInfo> txn_host_info_map_ GUARDED_BY(mutex_);
   // The latest lease epoch for each tserver.
   std::unordered_map<std::string, uint64_t> current_lease_epochs_ GUARDED_BY(mutex_);
 
@@ -340,6 +350,10 @@ void ObjectLockInfoManager::UnlockObject(
   impl_->UnlockObject(TserverRequestFor(req), resp, std::move(rpc));
 }
 
+void ObjectLockInfoManager::ReleaseLocksForTxn(const TransactionId& txn_id) {
+  impl_->UnlockObject(txn_id);
+}
+
 tserver::DdlLockEntriesPB ObjectLockInfoManager::ExportObjectLockInfo() {
   return impl_->ExportObjectLockInfo();
 }
@@ -388,15 +402,28 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
   }
 }
 
+void ObjectLockInfoManager::Impl::UpdateTxnHostSessionMap(
+    const TransactionId& txn_id, const std::string& host_session_uuid, uint64_t lease_epoch) {
+  LockGuard lock(mutex_);
+  txn_host_info_map_[txn_id] = TxnHostInfo{host_session_uuid, lease_epoch};
+}
+
+void ObjectLockInfoManager::Impl::RemoveTxnFromHostSessionMap(const TransactionId& txn_id) {
+  LockGuard lock(mutex_);
+  txn_host_info_map_.erase(txn_id);
+}
+
 Status ObjectLockInfoManager::Impl::PersistRequest(
     LeaderEpoch epoch, const AcquireObjectLockRequestPB& req) {
   TRACE_FUNC();
-  VLOG(3) << __PRETTY_FUNCTION__;
-  auto key = req.session_host_uuid();
-  std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
-  auto lock = object_lock_info->LockForWrite();
-  auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[req.lease_epoch()];
+  VLOG(3) << __PRETTY_FUNCTION__ << req.ShortDebugString();
+  const auto& session_host_uuid = req.session_host_uuid();
+  const auto lease_epoch = req.lease_epoch();
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  UpdateTxnHostSessionMap(txn_id, session_host_uuid, lease_epoch);
+  std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(session_host_uuid);
+  auto lock = object_lock_info->LockForWrite();
+  auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[lease_epoch];
   auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
   auto& db_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   for (const auto& object_lock : req.object_locks()) {
@@ -412,20 +439,25 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
 Status ObjectLockInfoManager::Impl::PersistRequest(
     LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req, bool remove_lease_epoch_entry) {
   TRACE_FUNC();
-  VLOG(3) << __PRETTY_FUNCTION__;
-  auto key = req.session_host_uuid();
-  std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(key);
-  auto lock = object_lock_info->LockForWrite();
-  auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[req.lease_epoch()];
+  VLOG(3) << __PRETTY_FUNCTION__ << req.ShortDebugString();
+  const auto& session_host_uuid = req.session_host_uuid();
+  const auto lease_epoch = req.lease_epoch();
+  const bool erase_txn = !req.subtxn_id();
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
-  if (!req.subtxn_id()) {
+  if (erase_txn) {
+    RemoveTxnFromHostSessionMap(txn_id);
+  }
+  std::shared_ptr<ObjectLockInfo> object_lock_info = GetOrCreateObjectLockInfo(session_host_uuid);
+  auto lock = object_lock_info->LockForWrite();
+  auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[lease_epoch];
+  if (erase_txn) {
     txns_map.mutable_transactions()->erase(txn_id.ToString());
   } else {
     auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
     subtxns_map.mutable_subtxns()->erase(req.subtxn_id());
   }
   if (remove_lease_epoch_entry && txns_map.transactions().empty()) {
-    lock.mutable_data()->pb.mutable_lease_epochs()->erase(req.lease_epoch());
+    lock.mutable_data()->pb.mutable_lease_epochs()->erase(lease_epoch);
   }
 
   RETURN_NOT_OK(catalog_manager_->sys_catalog()->Upsert(epoch, object_lock_info));
@@ -584,6 +616,26 @@ void ObjectLockInfoManager::Impl::UnlockObject(
   unlock_objects->Launch();
 }
 
+void ObjectLockInfoManager::Impl::UnlockObject(
+    const TransactionId& txn_id) {
+  ReleaseObjectLockRequestPB req;
+  req.set_txn_id(txn_id.data(), txn_id.size());
+  {
+    LockGuard lock(mutex_);
+    auto it = txn_host_info_map_.find(txn_id);
+    if (it == txn_host_info_map_.end()) {
+      return;
+    }
+    req.set_session_host_uuid(it->second.host_session_uuid);
+    req.set_lease_epoch(it->second.lease_epoch);
+  }
+  return UnlockObject(
+      std::move(req), std::nullopt /* context */, std::nullopt /* leader epoch */,
+      [txn_id](Status s) {
+        LOG_IF(WARNING, !s.ok()) << "Releasing exclusive object locks failed for txn " << txn_id;
+      });
+}
+
 void ObjectLockInfoManager::Impl::ReleaseLocksHeldByExpiredLeaseEpoch(
     const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait,
     std::optional<LeaderEpoch> leader_epoch) {
@@ -647,10 +699,21 @@ void ObjectLockInfoManager::Impl::BootstrapLocksPostLoad() {
 
 void ObjectLockInfoManager::Impl::UpdateObjectLocks(
     const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info) {
-  {
-    LockGuard lock(mutex_);
-    auto res = object_lock_infos_map_.insert_or_assign(tserver_uuid, info).second;
-    DCHECK(res) << "UpdateObjectLocks called for an existing tserver_uuid " << tserver_uuid;
+  // While holding locks concurrently, the established lock order is mutex_ -> LockFor(Read/Write).
+  LockGuard lock(mutex_);
+  auto [it, inserted] = object_lock_infos_map_.insert_or_assign(tserver_uuid, info);
+  DCHECK(inserted) << "UpdateObjectLocks called for an existing tserver_uuid " << tserver_uuid;
+  auto object_lock_info = it->second->LockForRead();
+  for (const auto& [lease_epoch, txns_map] : object_lock_info.data().pb.lease_epochs()) {
+    for (const auto& [txn_id_str, _] : txns_map.transactions()) {
+      auto txn_id_res = TransactionId::FromString(txn_id_str);
+      if (txn_id_res.ok()) {
+        txn_host_info_map_[*txn_id_res] = TxnHostInfo{tserver_uuid, lease_epoch};
+      } else {
+        LOG(DFATAL) << "Unable to decode transaction id from "
+                    << txn_id_str << ": " << txn_id_res.status();
+      }
+    }
   }
 }
 
