@@ -514,7 +514,7 @@ SIInsertDataEntries(const SharedInvalidationMessage *data, int n)
 			SharedInvalidationMessage *dest = &segP->buffer[max % MAXNUMMESSAGES];
 
 			*dest = *data++;
-			dest->yb_header.sender_pid = getpid();
+			dest->yb_header.yb_sender_pid = getpid();
 			max++;
 		}
 
@@ -712,7 +712,7 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	 * leading to "Catalog snapshot used for this transaction has been
 	 * invalidated" error in backend B. To reduce such likehood, we try to
 	 * avoid resetState for backend B if possible: backend B only processes
-	 * an invalidation message when the sender_pid of the message matches
+	 * an invalidation message when the yb_sender_pid of the message matches
 	 * backend B's pid.
 	 */
 	ProcState **yb_reset_candidates = NULL;
@@ -788,7 +788,7 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 				SharedInvalidationMessage *msg = &segP->buffer[next %
 															   MAXNUMMESSAGES];
 
-				if (msg->yb_header.sender_pid == procPid)
+				if (msg->yb_header.yb_sender_pid == procPid)
 				{
 					elog(LOG, "resetState of %d", procPid);
 					stateP->resetState = true;

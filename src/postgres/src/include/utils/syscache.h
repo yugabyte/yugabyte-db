@@ -29,6 +29,16 @@
  *		of the entries in the array cacheinfo[] in syscache.c.
  *		Keep them in alphabetical order (renumbering only costs a
  *		backend rebuild).
+ * YB Note:
+ * Starting from 2025-03-11, we try to keep existing ids to have same integer
+ * value. In other words, newly added ids should be appended at the end
+ * and the alphabetical order can no longer be maintained. The purpose is
+ * to allow interop between different releases during YSQL upgrade so that
+ * an id of the same integer value represents the same catalog cache across
+ * different releases. In this way a catalog cache invalidation message
+ * generated in release 123 can be applicable to release 456, or vice versa.
+ * The function YbCheckCatalogCacheIds() is used to detect any change in
+ * this enum list.
  */
 
 enum SysCacheIdentifier
