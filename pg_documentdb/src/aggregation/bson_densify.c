@@ -589,6 +589,7 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 	sortClauseList = addTargetToSortList(parseState, sortEntry, sortClauseList,
 										 query->targetList, sortByExpr);
 	winClause->orderClause = sortClauseList;
+	winClause->frameOptions = FRAMEOPTION_DEFAULTS;
 	query->hasWindowFuncs = true;
 	query->windowClause = list_make1(winClause);
 
