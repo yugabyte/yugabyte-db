@@ -80,8 +80,13 @@ bindVectorIndexOptions(YbcPgStatement handle,
 	Assert(indexTupleDesc->natts == 1);
 
 	/* Assuming vector is the first att */;
-	options.dimensions = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
-	Assert(options.dimensions > 0);
+	int dims = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
+	if (dims < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("column does not have dimensions")));
+
+	options.dimensions = dims;
 	options.attnum = indexInfo->ii_IndexAttrNumbers[0];
 
 	YBCPgCreateIndexSetVectorOptions(handle, &options);
@@ -263,7 +268,9 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	/* Require column to have dimensions to be indexed */
 	if (buildstate->dimensions < 0)
-		elog(ERROR, "column does not have dimensions");
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("column does not have dimensions")));
 
 	buildstate->reltuples = 0;
 	buildstate->indtuples = 0;
