@@ -1912,13 +1912,13 @@ bool YBCIsRestartReadPointRequested() {
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {
-  return ToYBCStatus(pgapi->CommitPlainTransaction());
+  return ToYBCStatus(pgapi->CommitPlainTransaction(std::nullopt /* ddl_commit_info */));
 }
 
 YbcStatus YBCPgCommitPlainTransactionContainingDDL(
     YbcPgOid ddl_db_oid, bool ddl_is_silent_altering) {
   return ToYBCStatus(
-      pgapi->CommitPlainTransactionContainingDDL(ddl_db_oid, ddl_is_silent_altering));
+      pgapi->CommitPlainTransaction(PgDdlCommitInfo{ddl_db_oid, ddl_is_silent_altering}));
 }
 
 YbcStatus YBCPgAbortPlainTransaction() {

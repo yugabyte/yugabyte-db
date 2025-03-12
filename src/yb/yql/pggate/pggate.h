@@ -95,6 +95,11 @@ struct PgMemctxHasher {
   size_t operator()(PgMemctx* value) const;
 };
 
+struct PgDdlCommitInfo {
+  uint32_t db_oid;
+  bool is_silent_altering;
+};
+
 //--------------------------------------------------------------------------------------------------
 // Implements support for CAPI.
 class PgApiImpl {
@@ -644,8 +649,7 @@ class PgApiImpl {
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitPlainTransaction();
-  Status CommitPlainTransactionContainingDDL(PgOid ddl_db_oid, bool ddl_is_silent_modification);
+  Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
   Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
@@ -774,7 +778,6 @@ class PgApiImpl {
 
   void RollbackSubTransactionScopedSessionState();
   void RollbackTransactionScopedSessionState();
-  Status CommitTransactionScopedSessionState();
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.

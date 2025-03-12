@@ -48,6 +48,7 @@ class PgsqlWriteOp;
 
 class BufferableOperations;
 struct PerformResult;
+struct PgDdlCommitInfo;
 
 using PgTableDescPtr = scoped_refptr<PgTableDesc>;
 using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;
