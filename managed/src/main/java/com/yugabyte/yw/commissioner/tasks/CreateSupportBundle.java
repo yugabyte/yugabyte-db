@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload;
@@ -198,7 +199,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
       if (componentType.equals(BundleDetails.ComponentType.ApplicationLogs)) {
         continue;
       }
-      SubTaskGroup subTaskGroup = createSubTaskGroup(componentType.name() + "ComponentDownload");
+      SubTaskGroup subTaskGroup =
+          createSubTaskGroup(
+              componentType.name() + "ComponentDownload",
+              SubTaskGroupType.SupportBundleComponentDownload);
       final SupportBundleTaskParams taskParams = taskParams();
       SupportBundleComponent supportBundleComponent =
           supportBundleComponentFactory.getComponent(componentType);
@@ -263,7 +267,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
         .getComponents()
         .contains(BundleDetails.ComponentType.ApplicationLogs)) {
       try {
-        SubTaskGroup subTaskGroup = createSubTaskGroup("ApplicationLogsComponentDownload");
+        SubTaskGroup subTaskGroup =
+            createSubTaskGroup(
+                "ApplicationLogsComponentDownload",
+                SubTaskGroupType.SupportBundleComponentDownload);
         SupportBundleComponent supportBundleComponent =
             supportBundleComponentFactory.getComponent(BundleDetails.ComponentType.ApplicationLogs);
         Path dirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
