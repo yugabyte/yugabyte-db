@@ -42,7 +42,6 @@ For example, as of November 2024, YugabyteDB Anywhere v2024.2.x supports the fol
 
 - [v2024.1.x](../ybdb-releases/v2024.1/) (STS)
 - [v2.20.x](../ybdb-releases/v2.20/) (LTS)
-- [v2.18.x](../ybdb-releases/v2.18/) (STS)
 
 For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 
