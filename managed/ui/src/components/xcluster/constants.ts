@@ -257,7 +257,9 @@ export const MetricName = {
   TSERVER_ASYNC_REPLICATION_LAG: 'tserver_async_replication_lag_micros',
   CONSUMER_SAFE_TIME_LAG: 'consumer_safe_time_lag',
   CONSUMER_SAFE_TIME_SKEW: 'consumer_safe_time_skew',
+  CONSUMER_REPLICATION_ERROR_COUNT: 'xcluster_consumer_replication_error_count',
   ASYNC_REPLICATION_SENT_LAG: 'async_replication_sent_lag',
+  CDC_SERVICE_GET_CHANGES_THROUGHPUT_MBPS: 'cdc_service_get_changes_throughput_mbps',
   DISK_USAGE: 'disk_usage',
   HA_BACKUP_LAG: 'yba_ha_backup_lag',
   HA_LAST_BACKUP_SIZE: 'yba_ha_last_backup_size_mb'
