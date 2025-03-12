@@ -139,8 +139,6 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "com.google.inject"            % "guice"                % "5.1.0",
-  "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.5.6",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
@@ -151,6 +149,7 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-csv" % "1.13.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
+  "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
@@ -165,7 +164,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
-  "net.minidev" % "json-smart" % "2.5.0",
+  "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -195,14 +194,14 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.15.1",
   "commons-codec" % "commons-codec" % "1.16.0",
-  "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
-  "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
-  "com.google.cloud" % "google-cloud-compute" % "1.9.1",
-  "com.google.cloud" % "google-cloud-storage" % "2.2.1",
-  "com.google.cloud" % "google-cloud-kms" % "2.4.4",
-  "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
-  "com.google.cloud" % "google-cloud-logging" % "3.14.5",
-  "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
+  "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
+  "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
+  "com.google.cloud" % "google-cloud-compute" % "1.62.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.43.2",
+  "com.google.cloud" % "google-cloud-kms" % "2.55.0",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.54.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.17.2",
+  "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
@@ -210,7 +209,7 @@ libraryDependencies ++= Seq(
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
-  "org.apache.directory.api" % "api-all" % "2.1.6",
+  "org.apache.directory.api" % "api-all" % "2.1.7",
   "io.fabric8" % "crd-generator-apt" % "6.8.0",
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
@@ -237,7 +236,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "2.0.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "2.0.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
-  "io.grpc" % "grpc-testing" % "1.48.0" % Test,
+  "io.grpc" % "grpc-testing" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
 )
@@ -508,7 +507,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.64.7-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.64.8-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.1-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
@@ -519,8 +518,6 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
-dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 
 // This is a custom version, built based on 1.0.3 with the following commit added on top:
