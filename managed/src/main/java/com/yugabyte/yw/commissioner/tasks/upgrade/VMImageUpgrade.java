@@ -263,10 +263,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
       if (useYNPProvisioning) {
-        createSetupYNPTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        createYNPProvisioningTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        createYNPProvisioningTask(universe, nodeList)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
-      createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createInstallNodeAgentTasks(universe, nodeList)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (!useYNPProvisioning) {

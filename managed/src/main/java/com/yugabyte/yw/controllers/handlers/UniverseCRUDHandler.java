@@ -221,7 +221,9 @@ public class UniverseCRUDHandler {
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
             || areCommunicationPortsChanged(taskParams, universe)
-            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
+            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
+            || !Objects.equals(
+                currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -2364,6 +2366,19 @@ public class UniverseCRUDHandler {
       }
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
+      if (!Objects.equals(newIntent.imageBundleUUID, curIntent.imageBundleUUID)) {
+        Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+        ImageBundle newBundle =
+            ImageBundle.getOrBadRequest(provider.getUuid(), newIntent.imageBundleUUID);
+        if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot change arch from "
+                  + universe.getUniverseDetails().arch
+                  + " to "
+                  + newBundle.getDetails().getArch());
+        }
+      }
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
       for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded

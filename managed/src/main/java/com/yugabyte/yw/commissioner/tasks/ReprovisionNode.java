@@ -91,7 +91,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
       // Need to reinstall node agent.
       deleteNodeAgent(currentNode);
-      createInstallNodeAgentTasks(nodeCollection)
+      createInstallNodeAgentTasks(universe, nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);

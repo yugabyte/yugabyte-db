@@ -2085,12 +2085,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return Collections.emptySet();
   }
 
-  public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
-    return createInstallNodeAgentTasks(nodes, false);
+  public SubTaskGroup createInstallNodeAgentTasks(
+      Universe universe, Collection<NodeDetails> nodes) {
+    return createInstallNodeAgentTasks(universe, nodes, false);
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(
-      Collection<NodeDetails> nodes, boolean reinstall) {
+      Universe universe, Collection<NodeDetails> nodes, boolean reinstall) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
@@ -2100,7 +2101,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       throw new IllegalArgumentException(errMsg);
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
-    Universe universe = getUniverse();
     NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
     if (reinstall == false && nodeAgentEnabler.shouldMarkUniverse(universe)) {
       // Reinstall forces direct installation in the same task.

@@ -1362,6 +1362,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Set the instance type.
     params.instanceType = cloudInfo.instance_type;
     params.machineImage = node.machineImage;
+    params.imageBundleUUID = userIntent.imageBundleUUID;
     params.useTimeSync = cloudInfo.useTimeSync;
     // Set the ports to provision a node to use
     params.communicationPorts =
@@ -1404,6 +1405,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.assignPublicIP = cloudInfo.assignPublicIP;
     params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.setMachineImage(node.machineImage);
+    params.imageBundleUUID = userIntent.imageBundleUUID;
     params.sshUserOverride = node.sshUserOverride;
     params.sshPortOverride = node.sshPortOverride;
     params.setCmkArn(taskParams().getCmkArn());
@@ -2344,7 +2346,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes a collection of nodes to be processed.
    */
-  public SubTaskGroup createSetupYNPTask(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createSetupYNPTask(Universe universe, Collection<NodeDetails> nodes) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(SetupYNP.class.getSimpleName());
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
@@ -2354,7 +2356,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalArgumentException(errMsg);
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
-    Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes)
         .forEach(
@@ -2393,7 +2394,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes a collection of nodes to be processed.
    */
-  public SubTaskGroup createYNPProvisioningTask(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(YNPProvisioning.class.getSimpleName());
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
@@ -2402,8 +2403,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.error(errMsg);
       throw new IllegalArgumentException(errMsg);
     }
-    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
-    Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes)
         .forEach(
@@ -2504,12 +2503,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
               if (useYNPProvisioning) {
-                createSetupYNPTask(filteredNodes)
+                createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-                createYNPProvisioningTask(filteredNodes)
+                createYNPProvisioningTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
-              createInstallNodeAgentTasks(filteredNodes)
+              createInstallNodeAgentTasks(universe, filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
