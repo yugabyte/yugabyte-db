@@ -130,6 +130,7 @@ public class Backup extends Model {
           .put(BackupState.InProgress, BackupState.FailedToDelete)
           .put(BackupState.QueuedForDeletion, BackupState.FailedToDelete)
           .put(BackupState.DeleteInProgress, BackupState.FailedToDelete)
+          .put(BackupState.DeleteInProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Failed, BackupState.FailedToDelete)
           .put(BackupState.Completed, BackupState.FailedToDelete)
           .put(BackupState.InProgress, BackupState.Stopping)
