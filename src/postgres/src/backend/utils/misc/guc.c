@@ -3217,6 +3217,18 @@ static struct config_bool ConfigureNamesBool[] =
     yb_disable_auto_analyze_check_hook, NULL, NULL
   },
 
+	{
+		{"yb_extension_upgrade", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Set to true when upgrading extensions during "
+						 "a YSQL major version upgrade."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_extension_upgrade,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

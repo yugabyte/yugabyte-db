@@ -15,6 +15,9 @@
 #include "mb/pg_wchar.h"
 #include "pg_upgrade.h"
 
+/* YB includes */
+#include "lib/stringinfo.h"
+
 static void check_new_cluster_is_empty(void);
 static void check_databases_are_compatible(void);
 static void check_locale_and_encoding(DbInfo *olddb, DbInfo *newdb);
@@ -47,6 +50,8 @@ static void yb_check_user_attributes(PGconn *old_cluster_conn,
 static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
 
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
+
+static void yb_check_installed_extensions();
 
 /*
  * fix_path_separator
@@ -214,6 +219,8 @@ check_and_dump_old_cluster(bool live_check)
 	/* Pre-PG 9.4 had a different 'line' data type internal format */
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
+
+	yb_check_installed_extensions();
 
 	if (yb_has_check_fatal)
 		pg_fatal("\n");
@@ -1725,4 +1732,94 @@ yb_check_old_cluster_user(PGconn *old_cluster_conn)
 	yb_check_user_attributes(old_cluster_conn, old_cluster.yb_user,
 							 role_attributes);
 	check_ok();
+}
+
+void
+yb_check_installed_extensions()
+{
+	int dbnum;
+	bool found = false;
+	StringInfoData error_msg;
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+
+	initStringInfo(&error_msg);
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "unsupported_extensions.txt");
+
+	prep_status("Checking installed extensions");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_name;
+		bool		db_used = false;
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+
+		/* Find installed extensions not in the allowed list */
+		res = executeQueryOrDie(conn,
+			"SELECT extname FROM pg_extension WHERE extname NOT IN "
+			"('auto_explain',"
+			"'file_fdw',"
+			"'fuzzystrmatch',"
+			"'hstore',"
+			"'passwordcheck',"
+			"'pgcrypto',"
+			"'pg_stat_statements',"
+			"'pg_trgm',"
+			"'postgres_fdw',"
+			"'autoinc',"
+			"'insert_username',"
+			"'moddatetime',"
+			"'refint',"
+			"'sslinfo',"
+			"'tablefunc',"
+			"'uuid-ossp',"
+			"'hypopg',"
+			"'orafce',"
+			"'pgaudit',"
+			"'pg_hint_plan',"
+			"'hll',"
+			"'pg_cron',"
+			"'pg_partman',"
+			"'plpgsql')");
+		ntups = PQntuples(res);
+		i_name = PQfnumber(res, "extname");
+
+		for (rowno = 0; rowno < ntups; rowno++)
+		{
+			const char *extension_name = PQgetvalue(res, rowno, i_name);
+			found = true;
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s\n", output_path,
+						 strerror(errno));
+			if (!db_used)
+			{
+				yb_fprintf_and_log(script, "In database: %s\n",
+								   active_db->db_name);
+				db_used = true;
+			}
+			yb_fprintf_and_log(script, "  %s\n", extension_name);
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (found)
+	{
+		yb_fatal("Your installation contains extensions that are not compatible\n"
+				 "with YSQL major version upgrade. Please uninstall the extensions\n"
+				 "using DROP EXTENSION, and reinstall them after the upgrade. A list of\n"
+				 "extensions with problems is printed above and in the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+	{
+		check_ok();
+	}
 }
