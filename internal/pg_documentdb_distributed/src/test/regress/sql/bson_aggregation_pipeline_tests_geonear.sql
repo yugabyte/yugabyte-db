@@ -42,17 +42,17 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": -1} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numderDouble": "-Infinity"}} } ]}');
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numberDouble": "-Infinity"}} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numderDouble": "NaN"}} } ]}');
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numberDouble": "NaN"}} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numderDouble": "-NaN"}} } ]}');
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numberDouble": "-NaN"}} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numderDecimal": "-Infinity"}} } ]}');
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numberDecimal": "-Infinity"}} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numderDecimal": "NaN"}} } ]}');
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numberDecimal": "NaN"}} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numderDecimal": "-NaN"}} } ]}');
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numberDecimal": "-NaN"}} } ]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a"} }, { "$match": { "a": { "$near": {"coordinates": [1,1]}}}} ]}');
 

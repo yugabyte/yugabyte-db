@@ -105,7 +105,7 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 ERROR:  $geoNear requires a 'distanceField' option as a String
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": "value" } ]}');
-ERROR:  expected a document to create a bson object
+ERROR:  invalid parameter: expected an object ($geoNear)
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": true, "distanceField": "dist.calculated", "key": "a" } } ]}');
 ERROR:  $geoNear requires near argument to be a GeoJSON object or a legacy point(array)
@@ -125,23 +125,23 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": -1} } ]}');
 ERROR:  minDistance must be nonnegative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numderDouble": "-Infinity"}} } ]}');
-ERROR:  minDistance must be a number
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numberDouble": "-Infinity"}} } ]}');
+ERROR:  minDistance must be nonnegative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numderDouble": "NaN"}} } ]}');
-ERROR:  minDistance must be a number
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numberDouble": "NaN"}} } ]}');
+ERROR:  minDistance must be non-negative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numderDouble": "-NaN"}} } ]}');
-ERROR:  minDistance must be a number
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "minDistance": {"$numberDouble": "-NaN"}} } ]}');
+ERROR:  minDistance must be non-negative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numderDecimal": "-Infinity"}} } ]}');
-ERROR:  maxDistance must be a number
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numberDecimal": "-Infinity"}} } ]}');
+ERROR:  maxDistance must be nonnegative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numderDecimal": "NaN"}} } ]}');
-ERROR:  maxDistance must be a number
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numberDecimal": "NaN"}} } ]}');
+ERROR:  maxDistance must be non-negative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numderDecimal": "-NaN"}} } ]}');
-ERROR:  maxDistance must be a number
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a",  "maxDistance": {"$numberDecimal": "-NaN"}} } ]}');
+ERROR:  maxDistance must be non-negative
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a"} }, { "$match": { "a": { "$near": {"coordinates": [1,1]}}}} ]}');
 ERROR:  Too many geoNear expressions
@@ -883,7 +883,7 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear_legacy", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a", "spherical": true } }, { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -1057,7 +1057,7 @@ SELECT * FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 
 EXPLAIN VERBOSE SELECT * FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [10, 10], "distanceField": "dist.calculated", "key": "a.c" } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
  Sort  (cost=11041.82..11291.82 rows=100000 width=40)
    Output: remote_scan.document, remote_scan.distance

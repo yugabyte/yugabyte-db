@@ -140,6 +140,8 @@ void UpdateGeoNearQueryTreeToUseAlternateIndex(PlannerInfo *root, RelOptInfo *re
 											   OpExpr *geoNearOpExpr, const char *key,
 											   bool useSphericalIndex, bool isEmptyKey);
 bool TryFindGeoNearOpExpr(PlannerInfo *root, ReplaceExtensionFunctionContext *context);
+pgbson * EvaluateGeoNearConstExpression(const bson_value_t *geoNearSpecValue,
+										Expr *variableExpr);
 
 inline static bool
 Is2dWithSphericalDistance(const GeonearRequest *request)

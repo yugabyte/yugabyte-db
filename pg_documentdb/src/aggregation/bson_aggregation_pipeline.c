@@ -4034,7 +4034,15 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 						rte->rtekind)));
 	}
 
-	const pgbson *geoNearQueryDoc = PgbsonInitFromDocumentBsonValue(existingValue);
+	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (
+					errcode(ERRCODE_DOCUMENTDB_LOCATION10065),
+					errmsg("invalid parameter: expected an object ($geoNear)")));
+	}
+
+	pgbson *geoNearQueryDoc = EvaluateGeoNearConstExpression(existingValue,
+															 context->variableSpec);
 
 	/*
 	 * Create a $geoNear query of this form:

@@ -74,7 +74,7 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
 ERROR:  $geoNear requires a 'distanceField' option as a String
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": "value" } ]}');
-ERROR:  expected a document to create a bson object
+ERROR:  invalid parameter: expected an object ($geoNear)
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": true, "distanceField": "dist.calculated", "key": "a" } } ]}');
 ERROR:  $geoNear requires near argument to be a GeoJSON object or a legacy point(array)

@@ -43,6 +43,9 @@ static void UpdateGeonearArgsInPlace(List *args, Oid validateFunctionOid,
 									 Datum keyDatum, Datum geoNearQueryDatum);
 static bool CheckBsonProjectGeonearFunctionExpr(FuncExpr *expr,
 												FuncExpr **geoNearProjectFuncExpr);
+static bool ValidateConstExpression(const bson_value_t *value,
+									AggregationExpressionData *exprData,
+									ParseAggregationExpressionContext *context);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -970,6 +973,94 @@ TryFindGeoNearOpExpr(PlannerInfo *root, ReplaceExtensionFunctionContext *context
 
 
 /*
+ * Replaces any "valid" variable reference in geonear spec with the value from let document,
+ * and evaluates the expressions provided in the geonear spec.
+ */
+pgbson *
+EvaluateGeoNearConstExpression(const bson_value_t *geoNearSpecValue, Expr *variableExpr)
+{
+	ParseAggregationExpressionContext parseContext = { 0 };
+
+	ExpressionVariableContext *variableContext = palloc0(
+		sizeof(ExpressionVariableContext));
+	if (variableExpr != NULL && IsA(variableExpr, Const))
+	{
+		/*
+		 * TODO: Support non-Const variable expression for geonear.
+		 * e.g. $lookup nested let
+		 */
+		Const *varConst = (Const *) variableExpr;
+		pgbson *variableSpecPgbson = DatumGetPgBson(varConst->constvalue);
+
+		bson_iter_t letVarsIter;
+		if (PgbsonInitIteratorAtPath(variableSpecPgbson, "let", &letVarsIter))
+		{
+			const bson_value_t *letVars = bson_iter_value(&letVarsIter);
+			ParseVariableSpec(letVars, variableContext, &parseContext);
+		}
+	}
+
+	AggregationExpressionData *exprData = (AggregationExpressionData *) palloc0(
+		sizeof(AggregationExpressionData));
+
+	bson_iter_t iter;
+	BsonValueInitIterator(geoNearSpecValue, &iter);
+	pgbson *source = PgbsonInitEmpty();
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	bool nullOnEmpty = false;
+	while (bson_iter_next(&iter))
+	{
+		StringView key = bson_iter_key_string_view(&iter);
+		const bson_value_t *value = bson_iter_value(&iter);
+		if (StringViewEqualsCString(&key, "near") ||
+			StringViewEqualsCString(&key, "minDistance") ||
+			StringViewEqualsCString(&key, "maxDistance"))
+		{
+			if (ValidateConstExpression(value, exprData, &parseContext))
+			{
+				EvaluateAggregationExpressionDataToWriter(exprData, source, key, &writer,
+														  variableContext, nullOnEmpty);
+			}
+			else
+			{
+				/* not const, error */
+				if (StringViewEqualsCString(&key, "near"))
+				{
+					ereport(ERROR, (
+								errcode(ERRCODE_DOCUMENTDB_LOCATION5860402),
+								errmsg("$geoNear requires a constant near argument")));
+				}
+				else if (StringViewEqualsCString(&key, "minDistance"))
+				{
+					ereport(ERROR, (
+								errcode(ERRCODE_DOCUMENTDB_LOCATION7555701),
+								errmsg(
+									"$geoNear requires $minDistance to evaluate to a constant number")));
+				}
+				else
+				{
+					ereport(ERROR, (
+								errcode(ERRCODE_DOCUMENTDB_LOCATION7555702),
+								errmsg(
+									"$geoNear requires $maxDistance to evaluate to a constant number")));
+				}
+			}
+		}
+		else
+		{
+			PgbsonWriterAppendValue(&writer, key.string, key.length, value);
+		}
+	}
+
+	pfree(exprData);
+	pfree(variableContext);
+	return PgbsonWriterGetPgbson(&writer);
+}
+
+
+/*
  * Updates the geonear related quals, projection and sort clause in the query,
  * based on the index we want to use.
  *
@@ -1260,6 +1351,27 @@ UpdateGeonearArgsInPlace(List *args, Oid validateFunctionOid, Datum keyDatum, Da
 	validateFuncExpr->funcid = validateFunctionOid;
 	validateFunctionKeyConst->constvalue = keyDatum;
 	querySpecConst->constvalue = geoNearQueryDatum;
+}
+
+
+/*
+ * Validates if the expression for the value is a constant.
+ * Variable reference is allowed because these are already validated to be constant at the command
+ * level let.
+ */
+static bool
+ValidateConstExpression(const bson_value_t *value, AggregationExpressionData *exprData,
+						ParseAggregationExpressionContext *parseContext)
+{
+	if (exprData == NULL || parseContext == NULL)
+	{
+		return false;
+	}
+
+	memset(exprData, 0, sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(exprData, value, parseContext);
+	return exprData->kind == AggregationExpressionKind_Constant ||
+		   exprData->kind == AggregationExpressionKind_Variable;
 }
 
 

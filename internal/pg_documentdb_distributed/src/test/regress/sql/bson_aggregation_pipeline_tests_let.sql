@@ -371,3 +371,99 @@ SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE 
 SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$not": {"$lt": ["$_id", "$$varRef"] } } }', '{ "let": {"varRef": 1} }', NULL);
 
 RESET documentdb.enableLetAndCollationForQueryMatch;
+
+
+-- let with geonear
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "agg_geonear_let", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }]}');
+SELECT documentdb_api.insert_one('db','agg_geonear_let','{ "_id": 1, "a": { "b": [ 5, 5]} }', NULL);
+SELECT documentdb_api.insert_one('db','agg_geonear_let','{ "_id": 2, "a": { "b": [ 5, 6]} }', NULL);
+SELECT documentdb_api.insert_one('db','agg_geonear_let','{ "_id": 3, "a": { "b": [ 5, 7]} }', NULL);
+
+SELECT document FROM bson_aggregation_pipeline('db', $$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": "$location", 
+            "distanceField": "dist.calculated",
+            "key": "a.b" 
+          } 
+      } 
+    ]
+}
+$$);
+
+SELECT document FROM bson_aggregation_pipeline('db', $$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": { "$literal" : "Not a valid point" }, 
+            "distanceField": "dist.calculated",
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 6], "dist1": 0, "dist2": 2}
+}
+$$);
+
+SELECT document FROM bson_aggregation_pipeline('db', $$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": { "$literal" : [5, 6] }, 
+            "distanceField": "dist.calculated",
+            "minDistance": "$p",
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 6], "dist1": 0, "dist2": 2}
+}
+$$);
+
+SELECT document FROM bson_aggregation_pipeline('db', $$ 
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": { "$literal" : [5, 6] }, 
+            "distanceField": "dist.calculated",
+            "maxDistance": { "$literal": [1, 2] },
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 6], "dist1": 0, "dist2": 2}
+}
+$$);
+
+-- a valid query
+SELECT document FROM bson_aggregation_pipeline('db', $spec$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": "$$pointRef", 
+            "distanceField": "dist.calculated",
+            "minDistance": "$$dist1",
+            "maxDistance": "$$dist2",
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 5], "dist1": 0, "dist2": 2}
+}
+$spec$);
