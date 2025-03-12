@@ -17,8 +17,6 @@ cascade:
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
 | [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
-| [v2.18](v2.18/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.14](../ybdb-releases/v2.14/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 
 {{< warning title="Replicated end of life" >}}
 YugabyteDB Anywhere will end support for Replicated installation at the **end of 2024**. For new installations of YugabyteDB Anywhere, use [YBA Installer](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/). To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
@@ -44,7 +42,6 @@ For example, as of November 2024, YugabyteDB Anywhere v2024.2.x supports the fol
 
 - [v2024.1.x](../ybdb-releases/v2024.1/) (STS)
 - [v2.20.x](../ybdb-releases/v2.20/) (LTS)
-- [v2.18.x](../ybdb-releases/v2.18/) (STS)
 
 For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 

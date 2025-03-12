@@ -46,13 +46,13 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<ta 22935>}}
 |Potential issues with server-side sequence caching in multi-database clusters
 | {{<product "ysql">}}
-| {{<release "2.18.0.0, 2.20.0.0, 2024.1.0.0">}}
+| [v2.18.0.0](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0, 2024.1.0.0">}}
 | {{<nobreak "25 June 2024">}}
 |
 | {{<ta 22802>}}
 |Inconsistencies between system catalog and DocDB schema during DDL operations
 | {{<product "ysql">}}
-| {{<release "2.14.0.0">}}, [v2.16.0.0](/preview/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), {{<release "2.18.0.0, 2.20.0.0">}}
+| [v2.14.0.0](/preview/releases/ybdb-releases/end-of-life/v2.14/#v2.14.0.0), [v2.16.0.0](/preview/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), [v2.18.0.0](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0">}}
 | {{<nobreak "11 June 2024">}}
 |
 | {{<ta 22057>}}
@@ -76,7 +76,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<ta 21491>}}
 |Failure of upgrades to release versions 2.18 and 2.20
 | {{<product "ybdb,yba">}}
-| {{<release "2.18, 2.20">}}
+| [v2.18](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20">}}
 | {{<nobreak "19 Mar 2024">}}
 |
 | {{<ta 21218>}}
