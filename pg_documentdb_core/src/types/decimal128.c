@@ -18,7 +18,6 @@
 /* Including lib headers here to limit the exposure and separating the concerns across */
 #include <bid_conf.h>
 #include <bid_functions.h>
-#include <bid_internal.h>
 #include <math.h>
 #include <lib/stringinfo.h>
 
@@ -34,6 +33,13 @@
 #endif
 
 #define BID128_EXP_BIAS 6176ull
+
+/*
+ * From bid_internal.h
+ */
+#define INFINITY_MASK64         0x7800000000000000ull
+#define SINFINITY_MASK64        0xf800000000000000ull
+#define NAN_MASK64              0x7c00000000000000ull
 
 /*
  * Used to shift the exponent bits in their respective place based on the dec128 format requirement.
