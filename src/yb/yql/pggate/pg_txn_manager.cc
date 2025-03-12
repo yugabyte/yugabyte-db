@@ -35,6 +35,7 @@
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -447,13 +448,8 @@ void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
   active_sub_transaction_id_ = id;
 }
 
-Status PgTxnManager::CommitPlainTransaction() {
-  return FinishPlainTransaction(Commit::kTrue, std::nullopt /* ddl_commit_info */);
-}
-
-Status PgTxnManager::CommitPlainTransactionContainingDDL(
-    uint32_t ddl_db_oid, bool ddl_is_silent_altering) {
-  return FinishPlainTransaction(Commit::kTrue, DdlCommitInfo{ddl_db_oid, ddl_is_silent_altering});
+Status PgTxnManager::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
+  return FinishPlainTransaction(Commit::kTrue, ddl_commit_info);
 }
 
 Status PgTxnManager::AbortPlainTransaction() {
@@ -461,7 +457,8 @@ Status PgTxnManager::AbortPlainTransaction() {
 }
 
 DdlMode PgTxnManager::GetDdlModeFromDdlState(
-    const std::optional<DdlState> ddl_state, const std::optional<DdlCommitInfo>& ddl_commit_info) {
+    const std::optional<DdlState> ddl_state,
+    const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   return DdlMode{
       .has_docdb_schema_changes = ddl_state->has_docdb_schema_changes,
       .silently_altered_db = ddl_commit_info && ddl_commit_info->is_silent_altering
@@ -472,7 +469,7 @@ DdlMode PgTxnManager::GetDdlModeFromDdlState(
 }
 
 Status PgTxnManager::FinishPlainTransaction(
-    Commit commit, const std::optional<DdlCommitInfo>& ddl_commit_info) {
+    Commit commit, const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   if (PREDICT_FALSE(IsDdlMode() && IsDdlModeWithSeparateTransaction())) {
     // GH #22353 - A DML txn must be aborted or committed only when there is no active DDL txn
     // (ie. after any active DDL txn has itself committed or aborted). Silently ignoring this
@@ -568,10 +565,10 @@ Status PgTxnManager::ExitSeparateDdlTxnModeWithAbort() {
 
 Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering) {
   return ExitSeparateDdlTxnMode(
-      DdlCommitInfo{.db_oid = db_oid, .is_silent_altering = is_silent_altering});
+    PgDdlCommitInfo{.db_oid = db_oid, .is_silent_altering = is_silent_altering});
 }
 
-Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info) {
+Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
   if (!((FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
           (!FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled && IsDdlMode()))) {
