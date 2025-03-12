@@ -111,6 +111,10 @@ import play.libs.Json;
 public class PlacementInfoUtilTest extends FakeDBApplication {
   private static final int REPLICATION_FACTOR = 3;
   private static final int INITIAL_NUM_NODES = REPLICATION_FACTOR * 3;
+  private static final UUID DEFAULT_IMAGE_BUNDLE_UUID =
+      UUID.fromString("00000000-0000-0000-0000-000000000000");
+  private static final UUID NEW_IMAGE_BUNDLE_UUID = UUID.randomUUID();
+
   Random customerIdx = new Random();
 
   private class TestData {
@@ -4113,6 +4117,38 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         });
   }
 
+  @Test
+  public void testConfigureModifyImageBundleUUID() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.MODIFY_IMAGE_BUNDLE_UUID, 0), // -> new ib
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1), // inc az
+            new Pair(UserAction.MODIFY_IMAGE_BUNDLE_UUID, 1) // -> old ib
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // full move + one more node
+              assertEquals(7, params.nodeDetailsSet.size());
+              break;
+            case 2:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // one more added node
+              assertEquals(4, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
   @Test(expected = UnsupportedOperationException.class)
   public void testConfigureChangeRFAndOther() {
     setupAndApplyActions(
@@ -4272,6 +4308,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
               details.getPrimaryCluster().userIntent.deviceInfo.storageType =
                   PublicCloudConstants.StorageType.GP3;
+              details.getPrimaryCluster().userIntent.imageBundleUUID = DEFAULT_IMAGE_BUNDLE_UUID;
               details.getPrimaryCluster().userIntent.deviceInfo.throughput = 500;
               details.getPrimaryCluster().userIntent.deviceInfo.diskIops = 5000;
               details.communicationPorts.masterHttpPort = 7000;
@@ -4340,7 +4377,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.updateUniverseDefinition(
             params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
         verifyConfigureResult(params);
-        sb.append(step.getFirst() + ":" + res).append(",");
+        sb.append("Applied: " + step.getFirst() + ":" + res).append(",");
         // Verify only for original order.
         if (originalOrder && stepNum < steps.size() - 1) {
           verification.accept(stepNum, params);
@@ -4415,7 +4452,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       boolean instanceConfChanges =
           UniverseCRUDHandler.isAwsArnChanged(cluster, oldCluster)
               || UniverseCRUDHandler.areCommunicationPortsChanged(params, universe)
-              || oldCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
+              || oldCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
+              || !Objects.equals(
+                  oldCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID);
 
       String recap =
           String.format(
@@ -4747,7 +4786,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     CHANGE_DEVICE_DETAILS,
     CHANGE_MASTER_DEVICE_DETAILS(true),
     MODIFY_AFFINITIZED,
-    MODIFY_COMMUNICATION_PORTS;
+    MODIFY_COMMUNICATION_PORTS,
+    MODIFY_IMAGE_BUNDLE_UUID;
 
     UserAction() {
       this(false);
@@ -4788,6 +4828,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                         && curRegions.contains(az.getRegion().getUuid()))
             .collect(Collectors.toList());
     switch (action) {
+      case MODIFY_IMAGE_BUNDLE_UUID:
+        if (Objects.equals(userIntent.imageBundleUUID, DEFAULT_IMAGE_BUNDLE_UUID)) {
+          userIntent.imageBundleUUID = NEW_IMAGE_BUNDLE_UUID;
+          return "new";
+        } else {
+          userIntent.imageBundleUUID = DEFAULT_IMAGE_BUNDLE_UUID;
+          return "old";
+        }
       case UPD_RF:
         int rfIdx = rfs.indexOf(userIntent.replicationFactor);
         if (var % 1 != 0) { // TODO: decrease currently not available

@@ -276,12 +276,12 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
     // Node agent is disabled for provider1.
-    when(universeTaskBase.getMockParams().getUniverseUUID()).thenReturn(universeUuid1);
     universeTaskBase.createInstallNodeAgentTasks(
+        Universe.getOrBadRequest(universeUuid1),
         Universe.getOrBadRequest(universeUuid1).getNodes());
     // Node agent is enabled for provider2.
-    when(universeTaskBase.getMockParams().getUniverseUUID()).thenReturn(universeUuid2);
     universeTaskBase.createInstallNodeAgentTasks(
+        Universe.getOrBadRequest(universeUuid2),
         Universe.getOrBadRequest(universeUuid2).getNodes());
     universe1 = Universe.getOrBadRequest(universeUuid1);
     universe2 = Universe.getOrBadRequest(universeUuid2);
