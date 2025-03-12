@@ -100,6 +100,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   @Override
   public void run() {
     Throwable th = null;
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     try {
       checkUniverseVersion();
       // TODO: Would it make sense to have a precheck k8s task that does
