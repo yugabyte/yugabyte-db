@@ -265,7 +265,8 @@ Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& e
       TransactionErrorCode::kConflict,
       TransactionErrorCode::kReadRestartRequired,
       TransactionErrorCode::kSnapshotTooOld,
-      TransactionErrorCode::kSkipLocking};
+      TransactionErrorCode::kSkipLocking,
+      TransactionErrorCode::kLockNotFound};
   static_assert(precedence_list.size() + 1 == MapSize(static_cast<TransactionErrorCode*>(nullptr)));
 
   static const auto precedence_begin = precedence_list.begin();

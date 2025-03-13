@@ -21,8 +21,6 @@ SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure advisory lock tablets are p
 SELECT count(*) FROM pg_locks WHERE locktype = 'advisory';
 
 
--- YB: TODO(GH#3642): warn when unlocking a non-existent advisory lock
--- can't unlock xact locks
 SELECT
 	pg_advisory_unlock(1), pg_advisory_unlock_shared(2),
 	pg_advisory_unlock(1, 1), pg_advisory_unlock_shared(2, 2);
@@ -59,8 +57,6 @@ SELECT locktype, classid, objid, objsubid, mode, granted
 	ORDER BY classid, objid, objsubid;
 
 
--- YB: TODO(GH#3642): warn when unlocking a non-existent advisory lock
--- unlocking session locks
 SELECT
 	pg_advisory_unlock(1), pg_advisory_unlock(1),
 	pg_advisory_unlock_shared(2), pg_advisory_unlock_shared(2),

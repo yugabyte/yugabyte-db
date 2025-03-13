@@ -57,6 +57,7 @@ bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 bool YBCIsTxnAbortedError(uint16_t txn_errcode);
+bool YBCIsAdvisoryLockNotFoundError(uint16_t txn_errcode);
 const char* YBCTxnErrCodeToString(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 void YBCResolveHostname();

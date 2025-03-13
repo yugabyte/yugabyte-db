@@ -81,6 +81,11 @@ void CheckNumIntents(MiniCluster* cluster, size_t expected_num_records, const Ta
          TransactionError(s).value() == TransactionErrorCode::kSkipLocking;
 }
 
+[[nodiscard]] bool IsStatusLockNotFound(const Status& s) {
+  return !s.ok() &&
+         s.IsInternalError() &&
+         TransactionError(s).value() == TransactionErrorCode::kLockNotFound;
+}
 } // namespace
 
 class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
@@ -356,7 +361,7 @@ TEST_F(AdvisoryLockTest, Unlock) {
   CheckNumIntents(cluster_.get(), 7, table_->id());
 
   // Releasing a non-existing share lock should fail.
-  ASSERT_TRUE(IsStatusSkipLocking(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeUnlockOp(
+  ASSERT_TRUE(IsStatusLockNotFound(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeUnlockOp(
       kDefaultLockId, AdvisoryLockMode::LOCK_SHARE)))));
 
   std::atomic_bool session2_locked{false};
@@ -383,7 +388,7 @@ TEST_F(AdvisoryLockTest, Unlock) {
   ASSERT_TRUE(session2_locked.load());
 
   // All locks have been released. Any unlock requests should fail.
-  ASSERT_TRUE(IsStatusSkipLocking(session->TEST_ApplyAndFlush(
+  ASSERT_TRUE(IsStatusLockNotFound(session->TEST_ApplyAndFlush(
       ASSERT_RESULT(MakeUnlockOp(kDefaultLockId)))));
   ASSERT_OK(Commit(txn));
 }

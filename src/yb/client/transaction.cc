@@ -179,7 +179,8 @@ bool CanAbortTransaction(const Status& status,
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
   const TransactionError txn_err(status);
-  if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
+  if (txn_err.value() == TransactionErrorCode::kSkipLocking ||
+      txn_err.value() == TransactionErrorCode::kLockNotFound) {
     return false;
   }
   return !subtransaction_pb || subtransaction_pb->subtransaction_id() == kMinSubTransactionId;

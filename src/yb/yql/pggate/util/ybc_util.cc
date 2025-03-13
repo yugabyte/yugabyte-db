@@ -341,6 +341,10 @@ bool YBCIsTxnAbortedError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kAborted);
 }
 
+bool YBCIsAdvisoryLockNotFoundError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kLockNotFound);
+}
+
 const char* YBCTxnErrCodeToString(uint16_t txn_errcode) {
   return YBCPAllocStdString(ToString(TransactionErrorCode(txn_errcode)));
 }

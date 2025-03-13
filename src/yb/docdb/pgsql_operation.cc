@@ -3217,7 +3217,7 @@ Result<bool> PgsqlLockOperation::LockExists(const DocOperationApplyData& data) {
 
 Status PgsqlLockOperation::Apply(const DocOperationApplyData& data) {
   if (!request_.is_lock() && !VERIFY_RESULT(LockExists(data))) {
-    return STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kSkipLocking),
+    return STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kLockNotFound),
                             "Try to release non-existing lock $0", doc_key_.ToString());
   }
   Slice value(&(dockv::ValueEntryTypeAsChar::kRowLock), 1);

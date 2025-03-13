@@ -61,6 +61,21 @@ GetYBAdvisoryLockId(LOCKTAG tag)
 	return lock;
 }
 
+/*  Returns true if lock is released, false if lock is not found. */
+bool
+HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
+{
+	if (status && YBCIsAdvisoryLockNotFoundError(YBCStatusTransactionError(status)))
+	{
+		const char *lock_type = (mode == YB_ADVISORY_LOCK_SHARED) ? "ShareLock" : "ExclusiveLock";
+		elog(WARNING, "you don't own a lock of type %s", lock_type);
+		YBCFreeStatus(status);
+		return false;
+	}
+	HandleYBStatus(status);
+	return true;
+}
+
 /*  Returns true if lock is acquired, false if lock is skipped. */
 bool
 HandleStatusIgnoreSkipLocking(YbcStatus status)
@@ -96,8 +111,8 @@ do { \
 #define ReleaseYBAdvisoryLock(tag, mode) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
-		PG_RETURN_BOOL(HandleStatusIgnoreSkipLocking( \
-			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode))); \
+		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound( \
+			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode), mode)); \
 	YbRaiseAdvisoryLocksNotSupported(); \
 } while(0)
 
