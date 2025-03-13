@@ -68,17 +68,8 @@ bool SkipFailOnCollation = DEFAULT_SKIP_FAIL_ON_COLLATION;
 bool EnableLookupIdJoinOptimizationOnCollation =
 	DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION;
 
-/* Can remove post V0.25 */
-#define DEFAULT_ENABLE_FASTPATH_POINTLOOKUP_PLANNER true
-bool EnableFastPathPointLookupPlanner =
-	DEFAULT_ENABLE_FASTPATH_POINTLOOKUP_PLANNER;
-
 #define DEFAULT_ENABLE_USER_CRUD false
 bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
-
-/* Can remove post V0.25 */
-#define DEFAULT_ENABLE_SHARDING_OR_FILTERS true
-bool EnableShardingOrFilters = DEFAULT_ENABLE_SHARDING_OR_FILTERS;
 
 #define DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY false
 bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
@@ -102,9 +93,7 @@ bool AllowNestedAggregationFunctionInQueries =
 #define DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE false
 bool EnableNowSystemVariable = DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE;
 
-/* Whether or not to enforce a per command backend timeout */
-/* TODO: Enable in V0.25 */
-#define DEFAULT_ENABLE_STATEMENT_TIMEOUT false
+#define DEFAULT_ENABLE_STATEMENT_TIMEOUT true
 bool EnableBackendStatementTimeout = DEFAULT_ENABLE_STATEMENT_TIMEOUT;
 
 #define DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS true
@@ -288,15 +277,6 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
-
-	DefineCustomBoolVariable(
-		psprintf("%s.enableFastPathPointLookupPlanner", newGucPrefix),
-		gettext_noop(
-			"Determines whether or not the fast path planner for point lookup queries is enabled."),
-		NULL, &EnableFastPathPointLookupPlanner,
-		DEFAULT_ENABLE_FASTPATH_POINTLOOKUP_PLANNER,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
 	DefineCustomBoolVariable(
 		psprintf("%s.enableUserCrud", newGucPrefix),
 		gettext_noop(
@@ -305,10 +285,11 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		psprintf("%s.enableShardingOrFilters", newGucPrefix),
+		psprintf("%s.enableNowSystemVariable", newGucPrefix),
 		gettext_noop(
-			"Whether to enable OR filter based detection for the shard key."),
-		NULL, &EnableShardingOrFilters, DEFAULT_ENABLE_SHARDING_OR_FILTERS,
+			"Enables support for the $$NOW time system variable."),
+		NULL, &EnableNowSystemVariable,
+		DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -316,14 +297,6 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Whether to enable per statement backend timeout override in the backend."),
 		NULL, &EnableBackendStatementTimeout, DEFAULT_ENABLE_STATEMENT_TIMEOUT,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
-		psprintf("%s.enableNowSystemVariable", newGucPrefix),
-		gettext_noop(
-			"Enables support for the $$NOW time system variable."),
-		NULL, &EnableNowSystemVariable,
-		DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

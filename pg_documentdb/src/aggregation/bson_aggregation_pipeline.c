@@ -73,7 +73,6 @@
 extern bool EnableCursorsOnAggregationQueryRewrite;
 extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
-extern bool EnableFastPathPointLookupPlanner;
 extern bool DefaultInlineWriteOperations;
 extern bool EnableSimplifyGroupAccumulators;
 extern bool EnableSortbyIdPushDownToPrimaryKey;
@@ -1627,7 +1626,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	}
 
 	queryData->namespaceName = context.namespaceName;
-	if (EnableFastPathPointLookupPlanner && context.isPointReadQuery &&
+	if (context.isPointReadQuery &&
 		context.allowShardBaseTable && queryData->batchSize >= 1)
 	{
 		/* If we're still targeting the local shard && we have a point read
@@ -3664,7 +3663,7 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 			!(isCollationAware && IsCollationApplicable(context->collationString)))
 		{
 			existingQuals = lappend(existingQuals, idFilter);
-			context->isPointReadQuery = EnableFastPathPointLookupPlanner && isPointRead;
+			context->isPointReadQuery = isPointRead;
 		}
 	}
 

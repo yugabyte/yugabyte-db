@@ -17,6 +17,7 @@
 * Support collation in aggregation `$addFields` stage *[Feature]*
 * Support collation with `$setEquals`, `$setUnion`, `$setIntersection`, `$setDifference`, `$setIsSubet` in the aggregation pipeline *[Feature]*
 * Top level aggregate command `let` variables support for `$geoNear` stage *[Feature]*
+* Enable Backend Command support for Statement Timeout *[Feature]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

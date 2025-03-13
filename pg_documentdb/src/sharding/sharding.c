@@ -28,7 +28,6 @@
 #include "metadata/collection.h"
 
 extern bool EnableNativeColocation;
-extern bool EnableShardingOrFilters;
 extern int ShardingMaxChunks;
 extern bool RecreateRetryTableOnSharding;
 
@@ -744,8 +743,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 
 				Expr *innerExpr = FindShardKeyValuesExpr(&andElementIterator, shardKey,
 														 collectionVarno, fieldValues);
-				if (innerExpr != NULL && IsA(innerExpr, BoolExpr) &&
-					EnableShardingOrFilters)
+				if (innerExpr != NULL && IsA(innerExpr, BoolExpr))
 				{
 					BoolExpr *innerBoolExpr = (BoolExpr *) innerExpr;
 					if (innerBoolExpr->boolop == OR_EXPR)
@@ -755,7 +753,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 				}
 			}
 		}
-		else if (strcmp(key, "$or") == 0 && EnableShardingOrFilters)
+		else if (strcmp(key, "$or") == 0)
 		{
 			/* ignore or for now */
 			bson_iter_t orIterator;
@@ -869,7 +867,7 @@ FindShardKeyValuesExpr(bson_iter_t *queryDocIter, pgbson *shardKey, int collecti
 		return CreateShardKeyValueFilter(collectionVarno, shardKeyValueConst);
 	}
 
-	if (shardKeyMultiClause != NIL && EnableShardingOrFilters)
+	if (shardKeyMultiClause != NIL)
 	{
 		return make_ands_explicit(shardKeyMultiClause);
 	}
