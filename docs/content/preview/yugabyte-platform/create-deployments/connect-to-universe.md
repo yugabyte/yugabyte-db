@@ -235,7 +235,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 - **host** address of an endpoint on your universe.
 - **port** 5433 for YSQL, 9042 for YCQL.
 - **database** name; the default YSQL database is yugabyte.
-- **username** and **password** of a user with permissions for the database; the default user is admin.
+- **username** and **password** of a user with permissions for the database; the default admin user is `yugabyte` (YSQL) or `cassandra` (YCQL).
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
