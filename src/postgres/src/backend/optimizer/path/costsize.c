@@ -5921,6 +5921,17 @@ compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel, Path *bitmapqual,
 	return pages_fetched;
 }
 
+static Cost
+yb_data_transfer_cost(int round_trips, double data_size)
+{
+	/*
+	 * yb_local_latency_cost: DocDB - PG one way communication cost
+	 * yb_local_throughput_cost: per MB data transfer cost
+	 */
+	return (yb_local_latency_cost * 2 * round_trips +
+			yb_local_throughput_cost * data_size / MEGA);
+}
+
 /*
  * yb_compute_result_transfer_cost
  *		Computes the cost of transferring result tuples to PG over network.
@@ -5934,18 +5945,15 @@ compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel, Path *bitmapqual,
 static Cost
 yb_compute_result_transfer_cost(double result_tuples, int result_width)
 {
-	Cost 		total_cost = 0.0;
-	int32		num_result_pages;
-	double		result_page_size_mb;
-	Cost 		per_result_page_cost;
+	int			num_result_pages;
+	double		result_page_size;
 
 	/* Network costs */
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
 	{
 		num_result_pages = 1;
-		result_page_size_mb =
-			result_tuples * result_width / MEGA;
+		result_page_size = result_tuples * result_width;
 	}
 	else if (yb_fetch_size_limit > 0 &&
 			 (yb_fetch_row_limit == 0 ||
@@ -5953,25 +5961,18 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	{
 		int max_results_per_page = yb_fetch_size_limit / result_width;
 		num_result_pages = ceil(result_tuples / max_results_per_page);
-		result_page_size_mb =
-			fmin(result_tuples, max_results_per_page) *
-			result_width / MEGA;
+		result_page_size = (fmin(result_tuples, max_results_per_page) *
+							result_width);
 	}
 	else
 	{
 		num_result_pages = ceil(result_tuples / yb_fetch_row_limit);
-		result_page_size_mb =
-			fmin(result_tuples, yb_fetch_row_limit) *
-			result_width / MEGA;
+		result_page_size = (fmin(result_tuples, yb_fetch_row_limit) *
+							result_width);
 	}
 
-	per_result_page_cost =
-		(2 * yb_local_latency_cost +
-		 yb_local_throughput_cost * result_page_size_mb);
-
-	total_cost += per_result_page_cost * num_result_pages;
-
-	return total_cost;
+	return yb_data_transfer_cost(num_result_pages,
+								 num_result_pages * result_page_size);
 }
 
 /*
@@ -6054,23 +6055,6 @@ yb_get_lsm_seek_cost(double num_tuples, int num_key_value_pairs_per_tuple,
 				num_sst_files * yb_seek_cost_factor *
 				cpu_operator_cost;
 	return seek_cost;
-}
-
-static void
-yb_parallel_cost(Path *path)
-{
-	if (path->parallel_aware)
-	{
-		/* bg workers + main backend */
-		double parallel_divisor = get_parallel_divisor(path);
-		/*
-		 * parallelization doesn't help with startup cost, but the rest
-		 * can be equally divided among the workers.
-		 */
-		path->total_cost = path->startup_cost +
-			(path->total_cost - path->startup_cost) / parallel_divisor;
-		path->rows = clamp_row_est(path->rows / parallel_divisor);
-	}
 }
 
 /*
@@ -6447,7 +6431,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_merge_cost = 0.0;
 	Cost		per_seek_cost = 0.0;
 	Cost		per_next_cost = 0.0;
-	List	   *all_filter_clauses = NIL;
+	Cost		transfer_cost = 0.0;
 	List	   *pushed_down_clauses = NIL;
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
@@ -6456,6 +6440,13 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	double		num_nexts;
 	double		num_seeks;
 	int			docdb_result_width;
+	double		adjusted_baserel_tuples = baserel->tuples;
+
+	/* Mark the path with the correct row estimate */
+	if (param_info)
+		path->rows = param_info->ppi_rows;
+	else
+		path->rows = baserel->rows;
 
 	if (!enable_seqscan)
 	{
@@ -6498,17 +6489,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 			local_clauses = lappend(local_clauses, ri->clause);
 	}
 
-	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
-	startup_cost += qual_cost.startup;
-	run_cost +=
-		(qual_cost.per_tuple + list_length(pushed_down_clauses) *
-		 yb_docdb_remote_filter_overhead_cycles *
-		 cpu_operator_cost) *
-		baserel->tuples;
-	/* tlist eval costs are paid per output row, not per tuple scanned */
-	startup_cost += path->pathtarget->cost.startup;
-	run_cost += path->pathtarget->cost.per_tuple * path->rows;
-
 	remote_filtered_rows =
 		clamp_row_est(baserel->tuples *
 					  clauselist_selectivity(root, pushed_down_clauses,
@@ -6522,10 +6502,51 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   local_clauses,
 												   baserel, reloid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
-	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-										 	   docdb_result_width);
+
+
+	/* Adjust costing for parallelism, if used. */
+	if (path->parallel_workers > 0)
+	{
+		double parallel_divisor = get_parallel_divisor(path);
+
+		num_result_pages = ceil(baserel->tuples * tuple_width /
+								(double)yb_parallel_range_size /
+								parallel_divisor);
+
+		remote_filtered_rows = clamp_row_est(remote_filtered_rows /
+											 parallel_divisor);
+
+		adjusted_baserel_tuples = clamp_row_est(baserel->tuples /
+												parallel_divisor);
+
+		path->rows = clamp_row_est(path->rows / parallel_divisor);
+
+		transfer_cost = yb_data_transfer_cost(num_result_pages,
+											  remote_filtered_rows *
+											  docdb_result_width);
+	}
+	else
+	{
+		num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
+												   docdb_result_width);
+		transfer_cost = yb_compute_result_transfer_cost(remote_filtered_rows,
+														docdb_result_width);
+	}
+
+	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
+	startup_cost += qual_cost.startup;
+	run_cost +=
+		(qual_cost.per_tuple + list_length(pushed_down_clauses) *
+		 yb_docdb_remote_filter_overhead_cycles *
+		 cpu_operator_cost) *
+		adjusted_baserel_tuples;
+
+	/* tlist eval costs are paid per output row, not per tuple scanned */
+	startup_cost += path->pathtarget->cost.startup;
+	run_cost += path->pathtarget->cost.per_tuple * path->rows;
+
 	num_seeks = num_result_pages;
-	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
+	num_nexts = (num_result_pages - 1) + (adjusted_baserel_tuples - 1);
 
 	path->yb_plan_info.estimated_num_nexts = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
@@ -6535,23 +6556,14 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	/* Network latency cost is added to startup cost */
 	startup_cost += yb_local_latency_cost;
-	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
-												docdb_result_width);
+	run_cost += transfer_cost;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
-	all_filter_clauses = list_concat(pushed_down_clauses, local_clauses);
-
-	path->rows =
-		clamp_row_est(baserel->tuples *
-					  clauselist_selectivity(root, all_filter_clauses,
-											 baserel->relid, JOIN_INNER, NULL));
-
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
-	yb_parallel_cost(path);
 }
 
 /*
@@ -6898,6 +6910,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		per_merge_cost;
 	Cost		index_per_seek_cost;
 	Cost		per_next_cost;
+	Cost		transfer_cost = 0.0;
 	double		num_seeks;
 	double		num_nexts;
 	QualCost	qual_cost;
@@ -6916,6 +6929,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	int32		baserel_tuple_width = 0;
 	bool		baserel_is_colocated;
 	bool		need_remote_index_filters;
+	double		parallel_divisor = 1.0;
+	double		adjusted_baserel_tuples = baserel->tuples;
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
@@ -7103,6 +7118,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			yb_fast_backward_seek_cost_factor : yb_backward_seek_cost_factor;
 	}
 
+	/* Adjust costing for parallelism, if used. */
+	if (path->path.parallel_workers > 0)
+	{
+		parallel_divisor = get_parallel_divisor(&path->path);
+		adjusted_baserel_tuples = clamp_row_est(baserel->tuples /
+												parallel_divisor);
+		num_seeks = ceil(num_seeks / parallel_divisor);
+		num_nexts = ceil(num_nexts / parallel_divisor);
+	}
+
 	run_cost += num_seeks * index_per_seek_cost +
 				num_nexts * per_next_cost;
 
@@ -7137,7 +7162,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	else
 		index_selectivity = 1.0;
 	num_index_tuples_matched =
-		clamp_row_est(index_selectivity * index->rel->tuples);
+		clamp_row_est(index_selectivity * adjusted_baserel_tuples);
 
 	/*
 	 * TODO (#16178) DocDB must check the index conditions on each row. This is
@@ -7177,13 +7202,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 *    need to be fetched once and remain in cache. We should reconsider this
 	 *    in future.
 	 */
+	index_tuple_width = yb_get_index_tuple_width(index, baserel_oid,
+												 is_primary_index);
+
 	if (!is_primary_index)
 	{
 		/* Compute the cost of fetching index from disk to memory */
-		index_tuple_width = yb_get_index_tuple_width(index,
-													baserel_oid,
-													is_primary_index);
-
 		index_total_pages =
 			ceil(index->rel->tuples * index_tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
 		index_pages_fetched = clamp_row_est(index_selectivity * index_total_pages);
@@ -7302,8 +7326,31 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 													local_clauses,
 													baserel, baserel_oid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
-	num_result_pages = yb_get_num_result_pages(num_docdb_result_rows,
-											   docdb_result_width);
+
+	/* Adjust costing for parallelism, if used. */
+	if (path->path.parallel_workers > 0)
+	{
+		num_result_pages = ceil(baserel->tuples * index_tuple_width /
+								(double)yb_parallel_range_size /
+								parallel_divisor);
+
+		num_docdb_result_rows = clamp_row_est(num_docdb_result_rows /
+											  parallel_divisor);
+
+		path->path.rows = clamp_row_est(path->path.rows / parallel_divisor);
+
+		transfer_cost = yb_data_transfer_cost(num_result_pages,
+											  num_docdb_result_rows *
+											  docdb_result_width);
+	}
+	else
+	{
+		num_result_pages = yb_get_num_result_pages(num_docdb_result_rows,
+												   docdb_result_width);
+		transfer_cost = yb_compute_result_transfer_cost(num_docdb_result_rows,
+														docdb_result_width);
+	}
+
 	double		result_paging_num_seeks = num_result_pages;
 	double		result_paging_num_nexts = num_result_pages + 1;
 	Cost		result_paging_seek_next_costs = ((result_paging_num_seeks *
@@ -7316,12 +7363,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	/* Network latency cost is added to startup cost */
 	startup_cost += yb_local_latency_cost;
-	run_cost += yb_compute_result_transfer_cost(num_docdb_result_rows,
-												docdb_result_width) +
-				result_paging_seek_next_costs;
-
-	num_index_tuples_matched =
-		clamp_row_est(index_selectivity * index->rel->tuples);
+	run_cost += transfer_cost + result_paging_seek_next_costs;
 
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
@@ -7371,9 +7413,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			 */
 			int secondary_index_ybctid_width =
 				yb_get_ybctid_width(baserel_oid, baserel, index, false);
-			run_cost +=
-				yb_compute_result_transfer_cost(num_index_tuples_matched,
-												secondary_index_ybctid_width);
+
+			if (path->path.parallel_workers > 0)
+				run_cost +=
+					yb_data_transfer_cost(num_index_tuples_matched,
+										  num_index_tuples_matched *
+										  secondary_index_ybctid_width);
+			else
+				run_cost +=
+					yb_compute_result_transfer_cost(num_index_tuples_matched,
+													secondary_index_ybctid_width);
 
 			/*
 			 * We do not have information to predict the number of seeks that
@@ -7424,7 +7473,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
-	yb_parallel_cost((Path *) path);
 }
 
 
@@ -7567,6 +7615,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	QualCost	qual_cost;
 	List	   *indexquals;
 	ListCell   *l;
+	double		adjusted_baserel_tuples = baserel->tuples;
 
 	/* Should only be applied to Yugabyte base relations */
 	Assert(IsA(baserel, RelOptInfo));
@@ -7583,6 +7632,16 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	if (!enable_bitmapscan)
 		startup_cost += disable_cost;
+
+	/* Adjust costing for parallelism, if used. */
+	if (path->parallel_workers > 0)
+	{
+		double parallel_divisor = get_parallel_divisor(path);
+
+		adjusted_baserel_tuples = clamp_row_est(baserel->tuples /
+												parallel_divisor);
+		path->rows = clamp_row_est(path->rows / parallel_divisor);
+	}
 
 	/* DocDB costs */
 	/* Compute tuple width */
@@ -7639,9 +7698,10 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 							 NULL /* idx_remote_quals */,
 							 NULL /* idx_colrefs */);
 
-	tuples_scanned = clamp_row_est(baserel->tuples *
-						clauselist_selectivity(root, indexquals, baserel->relid,
-											   JOIN_INNER, NULL));
+	tuples_scanned = clamp_row_est(adjusted_baserel_tuples *
+								   clauselist_selectivity(root, indexquals,
+														  baserel->relid,
+														  JOIN_INNER, NULL));
 
 	cost_qual_eval(&qual_cost, rel_remote_quals, root);
 	startup_cost += qual_cost.startup;
@@ -7651,10 +7711,12 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		 cpu_operator_cost) *
 		tuples_scanned;
 
-	tuples_fetched = clamp_row_est(baserel->tuples *
-						clauselist_selectivity(root,
-											   list_union(indexquals, rel_remote_quals),
-											   baserel->relid, JOIN_INNER, NULL));
+	tuples_fetched =
+		clamp_row_est(adjusted_baserel_tuples *
+					  clauselist_selectivity(root,
+											 list_union(indexquals,
+														rel_remote_quals),
+											 baserel->relid, JOIN_INNER, NULL));
 
 	/* Block fetch cost from disk */
 	num_blocks = ceil(tuples_scanned * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -7701,8 +7763,14 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	/* Network latency cost is added to startup cost */
 	startup_cost += yb_local_latency_cost;
-	run_cost += yb_compute_result_transfer_cost(tuples_fetched,
-												docdb_result_width);
+
+	if (path->parallel_workers > 0)
+		run_cost += yb_data_transfer_cost(tuples_fetched,
+										  tuples_fetched * docdb_result_width);
+	else
+		run_cost += yb_compute_result_transfer_cost(tuples_fetched,
+													docdb_result_width);
+
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
@@ -7718,5 +7786,4 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->yb_plan_info.estimated_num_nexts = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
-	yb_parallel_cost(path);
 }

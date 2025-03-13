@@ -53,8 +53,10 @@ reset enable_sort;
 -- forced parallel scan by PK
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
+/*+ Parallel(pcustomer 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_id = 42;
+/*+ Parallel(pcustomer 2 hard) */
 SELECT * FROM pcustomer WHERE pc_id = 42;
 reset parallel_setup_cost;
 reset parallel_tuple_cost;
