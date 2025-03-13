@@ -861,6 +861,15 @@ public class CustomerTaskManager {
         break;
       case ModifyAuditLoggingConfig:
         taskParams = Json.fromJson(oldTaskParams, AuditLogConfigParams.class);
+        AuditLogConfigParams auditLogConfigParams = (AuditLogConfigParams) taskParams;
+        if (auditLogConfigParams != null && auditLogConfigParams.getUniverseUUID() != null) {
+          Universe universe = Universe.getOrBadRequest(auditLogConfigParams.getUniverseUUID());
+          if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot retry modifying audit logging task as YSQL major upgrade is in progress.");
+          }
+        }
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

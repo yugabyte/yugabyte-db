@@ -116,14 +116,19 @@ public class SoftwareUpgradeHelper {
   }
 
   public boolean isYsqlMajorUpgradeIncomplete(Universe universe) {
-    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+    if (universe.getUniverseDetails() == null
+        || universe.getUniverseDetails().getPrimaryCluster() == null
+        || universe.getUniverseDetails().getPrimaryCluster().userIntent == null) {
       return false;
     }
     if (universe.getUniverseDetails().prevYBSoftwareConfig == null) {
       return false;
     }
-    PrevYBSoftwareConfig prevConfig = universe.getUniverseDetails().prevYBSoftwareConfig;
     UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (!primaryIntent.enableYSQL) {
+      return false;
+    }
+    PrevYBSoftwareConfig prevConfig = universe.getUniverseDetails().prevYBSoftwareConfig;
     String prevVersion =
         !StringUtils.isEmpty(prevConfig.getSoftwareVersion())
             ? prevConfig.getSoftwareVersion()
