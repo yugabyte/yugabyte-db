@@ -940,6 +940,12 @@ const constructProviderPayload = async (
     sshUser,
     ...unexposedProviderDetailFields
   } = providerConfig.details;
+  const {
+    awsAccessKeyID,
+    awsAccessKeySecret,
+    awsHostedZoneId,
+    ...unexposedProviderCloudInfoFields
+  } = cloudInfo.aws;
   return {
     code: ProviderCode.AWS,
     name: formValues.providerName,
@@ -949,6 +955,7 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AWS]: {
+          ...unexposedProviderCloudInfoFields,
           ...(formValues.providerCredentialType === AWSProviderCredentialType.ACCESS_KEY && {
             awsAccessKeyID: formValues.editAccessKey
               ? formValues.accessKeyId
@@ -972,6 +979,9 @@ const constructProviderPayload = async (
           providerConfig,
           regionFormValues.code
         );
+
+        const { ybImage, arch, securityGroupId, vnet, ...unexposedRegionCloudInfoFields } =
+          existingRegion?.details.cloudInfo.aws ?? {};
         return {
           ...existingRegion,
           code: regionFormValues.code,
@@ -979,6 +989,7 @@ const constructProviderPayload = async (
             ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.AWS]: {
+                ...unexposedRegionCloudInfoFields,
                 ...(existingRegion
                   ? {
                       ...(existingRegion.details.cloudInfo.aws.ybImage && {

@@ -741,7 +741,7 @@ const constructProviderPayload = async (
                       : {
                           // YBA backend has special handling for kubeConfig. It is possibly `''` to indicate
                           // the user wants to use service account configs. This is why we're not dropping `''` strings here.
-                        kubeConfig: kubeConfig
+                          kubeConfig: kubeConfig
                         }),
                     ...(azFormValues.kubeDomain && { kubeDomain: azFormValues.kubeDomain }),
                     ...(azFormValues.kubeNamespace && {
@@ -789,12 +789,20 @@ const constructProviderPayload = async (
     );
   }
 
+  const { airGapInstall, cloudInfo, ...unexposedProviderDetailFields } = providerConfig.details;
   const {
     kubernetesImagePullSecretName: existingKubernetesImagePullSecretName,
     kubernetesPullSecret: existingKubernetesPullSecret,
-    kubernetesPullSecretName: existingKubernetesPullSecretName
-  } = providerConfig.details.cloudInfo.kubernetes;
-  const { airGapInstall, cloudInfo, ...unexposedProviderDetailFields } = providerConfig.details;
+    kubernetesPullSecretName: existingKubernetesPullSecretName,
+    kubeConfigContent: existingKubeConfigContent,
+    kubernetesImageRegistry,
+    kubernetesProvider,
+    kubeConfig,
+    kubeConfigName,
+    kubernetesServiceAccount,
+    kubernetesStorageClass,
+    ...unexposedProviderCloudInfoFields
+  } = cloudInfo.kubernetes;
   return {
     code: ProviderCode.KUBERNETES,
     name: formValues.providerName,
@@ -803,6 +811,7 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.KUBERNETES]: {
+          ...unexposedProviderCloudInfoFields,
           ...(formValues.editKubeConfigContent
             ? {
                 ...(formValues.kubeConfigContent && { kubeConfigContent: kubeConfigContent }),
