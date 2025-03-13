@@ -170,7 +170,7 @@ The following features have different behaviors as compared to previous versions
 When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), review the following to understand how they may affect your upgrade.
 
 {{< warning title="Upgrading to v2.25" >}}
-Upgrading to v2.25 from previous versions (v2.23) is not yet available.
+Currently, upgrades are only supported from v2024.2.2 to v2.25.1. Refer to [Upgrade YugabyteDB to PostgreSQL 15](../../manage/upgrade-pg15/).
 {{< /warning >}}
 
 ### ysqlsh
