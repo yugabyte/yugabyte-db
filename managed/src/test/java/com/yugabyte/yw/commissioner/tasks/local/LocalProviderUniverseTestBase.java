@@ -553,10 +553,18 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
         @Override
         protected void starting(Description description) {
+          // Remove the special characters from the test name as it will be part of the directory
+          // names.
           testName =
               description.getClassName().replaceAll(".*\\.", "")
                   + "_"
-                  + description.getMethodName();
+                  + description
+                      .getMethodName()
+                      .replace("(", "_")
+                      .replace(")", "_")
+                      .replace(" ", "_")
+                      .replace("[", "_")
+                      .replace("]", "");
         }
 
         @Override
