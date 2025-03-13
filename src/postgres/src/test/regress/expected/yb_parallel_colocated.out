@@ -15,16 +15,16 @@ INSERT INTO pctest1
     SELECT i, 1000 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 1000) i;
 INSERT INTO pctest2
     SELECT i, 200 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 200) i;
+ANALYZE pctest1, pctest2;
 -- set smaller parallel interval to produce more ranges
 set yb_parallel_range_size to 1024;
 -- enable parallel query for YB tables
 set yb_parallel_range_rows to 1;
 set yb_enable_base_scans_cost_model to true;
--- encourage use of parallel plans
-set parallel_setup_cost=0;
-set parallel_tuple_cost=0;
+-- parallel bitmap scan not supported yet
 set enable_bitmapscan = false;
 -- Parallel sequential scan
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
                    QUERY PLAN
@@ -35,6 +35,7 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
          Storage Filter: (d ~~ 'Value_9'::text)
 (4 rows)
 
+/*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
  k  |  a  | b  | c  |    d
 ----+-----+----+----+---------
@@ -50,17 +51,21 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
 (9 rows)
 
 -- with aggregates
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
-                      QUERY PLAN
-------------------------------------------------------
- Aggregate
+                         QUERY PLAN
+------------------------------------------------------------
+ Finalize Aggregate
    ->  Gather
          Workers Planned: 2
-         ->  Parallel Seq Scan on pctest1
-               Storage Filter: (d ~~ 'Value_9'::text)
-(5 rows)
+         ->  Noop Aggregate
+               ->  Parallel Seq Scan on pctest1
+                     Storage Filter: (d ~~ 'Value_9'::text)
+                     Partial Aggregate: true
+(7 rows)
 
+/*+ Parallel(pctest1 2 hard) */
 SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
  count
 -------
@@ -68,18 +73,20 @@ SELECT count(*) FROM pctest1 WHERE d LIKE 'Value_9';
 (1 row)
 
 -- with sort
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
                       QUERY PLAN
 ------------------------------------------------------
- Sort
-   Sort Key: b DESC
-   ->  Gather
-         Workers Planned: 2
+ Gather Merge
+   Workers Planned: 2
+   ->  Sort
+         Sort Key: b DESC
          ->  Parallel Seq Scan on pctest1
                Storage Filter: (d ~~ 'Value_9'::text)
 (6 rows)
 
+/*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
  k  |  a  | b  | c  |    d
 ----+-----+----+----+---------
@@ -95,20 +102,24 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
 (9 rows)
 
 -- with grouping
+/*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
-                         QUERY PLAN
-------------------------------------------------------------
- GroupAggregate
+                            QUERY PLAN
+------------------------------------------------------------------
+ Finalize GroupAggregate
    Group Key: b
-   ->  Sort
-         Sort Key: b
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Seq Scan on pctest1
-                     Storage Filter: (d ~~ 'Value9%'::text)
-(8 rows)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Partial GroupAggregate
+               Group Key: b
+               ->  Sort
+                     Sort Key: b
+                     ->  Parallel Seq Scan on pctest1
+                           Storage Filter: (d ~~ 'Value9%'::text)
+(10 rows)
 
+/*+ Parallel(pctest1 2 hard) */
 SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
   b  | count
 -----+-------
@@ -153,6 +164,10 @@ SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
  333 |     1
 (39 rows)
 
+-- encourage use of parallel plans for the remaining tests by gucs
+-- since the "hard" option of Parallel hint is broken. (#26181)
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
 -- Parallel index scan
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE k < 10;
@@ -313,15 +328,17 @@ SELECT a FROM pctest1 WHERE a < 10;
 -- with grouping
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
-                             QUERY PLAN
----------------------------------------------------------------------
- GroupAggregate
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Finalize GroupAggregate
    Group Key: c
    ->  Gather Merge
          Workers Planned: 2
-         ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
-               Index Cond: (c > 40)
-(6 rows)
+         ->  Partial GroupAggregate
+               Group Key: c
+               ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c > 40)
+(8 rows)
 
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
  c  | count
@@ -339,21 +356,28 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 
 -- Joins
 -- Nest loop
+/*+
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
 EXPLAIN (costs off)
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
-                              QUERY PLAN
-----------------------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Gather
    Workers Planned: 2
-   ->  Parallel Hash Join
-         Hash Cond: (pctest2.b = pctest1.a)
-         ->  Parallel Index Only Scan using pctest2_b_idx on pctest2
-         ->  Parallel Hash
-               ->  Parallel Index Scan using pctest1_a_idx on pctest1
-                     Storage Index Filter: ((a % 10) = 0)
-(8 rows)
+   ->  Nested Loop
+         ->  Parallel Index Scan using pctest1_a_idx on pctest1
+               Storage Index Filter: ((a % 10) = 0)
+         ->  Index Only Scan using pctest2_b_idx on pctest2
+               Index Cond: (b = pctest1.a)
+(7 rows)
 
+/*+
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
   k   | a  |  b  | c  |     d
@@ -383,18 +407,19 @@ SELECT pctest1.* FROM pctest1, pctest2
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- Gather Merge
-   Workers Planned: 2
-   ->  YB Batched Nested Loop Join
-         Join Filter: (pctest1.k = pctest2.k)
-         Sort Keys: pctest1.k
-         ->  Parallel Index Scan using pctest1_pkey on pctest1
-               Storage Filter: (c = 42)
-         ->  Index Scan using pctest2_pkey on pctest2
-               Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
-(9 rows)
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Sort
+   Sort Key: pctest1.k
+   ->  Gather
+         Workers Planned: 2
+         ->  YB Batched Nested Loop Join
+               Join Filter: (pctest1.k = pctest2.k)
+               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c = 42)
+               ->  Index Scan using pctest2_pkey on pctest2
+                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+(10 rows)
 
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -407,6 +432,7 @@ EXPLAIN (costs off)
 (4 rows)
 
 -- Hash join
+set enable_mergejoin to false;
 EXPLAIN (costs off)
 SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
                                 QUERY PLAN
@@ -414,27 +440,29 @@ SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
  Gather
    Workers Planned: 2
    ->  Parallel Hash Join
-         Hash Cond: ((pctest2.a = pctest1.a) AND (pctest2.c = pctest1.c))
-         ->  Parallel Seq Scan on pctest2
+         Hash Cond: ((pctest1.a = pctest2.a) AND (pctest1.c = pctest2.c))
+         ->  Parallel Seq Scan on pctest1
          ->  Parallel Hash
-               ->  Parallel Seq Scan on pctest1
+               ->  Parallel Seq Scan on pctest2
 (7 rows)
 
 SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
   k  |  k
 -----+-----
- 755 |  45
- 750 |  50
- 705 |  95
- 700 | 100
- 655 | 145
- 650 | 150
- 605 | 195
  600 | 200
+ 605 | 195
+ 650 | 150
+ 655 | 145
+ 700 | 100
+ 705 |  95
+ 750 |  50
+ 755 |  45
 (8 rows)
 
+reset enable_mergejoin;
 -- Merge join
 set enable_hashjoin to false;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 EXPLAIN (costs off)
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -451,6 +479,7 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
          ->  Parallel Index Scan using pctest2_pkey on pctest2
 (9 rows)
 
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
   k  |  a  | b  | c  |    d     |  k
@@ -468,22 +497,25 @@ SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
   (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
  Sort
    Sort Key: "*VALUES*".column1
    ->  Hash Right Join
          Hash Cond: (pctest1.b = "*VALUES*".column1)
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Hash Join
-                     Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
+         ->  Merge Join
+               Merge Cond: (pctest1.k = pctest2.k)
+               Join Filter: (pctest1.c = pctest2.c)
+               ->  Gather Merge
+                     Workers Planned: 2
                      ->  Parallel Index Scan using pctest1_pkey on pctest1
-                     ->  Parallel Hash
+               ->  Materialize
+                     ->  Gather Merge
+                           Workers Planned: 2
                            ->  Parallel Index Scan using pctest2_pkey on pctest2
          ->  Hash
                ->  Values Scan on "*VALUES*"
-(13 rows)
+(16 rows)
 
 SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
@@ -504,26 +536,31 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
-                                          QUERY PLAN
-----------------------------------------------------------------------------------------------
+                                     QUERY PLAN
+-------------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (pctest1.b = pctest2_1.c)
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Hash Join
-               Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
-               ->  Parallel Index Scan using pctest1_pkey on pctest1
-               ->  Parallel Hash
-                     ->  Parallel Index Scan using pctest2_pkey on pctest2
-   ->  Materialize
-         ->  Gather
+   ->  Merge Join
+         Merge Cond: (pctest1_1.k = pctest2_1.k)
+         Join Filter: (pctest1_1.b = pctest2_1.b)
+         ->  Gather Merge
                Workers Planned: 2
-               ->  Parallel Hash Join
-                     Hash Cond: ((pctest1_1.k = pctest2_1.k) AND (pctest1_1.b = pctest2_1.b))
-                     ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest1_1
-                     ->  Parallel Hash
-                           ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest2_1
-(17 rows)
+               ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest1_1
+         ->  Materialize
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest2_1
+   ->  Merge Join
+         Merge Cond: (pctest1.k = pctest2.k)
+         Join Filter: (pctest1.c = pctest2.c)
+         ->  Gather Merge
+               Workers Planned: 2
+               ->  Parallel Index Scan using pctest1_pkey on pctest1
+         ->  Materialize
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2
+(22 rows)
 
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
@@ -748,6 +785,7 @@ SELECT count(*) FROM pctest1;
 -- index scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 CREATE TABLE pctest3(k int primary key, a int unique) WITH (colocation = true);
 INSERT INTO pctest3 SELECT i, i FROM generate_series(1, 1000) i;
+ANALYZE pctest3;
 EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
                              QUERY PLAN
 ---------------------------------------------------------------------
