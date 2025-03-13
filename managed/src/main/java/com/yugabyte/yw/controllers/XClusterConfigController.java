@@ -533,7 +533,6 @@ public class XClusterConfigController extends AuthenticatedController {
 
   static XClusterConfigTaskParams getSetDatabasesTaskParams(
       XClusterConfig xClusterConfig,
-      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       Set<String> databaseIds,
       Set<String> databaseIdsToAdd,
       Set<String> databaseIdsToRemove) {
@@ -542,7 +541,7 @@ public class XClusterConfigController extends AuthenticatedController {
     editForm.dbs = databaseIds;
 
     return new XClusterConfigTaskParams(
-        xClusterConfig, bootstrapParams, editForm, databaseIdsToAdd, databaseIdsToRemove);
+        xClusterConfig, editForm, databaseIdsToAdd, databaseIdsToRemove);
   }
 
   static XClusterConfigTaskParams getSetTablesTaskParams(
@@ -952,14 +951,11 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   static XClusterConfigTaskParams getDbScopedRestartTaskParams(
-      YBClientService ybService,
       XClusterConfig xClusterConfig,
       Universe sourceUniverse,
       Universe targetUniverse,
       Set<String> dbIds,
       RestartBootstrapParams restartBootstrapParams,
-      boolean dryRun,
-      boolean isForceDelete,
       boolean isForceBootstrap,
       SoftwareUpgradeHelper softwareUpgradeHelper) {
 

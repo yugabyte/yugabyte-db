@@ -625,14 +625,11 @@ public class DrConfigController extends AuthenticatedController {
     } else {
       taskParams =
           XClusterConfigController.getDbScopedRestartTaskParams(
-              ybService,
               xClusterConfig,
               sourceUniverse,
               targetUniverse,
               restartForm.dbs,
               restartForm.bootstrapParams,
-              false /* dryRun */,
-              isForceDelete,
               drConfig.isHalted() /*isForceBootstrap*/,
               softwareUpgradeHelper);
     }
@@ -1886,21 +1883,18 @@ public class DrConfigController extends AuthenticatedController {
     Set<String> newDatabaseIds = setDatabasesForm.dbs;
     Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
     Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
+
     if (databaseIdsToAdd.isEmpty() && databaseIdsToRemove.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "The list of new databases to add/remove is empty.");
     }
+
     XClusterUtil.checkDbScopedNonEmptyDbs(newDatabaseIds);
-
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
-
-    RestartBootstrapParams restartBootstrapParams = drConfig.getBootstrapBackupParams();
-    BootstrapParams bootstrapParams =
-        getBootstrapParamsFromRestartBootstrapParams(restartBootstrapParams, null);
 
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getSetDatabasesTaskParams(
-            xClusterConfig, bootstrapParams, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
+            xClusterConfig, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
 
     UUID taskUUID = commissioner.submit(TaskType.SetDatabasesDrConfig, taskParams);
     CustomerTask.create(

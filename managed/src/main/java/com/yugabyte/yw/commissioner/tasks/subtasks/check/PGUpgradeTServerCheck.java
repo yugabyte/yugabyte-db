@@ -277,7 +277,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .timeoutSecs(PG_UPGRADE_CHECK_TIMEOUT)
             .build();
 
-    log.info("Running PG15 upgrade check on node: {} with command: ", node.nodeName, command);
+    log.info("Running PG15 upgrade check on node: {} with command: {}", node.nodeName, command);
     ShellResponse response =
         nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
     if (response.code != 0) {
