@@ -47,16 +47,11 @@ DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 
-namespace yb::tablet {
-
-extern bool TEST_block_after_backfilling_first_vector_index_chunks;
-
-}
-
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::tablet {
 
+extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 }
@@ -489,6 +484,8 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2", kDistantVector));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 10", kCloseVector));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = NULL WHERE id = 20"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1000, NULL)"));
 
   std::vector<std::string> expected = {
     BuildRow(10, kCloseVector),

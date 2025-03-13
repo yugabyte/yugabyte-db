@@ -1456,7 +1456,7 @@ Status PgsqlWriteOperation::UpdateColumn(
     RETURN_NOT_OK(returning_table_row->SetValue(column_id, result->Value()));
   }
 
-  if (!column.is_vector()) {
+  if (!column.is_vector() || IsNull(result->Value())) {
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
