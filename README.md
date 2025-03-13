@@ -44,8 +44,10 @@ After installing `Postgres`, you need to set up `rustup`, `cargo-pgrx` to build 
 # append the extension to shared_preload_libraries in ~/.pgrx/data-17/postgresql.conf 
 > echo "shared_preload_libraries = 'pg_parquet'" >> ~/.pgrx/data-17/postgresql.conf
 
-# run cargo-pgrx to build and install the extension
+# initialize a data directory, build and install the extension (to the targets specified by configured pg_config), then connects to a session
 > cargo pgrx run
+# alternatively you can only build and install the extension (pass --release flag for production binary)
+> cargo pgrx install --release
 
 # create the extension in the database
 psql> "CREATE EXTENSION pg_parquet;"
