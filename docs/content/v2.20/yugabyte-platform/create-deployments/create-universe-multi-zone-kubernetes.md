@@ -62,17 +62,34 @@ Complete the **Instance Configuration** section as follows:
 
 ### Security Configurations
 
-Complete the **Security Configurations** section as follows:
+#### Authentication Settings
 
-- **Enable YSQL** - specify whether or not to enable the YSQL API endpoint for running PostgreSQL-compatible workloads. This setting is enabled by default.
-- **Enable YSQL Auth** - specify whether or not to enable the YSQL password authentication.
-- **Enable YCQL** - specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
-- **Enable YCQL Auth** - specify whether or not to enable the YCQL password authentication.
-- **Enable YEDIS** - specify whether or not to enable the YEDIS API endpoint for running Redis-compatible workloads. This setting is disabled by default.
-- **Enable Node-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
-- **Enable Client-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
-- **Root Certificate** - select an existing security certificate or create a new one.
-- **Enable Encryption at Rest** - specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
+Enable the YSQL and YCQL endpoints and database authentication.
+
+Enter the password to use for the default database admin superuser (for YSQL the user is `yugabyte`, and for YCQL `cassandra`). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
+
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration).
+
+You can also enable the YEDIS API endpoint for running Redis-compatible workloads.
+
+#### Encryption Settings
+
+Enable encryption in transit to encrypt universe traffic. You can enable the following:
+
+- **Node-to-Node TLS** to encrypt traffic between universe nodes.
+- **Client-to-Node TLS** to encrypt traffic between universe nodes and external clients.
+
+    Note that if you want to enable Client-to-Node encryption, you first must enable Node-to-Node encryption.
+
+Encryption requires a certificate. YugabyteDB Anywhere can generate a self-signed certificate automatically, or you can use your own certificate.
+
+To use your own, you must first add it to YugabyteDB Anywhere; refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-self/).
+
+To have YugabyteDB Anywhere generate a certificate for the universe, use the default **Root Certificate** setting of **Create New Certificate**. To use a certificate you added or a previously generated certificate, select it from the **Root Certificate** menu.
+
+For more information on using and managing certificates, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
+
+To encrypt the universe data, select the **Enable encryption at rest** option and select the [KMS configuration](../../security/create-kms-config/aws-kms/) to use for encryption. For more information, refer to [Encryption at rest](../../security/enable-encryption-at-rest/).
 
 ### Advanced Configuration
 

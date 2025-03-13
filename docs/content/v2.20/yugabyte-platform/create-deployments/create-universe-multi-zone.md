@@ -86,11 +86,19 @@ Specify the instance to use for the universe nodes:
 
 ### Security Configurations
 
+#### IP Settings
+
 To enable public access to the universe, select the **Assign Public IP** option.
 
-Enable the YSQL and YCQL endpoints and database authentication. You can also enable and disable authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+#### Authentication Settings
 
-Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). For more information, refer to [Database authorization](../../security/authorization-platform/).
+Enable the YSQL and YCQL endpoints and database authentication.
+
+Enter the password to use for the default database admin superuser (for YSQL the user is `yugabyte`, and for YCQL `cassandra`). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
+
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration).
+
+#### Encryption Settings
 
 Enable encryption in transit to encrypt universe traffic. Refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/).
 
