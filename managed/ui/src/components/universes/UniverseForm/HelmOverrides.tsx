@@ -7,9 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { ChangeEvent, FC, useState } from 'react';
+import { ChangeEvent, FC, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'react-query';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
@@ -18,9 +18,12 @@ import { isEmpty } from 'lodash';
 import { Field, FieldArray, FormikProps } from 'formik';
 import { YBModalForm } from '../../common/forms';
 import { YBLoading } from '../../common/indicators';
+import { YBButton as YBRedesignedButton } from '../../../redesign/components';
 import { YBButton, YBCheckBox, YBModal } from '../../common/forms/fields';
 import { YBCheckbox, YBInput, YBLabel } from '../../../redesign/components';
 import { validateHelmYAML, fetchNodeDetails } from '../../../actions/universe';
+import { showTaskInDrawer } from '../../../actions/tasks';
+import { transitToUniverse } from '../../../redesign/features/universe/universe-form/utils/helpers';
 import {
   createErrorMessage,
   isEmptyObject,
@@ -29,6 +32,7 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+import { useIsTaskNewUIEnabled } from '../../../redesign/features/tasks/TaskUtils';
 import Close from '../../universes/images/close.svg';
 import './HelmOverrides.scss';
 
@@ -54,7 +58,7 @@ export const HelmOverridesUniversePage: FC<HelmOverridesUniversePage> = ({
   //fetch existing values from form(state)
   const formValues = useSelector((state: any) => state?.form?.UniverseForm?.values?.primary);
 
-  const editValues = {};
+  const editValues: { universeOverrides?: string; azOverrides?: string[] } = {};
 
   if (formValues) {
     editValues['universeOverrides'] = formValues.universeOverrides;
@@ -153,6 +157,12 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   const [rollingUpgrade, setRollingUpgrade] = useState<boolean>(true);
   const [timeDelay, setTimeDelay] = useState<number>(180);
 
+  const dispatch = useDispatch();
+
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
+
+  const formik = useRef({} as FormikProps<HelmOverridesType>);
+
   let initialValues: HelmOverridesType = {
     universeOverrides: '',
     azOverrides: [],
@@ -181,28 +191,39 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     },
     {
       onSuccess: (resp, reqValues) => {
-        const setOverides = () => {
-          setHelmOverridesData({
-            universeOverrides: reqValues.values.universeOverrides,
-            azOverrides: reqValues.values.azOverrides,
-            rollingUpgrade: rollingUpgrade,
-            timeDelay: timeDelay
-          });
-          setValidationError(validation_errors_initial_state);
-          onHide();
-        };
+        const runOnlyPrechecks = reqValues.values.runOnlyPrechecks;
+        const universeUUID = reqValues.values.universeUUID;
+        if (!runOnlyPrechecks) {
+          const setOverides = () => {
+            setHelmOverridesData({
+              universeOverrides: reqValues.values.universeOverrides,
+              azOverrides: reqValues.values.azOverrides,
+              rollingUpgrade: rollingUpgrade,
+              timeDelay: timeDelay
+            });
+            setValidationError(validation_errors_initial_state);
+            onHide();
+          };
 
-        if (resp.data.overridesErrors.length > 0) {
-          // has validation errors
-          if (forceConfirm) {
+          if (resp.data.overridesErrors.length > 0) {
+            // has validation errors
+            if (forceConfirm) {
+              //apply overrides, close modal and clear error
+              setOverides();
+            } else {
+              setValidationError(resp.data);
+            }
+          } else {
             //apply overrides, close modal and clear error
             setOverides();
-          } else {
-            setValidationError(resp.data);
           }
         } else {
-          //apply overrides, close modal and clear error
-          setOverides();
+          if (isNewTaskUIEnabled) {
+            dispatch(showTaskInDrawer(resp.data.taskUUID));
+          } else {
+            transitToUniverse(universeUUID);
+          }
+          onHide();
         }
       },
       onError: (err: any, reqValues) => {
@@ -220,6 +241,56 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     }
   );
 
+  const handleFormSubmit = async (runOnlyPrechecks = false) => {
+    const currentFormik = formik.current;
+    const values = currentFormik.values;
+
+    const universeConfigureData = getConfiguretaskParams();
+    const universeUUID = universeConfigureData.universeUUID;
+
+    const primaryCluster = getPrimaryCluster(universeConfigureData.clusters);
+
+    if (values.universeOverrides) {
+      primaryCluster.userIntent.universeOverrides = values.universeOverrides;
+    }
+
+    /* format
+    azOverrides = {
+      "az-region1": "override yaml",
+      "az-region2": "override yaml",
+    }
+    */
+
+    const azOverrides: { [key: string]: string } = {};
+    if (values.azOverrides.length > 0) {
+      values.azOverrides.forEach((a: any) => {
+        if (a.length === 0) return;
+        const regionIndex = a.indexOf('\n');
+        const region = a.substring(0, regionIndex).trim().replace(':', '');
+        const regionOverride = a.substring(regionIndex + 1);
+        if (region && regionOverride) azOverrides[region] = regionOverride;
+      });
+    }
+
+    primaryCluster.userIntent.azOverrides = azOverrides;
+
+    //no instance tags for k8s
+    delete primaryCluster.userIntent.instanceTags;
+
+    doValidateYAML
+      .mutateAsync({
+        universeConfigureData,
+        values: {
+          universeOverrides: values.universeOverrides,
+          azOverrides,
+          runOnlyPrechecks,
+          universeUUID
+        }
+      })
+      .then(() => currentFormik.setSubmitting(false))
+      .catch(() => currentFormik.setSubmitting(false));
+  };
+
   const onTimeDelayChange = (delay: number) => {
     setTimeDelay(delay);
   };
@@ -234,176 +305,172 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   return (
     <YBModalForm
       title={t('universeActions.helmOverrides.title')}
+      showSubmitButton={false}
       visible={visible}
-      submitLabel={submitLabel}
       formName="HelmOverridesForm"
-      cancelLabel="Cancel"
       className="helm-overrides-form"
       initialValues={initialValues}
-      showCancelButton={true}
+      pullRightFooter={true}
       onHide={onHide}
       footerAccessory={
-        forceUpdate ? (
-          <YBCheckBox
-            label={
-              editMode
-                ? t('universeActions.helmOverrides.forceUpgrade')
-                : t('universeActions.helmOverrides.forceApply')
-            }
-            input={{
-              checked: forceConfirm,
-              onChange: () => setForceConfirm(!forceConfirm)
+        <>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              width: '100%'
             }}
-            className="yb-input-checkbox"
-          />
-        ) : null
+          >
+            {forceUpdate ? (
+              <YBCheckBox
+                label={
+                  editMode
+                    ? t('universeActions.helmOverrides.forceUpgrade')
+                    : t('universeActions.helmOverrides.forceApply')
+                }
+                input={{
+                  checked: forceConfirm,
+                  onChange: () => setForceConfirm(!forceConfirm)
+                }}
+                className="yb-input-checkbox"
+              />
+            ) : null}
+            <YBRedesignedButton variant="secondary" size="large" data-testid="HelmOverrides-Cancel">
+              {t('common.cancel')}
+            </YBRedesignedButton>
+            <YBRedesignedButton
+              variant="secondary"
+              size="large"
+              onClick={() => {
+                handleFormSubmit(true);
+              }}
+              data-testid="HelmOverrides-Precheck"
+            >
+              {t('universeActions.runPrecheckOnlyButton')}
+            </YBRedesignedButton>
+            <YBRedesignedButton
+              variant="primary"
+              size="large"
+              onClick={() => {
+                handleFormSubmit(false);
+              }}
+              data-testid="HelmOverrides-UpgradeButton"
+            >
+              {t('common.upgrade')}
+            </YBRedesignedButton>
+          </div>
+        </>
       }
-      onFormSubmit={(values: HelmOverridesType, formikProps: FormikProps<HelmOverridesType>) => {
-        const universeConfigureData = getConfiguretaskParams();
-
-        const primaryCluster = getPrimaryCluster(universeConfigureData.clusters);
-
-        if (values.universeOverrides) {
-          primaryCluster.userIntent.universeOverrides = values.universeOverrides;
-        }
-
-        /* format
-        azOverrides = {
-          "az-region1": "override yaml",
-          "az-region2": "override yaml",
-        }
-        */
-
-        const azOverrides = {};
-        if (values.azOverrides.length > 0) {
-          values.azOverrides.forEach((a) => {
-            if (a.length === 0) return;
-            const regionIndex = a.indexOf('\n');
-            const region = a.substring(0, regionIndex).trim().replace(':', '');
-            const regionOverride = a.substring(regionIndex + 1);
-            if (region && regionOverride) azOverrides[region] = regionOverride;
-          });
-        }
-
-        primaryCluster.userIntent.azOverrides = azOverrides;
-
-        //no instance tags for k8s
-        delete primaryCluster.userIntent.instanceTags;
-
-        doValidateYAML
-          .mutateAsync({
-            universeConfigureData,
-            values: { universeOverrides: values.universeOverrides, azOverrides }
-          })
-          .then(() => formikProps.setSubmitting(false))
-          .catch(() => formikProps.setSubmitting(false));
-      }}
       dialogClassName={visible ? 'modal-fade in' : 'modal-fade'}
       headerClassName="add-flag-header"
-      render={(formikProps: FormikProps<HelmOverridesType>) => (
-        <>
-          {showAlert && (
-            <Alert bsStyle="danger" className="overrides-errors">
-              <>
-                {!isEmpty(validationError) && (
-                  <>
-                    <b>Errors in helm YAML</b>
-                    {validationError.overridesErrors.map((e, index) => (
-                      <div key={index}>
-                        {index + 1}.&nbsp;{e.errorString}
-                        <br />
-                      </div>
-                    ))}
-                  </>
-                )}
-              </>
-            </Alert>
-          )}
-          <b className="helm-fields">Universe Overrides:</b>
-          <Field
-            component="textarea"
-            name="universeOverrides"
-            className="helm-overrides-text"
-            placeholder={UNIVERSE_OVERRIDE_SAMPLE}
-          />
-          <br />
-          <br />
-          <b className="helm-fields">AZ Overrides:</b>
-          <FieldArray
-            name="azOverrides"
-            render={(arrayHelper) => (
-              <>
-                <div className="az-overrides">
-                  {formikProps.values.azOverrides.map((_az, index) => {
-                    return (
-                      <Row key={index}>
-                        <Col lg={12} className="az-override-row">
-                          <div>
-                            <b className="az-override-label">Availability Zone {index + 1}:</b>
-                            <Field
-                              name={`azOverrides.${index}`}
-                              component="textarea"
-                              placeholder={AZ_OVERRIDE_SAMPLE}
-                            />
-                          </div>
-                          <img
-                            alt="Remove"
-                            className="remove-field-icon"
-                            src={Close}
-                            width="22"
-                            onClick={() => arrayHelper.remove(index)}
-                          />
-                        </Col>
-                      </Row>
-                    );
-                  })}
-                </div>
-                <a
-                  href="#!"
-                  className="on-prem-add-link add-region-link helm-fields"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    arrayHelper.push('');
-                  }}
-                >
-                  <i className="fa fa-plus-circle" />
-                  {t('universeActions.helmOverrides.addAvailabilityZone')}
-                </a>
-              </>
+      render={(formikProps: FormikProps<HelmOverridesType>) => {
+        formik.current = formikProps;
+        return (
+          <>
+            {showAlert && (
+              <Alert bsStyle="danger" className="overrides-errors">
+                <>
+                  {!isEmpty(validationError) && (
+                    <>
+                      <b>Errors in helm YAML</b>
+                      {validationError.overridesErrors.map((e, index) => (
+                        <div key={index}>
+                          {index + 1}.&nbsp;{e.errorString}
+                          <br />
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              </Alert>
             )}
-          />
-          <Box mt={2}>
-            <YBCheckbox
-              label={t('universeActions.helmOverrides.rollingUpgradeLabel')}
-              style={{ width: 'fit-content' }}
-              checked={rollingUpgrade}
-              onChange={handleRollingUpgrade}
-              inputProps={{
-                'data-testid': 'HelmOverrides-RollingUpgrade'
-              }}
+            <b className="helm-fields">Universe Overrides:</b>
+            <Field
+              component="textarea"
+              name="universeOverrides"
+              className="helm-overrides-text"
+              placeholder={UNIVERSE_OVERRIDE_SAMPLE}
             />
-            <Box display={'flex'} flexDirection={'row'} width="100%" alignItems={'center'} ml={1}>
-              <YBLabel width="210px">
-                {t('universeActions.helmOverrides.upgradeDelayLabel')}
-              </YBLabel>
-              <Box width="160px" mr={1}>
-                <YBInput
-                  type="number"
-                  value={timeDelay}
-                  onChange={(event: any) => onTimeDelayChange(event.target.value)}
-                  disabled={!rollingUpgrade}
-                  fullWidth
-                  inputProps={{
-                    autoFocus: true,
-                    'data-testid': 'HelmOverrides-TimeDelay'
-                  }}
-                />
+            <br />
+            <br />
+            <b className="helm-fields">AZ Overrides:</b>
+            <FieldArray
+              name="azOverrides"
+              render={(arrayHelper) => (
+                <>
+                  <div className="az-overrides">
+                    {formikProps.values.azOverrides.map((_az, index) => {
+                      return (
+                        <Row key={index}>
+                          <Col lg={12} className="az-override-row">
+                            <div>
+                              <b className="az-override-label">Availability Zone {index + 1}:</b>
+                              <Field
+                                name={`azOverrides.${index}`}
+                                component="textarea"
+                                placeholder={AZ_OVERRIDE_SAMPLE}
+                              />
+                            </div>
+                            <img
+                              alt="Remove"
+                              className="remove-field-icon"
+                              src={Close}
+                              width="22"
+                              onClick={() => arrayHelper.remove(index)}
+                            />
+                          </Col>
+                        </Row>
+                      );
+                    })}
+                  </div>
+                  <a
+                    href="#!"
+                    className="on-prem-add-link add-region-link helm-fields"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      arrayHelper.push('');
+                    }}
+                  >
+                    <i className="fa fa-plus-circle" />
+                    {t('universeActions.helmOverrides.addAvailabilityZone')}
+                  </a>
+                </>
+              )}
+            />
+            <Box mt={2}>
+              <YBCheckbox
+                label={t('universeActions.helmOverrides.rollingUpgradeLabel')}
+                style={{ width: 'fit-content' }}
+                checked={rollingUpgrade}
+                onChange={handleRollingUpgrade}
+                inputProps={{
+                  'data-testid': 'HelmOverrides-RollingUpgrade'
+                }}
+              />
+              <Box display={'flex'} flexDirection={'row'} width="100%" alignItems={'center'} ml={1}>
+                <YBLabel width="210px">
+                  {t('universeActions.helmOverrides.upgradeDelayLabel')}
+                </YBLabel>
+                <Box width="160px" mr={1}>
+                  <YBInput
+                    type="number"
+                    value={timeDelay}
+                    onChange={(event: any) => onTimeDelayChange(event.target.value)}
+                    disabled={!rollingUpgrade}
+                    fullWidth
+                    inputProps={{
+                      autoFocus: true,
+                      'data-testid': 'HelmOverrides-TimeDelay'
+                    }}
+                  />
+                </Box>
+                <Typography variant="body2">{t('common.seconds')}</Typography>
               </Box>
-              <Typography variant="body2">{t('common.seconds')}</Typography>
             </Box>
-          </Box>
-        </>
-      )}
+          </>
+        );
+      }}
     />
   );
 };

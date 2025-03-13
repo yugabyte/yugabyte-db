@@ -13,6 +13,7 @@
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
+      "upgrade": "Upgrade",
       "requiredField": "Required field",
       "fieldRequired": "This field is required",
       "save": "Save",

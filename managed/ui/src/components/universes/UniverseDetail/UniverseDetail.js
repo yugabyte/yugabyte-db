@@ -217,7 +217,10 @@ class UniverseDetail extends Component {
       if (hasLiveNodes(currentUniverse.data) && !universeTables.length) {
         this.props.fetchUniverseTables(currentUniverse.data.universeUUID);
       }
-      if(currentUniverse?.data?.universeDetails?.updateInProgress && currentUniverse?.data?.universeDetails?.updatingTaskUUID === undefined){
+      if (
+        currentUniverse?.data?.universeDetails?.updateInProgress &&
+        currentUniverse?.data?.universeDetails?.updatingTaskUUID === undefined
+      ) {
         this.props.getUniverseInfo(currentUniverse.data.universeUUID);
       }
     }
