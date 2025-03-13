@@ -159,7 +159,7 @@ The yugaware chart, when installed with `rbac.create=true`, automatically create
 
 ## Installation
 
-For information on installing YBA and creating universes using the YugabyteDB Kubernetes Operator, refer to [Use YugabyteDB Kubernetes Operator to automate YBA deployments](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+For information on installing YBA and creating universes using the YugabyteDB Kubernetes Operator, refer to [Use YugabyteDB Kubernetes Operator to automate YBA deployments](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
 
 ## Example workflows
 
