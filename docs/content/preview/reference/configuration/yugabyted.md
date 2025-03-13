@@ -951,7 +951,8 @@ For example, to create a new xCluster replication, execute the following command
 ```sh
 ./bin/yugabyted xcluster create_checkpoint \
     --replication_id <replication_id> \
-    --databases <comma_separated_database_names>
+    --databases <comma_separated_database_names> \
+    [--automatic_mode]
 ```
 
 The `create_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be replicated need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
@@ -971,6 +972,9 @@ The `create_checkpoint` command outputs directions for bootstrapping the databas
 
 --replication_id *xcluster-replication-id*
 : A string to uniquely identify the replication.
+
+--automatic_mode  {{<tags/feature/tp>}}
+: Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 #### add_to_checkpoint
 
@@ -1875,6 +1879,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 
 ### Set up xCluster replication between clusters
 
+TODO: Check the xCluster page 
 Use the following steps to set up [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two YugabyteDB clusters.
 
 To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). In addition, if you need to bootstrap the databases in the target cluster, set the `--backup_daemon` flag to true and install YB Controller. See the [start](#start) command.

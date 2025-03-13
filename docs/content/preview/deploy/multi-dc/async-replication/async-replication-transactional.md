@@ -36,24 +36,19 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 Transactional xCluster can be set up in the following ways:
 
-- [Semi-automatic mode](../async-transactional-setup-dblevel/), providing operationally simpler setup and management of replication, as well as simpler steps for performing DDL changes.
-- [Manual mode](../async-transactional-setup/).
+- [Automatic mode](../async-transactional-setup-automatic/) {{<tags/feature/tp>}}: Handles all aspects of replication for both and schema changes.
+- [Semi-automatic mode](../async-transactional-setup-semi-automatic/): Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes.
+- [Manual mode](../async-transactional-setup-manual/): Deprecated.
 
-## Limitations
-
-- Supports only Active-Standby setups with transactional atomicity and global ordering.
-- Transactional consistency is currently not supported for YCQL, only for YSQL.
-
-For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 ## Best practices
 
-- Keep CPU use below 65%.
-- Keep disk space use under 65%.
+- Monitor CPU and keep its  use below 65%.
+- Monitor disk space and keep its use under 65%.
 
 ## Prerequisites
 
-- Create Primary and Standby universes with TLS enabled.
+- Create Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to 86400 on both Primary and Standby.
 

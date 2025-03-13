@@ -1,13 +1,13 @@
 ---
-title: Set up transactional xCluster replication
-headerTitle: Set up transactional xCluster replication
-linkTitle: Set up replication
-description: Setting up transactional (active-standby) replication between universes
-headContent: Set up transactional replication manually
+title: Deploy transactional xCluster
+headerTitle: Deploy transactional xCluster
+linkTitle: Deploy
+description: Setting up transactional (active-active single-master) replication between two YB universes
+headContent: Set up transactional xCluster replication
 menu:
   preview:
     parent: async-replication-transactional
-    identifier: async-transactional-setup-2-manual
+    identifier: async-transactional-setup-3-manual
     weight: 10
 tags:
   other: ysql
@@ -16,14 +16,17 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../async-transactional-setup-dblevel/" class="nav-link">
-      <i class="icon-shell"></i>
+    <a href="../async-transactional-setup-automatic/" class="nav-link">
+      Automatic
+    </a>
+  </li>
+  <li >
+    <a href="../async-transactional-setup-semi-automatic/" class="nav-link">
       Semi-Automatic
     </a>
   </li>
   <li >
-    <a href="../async-transactional-setup/" class="nav-link active">
-      <i class="icon-shell"></i>
+    <a href="../async-transactional-setup-manual/" class="nav-link active">
       Manual
     </a>
   </li>

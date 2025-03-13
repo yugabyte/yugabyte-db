@@ -14,6 +14,10 @@ menu:
 type: docs
 ---
 
+{{< tip title="Deploy" >}}
+To better understand how xCluster replication works in practice, check out [xCluster deployment](../../../deploy/multi-dc/async-replication/).
+{{< /tip >}}
+
 ## Synchronous versus asynchronous replication
 
 YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions.  It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency courtesy of the Raft consensus algorithm.
@@ -285,7 +289,3 @@ A number of interactions across features are supported.
 - YSQL geo-partitioning is supported.  Note that you must configure replication on all new partitions manually as DDL changes are not replicated automatically.
 - Source and target universes can have different numbers of tablets.
 - Tablet splitting is supported on both source and target universes.
-
-{{< tip title="Explore" >}}
-To better understand how xCluster replication works in practice, see [xCluster deployment](../../../deploy/multi-dc/async-replication/) and [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication/async-replication-transactional/) in Launch and Manage.
-{{< /tip >}}
