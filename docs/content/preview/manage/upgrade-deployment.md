@@ -26,7 +26,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 {{< warning title="Upgrading to v2.25" >}}
-Upgrading to v2.25 from earlier versions is not yet available.
+To upgrade to v2.25, refer to [Upgrade YugabyteDB to PostgreSQL 15](../upgrade-pg15/).
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
