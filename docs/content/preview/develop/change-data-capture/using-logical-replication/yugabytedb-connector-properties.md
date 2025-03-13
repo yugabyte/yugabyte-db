@@ -739,7 +739,7 @@ The configuration `publication.names` is only supposed to be used when `streamin
 
 {{< /warn >}}
 
-##### publication.names
+##### slot.ranges
 
 A list of semi-colon separated values of different hash code ranges to be used by each task when using the `streaming.mode=parallel`.
 

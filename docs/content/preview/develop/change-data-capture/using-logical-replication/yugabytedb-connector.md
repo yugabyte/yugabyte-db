@@ -1539,7 +1539,7 @@ YugabyteDB also supports parallel streaming of a single table using logical repl
 
 {{< note title="Important" >}}
 
-To enable paralle streaming, you will need to enable the Technical Preview flags [ysql_enable_pg_export_snapshot](#) and [ysql_yb_enable_consistent_replication_from_hash_range](#).
+To enable parallel streaming, you will need to enable the Technical Preview flags [ysql_enable_pg_export_snapshot](#) and [ysql_yb_enable_consistent_replication_from_hash_range](#).
 
 {{< /note >}}
 
