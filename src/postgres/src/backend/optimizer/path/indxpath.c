@@ -2398,6 +2398,10 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 	if (!enable_indexonlyscan)
 		return false;
 
+	/* YB: Index-only scans are not supported for copartitioned indexes. */
+	if (index->yb_amiscopartitioned)
+		return false;
+
 	/*
 	 * Check that all needed attributes of the relation are available from the
 	 * index.
