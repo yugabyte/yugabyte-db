@@ -1,3 +1,5 @@
 jinja2
 requests
 pyyaml
+wheel
+setuptools
