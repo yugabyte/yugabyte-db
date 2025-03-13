@@ -268,7 +268,10 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
 }
 
 Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
-  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
+  return WithMaskedYsqlSignals([&session_stats] {
+    pgapi->InitSession(session_stats);
+    return static_cast<Status>(Status::OK());
+  });
 }
 
 // ql_value is modified in-place.

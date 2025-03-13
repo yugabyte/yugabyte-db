@@ -50,7 +50,9 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -137,7 +139,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YBCPgExecStatsState& session_stats);
+  void InitSession(YBCPgExecStatsState& session_stats);
 
   uint64_t GetSessionID() const;
 
@@ -896,6 +898,10 @@ class PgApiImpl {
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
   TupleIdBuilder tuple_id_builder_;
+  BufferingSettings buffering_settings_;
+  YbctidReaderProvider ybctid_reader_provider_;
+  PgFKReferenceCache fk_reference_cache_;
+  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 };
 
 }  // namespace yb::pggate

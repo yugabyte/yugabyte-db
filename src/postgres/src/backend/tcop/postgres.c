@@ -4099,11 +4099,11 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * We get here if there's a DocDB schema version mismatch
 			 * but not a catalog version mismatch. This can happen in several cases:
 			 *
-			 * 1. The DDL operation may have already incremented the schema version, 
-			 * so it needs to roll back the change. Even though when yb_ddl_rollback_enabled 
-			 * is true, DocDB will roll back to the old schema, it does not decrement the 
-			 * schema version while undoing the failed DDL. Instead it makes another schema 
-			 * version increment, resulting in two schema version increments. However since 
+			 * 1. The DDL operation may have already incremented the schema version,
+			 * so it needs to roll back the change. Even though when yb_ddl_rollback_enabled
+			 * is true, DocDB will roll back to the old schema, it does not decrement the
+			 * schema version while undoing the failed DDL. Instead it makes another schema
+			 * version increment, resulting in two schema version increments. However since
 			 * the DDL is aborted, the catalog version is not incremented.
 			 *
 			 * 2. The DDL has incremented the table schema version and propagated the new schema
@@ -4111,7 +4111,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * incremented the catalog version.
 			 *
 			 * 3. This can also happen during certain YB-specific operations,
-			 * such as calling set_wal_retention_secs (which happens during 
+			 * such as calling set_wal_retention_secs (which happens during
 			 * xCluster setup).
 			 */
 			Assert(need_table_cache_refresh);
@@ -4708,7 +4708,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 		elog(LOG, "Rolling back and retrying current statement. Sub-txn id: %d to %d"
 			, GetCurrentSubTransactionId(), GetCurrentSubTransactionId() + 1);
 
-	// TODO(Piyush): Perform pg_session_->InvalidateForeignKeyReferenceCache()
+	// TODO(Piyush): Perform foreign key reference cacahe cleanup
 	// and create tests that would fail without this.
 
 	/*
@@ -5620,11 +5620,11 @@ PostgresMain(int argc, char *argv[],
 		{
 			ConfigReloadPending = false;
 			/*
-			 * YB: Reloading postgres config file on a control connection can 
+			 * YB: Reloading postgres config file on a control connection can
 			 * have some repercussion, therefore adopting most safest option;
 			 * destroy the control connection which leads to failure of client
-			 * authentication and let client keep trying agin untill a new 
-			 * control connection is formed for authentication with updated 
+			 * authentication and let client keep trying agin untill a new
+			 * control connection is formed for authentication with updated
 			 * config file.
 			 * Control connection is identified if a connection receives a
 			 * Auth Passthrough Request ('A') packet.
