@@ -2262,7 +2262,7 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		/* close both client and server connection */
 		/* backend connection is not in a usable state */ 
 		od_error(&instance->logger, context, client, server,
-				"deploy error: %s, status %s", client->deploy_err,
+				"deploy error: %s, status %s", client->deploy_err->message,
 				od_frontend_status_to_str(status));
 		od_frontend_fatal(client, client->deploy_err->code, client->deploy_err->message);
 		/* close backend connection */
