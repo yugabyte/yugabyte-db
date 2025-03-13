@@ -32,6 +32,10 @@ type: docs
   </li>
 </ul>
 
+{{< warning title="Warning" >}}
+Manual mode xCluster replication is not recommended due to the operational complexity involved.
+{{< /warning >}}
+
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 Note that when making DDL changes on universes in manually-configured transactional xCluster, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated. See [Make manual DDL changes](../async-transactional-tables/).

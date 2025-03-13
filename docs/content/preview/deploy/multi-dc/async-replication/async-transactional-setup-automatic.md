@@ -144,7 +144,10 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     ```sh
     ./bin/yb-admin \
         -master_addresses <primary_master_addresses> \
-        create_xcluster_checkpoint <replication_group_id> <comma_separated_namespace_names>
+        create_xcluster_checkpoint \
+        <replication_group_id> \
+        <comma_separated_namespace_names> \
+        automatic_ddl_mode
     ```
 
     The command informs you if any data needs to be copied to the Standby, or only the schema (empty tables and indexes) needs to be created. For example:
@@ -207,9 +210,10 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
 
   </div>
-
 </div>
 
+## Monitor replication
+For information on monitoring xCluster replication, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
 
 ## Making DDL changes
 
@@ -217,4 +221,11 @@ DDL operations must only be performed on the Primary universe. All schema change
 
 ## Limitations
 
-For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+- Global objects like Users, Roles, Tablespaces, and Materialized Views are not replicated. These DDLs need to be manually executed on both universes.
+- DDL related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on the both universe be setting the GUC `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`. The data in the Materialized Views is also not replicated so it needs to be refreshed on both universe.
+- `CREATE TABLE AS`, and `SELECT INTO` DDL statements are not supported. You can workaround this by breaking the DDL up into a `CREATE TABLE` followed by `INSERT SELECT`.
+- Only the following list of extensions can be CREATED, DROPPED, or ALTER while automatic mode is setup: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, pgaudit. The remaining extensions must be created before setting up automatic mode.
+- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, `TRUNCATE` and `ALTER LARGE OBJECT` DDLs are not supported.
+- DDLs related to `FOREIGN DATA WRAPPER`, `FOREIGN TABLE`, `LANGUAGE`, `IMPORT FOREIGN SCHEMA`, `SECURITY LABEL`, `PUBLICATION` and `SUBSCRIPTION` are not supported. 
+
+For more information on the YugabyteDB xCluster architecture and its limitations, refer to [xCluster Architecture](../../../../architecture/docdb-replication/async-replication).

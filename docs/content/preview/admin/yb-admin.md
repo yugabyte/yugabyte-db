@@ -1907,7 +1907,9 @@ Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ### xCluster Replication commands
 
 TODO
-
+list_xcluster_outbound_replication_groups
+list_universe_replications
+all v2 command
 
 #### setup_universe_replication
 
@@ -2060,29 +2062,6 @@ yb-admin \
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
-#### change_xcluster_role
-
-Sets the xCluster role to `STANDBY` or `ACTIVE`.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    change_xcluster_role \
-    <role>
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
-* *role*: Can be `STANDBY` or `ACTIVE`.
-
-**Example**
-
-```sh
-./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    change_xcluster_role STANDBY
-```
 
 #### get_xcluster_safe_time
 
@@ -2092,12 +2071,12 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    -master_addresses <standby_master_addresses> \
     get_xcluster_safe_time \
     [include_lag_and_skew]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *standby_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
 
 **Example**
@@ -2105,7 +2084,7 @@ yb-admin \
 ```sh
 ./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    get_xcluster_safe_time
+    get_xcluster_safe_time include_lag_and_skew
 ```
 
 ```output

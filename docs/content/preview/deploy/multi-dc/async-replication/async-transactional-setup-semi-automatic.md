@@ -42,19 +42,95 @@ In this mode, xCluster replication operates at the YSQL database granularity. Th
 
 In particular, [DDL changes](#making-ddl-changes) don't require the use of yb-admin. This means DDL changes can be made by any database administrator or user with database permissions, and don't require SSH access or intervention by an IT administrator.
 
-The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
-
 ## Set up replication
 
-To set up unidirectional transactional replication, do the following:
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted-setup" class="nav-link active" id="yugabyted-setup-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted-setup" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#local-setup" class="nav-link" id="local-setup-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="local-setup" aria-selected="false">
+      <i class="icon-shell"></i>
+      Local
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="yugabyted-setup" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-setup-tab">
 
-1. Enable point in time restore (PITR) on the Standby database:
+<!-- YugabyteD Setup -->
+
+The following assumes you have set up Primary and Standby universes. Refer to [Set up yugabyted universes](../../../../reference/configuration/yugabyted/#start). The yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+
+
+1. Create a checkpoint on the Primary universe for all the databases that you want to be part of the replication.
 
     ```sh
-    ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yugabyted xcluster create_checkpoint \
+        --replication_id <replication_id> \
+        --databases <comma_separated_database_names>
     ```
+
+    The command informs you if any data needs to be copied to the Standby, or only the schema (empty tables and indexes) needs to be created. For example:
+
+    ```output
+    +-------------------------------------------------------------------------+
+    |                                yugabyted                                |
+    +-------------------------------------------------------------------------+
+    | Status               : xCluster create checkpoint success.              |
+    | Bootstrapping        : Bootstrap is required for database `yugabyte`.   |
+    +-------------------------------------------------------------------------+
+
+    For each database which requires bootstrap run the following commands to perform a backup and restore.
+    # Run on source:
+    ./yugabyted backup --cloud_storage_uri <AWS/GCP/local cloud storage uri>  --database <database_name> --base_dir <base_dir of source node>
+    # Run on target:
+    ./yugabyted restore --cloud_storage_uri <AWS/GCP/local cloud storage uri>  --database <database_name> --base_dir <base_dir of target node>
+    ```
+
+1. If needed, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty, it must be bootstrapped, even if the output suggests otherwise. This applies even if it contains only empty tables, unused types, or enums (#24030).
+
+1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+
+    ```sh
+    ./bin/yugabyted configure point_in_time_recovery \
+        --enable \
+        --retention <retention_period> \
+        --database <database_name>
+    ```
+
+    The `retention_period` must be greater than the amount of time you expect the Primary universe to be down before it self recovers or before you perform a failover to the Standby universe.
+
+1. Set up the xCluster replication.
+
+    ```sh
+    ./bin/yugabyted xcluster set_up \
+        --target_address <ip_of_any_target_cluster_node> \
+        --replication_id <replication_id> \
+        --bootstrap_done
+    ```
+
+    You should see output similar to the following:
+
+    ```output
+    +-----------------------------------------------+
+    |                   yugabyted                   |
+    +-----------------------------------------------+
+    | Status        : xCluster set-up successful.   |
+    +-----------------------------------------------+
+
+    ```
+  </div>
+
+  <div id="local-setup" class="tab-pane fade " role="tabpanel" aria-labelledby="local-setup-tab">
+
+<!-- Local Setup -->
+The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 1. Create a checkpoint using the `create_xcluster_checkpoint` command, providing a name for the replication group, and the names of the databases to replicate as a comma-separated list.
 
@@ -94,6 +170,14 @@ To set up unidirectional transactional replication, do the following:
 
 1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../../manage/backup-restore/snapshot-ysql/). Otherwise, create the necessary schema objects (tables and indexes) on the Standby.
 
+1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <standby_master_addresses> \
+        create_snapshot_schedule 1 10 ysql.yugabyte
+    ```
+
 1. Set up the xCluster replication group.
 
     ```sh
@@ -108,40 +192,40 @@ To set up unidirectional transactional replication, do the following:
     xCluster Replication group repl_group1 setup successfully
     ```
 
-### List replication groups
+  </div>
+</div>
 
-To list outgoing groups on the Primary universe, enter the following command:
+## Monitor replication
+For information on monitoring xCluster replication, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
 
-```sh
-./bin/yb-admin \
--master_addresses <primary_master_addresses> \
-list_xcluster_outbound_replication_groups [namespace_id]
-```
-
-You should see output similar to the following:
-
-```output
-1 Outbound Replication Groups found:
-[repl_group1]
-```
-
-To list inbound groups on the Standby universe, enter the following command:
-
-```sh
-./bin/yb-admin \
--master_addresses <standby_master_addresses> \
-list_universe_replications [namespace_id]
-```
-
-You should see output similar to the following:
-
-```output
-1 Universe Replication Groups found:
-[repl_group1]
-```
 
 ## Add a database to a replication group
 
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted-add-db" class="nav-link active" id="yugabyted-add-db-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted-add-db" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#local-add-db" class="nav-link" id="local-add-db-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="local-add-db" aria-selected="false">
+      <i class="icon-shell"></i>
+      Local
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="yugabyted-add-db" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-add-db-tab">
+
+<!-- YugabyteD Setup -->
+  </div>
+
+  <div id="local-add-db" class="tab-pane fade " role="tabpanel" aria-labelledby="local-add-db-tab">
+
+<!-- Local Setup -->
 The database should have at least one table in order to be added to replication. If it is a colocated database then there should be at least one colocated table in the database in order for it to be added to replication.
 
 To add a database to replication, do the following:
@@ -187,8 +271,36 @@ To add a database to replication, do the following:
     Successfully added db2 to xCluster Replication group repl_group1
     ```
 
-### Remove a database from replication
+  </div>
+</div>
 
+## Remove a database from replication
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted-remove-db" class="nav-link active" id="yugabyted-remove-db-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted-remove-db" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#local-remove-db" class="nav-link" id="local-remove-db-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="local-remove-db" aria-selected="false">
+      <i class="icon-shell"></i>
+      Local
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="yugabyted-remove-db" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-remove-db-tab">
+
+<!-- YugabyteD Setup -->
+  </div>
+
+  <div id="local-remove-db" class="tab-pane fade " role="tabpanel" aria-labelledby="local-remove-db-tab">
+
+<!-- Local Setup -->
 To remove a database from a replication group, use the following command:
 
 ```sh
@@ -203,8 +315,36 @@ You should see output similar to the following:
 Successfully removed db2 from xCluster Replication group repl_group1
 ```
 
+  </div>
+</div>
+
 ## Drop xCluster replication group
 
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted-drop" class="nav-link active" id="yugabyted-drop-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted-drop" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#local-drop" class="nav-link" id="local-drop-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="local-drop" aria-selected="false">
+      <i class="icon-shell"></i>
+      Local
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="yugabyted-drop" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-drop-tab">
+
+<!-- YugabyteD Setup -->
+  </div>
+
+  <div id="local-drop" class="tab-pane fade " role="tabpanel" aria-labelledby="local-drop-tab">
+
+<!-- Local Setup -->
 To drop a replication group, use the following command:
 
 ```sh
@@ -218,6 +358,9 @@ You should see output similar to the following:
 ```output
 Outbound xCluster Replication group rg1 deleted successfully
 ```
+
+  </div>
+</div>
 
 ## Making DDL changes
 
