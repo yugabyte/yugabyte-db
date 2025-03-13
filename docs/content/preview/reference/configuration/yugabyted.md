@@ -582,6 +582,10 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 ### finalize_upgrade
 
+{{< warning title="Upgrading to v2.25" >}}
+This command is deprecated. Please use 'upgrade finalize_new_version' command.
+{{< /warning >}}
+
 Use the `yugabyted finalize_upgrade` command to finalize and upgrade the AutoFlags and YSQL catalog to the new version and complete the upgrade process.
 
 #### Syntax
@@ -901,8 +905,8 @@ Usage: yugabyted stop [flags]
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be stopped.
 
---upgrade *stop-for-upgrade*
-:  Stop the yugabyted node for version upgrade.
+--upgrade *bool*
+:  Stop the yugabyted node for version upgrade. Default: `false`.
 
 
 -----
