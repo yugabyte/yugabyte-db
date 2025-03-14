@@ -922,16 +922,16 @@ Status Check(
           << ", read time: " << read_time_
           << ", doc ht: " << doc_ht.hybrid_time()
           << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key())
-          << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
+          << ", after start: " << (doc_ht.hybrid_time() > read_time_)
           << ", value: " << value_iter_.value().ToDebugString();
-      if (doc_ht.hybrid_time() >= read_time_) {
+      if (doc_ht.hybrid_time() > read_time_) {
         if (conflict_management_policy == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           tablet_metrics_.Increment(tablet::TabletCounters::kTransactionConflicts);
           return STATUS_EC_FORMAT(TryAgain, TransactionError(TransactionErrorCode::kConflict),
-                                  "Value write after transaction start: $0 >= $1",
+                                  "Value write after transaction start: $0 > $1",
                                   doc_ht.hybrid_time(), read_time_);
         }
       }
@@ -1196,7 +1196,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
       //
       // In all other cases we have a concrete read time and should conflict with transactions
       // that were committed after this point.
-      if (has_non_lock_conflict && commit_time >= read_time_) {
+      if (has_non_lock_conflict && (commit_time > read_time_ || commit_time == HybridTime::kMax)) {
         if (GetConflictManagementPolicy() == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified by a recent commit",
                         TransactionError(TransactionErrorCode::kSkipLocking));

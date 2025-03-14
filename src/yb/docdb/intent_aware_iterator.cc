@@ -497,8 +497,9 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
   if (result.valid) {
     VLOG(4) << "Fetched key " << DebugDumpKeyToStr(result.key)
             << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
-            << ", with time: " << result.write_time.ToString()
-            << ", while read bounds are: " << read_time_;
+            << ", with time: " << result.write_time
+            << ", while read bounds are: " << read_time_
+            << ", value: " << result.value.ToDebugHexString();
   } else {
     VLOG(4) << "Fetched key <INVALID>";
   }
