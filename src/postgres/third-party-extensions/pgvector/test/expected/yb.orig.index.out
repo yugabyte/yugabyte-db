@@ -338,3 +338,12 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 ERROR:  column does not have dimensions
 DROP TABLE items;
+CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
+                            indexdef                             
+-----------------------------------------------------------------
+ CREATE INDEX items_idx ON public.items USING ybhnsw (embedding)
+(1 row)
+
+DROP TABLE items;
