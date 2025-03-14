@@ -883,7 +883,7 @@ export const checkIsDbScopedXClusterSupported = (ybSoftwareVersion: string) =>
     stableVersion: DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
     previewVersion: DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
     options: { suppressFormatError: true }
-  });
+  }) > 0;
 
 export const getLatestSchemaChangeModeSupported = (
   sourceUniverseVersion: string,
