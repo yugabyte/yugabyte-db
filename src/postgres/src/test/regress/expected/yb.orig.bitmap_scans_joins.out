@@ -799,6 +799,35 @@ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) O
 (6 rows)
 
 --
+-- GHI #26210
+-- Test that BitmapIndexScan's StorageFilter is properly set upon rescan
+--
+EXPLAIN (COSTS OFF)
+/*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  YB Bitmap Table Scan on joinb b
+         Storage Filter: ((c + 5) > "*VALUES*".column2)
+         ->  Bitmap Index Scan on joinb_c_idx
+               Index Cond: (c = "*VALUES*".column1)
+               Storage Index Filter: ((c + 5) > "*VALUES*".column2)
+(7 rows)
+
+/*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
+ k  | c  | d  
+----+----+----
+  1 |  2 |  3
+  6 | 12 | 18
+  2 |  4 |  6
+  8 | 16 | 24
+  3 |  6 |  9
+ 10 | 20 | 30
+  4 |  8 | 12
+(7 rows)
+
+--
 -- BitmapAnd tests
 -- This is issue #21495 identified by the random query generator.
 --

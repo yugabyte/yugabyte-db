@@ -217,6 +217,14 @@ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) O
 SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
 
 --
+-- GHI #26210
+-- Test that BitmapIndexScan's StorageFilter is properly set upon rescan
+--
+EXPLAIN (COSTS OFF)
+/*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
+/*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
+
+--
 -- BitmapAnd tests
 -- This is issue #21495 identified by the random query generator.
 --
