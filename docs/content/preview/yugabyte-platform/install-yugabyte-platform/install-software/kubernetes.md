@@ -85,7 +85,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
-    To install YugabyteDB Anywhere using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+    To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}}, see [Use YugabyteDB Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 
@@ -143,13 +143,13 @@ You can copy the preceding code block into a file called `yba-values.yaml` and t
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}` command and copying the specific section to your own values file.
 
-### Use Yugabyte Kubernetes Operator to automate YBA deployments
+### Use YugabyteDB Kubernetes Operator to automate YBA deployments
 
-The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
 
-Note that for Yugabyte Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
+Note that for YugabyteDB Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 
-To install YugabyteDB Anywhere and a universe using the Yugabyte Kubernetes Operator, do the following:
+To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Operator, do the following:
 
 1. Apply the following Custom Resource Definition:
 
@@ -223,7 +223,7 @@ To install YugabyteDB Anywhere and a universe using the Yugabyte Kubernetes Oper
     demo-test   Ready   {{< yb-version version="preview" format="build">}}
     ```
 
-For more details, see [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
+For more details, see [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
 
 ### Customize the creation of an internal service account
 
