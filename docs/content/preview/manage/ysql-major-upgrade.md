@@ -6,7 +6,7 @@ description: Upgrade YugabyteDB to PostgreSQL 15
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
 menu:
   preview:
-    identifier: upgrade-pg15
+    identifier: ysql-major-upgrade
     parent: manage-upgrade-deployment
     weight: 706
 type: docs
