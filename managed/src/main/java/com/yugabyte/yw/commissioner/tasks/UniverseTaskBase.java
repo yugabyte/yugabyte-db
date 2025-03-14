@@ -429,6 +429,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.MultiTableBackup,
           TaskType.ResumeKubernetesUniverse,
           TaskType.ReadOnlyClusterDelete,
+          TaskType.FailoverDrConfig,
           TaskType.ResumeUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
