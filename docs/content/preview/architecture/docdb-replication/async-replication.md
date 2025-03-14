@@ -20,21 +20,17 @@ To better understand how xCluster replication works in practice, check out [xClu
 
 ## Synchronous versus asynchronous replication
 
-YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions.  It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency courtesy of the Raft consensus algorithm.
+YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions.  It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency enabled by the Raft consensus algorithm.
 
-However, synchronous replication has two important drawbacks when used this way:
+However, asynchronous replication can be beneficial in certain scenarios:
 
-- _High write latency_: each write must achieve consensus across at least two data centers, which means at least one round trip between data centers.  This can add tens or even hundreds of milliseconds of extra latency in a multi-region deployment.
+- _Low write latency_: With synchronous replication, each write must reach a consensus across a majority of data centers. This can add tens or even hundreds of milliseconds of extra latency for writes in a multi-region deployment. Asynchronous replication with xCluster reduces this latency by eliminating the need for immediate consensus across regions.
+- _Only two data centers needed_: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With async replication you can achieve multi-region deployments with only two data centers.
+- _Disaster recovery_: By replicating data asynchronously to a secondary region, xCluster provides a robust disaster recovery solution, allowing for quick failover and minimal data loss in case of a regional outage.
 
-- _Need for at least three data centers_: to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. So, to survive the loss of one data center, you need at least three data centers, which adds operational cost. See [fault tolerance](../replication/#fault-tolerance) for more information.
-
-As an alternative, YugabyteDB provides asynchronous replication that replicates data between two or more separate universes.  It does not suffer from the drawbacks of synchronous replication: because it is done in the background, it does not impact write latency, and because it does not use consensus it does not require a third data center.
-
-Asynchronous replication has its own drawbacks, however, including:
+The drawback of Asynchronous replication is:
 
 - __Data loss on failure__: when a universe fails, the data in it that has not yet been replicated will be lost.  The amount of data lost depends on the replication lag, which is usually subsecond.
-
-- __Limitations on transactionality__: Because transactions in the universes cannot coordinate with each other, either the kinds of transactions must be restricted or some consistency and isolation must be lost.
 
 
 ## YugabyteDB's xCluster replication

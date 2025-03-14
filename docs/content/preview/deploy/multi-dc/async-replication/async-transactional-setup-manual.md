@@ -1,9 +1,9 @@
 ---
-title: Deploy transactional xCluster
-headerTitle: Deploy transactional xCluster
-linkTitle: Deploy
+title: Setup transactional xCluster
+headerTitle: Setup transactional xCluster
+linkTitle: Setup
 description: Setting up transactional (active-active single-master) replication between two YB universes
-headContent: Set up transactional xCluster replication
+headContent: Setup transactional xCluster replication
 menu:
   preview:
     parent: async-replication-transactional

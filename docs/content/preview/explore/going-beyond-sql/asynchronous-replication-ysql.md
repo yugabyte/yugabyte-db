@@ -3,7 +3,7 @@ title: xCluster replication (2+ regions) in YugabyteDB
 headerTitle: xCluster - Native asynchronous replication
 linkTitle: xCluster - Native async replication
 description: Multi-region deployment using asynchronous replication across multiple data centers.
-headContent: xCluster unidirectional and bidirectional replication (2+ regions)
+headContent: Asynchronous replication between independent YugabyteDB universes
 aliases:
   - /preview/explore/two-data-centers-linux/
   - /preview/explore/two-data-centers/macos/
@@ -26,8 +26,10 @@ xCluster provides the following benefits:
 
 xCluster is always active-active, allowing you to read data from any region. It supports both single-master and multi-master deployment options, offering flexibility to balance write performance and consistency guarantees.
 
+Active-active sing-master xCluster:
 ![example of single-master deployment](/images/architecture/replication/active-standby-deployment-new.png)
 
+Active-active multi-master xCluster:
 ![example of multi-master deployment](/images/architecture/replication/active-active-deployment-new.png)
 
 For more information, see the following:

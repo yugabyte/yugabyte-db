@@ -12,7 +12,6 @@ menu:
 type: docs
 ---
 
-### xCluster
 
 YugabyteDB allows you to asynchronously replicate data between independent YugabyteDB clusters.
 

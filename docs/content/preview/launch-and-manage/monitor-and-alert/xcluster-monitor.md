@@ -3,7 +3,7 @@ title: Monitor xCluster
 headerTitle: Monitor xCluster
 linkTitle: xCluster
 description: Monitoring the health of xCluster replication
-headContent: Monitor xCluster
+headContent: Monitoring the state and health of xCluster replication
 menu:
   preview:
     parent: monitor-and-alert
@@ -12,10 +12,9 @@ menu:
 type: docs
 ---
 
-
 ## Metrics
 
-The list of xCluster metrics is available in the [Metrics Reference](../metrics/replication/).
+The list of xCluster metrics is available in the [xCluster metrics](../metrics/replication/).
 
 ## Console
 

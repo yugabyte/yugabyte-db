@@ -2,8 +2,8 @@
 title: Deploy transactional xCluster replication
 headerTitle: Transactional xCluster
 linkTitle: Transactional
-description: Deploy using transactional (active-standby) replication between universes
-headContent: Deploy transactional (active-standby) replication
+description: Deploy using transactional xCluster replication between universes
+headContent: Deploy transactional xCluster replication
 aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
 menu:
@@ -40,19 +40,3 @@ Transactional xCluster can be set up in the following ways:
 - [Automatic mode](../async-transactional-setup-automatic/) {{<tags/feature/tp>}}: Handles all aspects of replication for both and schema changes.
 - [Semi-automatic mode](../async-transactional-setup-semi-automatic/): Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes.
 - [Manual mode](../async-transactional-setup-manual/): Deprecated.
-
-
-## Best practices
-
-- Monitor CPU and keep its  use below 65%.
-- Monitor disk space and keep its use under 65%.
-
-## Prerequisites
-
-- Create Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
-
-- Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to 86400 on both Primary and Standby.
-
-    This flag determines the duration for which WAL is retained on the Primary universe in case of a network partition or a complete outage of the Standby universe. Be sure to allocate enough disk space to hold WAL generated for this duration.
-
-    The value depends on how long a network partition or standby cluster outage can be tolerated, and the amount of WAL expected to be generated during that period.
