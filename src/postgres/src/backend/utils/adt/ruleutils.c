@@ -1549,7 +1549,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		appendStringInfoChar(&buf, ')');
 
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
-			!idxrec->indisprimary)
+			!idxrec->indisprimary && !amroutine->yb_amiscopartitioned)
 		{
 			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
 		}
