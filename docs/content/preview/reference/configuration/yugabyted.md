@@ -913,7 +913,7 @@ Usage: yugabyted stop [flags]
 
 ### upgrade
 
-Use the `yugabyted upgrade` to prepare and perform YugabyteDB major version upgrade. 
+Use the `yugabyted upgrade` command to prepare and perform a YugabyteDB major version upgrade. 
 
 ```sh
 Usage: yugabyted upgrade [command] [flags]
@@ -921,7 +921,7 @@ Usage: yugabyted upgrade [command] [flags]
 
 #### Commands
 
-The following sub-commands are available for `yugabyted upgrade` command:
+The following sub-commands are available for the `yugabyted upgrade` command:
 
 - [ysql_catalog](#ysql-catalog)
 - [finalize_new_version](#finalize-new-version)
@@ -932,7 +932,7 @@ The following sub-commands are available for `yugabyted upgrade` command:
 Use the sub-command `yugabyted upgrade ysql_catalog` to upgrade the ysql catalog of the YugabyteDB cluster to a newer version. This command needs
 to be executed only once per upgrade from a node that is part of the cluster.
 
-For example to upgrade the ysql catalog of a cluster, user will need to execute the below command:
+For example, to upgrade the YSQL catalog of a cluster, you would execute the following command:
 
 ```sh
 ./bin/yugabyted upgrade ysql_catalog
@@ -954,7 +954,7 @@ For example to upgrade the ysql catalog of a cluster, user will need to execute 
 Use the sub-command `yugabyted upgrade finalize_new_version` to finalize the new version on the upgraded YugabyteDB Cluster. This command needs
 to be executed only once per upgrade from a node that is part of the cluster.
 
-For example to finalize the new version on a cluster, user will need to execute the below command:
+For example, to finalize an upgrade to a cluster, you would execute the following command:
 
 ```sh
 ./bin/yugabyted upgrade finalize_new_version
@@ -977,7 +977,7 @@ For example to finalize the new version on a cluster, user will need to execute 
 Use the sub-command `yugabyted upgrade check_version_compatibility` to verify if the exisitng YugabyteDB cluster is compatible upgrade to the new version. 
 This command needs to be executed only once per upgrade from a node that is part of the cluster.
 
-For example to verify the version compatibility of the cluster to a new version, user will need to execute the below command:
+For example, to verify the compatibility of a cluster with a new version, you would execute the following command:
 
 ```sh
 ./bin/yugabyted upgrade check_version_compatibility
@@ -2156,7 +2156,6 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
 
     ```sh
     ./bin/yugabyted upgrade check_version_compatibility
-
     ```
 
 1. Stop one of the running YugabyteDB node using the `yugabyted stop` command.
@@ -2173,9 +2172,9 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
     ./bin/yugabyted start --base_dir <path_to_base_dir>
     ```
 
-1. Repeat steps 2 and 3 for all the nodes. Need to wait 60 seconds before repeating the steps on each node.
+1. Repeat steps 2 and 3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
 
-1. After restarting all the nodes. Upgrade YSQL catalog of the YugabyteDB cluster using the below command:
+1. After restarting all the nodes, upgrade the YSQL catalog of the cluster:
 
     ```sh
     ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
