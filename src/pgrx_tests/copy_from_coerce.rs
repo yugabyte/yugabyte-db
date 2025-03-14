@@ -12,9 +12,9 @@ mod tests {
     };
     use arrow::array::{
         ArrayRef, BinaryArray, BooleanArray, Date32Array, Decimal128Array, Float32Array,
-        Float64Array, Int16Array, Int32Array, Int8Array, LargeBinaryArray, LargeStringArray,
-        ListArray, MapArray, RecordBatch, StringArray, StructArray, Time64MicrosecondArray,
-        TimestampMicrosecondArray, UInt16Array, UInt32Array, UInt64Array,
+        Float64Array, Int16Array, Int32Array, Int8Array, LargeBinaryArray, LargeListArray,
+        LargeStringArray, ListArray, MapArray, RecordBatch, StringArray, StructArray,
+        Time64MicrosecondArray, TimestampMicrosecondArray, UInt16Array, UInt32Array, UInt64Array,
     };
     use arrow::buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
     use arrow::datatypes::UInt16Type;
@@ -528,6 +528,60 @@ mod tests {
         let y = Arc::new(ListArray::from_iter_primitive::<UInt16Type, _, _>(vec![
             Some(vec![Some(3), Some(4)]),
         ]));
+
+        let schema = Arc::new(Schema::new(vec![field_x, field_y]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x, y]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x int[], y bigint[])";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = format!("COPY test_table FROM '{}'", LOCAL_TEST_FILE_PATH);
+        Spi::run(&copy_from).unwrap();
+
+        let value = Spi::get_two::<Vec<Option<i32>>, Vec<Option<i64>>>(
+            "SELECT x, y FROM test_table LIMIT 1",
+        )
+        .unwrap();
+        assert_eq!(
+            value,
+            (Some(vec![Some(1), Some(2)]), Some(vec![Some(3), Some(4)]))
+        );
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+    }
+
+    #[pg_test]
+    fn test_coerce_large_list() {
+        // [UINT16] => {int[], bigint[]}
+        let x_nullable = false;
+        let field_x = Field::new(
+            "x",
+            DataType::LargeList(Field::new("item", DataType::UInt16, false).into()),
+            x_nullable,
+        );
+
+        let x = Arc::new(UInt16Array::from(vec![1, 2]));
+        let offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 2]));
+        let x = Arc::new(LargeListArray::new(
+            Arc::new(Field::new("item", DataType::UInt16, false)),
+            offsets,
+            x,
+            None,
+        ));
+
+        let y_nullable = true;
+        let field_y = Field::new(
+            "y",
+            DataType::LargeList(Field::new("item", DataType::UInt16, true).into()),
+            y_nullable,
+        );
+
+        let y = Arc::new(LargeListArray::from_iter_primitive::<UInt16Type, _, _>(
+            vec![Some(vec![Some(3), Some(4)])],
+        ));
 
         let schema = Arc::new(Schema::new(vec![field_x, field_y]));
 
