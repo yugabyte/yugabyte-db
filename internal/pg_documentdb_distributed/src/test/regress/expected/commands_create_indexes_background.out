@@ -539,9 +539,12 @@ CALL documentdb_distributed_test_helpers.create_indexes_background(
      "createIndexes": "createIndex_background_1",
      "indexes": [
        {"key": {"b": 1}, "name": "my_idx_b"}
-     ]
-   }'
+     ],
+     "blocking": true
+   }',
+   p_log_index_queue => true
 );
+INFO:  Index Queue Commands: CREATE INDEX  documents_rum_index_32025 ON documentdb_data.documents_32001 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='b',tl=2699)) 
                                                                                                                 retval                                                                                                                | ok 
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } } | t
@@ -579,8 +582,10 @@ CALL documentdb_distributed_test_helpers.create_indexes_background(
        {"key": {"c": 1}, "name": "my_idx_c"},
        {"key": {"d": 1}, "name": "my_idx_d"}
      ]
-   }'
+   }',
+   p_log_index_queue => true
 );
+INFO:  Index Queue Commands: CREATE INDEX CONCURRENTLY documents_rum_index_32026 ON documentdb_data.documents_32001 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='c',tl=2699)) ,CREATE INDEX CONCURRENTLY documents_rum_index_32027 ON documentdb_data.documents_32001 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='d',tl=2699)) 
                                                                                                                 retval                                                                                                                | ok 
 ---------------------------------------------------------------------
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } } | t

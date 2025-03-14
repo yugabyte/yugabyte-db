@@ -189,7 +189,8 @@ AS 'pg_documentdb', $function$bson_extract_geometry_runtime$function$;
 
 -- This is a helper for create_indexes_background. It performs the submission of index requests in background and wait for their completion.
 CREATE OR REPLACE PROCEDURE documentdb_distributed_test_helpers.create_indexes_background(IN p_database_name text, 
-                                                        IN p_index_spec documentdb_core.bson, 
+                                                        IN p_index_spec documentdb_core.bson,
+                                                        IN p_log_index_queue boolean DEFAULT false,
                                                         INOUT retVal documentdb_core.bson DEFAULT null,
                                                         INOUT ok boolean DEFAULT false)
 AS $procedure$
@@ -197,11 +198,15 @@ DECLARE
   create_index_response record;
   check_build_index_status record;
   completed boolean := false;
-  indexBuildWaitSleepTimeInSec int := 2;
   indexRequest text;
+  index_cmd_stored text;
 BEGIN
   SET search_path TO documentdb_core,documentdb_api;
   SELECT * INTO create_index_response FROM documentdb_api.create_indexes_background(p_database_name, p_index_spec);
+  IF p_log_index_queue THEN
+    SELECT string_agg(index_cmd, ',') into index_cmd_stored FROM documentdb_api_catalog.documentdb_index_queue;
+    RAISE INFO 'Index Queue Commands: %', index_cmd_stored;
+  END IF;
   COMMIT;
 
   IF create_index_response.ok THEN

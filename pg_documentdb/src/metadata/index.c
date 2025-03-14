@@ -46,6 +46,7 @@ static pgbson * SerializeIndexSpec(const IndexSpec *spec, bool isGetIndexes,
 static IndexOptionsEquivalency IndexKeyDocumentEquivalent(pgbson *leftKey,
 														  pgbson *rightKey);
 static void DeleteCollectionIndexRecordCore(uint64 collectionId, int *indexId);
+static ArrayType * ConvertUint64ListToArray(List *collectionIdArray);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -1376,6 +1377,80 @@ AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, c
  * GetRequestFromIndexQueue gets the exactly one request corresponding to the collectionId to either for CREATE or REINDEX depending on cmdType.
  */
 IndexCmdRequest *
+GetSkippableRequestFromIndexQueue(char cmdType, int expireTimeInSeconds,
+								  List *skipCollections)
+{
+	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
+
+	StringInfo cmdStr = makeStringInfo();
+
+	/* We want dirty reads here so this would be readOnly=false */
+	bool readOnly = false;
+	int numValues = 8;
+	bool isNull[8] = { 0 };
+	Datum results[8] = { 0 };
+	Oid userOid = InvalidOid;
+
+	/* Get the oldest by update time skippable index from the index queue */
+	appendStringInfo(cmdStr,
+					 "SELECT index_cmd, index_id, index_cmd_status, COALESCE(attempt, 0) AS attempt, comment, update_time, user_oid, collection_id"
+					 " FROM %s iq WHERE cmd_type = '%c' AND index_cmd_status = %d AND update_time < (now() - INTERVAL '%ds') ",
+					 GetIndexQueueName(), cmdType, IndexCmdStatus_Skippable,
+					 expireTimeInSeconds);
+
+	if (skipCollections != NIL)
+	{
+		appendStringInfo(cmdStr, " AND collection_id NOT IN (");
+		ListCell *cell;
+		char *separator = "";
+		foreach(cell, skipCollections)
+		{
+			uint64 *collectionId = lfirst(cell);
+			appendStringInfo(cmdStr, "%s" UINT64_FORMAT, separator, *collectionId);
+			separator = ", ";
+		}
+		appendStringInfo(cmdStr, ") ");
+	}
+
+	appendStringInfo(cmdStr, " ORDER BY update_time ASC LIMIT 1");
+
+	ExtensionExecuteMultiValueQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT, results,
+										  isNull, numValues);
+	if (isNull[0])
+	{
+		/* queue has no create index command that is skippable */
+		return NULL;
+	}
+
+	char *cmd = text_to_cstring(DatumGetTextP(results[0]));
+	int indexId = DatumGetInt32(results[1]);
+	int status = DatumGetInt32(results[2]);
+	int16 attemptCount = DatumGetUInt16(results[3]);
+	pgbson *comment = (pgbson *) DatumGetPointer(results[4]);
+	TimestampTz updateTime = DatumGetTimestampTz(results[5]);
+	uint64_t collectionId = (uint64_t) DatumGetInt64(results[7]);
+	if (!isNull[6])
+	{
+		userOid = DatumGetObjectId(results[6]);
+	}
+
+	IndexCmdRequest *request = palloc(sizeof(IndexCmdRequest));
+	request->indexId = indexId;
+	request->collectionId = collectionId;
+	request->cmd = cmd;
+	request->attemptCount = attemptCount;
+	request->comment = comment;
+	request->updateTime = updateTime;
+	request->status = status;
+	request->userOid = userOid;
+	return request;
+}
+
+
+/*
+ * GetRequestFromIndexQueue gets the exactly one request corresponding to the collectionId to either for CREATE or REINDEX depending on cmdType.
+ */
+IndexCmdRequest *
 GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
@@ -1403,8 +1478,8 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	StringInfo cmdStr = makeStringInfo();
 	bool readOnly = false;
 	int numValues = 7;
-	bool isNull[7];
-	Datum results[7];
+	bool isNull[7] = { 0 };
+	Datum results[7] = { 0 };
 	Oid userOid = InvalidOid;
 
 	appendStringInfo(cmdStr,
@@ -1451,6 +1526,31 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	request->status = status;
 	request->userOid = userOid;
 	return request;
+}
+
+
+static ArrayType *
+ConvertUint64ListToArray(List *collectionIdArray)
+{
+	int numCollections = list_length(collectionIdArray);
+	Datum *collectionIdDatums = palloc0(sizeof(Datum) * numCollections);
+
+	int i = 0;
+	uint64 collectionId;
+	ListCell *cell;
+	foreach(cell, collectionIdArray)
+	{
+		collectionId = *(uint64 *) lfirst(cell);
+		collectionIdDatums[i] = Int64GetDatum(collectionId);
+		i++;
+	}
+
+	ArrayType *collectionIdArrayDatum = construct_array(collectionIdDatums,
+														numCollections,
+														INT8OID,
+														sizeof(uint64), true,
+														TYPALIGN_INT);
+	return collectionIdArrayDatum;
 }
 
 
@@ -1503,23 +1603,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 
 	if (excludeCollectionIds != NIL)
 	{
-		int64 numCollections = list_length(excludeCollectionIds);
-		Datum *collectionIdDatums = palloc0(sizeof(Datum) * numCollections);
-
-		int64 i = 0;
-		uint64 collectionId;
-		ListCell *cell;
-		foreach(cell, excludeCollectionIds)
-		{
-			collectionId = *(uint64 *) lfirst(cell);
-			collectionIdDatums[i] = Int64GetDatum(collectionId);
-			i++;
-		}
-
-		ArrayType *collectionIdArray = construct_array(collectionIdDatums, numCollections,
-													   INT8OID,
-													   sizeof(uint64), true,
-													   TYPALIGN_INT);
+		ArrayType *collectionIdArray = ConvertUint64ListToArray(excludeCollectionIds);
 		argTypes[1] = INT8ARRAYOID;
 		argValues[1] = PointerGetDatum(collectionIdArray);
 		argNulls[1] = ' ';

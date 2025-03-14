@@ -263,6 +263,9 @@ void MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status,
 							IndexJobOpId *opId, int16 attemptCount);
 IndexCmdStatus GetIndexBuildStatusFromIndexQueue(int indexId);
 IndexCmdRequest * GetRequestFromIndexQueue(char cmdType, uint64 collectionId);
+IndexCmdRequest * GetSkippableRequestFromIndexQueue(char cmdType, int
+													expireTimeInSeconds,
+													List *skipCollections);
 uint64 * GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds);
 void AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, char
 							cmd_type, Oid userOid);

@@ -152,6 +152,7 @@ SELECT * FROM documentdb_api.create_indexes_background('db', '{"createIndexes": 
 -- Delete all old create index requests submitted so far
 DELETE from documentdb_api_catalog.documentdb_index_queue;
 -- The create_indexes_background creates a remote connection via run_command_on_coordinator. Therefore, setting sequence instead of GUC.
+
 CALL documentdb_distributed_test_helpers.create_indexes_background(
   'db',
   '{
@@ -168,8 +169,10 @@ CALL documentdb_distributed_test_helpers.create_indexes_background(
      "createIndexes": "createIndex_background_1",
      "indexes": [
        {"key": {"b": 1}, "name": "my_idx_b"}
-     ]
-   }'
+     ],
+     "blocking": true
+   }',
+   p_log_index_queue => true
 );
 
 -- Queue should be empty
@@ -189,7 +192,8 @@ CALL documentdb_distributed_test_helpers.create_indexes_background(
        {"key": {"c": 1}, "name": "my_idx_c"},
        {"key": {"d": 1}, "name": "my_idx_d"}
      ]
-   }'
+   }',
+   p_log_index_queue => true
 );
 
 -- Index request submission will fail

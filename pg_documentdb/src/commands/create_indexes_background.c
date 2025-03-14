@@ -138,6 +138,7 @@ static Datum ComposeBuildIndexResponse(FunctionCallInfo fcinfo, pgbson *buildInd
 static Datum ComposeCheckIndexStatusResponse(FunctionCallInfo fcinfo, pgbson *bson, bool
 											 ok, bool finish);
 static void TryDropCollectionIndex(int indexId);
+static bool PruneSkippableIndexes(void);
 
 /*
  * command_build_index_concurrently is the implementation of the internal logic
@@ -154,6 +155,14 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 	{
 		ereport(LOG, (errmsg(
 						  "Metadata tables were replicated. Retrying index checks in another round.")));
+		PG_RETURN_VOID();
+	}
+
+	/* Prioritize pruning the index queue for old indexes */
+	if (PruneSkippableIndexes())
+	{
+		ereport(LOG, (errmsg(
+						  "Pruned skippable indexes. Retrying index checks in another round.")));
 		PG_RETURN_VOID();
 	}
 
@@ -904,7 +913,9 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 		const IndexSpec indexSpec = MakeIndexSpecForIndexDef(indexDef);
 		bool indexIsValid = false;
 		int indexId = RecordCollectionIndex(collectionId, &indexSpec, indexIsValid);
-		bool createIndexesConcurrently = true;
+
+		/* If createIndexes specified blocking, create the command as non-concurrent */
+		bool createIndexesConcurrently = !createIndexesArg.blocking;
 		bool isTempCollection = false;
 		char *cmd = CreatePostgresIndexCreationCmd(collectionId, indexDef, indexId,
 												   createIndexesConcurrently,
@@ -1513,4 +1524,66 @@ RunIndexCommandOnMetadataCoordinator(const char *query, int expectedSpiOk)
 
 		return responseBson;
 	}
+}
+
+
+static bool
+PruneSkippableIndexes(void)
+{
+	bool prunedIndexes = false;
+	List *excludeCollectionIds = NIL;
+	IndexCmdRequest *volatile request = GetSkippableRequestFromIndexQueue(
+		CREATE_INDEX_COMMAND_TYPE, IndexQueueEvictionIntervalInSec, excludeCollectionIds);
+
+	while (request != NULL)
+	{
+		/* Acquire the lock to drop the index */
+		if (AcquireAdvisoryExclusiveSessionLockForCreateIndexBackground(
+				request->collectionId) != LOCKACQUIRE_NOT_AVAIL)
+		{
+			prunedIndexes = true;
+			ereport(LOG, (errmsg(
+							  "Removing skippable request permanently index_id: %d and collectionId: "
+							  UINT64_FORMAT,
+							  request->indexId, request->collectionId),
+						  errdetail_log(
+							  "Removing skippable request permanently index_id: %d and collectionId: "
+							  UINT64_FORMAT,
+							  request->indexId, request->collectionId)));
+
+			/* remove any stale entry from PG */
+			TryDropCollectionIndex(request->indexId);
+
+			/* remove the request permanently */
+			RemoveRequestFromIndexQueue(request->indexId,
+										CREATE_INDEX_COMMAND_TYPE);
+			DeleteCollectionIndexRecord(request->collectionId, request->indexId);
+
+			ReleaseAdvisoryExclusiveSessionLockForCreateIndexBackground(
+				request->collectionId);
+
+			/* Commit the delete before asking for the next one */
+			PopAllActiveSnapshots();
+			CommitTransactionCommand();
+			StartTransactionCommand();
+		}
+		else
+		{
+			/* We hit this due to a concurrent lock acquisition
+			 * We will try again next time
+			 */
+			ReleaseAdvisoryExclusiveSessionLockForCreateIndexBackground(
+				request->collectionId);
+			uint64_t *collectionid = palloc0(sizeof(uint64_t));
+			*collectionid = request->collectionId;
+			excludeCollectionIds = lappend(excludeCollectionIds, collectionid);
+		}
+
+		/* Check for more prunable requests */
+		request = GetSkippableRequestFromIndexQueue(CREATE_INDEX_COMMAND_TYPE,
+													IndexQueueEvictionIntervalInSec,
+													excludeCollectionIds);
+	}
+
+	return prunedIndexes;
 }

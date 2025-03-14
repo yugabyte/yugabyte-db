@@ -125,7 +125,7 @@ static const char * WriteCommandAndGetQueryType(const char *query,
 												pgbson_writer *commandWriter);
 static void DetectMongoCollection(SingleWorkerActivity *activity);
 static IndexSpec * GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity);
-static void AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore);
+static void AddIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore);
 static const char * WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
 														 pgbson_writer *writer);
 static void WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity,
@@ -268,10 +268,10 @@ CurrentOpAggregateCore(pgbson *spec, TupleDesc descriptor,
 
 	MergeWorkerBsons(workerBsons, descriptor, tupleStore);
 
-	/* The index queue and build status is only valid on the coordinator - run this only here.
-	 * TODO: For MX support, this needs to be run_command_on_metadata_coordinator.
+	/* The index queue and build status only needs to run on the coordinator
+	 * run this only here.
 	 */
-	AddFailedIndexBuilds(descriptor, tupleStore);
+	AddIndexBuilds(descriptor, tupleStore);
 }
 
 
@@ -1158,7 +1158,7 @@ GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
  * build status and updates the currentOp document for it.
  */
 static void
-AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
+AddIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 {
 	/* This can be cleaned up to be better - but not in the current iteration */
 	StringInfo queryInfo = makeStringInfo();
@@ -1173,7 +1173,7 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 								" JOIN %s.collection_indexes AS ci ON (iq.index_id = ci.index_id) "
 								" JOIN %s.collections AS coll ON (ci.collection_id = coll.collection_id) "
 								" WHERE iq.cmd_type = 'C' AND ( "
-								" iq.index_cmd_status = 3 "
+								" iq.index_cmd_status IN (1, 3) "
 								" )", GetIndexQueueName(), ApiCatalogSchemaName,
 					 ApiCatalogSchemaName);
 
@@ -1280,6 +1280,10 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 		else if (status == IndexCmdStatus_Inprogress)
 		{
 			msg = "Index build failed, Index build will be retried";
+		}
+		else if (status == IndexCmdStatus_Queued)
+		{
+			msg = "Index build is queued";
 		}
 
 		pgbson_writer finalWriter;
