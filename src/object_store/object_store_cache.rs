@@ -12,7 +12,10 @@ use url::Url;
 
 use crate::arrow_parquet::uri_utils::ParsedUriInfo;
 
-use super::{create_azure_object_store, create_local_file_object_store, create_s3_object_store};
+use super::{
+    create_azure_object_store, create_local_file_object_store, create_s3_object_store,
+    http::create_http_object_store,
+};
 
 // OBJECT_STORE_CACHE is a global cache for object stores per Postgres session.
 // It caches object stores based on the scheme and bucket.
@@ -86,9 +89,10 @@ impl ObjectStoreCache {
         match scheme {
             ObjectStoreScheme::AmazonS3 => create_s3_object_store(uri),
             ObjectStoreScheme::MicrosoftAzure => create_azure_object_store(uri),
+            ObjectStoreScheme::Http => create_http_object_store(uri),
             ObjectStoreScheme::Local => create_local_file_object_store(uri, copy_from),
             _ => panic!(
-                    "unsupported scheme {} in uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
+                    "unsupported scheme {} in uri {}. pg_parquet supports local paths, https, s3:// or az:// schemes.",
                     uri.scheme(),
                     uri
                 ),

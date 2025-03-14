@@ -28,7 +28,7 @@ aws-credential-types = {version = "1", default-features = false}
 azure_storage = {version = "0.21", default-features = false}
 futures = "0.3"
 home = "0.5"
-object_store = {version = "0.11", default-features = false, features = ["aws", "azure"]}
+object_store = {version = "0.11", default-features = false, features = ["aws", "azure", "http"]}
 once_cell = "1"
 parquet = {version = "54", default-features = false, features = [
     "arrow",

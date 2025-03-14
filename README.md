@@ -158,7 +158,7 @@ SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM 
 ```
 
 ## Object Store Support
-`pg_parquet` supports reading and writing Parquet files from/to `S3` and `Azure Blob Storage` object stores.
+`pg_parquet` supports reading and writing Parquet files from/to `S3`, `Azure Blob Storage` and `http(s)` object stores.
 
 > [!NOTE]
 > To be able to write into a object store location, you need to grant `parquet_object_store_write` role to your current postgres user.
@@ -240,6 +240,10 @@ Supported authorization methods' priority order is shown below:
 1. Bearer token via client secret,
 2. Sas token,
 3. Storage key.
+
+#### Http(s) Storage
+
+`Https` uris are supported by default. You can set `ALLOW_HTTP` environment variable to allow `http` uris.
 
 ## Copy Options
 `pg_parquet` supports the following options in the `COPY TO` command:

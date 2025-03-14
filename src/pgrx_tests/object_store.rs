@@ -631,6 +631,26 @@ mod tests {
     }
 
     #[pg_test]
+    fn test_http_uri() {
+        object_store_cache_clear();
+
+        let http_endpoint: String =
+            std::env::var("HTTP_ENDPOINT").expect("HTTP_ENDPOINT not found");
+
+        let http_uris = [
+            format!("{http_endpoint}/pg_parquet_test.parquet"),
+            format!("{http_endpoint}/dummy/pg_parquet_test"),
+        ];
+
+        for http_uri in http_uris {
+            let test_table = TestTable::<i32>::new("int4".into()).with_uri(http_uri);
+
+            test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+            test_table.assert_expected_and_result_rows();
+        }
+    }
+
+    #[pg_test]
     #[should_panic(expected = "relative path not allowed")]
     fn test_copy_to_unsupported_scheme() {
         object_store_cache_clear();
@@ -755,6 +775,54 @@ mod tests {
             vec![
                 ("AmazonS3", "testbucket", None),
                 ("AmazonS3", "testbucket2", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
+
+        // https scheme and base uri
+        let http_uri =
+            "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-03.parquet";
+        Spi::run(format!("SELECT * FROM parquet.schema('{http_uri}')").as_str()).unwrap();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
+
+        // https scheme and same base uri
+        let http_uri =
+            "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-04.parquet";
+        Spi::run(format!("SELECT * FROM parquet.schema('{http_uri}')").as_str()).unwrap();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
+
+        // https scheme and different base uri
+        let http_uri = "https://www.filesampleshub.com/download/code/parquet/sample1.parquet";
+        Spi::run(format!("SELECT * FROM parquet.schema('{http_uri}')").as_str()).unwrap();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
+                ("Http", "https://www.filesampleshub.com", None),
                 ("MicrosoftAzure", "testcontainer", None),
                 ("MicrosoftAzure", "testcontainer2", None)
             ]

@@ -140,6 +140,18 @@ jobs:
           az storage container create -n $AZURE_TEST_CONTAINER_NAME --connection-string $AZURE_STORAGE_CONNECTION_STRING
           az storage container create -n ${AZURE_TEST_CONTAINER_NAME}2 --connection-string $AZURE_STORAGE_CONNECTION_STRING
 
+      - name: Start local web server for http(s) tests
+        run: |
+          docker run -d \
+            --env-file .devcontainer/.env \
+            -p 8080:80 \
+            rclone/rclone serve webdav /data --addr :80
+
+          while ! curl $HTTP_ENDPOINT; do
+            echo "Waiting for $HTTP_ENDPOINT..."
+            sleep 1
+          done
+
       - name: Run tests
         run: |
           # Run tests with coverage tool

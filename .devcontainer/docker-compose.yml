@@ -20,6 +20,7 @@ services:
     depends_on:
       - minio
       - azurite
+      - webdav
 
   minio:
     image: minio/minio
@@ -44,6 +45,19 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 6s
+      timeout: 2s
+      retries: 3
+
+  webdav:
+    image: rclone/rclone
+    command: ["serve", "webdav", "/data", "--addr", ":8080"]
+    env_file:
+      - .env
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
       interval: 6s
       timeout: 2s
       retries: 3

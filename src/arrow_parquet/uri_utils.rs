@@ -20,7 +20,7 @@ use url::Url;
 use crate::{
     arrow_parquet::parquet_writer::DEFAULT_ROW_GROUP_SIZE,
     object_store::{
-        aws::parse_s3_bucket, azure::parse_azure_blob_container,
+        aws::parse_s3_bucket, azure::parse_azure_blob_container, http::parse_http_base_uri,
         object_store_cache::get_or_create_object_store,
     },
     PG_BACKEND_TOKIO_RUNTIME,
@@ -51,7 +51,7 @@ impl ParsedUriInfo {
     fn try_parse_scheme(uri: &Url) -> Result<(ObjectStoreScheme, Path), String> {
         ObjectStoreScheme::parse(uri).map_err(|_| {
             format!(
-                "unrecognized uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
+                "unrecognized uri {}. pg_parquet supports local paths, https://, s3:// or az:// schemes.",
                 uri
             )
         })
@@ -65,8 +65,11 @@ impl ParsedUriInfo {
             ObjectStoreScheme::MicrosoftAzure => parse_azure_blob_container(uri)
                 .ok_or(format!("unsupported azure blob storage uri: {uri}"))
                 .map(Some),
+            ObjectStoreScheme::Http => parse_http_base_uri(uri).
+                ok_or(format!("unsupported http storage uri: {uri}"))
+                .map(Some),
             ObjectStoreScheme::Local => Ok(None),
-            _ => Err(format!("unsupported scheme {} in uri {}. pg_parquet supports local paths, s3:// or azure:// schemes.",
+            _ => Err(format!("unsupported scheme {} in uri {}. pg_parquet supports local paths, https://, s3:// or az:// schemes.",
                             uri.scheme(), uri))
         }
     }
