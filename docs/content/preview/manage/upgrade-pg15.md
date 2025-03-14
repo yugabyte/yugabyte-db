@@ -78,7 +78,7 @@ $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version
 $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 11
 ```
 
-You should also back up the cluster at this time.
+It is recommended to back up the cluster at this time. Refer to [Distributed snapshots for YSQL](../backup-restore/snapshot-ysql/).
 
 ## Upgrade phase
 
