@@ -12,9 +12,17 @@ import { useLiveQueriesApi, filterBySearchTokens } from './helpers/queriesHelper
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { getProxyNodeAddress } from '../../utils/UniverseUtils';
 import { QuerySearchInput } from './QuerySearchInput';
-import { QueryType } from './helpers/constants';
+import {
+  QueryType,
+  PG_15_VERSION_THRESHOLD_STABLE,
+  PG_15_VERSION_THRESHOLD_PREVIEW
+} from './helpers/constants';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { QueryApi } from '../../redesign/helpers/constants';
+import {
+  compareYBSoftwareVersionsWithReleaseTrack,
+  getPrimaryCluster
+} from '../../utils/universeUtilsTyped';
 
 import './LiveQueries.scss';
 
@@ -181,6 +189,15 @@ const LiveQueriesComponent = ({ location }) => {
     );
   }
 
+  const ybSoftwareVersion = getPrimaryCluster(currentUniverse?.data?.universeDetails?.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const isPg15Supported =
+    compareYBSoftwareVersionsWithReleaseTrack({
+      version: ybSoftwareVersion,
+      stableVersion: PG_15_VERSION_THRESHOLD_STABLE,
+      previewVersion: PG_15_VERSION_THRESHOLD_PREVIEW,
+      options: { suppressFormatError: true }
+    }) > 0;
   return (
     <div className="live-queries">
       <YBPanelItem
@@ -287,6 +304,7 @@ const LiveQueriesComponent = ({ location }) => {
         }
       />
       <QueryInfoSidePanel
+        isPg15Supported={isPg15Supported}
         onHide={() => setSelectedRow([])}
         queryData={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
         queryType={QueryType.LIVE}
