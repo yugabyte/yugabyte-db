@@ -51,7 +51,7 @@ typedef FormData_pg_opfamily *Form_pg_opfamily;
 #ifdef EXPOSE_TO_CLIENT_CODE
 
 #define IsBooleanOpfamily(opfamily) \
-	((opfamily) == BOOL_BTREE_FAM_OID || (opfamily) == BOOL_HASH_FAM_OID)
+	((opfamily) == BOOL_BTREE_FAM_OID || (opfamily) == BOOL_HASH_FAM_OID || (opfamily) == BOOL_LSM_FAM_OID)
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
