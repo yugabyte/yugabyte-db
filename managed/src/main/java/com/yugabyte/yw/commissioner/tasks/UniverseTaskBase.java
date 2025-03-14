@@ -6119,8 +6119,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 != CloudType.kubernetes)) {
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       File targetRootCertDirPath = sourceUniverse.getUniverseDetails().getSourceRootCertDirPath();
-      // Delete the source universe root cert from the target universe if it is transferred.
-      if (targetRootCertDirPath != null) {
+      // For the failover task, ignore running this subtask to improve its performance.
+      TaskType taskType = getTaskExecutor().getTaskType(getClass());
+      // Delete the target universe root cert from the source universe if it is transferred.
+      if (targetRootCertDirPath != null && taskType != TaskType.FailoverDrConfig) {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
                 xClusterConfig.getReplicationGroupName(),
