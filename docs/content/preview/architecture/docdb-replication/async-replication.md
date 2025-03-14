@@ -271,17 +271,3 @@ When the source universe is lost, an explicit decision must be made to switch ov
 ### Backups
 
 Backups are supported. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed.
-
-## Cross-feature interactions
-
-A number of interactions across features are supported.
-
-### Supported
-
-- TLS is supported for both client and internal RPC traffic.  Universes can also be configured with different certificates.
-- RPC compression is supported.  Note that both universes must be on a version that supports compression before a compression algorithm is enabled.
-- Encryption at rest is supported.  Note that the universes can technically use different Key Management Service (KMS) configurations.  However, for bootstrapping a target universe, the reliance is on the backup and restore flow.  As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken.  This means both the source and the target must have access to the same KMS configurations.
-- YSQL colocation is supported.
-- YSQL geo-partitioning is supported.  Note that you must configure replication on all new partitions manually as DDL changes are not replicated automatically.
-- Source and target universes can have different numbers of tablets.
-- Tablet splitting is supported on both source and target universes.
