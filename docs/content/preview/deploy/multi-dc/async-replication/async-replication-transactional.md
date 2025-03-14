@@ -22,11 +22,12 @@ A transactional xCluster deployment preserves and guarantees transactional atomi
 
 - Global ordering guarantee. Transactions are visible on the target side in the order they were committed on source.
 
-Due to the asynchronous nature of xCluster replication, this deployment comes with non-zero recovery point objective (RPO) in the case of a source universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the regions.
+Transactional xCluster provides the capability to:
 
-The recovery time objective (RTO) is very low, as it only depends on the applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
+ - [Switchover](../async-transactional-switchover/): Change the direction of replication without any loss of data. The Primary and Standby univereses are swapped gracefully. Applications that require write access to the data should switch their connecttion to the new Primary universe.
 
-Transactional xCluster support further allows for the role of each universe to switch during planned and unplanned failover scenarios.
+ - [Failover](../async-transactional-failover/): Break the replication link and promote the Standby universe in the case of a Primary universe outage. Due to the asynchronous nature of xCluster replication, this comes with non-zero recovery point objective (RPO). The actual value depends on the replication lag, which in turn depends on the network characteristics between the data centers.
+The recovery time objective (RTO) is very low, as it only depends on metadata operations to make the Standby transactionally consistent and the applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
 xCluster safe time is the transactionally consistent time across all tables in a given database at which Reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
 
