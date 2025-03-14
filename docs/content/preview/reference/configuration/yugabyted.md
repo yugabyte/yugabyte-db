@@ -582,8 +582,8 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 ### finalize_upgrade
 
-{{< warning title="Upgrading to v2.25" >}}
-This command is deprecated. Please use 'upgrade finalize_new_version' command.
+{{< warning title="Performing upgrades" >}}
+This command is deprecated. Use 'upgrade finalize_new_version' instead.
 {{< /warning >}}
 
 Use the `yugabyted finalize_upgrade` command to finalize and upgrade the AutoFlags and YSQL catalog to the new version and complete the upgrade process.
@@ -906,14 +906,13 @@ Usage: yugabyted stop [flags]
 : The base directory for the yugabyted server that needs to be stopped.
 
 --upgrade *bool*
-:  Stop the yugabyted node for version upgrade. Default: `false`.
-
+:  Stop the node for version upgrade. Default: `false`.
 
 -----
 
 ### upgrade
 
-Use the `yugabyted upgrade` command to prepare and perform a YugabyteDB major version upgrade. 
+Use the `yugabyted upgrade` command to prepare and perform a YugabyteDB major version upgrade.
 
 ```sh
 Usage: yugabyted upgrade [command] [flags]
@@ -929,8 +928,8 @@ The following sub-commands are available for the `yugabyted upgrade` command:
 
 #### ysql_catalog
 
-Use the sub-command `yugabyted upgrade ysql_catalog` to upgrade the ysql catalog of the YugabyteDB cluster to a newer version. This command needs
-to be executed only once per upgrade from a node that is part of the cluster.
+Use the sub-command `yugabyted upgrade ysql_catalog` to upgrade the cluster YSQL catalog to a newer version. This command needs
+to be executed only once per upgrade, from any node in the cluster.
 
 For example, to upgrade the YSQL catalog of a cluster, you would execute the following command:
 
@@ -951,8 +950,8 @@ For example, to upgrade the YSQL catalog of a cluster, you would execute the fol
 
 #### finalize_new_version
 
-Use the sub-command `yugabyted upgrade finalize_new_version` to finalize the new version on the upgraded YugabyteDB Cluster. This command needs
-to be executed only once per upgrade from a node that is part of the cluster.
+Use the sub-command `yugabyted upgrade finalize_new_version` to finalize the upgrade of a YugabyteDB Cluster. This command needs
+to be executed only once per upgrade, after all the nodes in the cluster have been upgraded, from any node in the cluster.
 
 For example, to finalize an upgrade to a cluster, you would execute the following command:
 
@@ -969,13 +968,11 @@ For example, to finalize an upgrade to a cluster, you would execute the followin
 : The base directory for the yugabyted server.
 
 --timeout *timeout*
-: Custom timeout for the YSQL catalog upgrade in milliseconds.
-
+: Custom timeout for the upgrade finalize operation in milliseconds.
 
 #### check_version_compatibility
 
-Use the sub-command `yugabyted upgrade check_version_compatibility` to verify if the exisitng YugabyteDB cluster is compatible upgrade to the new version. 
-This command needs to be executed only once per upgrade from a node that is part of the cluster.
+Use the sub-command `yugabyted upgrade check_version_compatibility` to verify if the exisitng YugabyteDB cluster is compatible with the new version. This command needs to be executed only once per upgrade, from any node in the cluster.
 
 For example, to verify the compatibility of a cluster with a new version, you would execute the following command:
 
@@ -992,8 +989,7 @@ For example, to verify the compatibility of a cluster with a new version, you wo
 : The base directory for the yugabyted server.
 
 --timeout *timeout*
-: Custom timeout for the YSQL catalog upgrade in milliseconds.
-
+: Custom timeout for the version check in milliseconds.
 
 -----
 
@@ -2151,20 +2147,19 @@ To use the latest features of the database and apply the latest security fixes, 
 
 Upgrading an existing YugabyteDB cluster that was deployed using yugabyted includes the following steps:
 
-
 1. Verify the version compatibility before upgrading the cluster.
 
     ```sh
     ./bin/yugabyted upgrade check_version_compatibility
     ```
 
-1. Stop one of the running YugabyteDB node using the `yugabyted stop` command.
+1. Stop one of the running nodes using the `yugabyted stop` command with the `--upgrade` flag.
 
     ```sh
     ./bin/yugabyted stop --upgrade true --base_dir <path_to_base_dir>
     ```
 
-    Note: Wait for 60 seconds before restarting the node.
+1. Wait for 60 seconds.
 
 1. Start the new yugabyted process (from the new downloaded release) by executing the `yugabyted start` command. Use the previously configured `--base_dir` when restarting the instance.
 
@@ -2172,25 +2167,25 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
     ./bin/yugabyted start --base_dir <path_to_base_dir>
     ```
 
-1. Repeat steps 2 and 3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
+1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
 
-1. After restarting all the nodes, upgrade the YSQL catalog of the cluster:
+1. After restarting all the nodes, upgrade the YSQL catalog of the cluster. This command can be run from any node.
 
     ```sh
     ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
     ```
 
-1. We need to restart all the nodes for the second time after successful ysql catalog upgrade. 
+1. After successful YSQL catalog upgrade, restart all the nodes for a second time.
 
-    Repeat steps 2 and 3 for all the nodes. Need to wait 60 seconds before repeating the steps on each node.
+    Repeat steps 2-3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
 
-1. After restarting all the nodes. Finalize the upgrade by running `yugabyted finalize_new_version` command. This command can be run from any node.
+1. After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
 
     ```sh
     ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir>
     ```
 
-    Use the `timeout` flag to specify custom upgrade timeout. Default value is 60000 ms.
+    Use the `timeout` flag to specify a custom timeout for the operation. Default value is 60000 ms.
 
     ```sh
     ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
