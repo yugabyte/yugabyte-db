@@ -41,11 +41,11 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 ## Best practices
 
-- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) to 86400 on both Primary and Standby.
+- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) to 86400 on both source and target universe.
 
-    This flag determines the duration for which WAL is retained on the Primary universe in case of a network partition or a complete outage of the Standby universe.
+    This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source cluster or an outage of the target cluster can be tolerated.
 
-    The value depends on how long a network partition or Standby cluster outage can be tolerated.
+- Make sure all gFlags are set to the same value on both the source and target universes.
 
 - Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incur a 20% CPU overhead.
 
