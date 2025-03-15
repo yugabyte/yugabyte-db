@@ -120,7 +120,7 @@ void RpczPathHandler(
     MakeAshUuidsHumanReadable(&dump_resp);
   }
 
-  JsonWriter writer(output, JsonWriter::PRETTY);
+  JsonWriter writer(output, JsonWriter::PRETTY_ESCAPE_STR);
   writer.Protobuf(dump_resp);
 }
 

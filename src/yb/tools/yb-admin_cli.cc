@@ -260,13 +260,13 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           case master::SysRowEntryType::UDTYPE: {
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysUDTypeEntryPB>(entry.data()));
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           case master::SysRowEntryType::TABLE: {
@@ -277,7 +277,7 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             meta.clear_index_info();
             meta.clear_indexes();
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           default:
@@ -288,8 +288,8 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
           entry.set_data("DATA");
           std::cout << kColumnSep
                     << StringReplace(
-                           JsonWriter::ToJson(entry, JsonWriter::COMPACT), "\"DATA\"", decoded_data,
-                           false)
+                           JsonWriter::ToJson(entry, JsonWriter::COMPACT_ESCAPE_STR), "\"DATA\"",
+                           decoded_data, false)
                     << std::endl;
         }
       }

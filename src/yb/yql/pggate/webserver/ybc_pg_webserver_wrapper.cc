@@ -266,7 +266,8 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
 
   JsonWriter writer(output, json_mode);
   writer.StartArray();
@@ -305,7 +306,8 @@ static void PgStatStatementsHandler(
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -327,7 +329,8 @@ static void PgStatStatementsResetHandler(
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -364,7 +367,8 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   JsonWriter writer(output, json_mode);
   YbcRpczEntry *entry = *rpczResultPointer;
 
@@ -438,7 +442,8 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
