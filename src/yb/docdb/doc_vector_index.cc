@@ -182,6 +182,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.Open(std::move(lsm_options));
   }
 
+  Status Destroy() override {
+    return lsm_.Destroy();
+  }
+
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
       const rocksdb::UserFrontiers* frontiers) override {

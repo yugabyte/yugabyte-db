@@ -5095,7 +5095,7 @@ void CatalogManager::CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
 Status CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
     const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& tables_in_stream_metadata,
     const TableInfoPtr& table_to_be_removed) {
-  bool is_colocated_table = table_to_be_removed->IsColocatedUserTable();
+  bool is_colocated_table = table_to_be_removed->IsSecondaryTable();
   auto tablets = VERIFY_RESULT(table_to_be_removed->GetTabletsIncludeInactive());
   if (tablets.empty()) {
     return Status::OK();

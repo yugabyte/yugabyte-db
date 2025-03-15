@@ -336,7 +336,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSM<Vector, DistanceResult>::VectorLSM()
     // TODO(vector_index) Use correct env for encryption
-    : env_(rocksdb::Env::Default()) {
+    : env_(Env::Default()) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -462,6 +462,13 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   VLOG_WITH_PREFIX(1) << "Loaded " << immutable_chunks_.size() << " chunks";
 
   return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::Destroy() {
+  StartShutdown();
+  CompleteShutdown();
+  return env_->DeleteRecursively(options_.storage_dir);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -708,7 +715,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     RETURN_NOT_OK(chunk->index->SaveToFile(chunk_path));
   }
 
-  rocksdb::WritableFile* metadata_file = nullptr;
+  WritableFile* metadata_file = nullptr;
   ImmutableChunkPtr writing_chunk;
   {
     std::lock_guard lock(mutex_);
@@ -757,7 +764,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
-    rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) {
+    WritableFile* metadata_file, ImmutableChunkPtr chunk) {
   for (;;) {
     VectorLSMUpdatePB update;
     chunk->AddToUpdate(update);

@@ -1215,11 +1215,13 @@ void MasterPathHandlers::HandleAllTables(
         has_colocated_tables[table_cat] = true;
       }
 
-      auto colocated_tablet = table->GetColocatedUserTablet();
-      if (colocated_tablet) {
-        const auto parent_table = colocated_tablet->table();
-        table_row[kParentOid] = GetParentTableOid(parent_table);
-        has_tablegroups[table_cat] = true;
+      if (table->IsSecondaryTable() && !table_locked->is_vector_index()) {
+        auto colocated_tablets = table->GetTablets();
+        if (colocated_tablets.ok()) {
+          const auto parent_table = colocated_tablets->front()->table();
+          table_row[kParentOid] = GetParentTableOid(parent_table);
+          has_tablegroups[table_cat] = true;
+        }
       }
     } else if (table_cat == kParentTable) {
       // Colocated parent table.
@@ -1232,7 +1234,7 @@ void MasterPathHandlers::HandleAllTables(
     }
 
     // System tables and colocated user tables do not have size info
-    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+    if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
@@ -1404,10 +1406,12 @@ void MasterPathHandlers::HandleAllTablesJSON(
         table_row.colocation_id = Format("$0", schema.colocated_table_id().colocation_id());
       }
 
-      auto colocated_tablet = table->GetColocatedUserTablet();
-      if (colocated_tablet) {
-        const auto parent_table = colocated_tablet->table();
-        table_row.parent_oid = GetParentTableOid(parent_table);
+      if (table->IsSecondaryTable() && !table_locked->is_vector_index()) {
+        auto colocated_tablets = table->GetTablets();
+        if (colocated_tablets.ok()) {
+          const auto parent_table = colocated_tablets->front()->table();
+          table_row.parent_oid = GetParentTableOid(parent_table);
+        }
       }
     } else if (table_cat == kParentTable) {
       // Colocated parent table.
@@ -1415,7 +1419,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
     }
 
     // System tables and colocated user tables do not have size info.
-    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+    if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
@@ -3414,7 +3418,7 @@ string MasterPathHandlers::RegistrationToHtml(
 Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
-    if (table->IsColocatedUserTable()) {
+    if (table->IsSecondaryTable()) {
       // will be taken care of by colocated parent table
       continue;
     }
@@ -3458,7 +3462,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   if (max_table_count != -1) {
     int count = 0;
     for (const auto& table : tables) {
-      if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
+      if (!table->IsUserCreated() || table->IsSecondaryTable()) {
         continue;
       }
 
@@ -3471,7 +3475,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   }
 
   for (const auto& table : tables) {
-    if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
+    if (!table->IsUserCreated() || table->IsSecondaryTable()) {
       // only display user created tables that are not colocated.
       continue;
     }

@@ -1743,7 +1743,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
     VLOG(3) << "Skipping system table " << table.id() << " for load balancing";
     return true;
   }
-  if (table.IsColocatedUserTable()) {
+  if (table.IsSecondaryTable()) {
     VLOG(2) << "Skipping colocated user table " << table.id() << " for load balancing";
     return true;
   }

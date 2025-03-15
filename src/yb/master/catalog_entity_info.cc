@@ -1001,17 +1001,6 @@ Result<bool> TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) cons
   return false;
 }
 
-TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
-  if (!IsColocatedUserTable()) {
-    return nullptr;
-  }
-  SharedLock<decltype(lock_)> l(lock_);
-  if (!tablets_.empty()) {
-    return tablets_.begin()->second.lock();
-  }
-  return nullptr;
-}
-
 std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
   std::vector<qlexpr::IndexInfo> result;
   auto l = LockForRead();
@@ -1041,7 +1030,7 @@ bool TableInfo::UsesTablespacesForPlacement() const {
   bool is_regular_ysql_table =
       l->pb.table_type() == PGSQL_TABLE_TYPE &&
       l->namespace_id() != kPgSequencesDataNamespaceId &&
-      !IsColocatedUserTable() &&
+      !IsSecondaryTable() &&
       !IsColocationParentTable();
   return is_transaction_table_using_tablespaces ||
          is_regular_ysql_table ||
@@ -1060,7 +1049,7 @@ bool TableInfo::IsTablegroupParentTable() const {
   return IsTablegroupParentTableId(table_id_);
 }
 
-bool TableInfo::IsColocatedUserTable() const {
+bool TableInfo::IsSecondaryTable() const {
   return colocated() && !IsColocationParentTable();
 }
 
