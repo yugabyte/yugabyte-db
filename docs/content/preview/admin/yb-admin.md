@@ -2057,29 +2057,6 @@ yb-admin \
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
-#### change_xcluster_role
-
-Sets the xCluster role to `STANDBY` or `ACTIVE`.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    change_xcluster_role \
-    <role>
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
-* *role*: Can be `STANDBY` or `ACTIVE`.
-
-**Example**
-
-```sh
-./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    change_xcluster_role STANDBY
-```
 
 #### get_xcluster_safe_time
 
@@ -2089,12 +2066,12 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    -master_addresses <standby_master_addresses> \
     get_xcluster_safe_time \
     [include_lag_and_skew]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *standby_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
 
 **Example**
@@ -2102,7 +2079,7 @@ yb-admin \
 ```sh
 ./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    get_xcluster_safe_time
+    get_xcluster_safe_time include_lag_and_skew
 ```
 
 ```output
@@ -2274,6 +2251,178 @@ statuses {
   }
 }
 ```
+
+#### list_xcluster_outbound_replication_groups
+
+List the replication group identifiers for all inbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+ namespaces for use in xCluster replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target_master_addresses> \
+    list_xcluster_outbound_replication_groups \
+    [<namespace_id>]
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_id*: (Optional) The namespace identifier.
+
+#### create_xcluster_checkpoint
+
+Checkpoint namespaces for use in xCluster replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    create_xcluster_checkpoint \
+    <replication_group_id> \
+    <namespace_names> \
+    [automatic_ddl_mode]
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_names*: Comma-separated list of namespaces.
+* *automatic_ddl_mode*: (Optional) Use Automatic mode.
+
+#### is_xcluster_bootstrap_required
+
+Checks if the databases of a previously checkpointed replication group require a bootstrap of the target database to set up xCluster replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    is_xcluster_bootstrap_required \
+    <replication_group_id> \
+    <namespace_names>
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_names*: Comma-separated list of namespaces.
+
+#### setup_xcluster_replication
+
+Setup xCluster replication using a previously created checkpoint.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    setup_xcluster_replication \
+    <replication_group_id> \
+    <target_master_addresses>
+```
+
+* *replication_group_id*: The replication group identifier.
+* *target_master_addresses*: Comma-separated list of target universe master addresses.
+
+#### drop_xcluster_replication
+
+Drops the xCluster replication group. If target master addresses are provided, it will also drop the replication on the target.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    drop_xcluster_replication \
+    <replication_group_id> \
+    [<target_master_addresses>]
+```
+
+* *replication_group_id*: The replication group identifier.
+* *target_master_addresses*: (Optional) Comma-separated list of target universe master addresses.
+
+#### add_namespace_to_xcluster_checkpoint
+
+Adds a database to an existing xCluster checkpoint.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    add_namespace_to_xcluster_checkpoint \
+    <replication_group_id> \
+    <namespace_name>
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_name*: The namespace to checkpoint.
+
+#### add_namespace_to_xcluster_replication
+
+Adds a database to an existing xCluster replication after it has been checkpointed (and bootstrapped if needed).
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    add_namespace_to_xcluster_replication \
+    <replication_group_id> \
+    <namespace_name> \
+    <target_master_addresses>
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_name*: The namespace to checkpoint.
+* *target_master_addresses*: Comma-separated list of target universe master addresses.
+
+#### remove_namespace_from_xcluster_replication
+
+Removes a database from an existing xCluster replication. If target master addresses are provided, it will also remove the database from the target universe xCluster metadata.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    remove_namespace_from_xcluster_replication \
+    <replication_group_id> \
+    <namespace_name> \
+    [<target_master_addresses>]
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_name*: The namespace to checkpoint.
+* *target_master_addresses*: (Optional) Comma-separated list of target universe master addresses.
+
+#### list_xcluster_outbound_replication_groups
+
+List the replication group identifiers for all outbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    list_xcluster_outbound_replication_groups \
+    [<namespace_id>]
+```
+
+* *namespace_id*: (Optional) The namespace identifier.
+
+#### get_xcluster_outbound_replication_group_info
+
+Display the status of a specific outbound xCluster replication group.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    get_xcluster_outbound_replication_group_info \
+    <replication_group_id>
+```
+
+* *replication_group_id*: The replication group identifier.
 
 ---
 
