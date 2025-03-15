@@ -22,6 +22,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/env.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
 
@@ -98,6 +99,7 @@ class VectorLSM {
   ~VectorLSM();
 
   Status Open(Options options);
+  Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
   rocksdb::UserFrontierPtr GetFlushedFrontier();
@@ -145,8 +147,7 @@ class VectorLSM {
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
-  Status UpdateManifest(
-      rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
+  Status UpdateManifest(WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 
@@ -155,7 +156,7 @@ class VectorLSM {
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
   Options options_;
-  rocksdb::Env* const env_;
+  Env* const env_;
 
   mutable rw_spinlock mutex_;
   size_t current_chunk_serial_no_ GUARDED_BY(mutex_) = 0;
@@ -164,7 +165,7 @@ class VectorLSM {
   std::unique_ptr<InsertRegistry> insert_registry_;
   // Does not change after Open.
   size_t metadata_file_no_ = 0;
-  std::unique_ptr<rocksdb::WritableFile> metadata_file_ GUARDED_BY(mutex_);
+  std::unique_ptr<WritableFile> metadata_file_ GUARDED_BY(mutex_);
   bool stopping_ GUARDED_BY(mutex_) = false;
 
   // order_no is used as key in this map.

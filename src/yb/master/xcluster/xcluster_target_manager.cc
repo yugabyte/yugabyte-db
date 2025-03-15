@@ -601,7 +601,7 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
 
   // We check for xcluster_table_info to determine if we need to do this cleanup, so clean up other
   // fields first.
-  if (table_info->IsColocatedUserTable()) {
+  if (table_info->IsSecondaryTable()) {
     bool found = false;
     for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
       if (HasNamespace(*universe, table_info->namespace_id())) {

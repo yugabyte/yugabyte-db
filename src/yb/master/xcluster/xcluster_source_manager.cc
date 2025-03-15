@@ -718,7 +718,7 @@ void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTableDrop(
   // cdc_wal_retention_time_secs.
 
   // Only the parent colocated table is replicated via xCluster.
-  if (table_info.IsColocatedUserTable()) {
+  if (table_info.IsSecondaryTable()) {
     return;
   }
 

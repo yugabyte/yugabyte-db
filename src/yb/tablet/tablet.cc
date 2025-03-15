@@ -2710,6 +2710,7 @@ Status Tablet::AddMultipleTables(
 }
 
 Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
+  RETURN_NOT_OK(vector_indexes_->Remove(table_id));
   metadata_->RemoveTable(table_id, op_id);
   RETURN_NOT_OK(metadata_->Flush());
   return Status::OK();
