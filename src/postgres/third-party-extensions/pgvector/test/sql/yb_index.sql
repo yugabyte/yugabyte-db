@@ -102,3 +102,8 @@ DROP TABLE items;
 CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 DROP TABLE items;
+
+CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
+DROP TABLE items;
