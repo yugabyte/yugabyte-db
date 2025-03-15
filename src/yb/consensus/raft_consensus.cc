@@ -71,6 +71,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -195,6 +196,17 @@ DEFINE_UNKNOWN_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeas
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
              "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
              "lease of this duration has definitely expired on the old leader's side.");
+
+
+DEFINE_validator(leader_lease_duration_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        FLAGS_raft_heartbeat_interval_ms <= _value,
+        "Must be greater than raft_heartbeat_interval_ms"));
+
+DEFINE_validator(raft_heartbeat_interval_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        _value <= FLAGS_leader_lease_duration_ms,
+        "Must be less than leader_lease_duration_ms"));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
