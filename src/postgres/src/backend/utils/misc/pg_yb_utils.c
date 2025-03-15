@@ -2026,6 +2026,7 @@ bool		yb_test_stay_in_global_catalog_version_mode = false;
 bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
+int			yb_test_delay_after_applying_inval_message_ms = 0;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity

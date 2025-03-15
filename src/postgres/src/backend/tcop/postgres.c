@@ -4690,6 +4690,8 @@ YBCheckSharedCatalogCacheVersion()
 				 message_lists.num_lists,
 				 local_catalog_version, shared_catalog_version);
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
+			if (yb_test_delay_after_applying_inval_message_ms > 0)
+				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
 			/* TODO(myang): only invalidate affected entries in the pggate cache? */
 			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
 			return;

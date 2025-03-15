@@ -14,8 +14,10 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -2102,6 +2104,48 @@ TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
 
   // Since the message queue overflowed, we will see a full catalog cache refresh on conn2.
   VerifyCatCacheRefreshMetricsHelper(1 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, WaitForSharedCatalogVersionToCatchup) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--TEST_ysql_disable_transparent_cache_refresh_retry=true" });
+
+  std::string ddl_script;
+  for (int i = 1; i < 100; ++i) {
+    ddl_script += Format("GRANT ALL ON SCHEMA public TO PUBLIC;\n");
+    ddl_script += Format("REVOKE USAGE ON SCHEMA public FROM PUBLIC;\n");
+  }
+  std::unique_ptr<WritableFile> ddl_script_file;
+  std::string tmp_file_name;
+  ASSERT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), "ddl_XXXXXX", &tmp_file_name, &ddl_script_file));
+  ASSERT_OK(ddl_script_file->Append(ddl_script));
+  ASSERT_OK(ddl_script_file->Close());
+  LOG(INFO) << "ddl_script:\n" << ddl_script;
+
+  auto hostport = cluster_->ysql_hostport(0);
+  std::string main_script = "SET yb_test_delay_after_applying_inval_message_ms = 2000;\n"s;
+  main_script += "SET yb_max_query_layer_retries = 0;\n"s;
+  main_script += "CREATE TABLE foo(id INT);\n"s;
+  main_script += "SELECT * FROM foo;\n"s;
+  std::string ysqlsh_path = CHECK_RESULT(path_utils::GetPgToolPath("ysqlsh"));
+  main_script += Format("\\! $0 -f $1 -h $2 -p $3 yugabyte > /dev/null\n",
+                        ysqlsh_path, tmp_file_name, hostport.host(), hostport.port());
+  main_script += "SELECT * FROM foo;\n"s;
+  LOG(INFO) << "main_script:\n" << main_script;
+
+  auto scope_exit = ScopeExit([tmp_file_name] {
+    if (Env::Default()->FileExists(tmp_file_name)) {
+      WARN_NOT_OK(
+          Env::Default()->DeleteFile(tmp_file_name),
+          Format("Failed to delete temporary sql script file $0.", tmp_file_name));
+    }
+  });
+  YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
+  auto result = ysqlsh_runner.ExecuteSqlScript(
+      main_script, "WaitForSharedCatalogVersionToCatchup" /* tmp_file_prefix */);
+  ASSERT_NOK_STR_CONTAINS(result,
+      "The catalog snapshot used for this transaction has been invalidated");
 }
 
 } // namespace pgwrapper

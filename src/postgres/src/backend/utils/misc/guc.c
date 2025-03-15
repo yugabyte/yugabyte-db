@@ -5129,6 +5129,16 @@ static struct config_int ConfigureNamesInt[] =
 	 assign_tcmalloc_sample_period,
 	 show_tcmalloc_sample_period},
 
+	{
+		{"yb_test_delay_after_applying_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay after applying invalidation messages."),
+			NULL
+		},
+		&yb_test_delay_after_applying_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL

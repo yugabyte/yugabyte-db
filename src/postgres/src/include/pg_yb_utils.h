@@ -707,6 +707,11 @@ extern bool yb_test_collation;
 extern bool yb_test_inval_message_portability;
 
 /*
+ * If > 0, add a delay after apply invalidation messages.
+ */
+extern int yb_test_delay_after_applying_inval_message_ms;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
