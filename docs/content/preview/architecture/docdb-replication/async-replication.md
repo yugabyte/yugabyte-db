@@ -58,9 +58,6 @@ Because there is a useful trade-off between how much consistency is lost and wha
 - __Non-transactional replication__: writes are allowed on the target-universe, but reads of recently replicated data can be inconsistent.
 - __Transactional replication__: consistency of reads is preserved on the target-universe, but writes are not allowed.
 
-{{< tip >}}
-For YSQL deployments, Transactional mode is preferred because it provides consistency guarantees that are typically mandatory for such deployments.
-{{< /tip >}}
 
 ### Non-transactional replication
 
@@ -79,6 +76,9 @@ Because the writes are being independently replicated, a transaction from the so
 If the source universe fails, then the target universe may be left in an inconsistent state where some source universe transactions have only some of their writes applied in the target universe (these are called _torn transactions_).  This inconsistency will not automatically heal over time and may need to be manually resolved.
 
 Note that these inconsistencies are limited to the tables/rows being written to and replicated from the source universe: any target transaction that does not interact with such rows is unaffected.
+{{< tip >}}
+For YSQL deployments, transactional mode is preferred because it provides the necessary consistency guarantees typically required for such deployments.
+{{< /tip >}}
 
 ### Transactional replication
 
@@ -90,11 +90,24 @@ _xCluster safe time_ advances as replication proceeds but lags behind real-time 
 
 If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using YugabyteDB's [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) feature. The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
 
-Target writes are not currently permitted when using xCluster transactional replication.  This means that the transactional replication mode cannot support bidirectional replication.
-
 Target universe read-only transactions run at serializable isolation level on a single consistent snapshot as of the _xCluster safe time_.
 
-https://www.youtube.com/watch?v=vYyn2OUSZFE
+In xCluster transactional replication mode, writes to the target universe are not allowed. Consequently, this mode does not support bidirectional replication.
+
+Transactional replication is currently only available for YSQL deployments.
+
+Transactional replication intern comes in three modes:
+
+#### Automatic mode
+ {{<tags/feature/tp>}}
+
+In this mode all aspects of replication are handled automatically, including schema changes.
+
+#### Semi-automatic mode
+Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
+
+#### Manual mode
+This mode is deprecated and not recommended for new deployments. It requires manual intervention for schema changes and is more complex to set up and manage.
 
 {{<lead link="https://youtu.be/lI6gw7ncBs8?si=gAioZ_NgOyl2dsM5">}}
 To learn more, watch [Transactional xCluster](https://youtu.be/lI6gw7ncBs8?si=gAioZ_NgOyl2dsM5)
@@ -153,29 +166,25 @@ xCluster safe time is computed for each database by the target-universe master l
 A source tablet server sends such information when it determines that no active transaction involving that tablet can commit before _T_ and that all transactions involving that tablet that committed before _T_ have application Raft entries that have been previously sent as changes.  It also periodically (currently 250 ms) checks for committed transactions that are missing apply Raft entries and generates such entries for them; this helps xCluster safe time advance faster.
 
 ## Schema differences
+{{< tip >}}
+This section does not apply to Automatic mode since it replicates the schema changes.
+{{< /tip >}}
 
-xCluster replication does not support replicating between two copies of a table with different schemas.  For example, you cannot replicate a table to a version of that table missing a column or with a column having a different type.
+xCluster replication requires that the source and target tables have identical schemas. This means that you cannot replicate data between tables if there are differences in their schemas, such as missing columns or columns with different data types. Ensuring schema consistency is crucial for the replication process to function correctly.
 
-More subtly, this restriction extends to hidden schema metadata like the assignment of column IDs to columns.  Just because two tables show the same schema in YSQL does not mean their schemas are actually identical.  Because of this, in practice the target table schema needs to be copied from that of the source table; see [replication bootstrapping](#replication-bootstrapping) for how this is done.
+Additionally, this restriction includes hidden schema metadata, such as the assignment of column IDs. Even if two tables appear to have the same schema in YSQL, their schemas might not be identical. Therefore, in practice, the target table schema should be copied from the source table schema. For more details, refer to [replication bootstrapping](#replication-bootstrapping).
 
-Because of this restriction, xCluster does not need to do a deep translation of row contents (for example, dropping columns or translating column IDs inside of keys and values) as rows are replicated between universes.  Avoiding deep translation simplifies the code and reduces the cost of replication.
+Because of this restriction, xCluster does not need to perform deep translations of row contents (such as dropping columns or translating column IDs within keys and values) when replicating rows between universes. This avoidance of deep translation reduces the replication cost and improves throughput.
 
-### Supporting schema changes
-
-Currently, this is a manual process where the exact same schema change must be manually made on first one side then the other.  Replication of the given table automatically pauses while schema differences are detected and resumes after the schemas are the same again.
-
-Ongoing work, [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537), will make this automatic: schema changes made on the source universe will automatically be replicated to the target universe and made, allowing replication to continue running without operator intervention.
-
+Schema changes must be manually applied first to the source universe and then to the target universe. During this process, replication for the affected table is automatically paused when schema differences are detected and resumes once the schemas are identical.
 
 ## Replication bootstrapping
 
-xCluster replication copies changes made on the source universe to the target universe.  This is fine if the source universe starts empty but what if we want to start replicating a universe that already contains data?
+xCluster replicates the source WAL records to the target universe.  WAL is garbage collected over time to conserve disk space. When setting up a new replication flow, the source universe may have already deleted some of the WAL records that are needed for an empty target universe to catch up. This is especially likely if the source universe has been running for a while and has accumulated a lot of WAL.
 
-In that case, we need to bootstrap the replication process by first copying the source universe to the target universe.
+In this case, we need to bootstrap the target universe.
 
-Today, this is done by backing up the source universe and restoring it to the target universe.  In addition to copying all the data, this copies the table schemas so they are identical on both sides.  Before the backup is done, the current Raft log IDs are saved so the replication can be started after the restore from a time before the backup was done.  This ensures any data written to the source universe during the backup is replicated.
-
-Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), will replace using backup and restore here with directly copying RocksDB files between the source and target universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
+This process involves checkpointing the source universe to ensure that any new WAL records are preserved for xCluster. Following this, a [distributed backup](../../../manage/backup-restore/snapshot-ysql/#move-a-snapshot-to-external-storage) is performed and restored to the target universe. This not only copies all the data but also ensures that the table schemas are identical on both sides.
 
 ## Supported deployment scenarios
 
@@ -207,22 +216,13 @@ The following diagram shows an example of this deployment:
 
 A number of deployment scenarios are not yet supported in YugabyteDB.
 
-### Broadcast
+- _Broadcast_: This topology involves one source universe sending data to many target universes, for example: `A -> B, A -> C`. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
 
-This topology involves one source universe sending data to many target universes. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
+- _Consolidation_: This topology involves many source universes sending data to one central target universe, for example: `B -> A, C -> A`. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
 
-### Consolidation
+- _Daisy chaining_: This involves connecting a series of universes, for example: `A -> B -> C`
 
-This topology involves many source universes sending data to one central target universe. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
-
-### More complex topologies
-
-Outside of the traditional 1:1 topology and the previously described 1:N and N:1 topologies, there are many other desired configurations that are not currently supported, such as the following:
-
-- Daisy chaining, which involves connecting a series of universes as both source and target, for example: `A <-> B <-> C`
-- Ring, which involves connecting a series of universes in a loop, for example: `A <-> B <-> C <-> A`
-
-Some of these topologies might become naturally available as soon as the [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a universe to simultaneously be both a source and a target to several other universes. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+- _Star_: This involves connecting all universes to each other, for example: `A <-> B <-> C <-> A`
 
 
 ## Limitations
@@ -267,22 +267,6 @@ Transactional mode has the following limitations:
 
 When the source universe is lost, an explicit decision must be made to switch over to the standby universe and point-in-time recovery must run; this is expected to increase recovery time by a minute or so.
 
-### Bootstrapping replication
-
-- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates so that replication can safely resume (for instructions, refer to [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/async-deployment/#bootstrap-a-target-universe)). In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
-- Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB.  This means it also inherits all of the limitations of BAR.  For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level.  This implies that when you bootstrap a target universe, you automatically bring any tables from the source database to the target database, even the ones that you might not plan to actually configure replication on.  This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
-
-### DDL changes
-
-- Currently, DDL changes are not automatically replicated.  Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
-- `DROP TABLE` is not supported in YCQL.  You must first disable replication for this table.
-- `TRUNCATE TABLE` is not supported.  This is an underlying limitation, due to the level at which the two features operate.  That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
-- In the future, it will be possible to propagate DDL changes safely to other universes.  This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
-
-### Kubernetes
-
-- Technically, xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
-- Being able to have two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
 ### Backups
 
