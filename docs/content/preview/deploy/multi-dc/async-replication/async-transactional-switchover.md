@@ -26,7 +26,7 @@ To minimize disruptions and the duration of the switchover, ensure that the exis
 
 ### Setup replication in the reverse direction
 
-Set up xCluster Replication from the standby universe (B) to Primary universe (A) by following the steps in [Setup transactional xCluster](../async-replication-transactional/). 
+Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Setup transactional xCluster](../async-replication-transactional/). 
 Skip the bootstrap (backup/restore) step, since the data is already present in both universes.
 
 Ensure that the mode of replication used matches the original setup. Continuously monitor the health of the new replication to prevent any unexpected issues post-switchover.
@@ -51,5 +51,5 @@ Run the following command against A to delete the old replication group
 
 {{% readfile "includes/transactional-drop.md" %}}
 
-### Switch applications to the new Primary universe (A)
+### Switch applications to the new Primary universe (B)
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).

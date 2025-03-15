@@ -4,7 +4,7 @@ private = true
 +++
 -->
 
-Since this feature is in [technical preview](/preview/releases/versioning/#tech-preview-tp), you must enable it by adding the `xcluster_enable_ddl_replication` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list and setting it to true on yb-master.
+Since this feature is in [technical preview](/preview/releases/versioning/#tech-preview-tp), you must enable it by adding the `xcluster_enable_ddl_replication` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list and setting it to true on yb-master in both universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
@@ -55,7 +55,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     ./yugabyted restore --cloud_storage_uri <AWS/GCP/local cloud storage uri>  --database <database_name> --base_dir <base_dir of target node>
     ```
 
-1. If needed, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty, it must be bootstrapped, even if the output suggests otherwise. This applies even if it contains only empty tables, unused types, or enums (#24030).
+1. If needed, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty, it must be bootstrapped, even if the output suggests otherwise. This applies even if it contains only empty tables, unused types, or enums [#24030](https://github.com/yugabyte/yugabyte-db/issues/24030).
 
 1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
 
@@ -131,7 +131,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     Checkpointing of yugabyte completed. Bootstrap is not required for setting up xCluster replication
     ```
 
-1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../../manage/backup-restore/snapshot-ysql/). Otherwise, create the necessary schema objects (tables and indexes) on the Standby.
+1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../../manage/backup-restore/snapshot-ysql/).  If your source database is not empty, it must be bootstrapped, even if the output suggests otherwise. This applies even if it contains only empty tables, unused types, or enums [#24030](https://github.com/yugabyte/yugabyte-db/issues/24030).
 
 1. Enable [point in time restore (PITR)](../../../../admin/yb-admin/#create-snapshot-schedule) on the database(s) on both the Primary and Standby universes:
 
@@ -151,8 +151,9 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     ```sh
     ./bin/yb-admin \
     -master_addresses <primary_master_addresses> \
-    setup_xcluster_replication <replication_group_id> <standby_master_addresses> \
-    automatic_ddl_mode
+    setup_xcluster_replication \
+    <replication_group_id> \
+    <standby_master_addresses>
     ```
 
     You should see output similar to the following:

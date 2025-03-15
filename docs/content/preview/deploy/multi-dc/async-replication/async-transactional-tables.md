@@ -1,9 +1,9 @@
 ---
-title: Handling DDLs for manually-configured transactional xCluster
-headerTitle: Make manual DDL changes
-linkTitle: Manual DDL changes
-description: How to handle DDLs when using manually-configured transactional xCluster replication
-headContent: Handling DDLs in manually-configured transactional xCluster
+title: Handling DDLs for Manually mode transactional xCluster
+headerTitle: DDL changes in Manually mode
+linkTitle: DDL changes in Manually mode
+description: How to handle DDLs when using Manually mode transactional xCluster replication
+headContent: Making DDL changes in Manually mode transactional xCluster
 menu:
   preview:
     parent: async-replication-transactional
@@ -13,6 +13,11 @@ tags:
   other: ysql
 type: docs
 ---
+
+{{< tip >}}
+Use [Automatic mode](../async-transactional-setup-automatic), or [Semi-automatic mode](../async-transactional-setup-semi-automatic) for simpler management of DDL changes.
+{{< /tip >}}
+
 
 The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [manually configured](../async-transactional-setup-manual/) transactional xCluster replication. For instruction on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes](../async-transactional-setup-semi-automatic/#making-ddl-changes).
 

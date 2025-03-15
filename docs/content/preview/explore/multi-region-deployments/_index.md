@@ -27,7 +27,7 @@ The following table summarizes these different multi-region deployments in Yugab
 | **Consistency** | Transactional | Transactional | Transactional | Timeline consistency |
 | **Write latency** | High latency | Low latency | Low latency | N/A |
 | **Read latency** | High latency | Low latency <br/> *(when queried from nearby geography)* | Low latency | Low latency |
-| **Schema changes** | Transparently managed | Transparently managed | Transparently managed* | Transparently managed |
+| **Schema changes** | Transparently managed | Transparently managed | Transparently managed *([Limitations](../../architecture/docdb-replication/async-replication/#transactional-automatic-mode-limitations))* | Transparently managed |
 | **RPO** | No data loss | No data loss <br/> *(partial unavailability possible)* | Some data loss | No data loss |
 
 The deployment types are explained in the following sections.

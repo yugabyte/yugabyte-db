@@ -73,7 +73,7 @@ No Inbound xCluster replications found for this cluster.
 
 <!-- Local Monitor -->
 
-To list outgoing groups on the Primary universe, use the [list_xcluster_outbound_replication_groups](../../../admin/yb-admin/#list_xcluster_outbound_replication_groups) command:
+To list outgoing groups on the Primary universe, use the [list_xcluster_outbound_replication_groups](../../../admin/yb-admin/#list-xcluster-outbound-replication-groups) command:
 
 ```sh
 ./bin/yb-admin \

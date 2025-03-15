@@ -26,7 +26,7 @@ However, asynchronous replication can be beneficial in certain scenarios:
 - _Only two data centers needed_: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With xCluster you can achieve multi-region deployments with only two data centers.
 - _Disaster recovery_: xCluster utilizes independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
 
-The drawback of Asynchronous replication is:
+The drawbacks of asynchronous xCluster replication are:
 
 - __Data loss on failure__: When a data center fails, any data that has not yet been replicated will be lost. The amount of data lost depends on the replication lag, which is usually subsecond but varies based on the network characteristics between the two data centers.
 - __Stale reads__: When reading from the secondary data center, there may be a delay in data availability due to the asynchronous nature of the replication. This can result in stale reads, which may not reflect the most recent writes. Non-transactional modes can serve torn reads of recently written data.
@@ -273,7 +273,7 @@ In Semi-automatic and Manual modes, schema changes are not automatically replica
 
 ### Transactional Automatic mode limitations
 
-- Global objects like Users, Roles, Tablespaces are not replicated. These DDLs need to be manually executed on both universes.
+- Global objects like Users, Roles, Tablespaces are not replicated. These objects must be manually created on the Standby universes.
 - DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on the both universe be setting the GUC `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
 - `CREATE TABLE AS`, and `SELECT INTO` DDL statements are not supported. You can workaround this by breaking the DDL up into a `CREATE TABLE` followed by `INSERT SELECT`.
 - Only the following list of extensions can be CREATED, DROPPED, or ALTER while automatic mode is setup: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, pgaudit. The remaining extensions must be created before setting up automatic mode.

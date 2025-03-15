@@ -38,9 +38,9 @@ To use automatic transactional xCluster replication, both the Primary and Standb
 {{< /note >}}
 
 
-Automatic transactional xCluster replication {{<tags/feature/tp>}} handles all aspects of replication for both and schema changes.
+Automatic transactional xCluster replication {{<tags/feature/tp>}} handles all aspects of replication for both data and schema changes.
 
-In particular, DDL changes made to the Primary universe is automatically replicated to the Standby universe.
+In particular, DDL changes made to the Primary universe are automatically replicated to the Standby universe.
 
 In this mode, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
 
@@ -72,4 +72,3 @@ DDL operations must only be performed on the Primary universe. All schema change
 
 
 For more information on xCluster, refer to [xCluster Architecture](../../../../architecture/docdb-replication/async-replication) and [xCluster limitations](../../../../architecture/docdb-replication/async-replication/#transactional-automatic-mode-limitations).
-  

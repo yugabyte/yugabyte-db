@@ -95,7 +95,7 @@ If there are multiple databases in the same cluster, do PITR on all the database
     <a href="#yugabyted-pitr" class="nav-link active" id="yugabyted-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="yugabyted-pitr" aria-selected="true">
     <img src="/icons/database.svg" alt="Server Icon">
-    Yugaybted
+    Yugabyted
     </a>
 </li>
 <li>
@@ -211,9 +211,9 @@ After completing the preceding steps, the former Standby (B) is the new Primary 
 
 If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the steps in [Setup transactional xCluster](../async-replication-transactional/).
 
-If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the database on A needs to be dropped and recreated from a backup of B (Bootstrap). Before dropping the database on A, you can analyze it to determine the exact data that was lost by the failover.
+If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the databases on A need to be dropped and recreated from a backup of B (Bootstrap). Before dropping the databases on A, you can analyze them to determine the exact data that was lost by the failover.
 
-Once you are ready to drop the database on A, follow the steps:
+Once you are ready to drop the databases on A, follow the steps:
 
 ### Disable PITR
 
@@ -322,10 +322,10 @@ Outbound xCluster Replication group rg1 deleted successfully
 </div>
 
 ### Drop the database(s)
-Drop the database(s) on A
+Drop the database(s) on A.
 
 ### Perform setup from B to A
-Set up xCluster Replication from the Primary to standby universe (B to A) by following the steps in [Setup transactional xCluster](../async-replication-transactional/).
+Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Setup transactional xCluster](../async-replication-transactional/).
 
 
 If your eventual desired configuration is for A to be the Primary universe and B the Standby, follow the steps for [Planned switchover](../async-transactional-switchover/).

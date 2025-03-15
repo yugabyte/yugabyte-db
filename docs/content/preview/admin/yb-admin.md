@@ -2252,6 +2252,23 @@ statuses {
 }
 ```
 
+#### list_xcluster_outbound_replication_groups
+
+List the replication group identifiers for all inbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+ namespaces for use in xCluster replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target_master_addresses> \
+    list_xcluster_outbound_replication_groups \
+    [<namespace_id>]
+```
+
+* *replication_group_id*: The replication group identifier.
+* *namespace_id*: (Optional) The namespace identifier.
+
 #### create_xcluster_checkpoint
 
 Checkpoint namespaces for use in xCluster replication.

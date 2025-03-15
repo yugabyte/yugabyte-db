@@ -26,7 +26,7 @@ xCluster provides the following benefits:
 
 xCluster is always active-active, allowing you to read data from any region. It supports both single-master and multi-master deployment options, offering flexibility to balance write performance and consistency guarantees.
 
-Active-active sing-master xCluster:
+Active-active single-master xCluster:
 ![example of single-master deployment](/images/architecture/replication/active-standby-deployment-new.png)
 
 Active-active multi-master xCluster:
