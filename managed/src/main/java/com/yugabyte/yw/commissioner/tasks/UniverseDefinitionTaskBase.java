@@ -3877,13 +3877,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
-      Universe universe, List<NodeDetails> nodes, String flagValue) {
+      Universe universe, ServerType serverType, List<NodeDetails> nodes, String flagValue) {
     if (nodes.isEmpty()) {
       return;
     }
     createSetFlagInMemoryTasks(
             nodes,
-            ServerType.TSERVER,
+            serverType,
             (node, params) -> {
               params.force = true;
               // Override only expression pushdown flag.
