@@ -696,8 +696,11 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_dollar_replace_root function */
 	Oid ApiCatalogBsonDollarReplaceRootFunctionOid;
 
-	/* OID of the bson_dollar_replace_root function */
+	/* OID of the bson_dollar_replace_root with let function */
 	Oid ApiCatalogBsonDollarReplaceRootWithLetFunctionOid;
+
+	/* OID of the bson_dollar_replace_root with let and collation function  */
+	Oid ApiCatalogBsonDollarReplaceRootWithLetAndCollationFunctionOid;
 
 	/* OID of the bson_rank window function */
 	Oid ApiCatalogBsonRankFunctionOid;
@@ -3495,6 +3498,18 @@ BsonDollarReplaceRootWithLetFunctionOid(void)
 		"bson_dollar_replace_root",
 		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
 		DocumentDBCoreBsonTypeId());
+}
+
+
+Oid
+BsonDollarReplaceRootWithLetAndCollationFunctionOid(void)
+{
+	Oid bsonTypeId = DocumentDBCoreBsonTypeId();
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiCatalogBsonDollarReplaceRootWithLetAndCollationFunctionOid,
+		DocumentDBApiInternalSchemaName,
+		"bson_dollar_replace_root",
+		bsonTypeId, bsonTypeId, bsonTypeId, TEXTOID);
 }
 
 

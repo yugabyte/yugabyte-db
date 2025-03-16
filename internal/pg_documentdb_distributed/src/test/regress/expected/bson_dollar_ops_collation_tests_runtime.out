@@ -2218,6 +2218,51 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_p
  { "_id" : "bat", "a" : "bat", "newField" : false }
 (6 rows)
 
+-- replaceRoot
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$replaceRoot": { "newRoot": { "a": "$a", "newField": { "$eq": ["$a", "CAT"] } } } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+              document               
+---------------------------------------------------------------------
+ { "a" : "cat", "newField" : true }
+ { "a" : "dog", "newField" : false }
+ { "a" : "cAt", "newField" : true }
+ { "a" : "dOg", "newField" : false }
+ { "a" : "hen", "newField" : false }
+ { "a" : "bat", "newField" : false }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$replaceRoot": { "newRoot": { "a": "$a", "newField": { "$ne": ["$a", "CAT"] } } } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+              document              
+---------------------------------------------------------------------
+ { "a" : "cat", "newField" : true }
+ { "a" : "dog", "newField" : true }
+ { "a" : "cAt", "newField" : true }
+ { "a" : "dOg", "newField" : true }
+ { "a" : "hen", "newField" : true }
+ { "a" : "bat", "newField" : true }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$replaceRoot": { "newRoot": { "a": "$a", "newField": { "$lte": ["$a", "DoG"] } } } } ], "cursor": {}, "collation": { "locale": "fr", "strength" : 1} }');
+              document               
+---------------------------------------------------------------------
+ { "a" : "cat", "newField" : true }
+ { "a" : "dog", "newField" : true }
+ { "a" : "cAt", "newField" : true }
+ { "a" : "dOg", "newField" : true }
+ { "a" : "hen", "newField" : false }
+ { "a" : "bat", "newField" : true }
+(6 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "coll_agg_proj", "pipeline": [ { "$replaceRoot": { "newRoot": { "a": "$a", "newField": { "$gte": ["$a", "doG"] } } } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 3} }');
+              document               
+---------------------------------------------------------------------
+ { "a" : "cat", "newField" : false }
+ { "a" : "dog", "newField" : false }
+ { "a" : "cAt", "newField" : false }
+ { "a" : "dOg", "newField" : true }
+ { "a" : "hen", "newField" : true }
+ { "a" : "bat", "newField" : false }
+(6 rows)
+
 -- redact
 SELECT documentdb_api.insert_one('db','coll_redact','{ "_id": 1, "level": "public", "content": "content 1", "details": { "level": "public", "value": "content 1.1", "moreDetails": { "level": "restricted", "info": "content 1.1.1" } } }', NULL);
 NOTICE:  creating collection

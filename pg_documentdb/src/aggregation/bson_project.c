@@ -141,7 +141,8 @@ static pgbson * BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 static pgbson * BsonLookUpProject(pgbson *sourceDocument, int numMatchedDocuments,
 								  Datum *mathedArray, char *matchedDocsFieldName);
 static void PopulateReplaceRootExpressionDataFromSpec(
-	BsonReplaceRootRedactState *expressionData, pgbson *pathSpec, pgbson *variableSpec);
+	BsonReplaceRootRedactState *expressionData, pgbson *pathSpec, pgbson *variableSpec,
+	const char *collationString);
 
 static void BuildRedactState(BsonReplaceRootRedactState *redactState, const
 							 bson_value_t *redactValue, pgbson *variableSpec, const
@@ -222,12 +223,9 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 		numArgs = 2;
 	}
 
-	if (PG_NARGS() == 4)
+	if (EnableCollation && PG_NARGS() == 4)
 	{
-		if (EnableCollation && !PG_ARGISNULL(3))
-		{
-			collationString = text_to_cstring(PG_GETARG_TEXT_P(3));
-		}
+		collationString = PG_ARGISNULL(3) ? NULL : text_to_cstring(PG_GETARG_TEXT_P(3));
 		numArgs = 3;
 	}
 
@@ -577,7 +575,8 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 		BuildBsonPathTreeForDollarAddFields,
 		&pathSpecIter,
 		skipParseAggregationExpressions,
-		variableSpec, collationString);
+		variableSpec,
+		collationString);
 
 	if (state == NULL)
 	{
@@ -759,14 +758,21 @@ bson_dollar_replace_root(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 	pgbson *variableSpec = NULL;
+	char *collationString = NULL;
 
-	int argPositions[2] = { 1, 2 };
+	int argPositions[3] = { 1, 2, 3 };
 	int numArgs = 1;
 
 	if (PG_NARGS() > 2)
 	{
 		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
 		numArgs = 2;
+	}
+
+	if (EnableCollation && PG_NARGS() == 4)
+	{
+		collationString = PG_ARGISNULL(3) ? NULL : text_to_cstring(PG_GETARG_TEXT_P(3));
+		numArgs = 3;
 	}
 
 	BsonReplaceRootRedactState localState = { 0 };
@@ -779,12 +785,14 @@ bson_dollar_replace_root(PG_FUNCTION_ARGS)
 		numArgs,
 		PopulateReplaceRootExpressionDataFromSpec,
 		pathSpec,
-		variableSpec);
+		variableSpec,
+		collationString);
 
 	bool forceProjectId = false;
 	if (replaceRootExpression == NULL)
 	{
-		PopulateReplaceRootExpressionDataFromSpec(&localState, pathSpec, variableSpec);
+		PopulateReplaceRootExpressionDataFromSpec(&localState, pathSpec, variableSpec,
+												  collationString);
 		PG_RETURN_POINTER(ProjectReplaceRootDocument(document, localState.expressionData,
 													 localState.variableContext,
 													 forceProjectId));
@@ -1123,16 +1131,8 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *redactSpec = PG_GETARG_PGBSON(1);
 	char *redactSpecText = text_to_cstring(PG_GETARG_TEXT_PP(2));
-	pgbson *variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
-	char *collationString = NULL;
-
-	if (EnableCollation && PG_NARGS() == 5 && !PG_ARGISNULL(4))
-	{
-		collationString = text_to_cstring(PG_GETARG_TEXT_P(4));
-	}
 
 	bson_value_t redactValue = { 0 };
-
 	if (IsPgbsonEmptyDocument(redactSpec) && (strcmp(redactSpecText, "") != 0))
 	{
 		redactValue.value_type = BSON_TYPE_UTF8;
@@ -1145,11 +1145,19 @@ bson_dollar_redact(PG_FUNCTION_ARGS)
 	}
 
 	int argPositions[4] = { 1, 2, 3, 4 };
-	int numArgs = 4;
+	int numArgs = 3;
 
+	pgbson *variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
 	if (variableSpec == NULL)
 	{
 		variableSpec = PgbsonInitEmpty();
+	}
+
+	char *collationString = NULL;
+	if (EnableCollation && PG_NARGS() == 5)
+	{
+		collationString = PG_ARGISNULL(4) ? NULL : text_to_cstring(PG_GETARG_TEXT_PP(4));
+		numArgs = 4;
 	}
 
 	const BsonReplaceRootRedactState *redactState;
@@ -2603,7 +2611,8 @@ FilterNodeToWrite(void *state, int currentIndex)
 /* Populates the aggregation expression data for a replace root stage based on the pathSpec specified to $replaceRoot. */
 static void
 PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *expressionData,
-										  pgbson *pathSpec, pgbson *variableSpec)
+										  pgbson *pathSpec, pgbson *variableSpec,
+										  const char *collationString)
 {
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
@@ -2617,6 +2626,11 @@ PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *expression
 	/* Add the $$NOW time system variables field from the variableSpec. */
 	GetTimeSystemVariablesFromVariableSpec(variableSpec,
 										   &parseContext.timeSystemVariables);
+
+	if (IsCollationApplicable(collationString))
+	{
+		parseContext.collationString = collationString;
+	}
 
 	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue,
 								   &parseContext);

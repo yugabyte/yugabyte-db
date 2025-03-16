@@ -16,6 +16,7 @@
 * Support collation in aggregation `$set` stage *[Feature]*
 * Support collation in aggregation `$addFields` stage *[Feature]*
 * Support collation with `$setEquals`, `$setUnion`, `$setIntersection`, `$setDifference`, `$setIsSubet` in the aggregation pipeline *[Feature]*
+* Support collation in aggregation `$replaceRoot` stage *[Feature]*
 * Top level aggregate command `let` variables support for `$geoNear` stage *[Feature]*
 * Enable Backend Command support for Statement Timeout *[Feature]*
 

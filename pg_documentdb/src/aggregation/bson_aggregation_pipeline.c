@@ -3146,7 +3146,9 @@ HandleReplaceRoot(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_REPLACE_ROOT);
 
-	Oid (*replaceRootWithLetAndCollationFuncOid)(void) = NULL;
+	Oid (*replaceRootWithLetAndCollationFuncOid)(void) =
+		BsonDollarReplaceRootWithLetAndCollationFunctionOid;
+
 	return HandleSimpleProjectionStage(existingValue, query, context, "$replaceRoot",
 									   BsonDollarReplaceRootFunctionOid(),
 									   &BsonDollarReplaceRootWithLetFunctionOid,

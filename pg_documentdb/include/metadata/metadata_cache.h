@@ -303,6 +303,7 @@ Oid BsonDollarUnwindFunctionOid(void);
 Oid BsonDollarUnwindWithOptionsFunctionOid(void);
 Oid BsonDollarReplaceRootFunctionOid(void);
 Oid BsonDollarReplaceRootWithLetFunctionOid(void);
+Oid BsonDollarReplaceRootWithLetAndCollationFunctionOid(void);
 Oid BsonSumAggregateFunctionOid(void);
 Oid BsonIntegralAggregateFunctionOid(void);
 Oid BsonDerivativeAggregateFunctionOid(void);

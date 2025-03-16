@@ -2528,6 +2528,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 	BsonValueInitIterator(value, &docIter);
 
 	BuildBsonPathTreeContext context = { 0 };
+	context.parseAggregationContext.collationString = parseContext->collationString;
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
 	BsonIntermediatePathNode *treeNode = BuildBsonPathTree(&docIter, &context,
 														   forceLeafExpression,
