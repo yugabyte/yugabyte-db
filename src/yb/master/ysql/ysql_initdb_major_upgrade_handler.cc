@@ -33,6 +33,7 @@
 DECLARE_bool(enable_ysql);
 DECLARE_string(tmp_dir);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(ysql_enable_auth);
 
@@ -373,9 +374,15 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
+  auto bind_address = FLAGS_pgsql_proxy_bind_address.empty() ? FLAGS_rpc_bind_addresses
+                                                             : FLAGS_pgsql_proxy_bind_address;
+  SCHECK(
+      !bind_address.empty(), IllegalState,
+      "No bind address found. Either pgsql_proxy_bind_address or rpc_bind_addresses must be set.");
+
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-      FLAGS_rpc_bind_addresses, pg_upgrade_data_dir));
+      bind_address, pg_upgrade_data_dir));
 
   pg_conf.master_addresses = master_opts.master_addresses_flag;
   pg_conf.pg_port = FLAGS_ysql_upgrade_postgres_port;
@@ -403,6 +410,12 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
       narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
 
   if (local_ts) {
+    // When pgsql_proxy_bind_address is set, it is used as the socket dir. The tserver does not
+    // expose its pgsql_proxy_bind_address, but we expect master and tserver flags to be the same,
+    // so we can use our flag value to infer the tservers socket dir.
+    if (!FLAGS_pgsql_proxy_bind_address.empty()) {
+      closest_ts_hp.set_host(pg_conf.listen_addresses);
+    }
     pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
   } else {
     // Remote tserver.
