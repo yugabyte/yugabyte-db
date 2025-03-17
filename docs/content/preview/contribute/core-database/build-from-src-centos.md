@@ -132,8 +132,6 @@ source /opt/rh/rh-python38/enable
 
 {{% readfile "includes/cmake.md" %}}
 
-{{% readfile "includes/cmake-manual.md" %}}
-
 ### Java
 
 {{% readfile "includes/java.md" %}}

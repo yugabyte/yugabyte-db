@@ -168,8 +168,6 @@ sudo apt install -y libffi-dev python3 python3-dev python3-venv
 
 {{% readfile "includes/cmake.md" %}}
 
-{{% readfile "includes/cmake-manual.md" %}}
-
 ### Java
 
 {{% readfile "includes/java.md" %}}
