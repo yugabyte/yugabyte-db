@@ -345,22 +345,19 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
 
     // Preliminary checks for upgrades.
-    createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createCheckUpgradeTask(newVersion);
 
     // PreCheck for Available Memory on tserver nodes.
     long memAvailableLimit =
         confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
     // No need to run the check if the minimum allowed is 0.
     if (memAvailableLimit > 0) {
-      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit);
     }
 
-    createLocaleCheckTask(new ArrayList<>(universe.getNodes()))
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createLocaleCheckTask(new ArrayList<>(universe.getNodes()));
 
-    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion)
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion);
 
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;

@@ -277,6 +277,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.Singular;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -504,6 +505,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private boolean loadBalancerOff = false;
     private final Map<UUID, UniverseUpdaterConfig> lockedUniverses = new ConcurrentHashMap<>();
     private final AtomicReference<Set<NodeDetails>> masterNodes = new AtomicReference<>();
+    @Getter @Setter private SubTaskGroup precheckTaskGroup;
 
     ExecutionContext() {
       this.universeUuid = taskParams().getUniverseUUID();
@@ -862,6 +864,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return executionContext.get();
   }
 
+  /**
+   * For the case of prechecks-only execution, we put all the prechecks into the same task group. So
+   * we cache this task group in that case (or create separate group otherwise).
+   *
+   * @param name - specific name for subtask group if we use separate group.
+   * @return
+   */
+  protected SubTaskGroup doInPrecheckSubTaskGroup(String name, Consumer<SubTaskGroup> consumer) {
+    boolean addToRunnableTask = true;
+    SubTaskGroup subTaskGroup;
+    if (taskParams().isRunOnlyPrechecks()) {
+      ExecutionContext context = getOrCreateExecutionContext();
+      if (context.precheckTaskGroup == null) {
+        context.precheckTaskGroup =
+            createSubTaskGroup("AllPreflightChecks", SubTaskGroupType.PreflightChecks);
+      }
+      subTaskGroup = context.precheckTaskGroup;
+      addToRunnableTask = false;
+    } else {
+      subTaskGroup = createSubTaskGroup(name, SubTaskGroupType.PreflightChecks);
+    }
+    consumer.accept(subTaskGroup);
+    if (addToRunnableTask && subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
   protected boolean isLeaderBlacklistValidRF(NodeDetails nodeDetails) {
     Cluster curCluster = getUniverse().getCluster(nodeDetails.placementUuid);
     if (curCluster == null) {
@@ -1185,11 +1215,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected boolean maybeRunOnlyPrechecks() {
     if (taskParams().isRunOnlyPrechecks()) {
-      createPrecheckTasks(getUniverse());
+      initAndAddPrecheckTasks(getUniverse());
       getRunnableTask().runSubTasks();
       return true;
     }
     return false;
+  }
+
+  private void initAndAddPrecheckTasks(Universe universe) {
+    createPrecheckTasks(universe);
+    ExecutionContext context = getOrCreateExecutionContext();
+    SubTaskGroup precheckTaskGroup = context.precheckTaskGroup;
+    if (precheckTaskGroup != null && precheckTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(precheckTaskGroup);
+      context.precheckTaskGroup = null;
+    }
   }
 
   /**
@@ -1220,7 +1260,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
-      createPrecheckTasks(universe);
+      initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
       if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
           && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
@@ -1709,17 +1749,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createPGUpgradeTServerCheckTask(
       String ybSoftwareVersion, boolean downloadPackage) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("PGUpgradeTServerCheck", SubTaskGroupType.PreflightChecks);
-    PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
-    PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.downloadPackage = downloadPackage;
-    params.ybSoftwareVersion = ybSoftwareVersion;
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "PGUpgradeTServerCheck",
+        subTaskGroup -> {
+          PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
+          PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.downloadPackage = downloadPackage;
+          params.ybSoftwareVersion = ybSoftwareVersion;
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   public SubTaskGroup createCleanUpPGUpgradeDataDirTask() {
@@ -1814,61 +1854,65 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to check memory limit on the universe nodes. */
-  public SubTaskGroup createAvailableMemoryCheck(
+  public void createAvailableMemoryCheck(
       Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckMemory");
-    CheckMemory task = createTask(CheckMemory.class);
-    CheckMemory.Params params = new CheckMemory.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.memoryType = memoryType;
-    params.memoryLimitKB = memoryLimitKB;
-    params.nodeIpList =
-        nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    doInPrecheckSubTaskGroup(
+        "CheckMemory",
+        subTaskGroup -> {
+          CheckMemory task = createTask(CheckMemory.class);
+          CheckMemory.Params params = new CheckMemory.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.memoryType = memoryType;
+          params.memoryLimitKB = memoryLimitKB;
+          params.nodeIpList =
+              nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Creates a task to check locale on the universe nodes. */
   public SubTaskGroup createLocaleCheckTask(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLocale");
-    CheckLocale task = createTask(CheckLocale.class);
-    CheckLocale.Params params = new CheckLocale.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "CheckLocale",
+        subTaskGroup -> {
+          CheckLocale task = createTask(CheckLocale.class);
+          CheckLocale.Params params = new CheckLocale.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Creates a task to check glibc on the universe nodes */
   public SubTaskGroup createCheckGlibcTask(
       Collection<NodeDetails> nodes, String ybSoftwareVersion) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckGlibc");
-    CheckGlibc task = createTask(CheckGlibc.class);
-    CheckGlibc.Params params = new CheckGlibc.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.ybSoftwareVersion = ybSoftwareVersion;
-    params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "CheckGlibc",
+        subTaskGroup -> {
+          CheckGlibc task = createTask(CheckGlibc.class);
+          CheckGlibc.Params params = new CheckGlibc.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.ybSoftwareVersion = ybSoftwareVersion;
+          params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Create a task to preform pre-check for software upgrade. */
-  public SubTaskGroup createCheckUpgradeTask(String ybSoftwareVersion) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUpgrade");
-    CheckUpgrade task = createTask(CheckUpgrade.class);
-    CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.ybSoftwareVersion = ybSoftwareVersion;
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+  public void createCheckUpgradeTask(String ybSoftwareVersion) {
+    doInPrecheckSubTaskGroup(
+        "CheckUpgrade",
+        subTaskGroup -> {
+          CheckUpgrade task = createTask(CheckUpgrade.class);
+          CheckUpgrade.Params params = new CheckUpgrade.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.ybSoftwareVersion = ybSoftwareVersion;
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
@@ -6551,22 +6595,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       List<String> command,
       BiConsumer<NodeDetails, ShellResponse> responseConsumer,
       @Nullable ShellProcessContext shellContext) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(RunNodeCommand.class.getSimpleName());
-    nodes.stream()
-        .forEach(
-            n -> {
-              RunNodeCommand.Params params = new RunNodeCommand.Params();
-              params.setUniverseUUID(taskParams().getUniverseUUID());
-              params.nodeName = n.getNodeName();
-              params.command = command;
-              params.responseConsumer = response -> responseConsumer.accept(n, response);
-              params.shellContext = shellContext;
-              RunNodeCommand task = createTask(RunNodeCommand.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            });
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "RunNodeCommand",
+        subTaskGroup -> {
+          nodes.stream()
+              .forEach(
+                  n -> {
+                    RunNodeCommand.Params params = new RunNodeCommand.Params();
+                    params.setUniverseUUID(taskParams().getUniverseUUID());
+                    params.nodeName = n.getNodeName();
+                    params.command = command;
+                    params.responseConsumer = response -> responseConsumer.accept(n, response);
+                    params.shellContext = shellContext;
+                    RunNodeCommand task = createTask(RunNodeCommand.class);
+                    task.initialize(params);
+                    subTaskGroup.addSubTask(task);
+                  });
+        });
   }
 
   // Start Schedule backup methods
