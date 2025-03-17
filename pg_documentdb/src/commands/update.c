@@ -943,12 +943,18 @@ DoMultiUpdate(MongoCollection *collection, List *updates, text *transactionId,
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(oldContext);
-		FlushErrorState();
+		ErrorData *errorData = CopyErrorDataAndFlush();
 
 		/* Abort the inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldContext);
 		CurrentResourceOwner = oldOwner;
+
+		if (IsOperatorInterventionError(errorData))
+		{
+			ReThrowError(errorData);
+		}
+
 		*recordsUpdated = 0;
 		updateCount = 0;
 	}

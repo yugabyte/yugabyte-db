@@ -634,6 +634,11 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 		CurrentResourceOwner = oldOwner;
 		insertCount = 0;
 
+		if (IsOperatorInterventionError(errorData))
+		{
+			ReThrowError(errorData);
+		}
+
 		int errorCode = errorData->sqlerrcode;
 		const char *errorCodeStr = unpack_sql_state(errorCode);
 		if (EreportCodeIsDocumentDBError(errorCode))

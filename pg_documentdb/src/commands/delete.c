@@ -600,6 +600,11 @@ ProcessBatchDeletion(MongoCollection *collection, BatchDeletionSpec *batchSpec,
 			MemoryContextSwitchTo(oldContext);
 			CurrentResourceOwner = oldOwner;
 
+			if (IsOperatorInterventionError(errorData))
+			{
+				ReThrowError(errorData);
+			}
+
 			batchResult->writeErrors = lappend(batchResult->writeErrors,
 											   GetWriteErrorFromErrorData(errorData,
 																		  deleteIndex));

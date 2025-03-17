@@ -36,6 +36,37 @@ CopyErrorDataAndFlush()
 }
 
 
+/* Whether or not the error code is an operator intervention error
+ * class (class 57) that should not resume the query.
+ */
+inline static bool
+IsOperatorInterventionError(ErrorData *errorData)
+{
+	switch (errorData->sqlerrcode)
+	{
+		case ERRCODE_QUERY_CANCELED:
+		case ERRCODE_ADMIN_SHUTDOWN:
+		case ERRCODE_CRASH_SHUTDOWN:
+		{
+			/* Explicit background notification of cancellation */
+			return true;
+		}
+
+		case ERRCODE_T_R_SERIALIZATION_FAILURE:
+		{
+			/*
+			 * if there's a conflict with recovery, there's no point in continuing
+			 * might as well bail and retry the overall query.
+			 */
+			return true;
+		}
+
+		default:
+			return false;
+	}
+}
+
+
 /*
  * Prepend error messages of DocumentDB errors within a PG_CATCH() block.
  * Example usage:
