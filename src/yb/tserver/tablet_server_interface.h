@@ -126,6 +126,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
       const PgTxnSnapshotLocalId& snapshot_id) = 0;
 
+  virtual Result<std::string> GetUniverseUuid() const = 0;
+
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 };
 

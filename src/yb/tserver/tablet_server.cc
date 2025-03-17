@@ -1637,4 +1637,8 @@ Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLoc
   return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
 }
 
+Result<std::string> TabletServer::GetUniverseUuid() const {
+  return fs_manager_->GetUniverseUuidFromTserverInstanceMetadata();
+}
+
 }  // namespace yb::tserver
