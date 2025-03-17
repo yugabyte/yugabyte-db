@@ -175,7 +175,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options))),
-      .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
+      .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
     };
