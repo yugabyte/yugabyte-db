@@ -57,6 +57,9 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     UserIntent userIntent = primaryCluster.userIntent;
     CommunicationPorts universePorts = universe.getUniverseDetails().communicationPorts;
+    if (CommunicationPorts.hasDuplicatePorts(universePorts)) {
+      throw new PlatformServiceException(BAD_REQUEST, "All ports must be different.");
+    }
     boolean changeInYsql =
         (enableYSQL != userIntent.enableYSQL)
             || (enableYSQLAuth != userIntent.enableYSQLAuth)
