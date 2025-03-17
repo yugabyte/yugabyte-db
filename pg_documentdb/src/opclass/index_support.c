@@ -1074,8 +1074,11 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 				}
 			}
 
-			indexPath->indexclauses = OptimizeIndexExpressionsForRange(
-				indexPath->indexclauses);
+			if (indexPath->indexinfo->relam == RumIndexAmId())
+			{
+				indexPath->indexclauses = OptimizeIndexExpressionsForRange(
+					indexPath->indexclauses);
+			}
 		}
 
 		indexPath = OptimizeIndexPathForFilters(indexPath, context);
