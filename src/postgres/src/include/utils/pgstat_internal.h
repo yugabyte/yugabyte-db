@@ -384,11 +384,6 @@ typedef struct PgStatShared_ReplSlot
 	PgStat_StatReplSlotEntry stats;
 } PgStatShared_ReplSlot;
 
-typedef struct PgStatShared_YbTerminatedQuery {
-	PgStatShared_Common header;
-	PgStat_YbTerminatedQueriesBuffer stats;
-} PgStatShared_YbTerminatedQuery;
-
 /*
  * Central shared memory entry for the cumulative stats system.
  *

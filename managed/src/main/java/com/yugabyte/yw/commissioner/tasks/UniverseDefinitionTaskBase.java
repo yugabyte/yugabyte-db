@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
@@ -1141,7 +1142,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
+    createDnsManipulationTask(
+            DnsManager.DnsCommandType.Create, false, primaryCluster, Collections.emptySet())
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the swamper target file.
@@ -2183,13 +2185,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Create preflight node check tasks for on-prem nodes in the universe if the nodes are in
+   * Create preflight node check tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
+  public void createPreflightNodeCheckTasks(Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
         clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
@@ -2200,14 +2201,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
-    applyOnNodesWithStatus(
-        universe,
-        nodesToProvision,
-        false,
-        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
-        filteredNodes -> {
-          createPreflightNodeCheckTasks(clusters, filteredNodes, null, null);
-        });
+    if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      createPreflightNodeCheckTasks(
+          clusters, nodesToProvision, null /*rootCA*/, null /*clientRootCA*/);
+    }
+  }
+
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt) {
+    createCheckCertificateConfigTask(
+        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 
   /**
@@ -2288,13 +2295,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Create check certificate config tasks for on-prem nodes in the universe if the nodes are in
+   * Create check certificate config tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
+  public void createCheckCertificateConfigTask(Collection<Cluster> clusters) {
     log.info("Checking certificate config for on-prem nodes in the universe.");
     Set<Cluster> onPremClusters =
         clusters.stream()
@@ -2319,15 +2325,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
-    applyOnNodesWithStatus(
-        universe,
-        nodesToProvision,
-        false,
-        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
-        filteredNodes -> {
-          createCheckCertificateConfigTask(
-              clusters, filteredNodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
-        });
+    if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      createCheckCertificateConfigTask(
+          clusters, nodesToProvision, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
+    }
   }
 
   /**
@@ -2455,9 +2456,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
-    boolean useAnsibleProvisioning =
-        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Must use ansible provisioning for non-systemd universes
+    boolean useAnsibleProvisioning =
+        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning) || !userIntent.useSystemd;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2933,14 +2935,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void createYbcSoftwareInstallTasks(
       List<NodeDetails> nodes, String softwareVersion, SubTaskGroupType subTaskGroupType) {
-    createYbcSoftwareInstallTasks(nodes, softwareVersion, subTaskGroupType, null);
-  }
-
-  public void createYbcSoftwareInstallTasks(
-      List<NodeDetails> nodes,
-      String softwareVersion,
-      SubTaskGroupType subTaskGroupType,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
 
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -2962,8 +2956,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               ServerType.CONTROLLER,
               UpgradeTaskSubType.YbcInstall,
               softwareVersion,
-              stableYbcVersion,
-              ysqlMajorVersionUpgradeState));
+              stableYbcVersion));
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -3842,32 +3835,45 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
-  protected void createCommonFinalizeUpgradeTasks(
+  protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
     Universe universe = getUniverse();
-    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
-    if (finalizeCatalogUpgrade) {
-      createFinalizeYsqlMajorCatalogUpgradeTask();
+    createUpdateUniverseSoftwareUpgradeStateTask(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
+        false /* isSoftwareRollbackAllowed */,
+        true /* retainPrevYBSoftwareConfig */);
+
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
+      if (finalizeCatalogUpgrade) {
+        createFinalizeYsqlMajorCatalogUpgradeTask();
+      }
+      // Promote all auto flags upto class External.
+      createPromoteAutoFlagTask(
+          universe.getUniverseUUID(),
+          true /* ignoreErrors */,
+          AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
+
+      if (upgradeSystemCatalog) {
+        // Run YSQL upgrade on the universe.
+        String version =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        createRunYsqlUpgradeTask(version);
+      }
+
+      if (requireAdditionalSuperUserForCatalogUpgrade) {
+        // Delete the superuser created for catalog upgrade.
+        createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
+      }
+    } else {
+      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
-    // Promote all auto flags upto class External.
-    createPromoteAutoFlagTask(
-        universe.getUniverseUUID(),
-        true /* ignoreErrors */,
-        AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
-
-    if (upgradeSystemCatalog) {
-      // Run YSQL upgrade on the universe.
-      createRunYsqlUpgradeTask(version);
-    }
-
-    if (requireAdditionalSuperUserForCatalogUpgrade) {
-      // Delete the superuser created for catalog upgrade.
-      createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
-    }
+    createUpdateUniverseSoftwareUpgradeStateTask(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+        false /* isSoftwareRollbackAllowed */);
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
@@ -3894,5 +3900,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     task.initialize(taskParams());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  // Persist in universe if we want to use clockbound as time source
+  protected void createPersistUseClockboundTask() {
+    SubTaskGroup persistClockboundSubtaskGroup =
+        createSubTaskGroup("PersistUseClockbound", SubTaskGroupType.PersistUseClockbound);
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    PersistUseClockbound subtask = createTask(PersistUseClockbound.class);
+    subtask.initialize(params);
+    persistClockboundSubtaskGroup.addSubTask(subtask);
+    getRunnableTask().addSubTaskGroup(persistClockboundSubtaskGroup);
   }
 }

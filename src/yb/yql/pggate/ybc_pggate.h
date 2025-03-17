@@ -97,6 +97,10 @@ YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 // have one row per database.
 YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
 
+YbcStatus YBCGetTserverCatalogMessageLists(
+    YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
+    YbcCatalogMessageLists* message_lists);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -434,7 +438,8 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
-YbcStatus YBCPgCreateIndexSetHnswOptions(YbcPgStatement handle, int ef_construction, int m);
+YbcStatus YBCPgCreateIndexSetHnswOptions(
+    YbcPgStatement handle, int m, int m0, int ef_construction);
 
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
@@ -681,6 +686,7 @@ YbcStatus YBCPgRetrieveYbctids(YbcPgStatement handle, const YbcPgExecParameters 
                                bool *exceeded_work_mem);
 YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParameters *exec_params,
                                      YbcConstSliceVector ybctids);
+YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(
@@ -704,6 +710,8 @@ YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
 YbcStatus YBCPgCommitPlainTransaction();
+YbcStatus YBCPgCommitPlainTransactionContainingDDL(
+    YbcPgOid ddl_db_oid, bool ddl_is_silent_altering);
 YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
@@ -712,6 +720,7 @@ YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
 YbcStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+YbcStatus YBCPgSetDdlStateInPlainTransaction();
 YbcStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YbcStatus YBCPgExitSeparateDdlTxnMode(YbcPgOid db_oid, bool is_silent_altering);
@@ -788,8 +797,10 @@ void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uin
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
 YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor* descr, bool* res);
-YbcStatus YBCAddForeignKeyReferenceIntent(const YbcPgYBTupleIdDescriptor* descr,
-                                          bool relation_is_region_local);
+YbcStatus YBCAddForeignKeyReferenceIntent(
+    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
+    bool is_deferred_trigger);
+void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
@@ -924,7 +935,9 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid);
+
+YbcStatus YBCPgGetLagMetrics(const char *stream_id, int64_t *lag_metric);
 
 YbcStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,

@@ -24,7 +24,7 @@ public class BackupScheduleEditParams {
   @ApiModelProperty(value = "TimeUnit for incremental Backup Schedule frequency")
   public TimeUnit incrementalBackupFrequencyTimeUnit;
 
-  // Used in testing only
+  // Used in testing/operator
   public BackupScheduleEditParams(BackupRequestParams params) {
     this.cronExpression = params.cronExpression;
     this.frequencyTimeUnit = params.frequencyTimeUnit;

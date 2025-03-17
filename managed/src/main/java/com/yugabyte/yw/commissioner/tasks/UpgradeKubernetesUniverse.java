@@ -57,6 +57,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   @Override
   public void run() {
     Throwable th = null;
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     try {
       checkUniverseVersion();
 

@@ -148,7 +148,7 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
   }
 }
 
-tserver::TServerSharedData& MasterTabletServer::SharedObject() {
+ConcurrentPointerReference<tserver::TServerSharedData> MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }
 
@@ -156,6 +156,12 @@ Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB* resp) const {
   return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
+}
+
+Status MasterTabletServer::GetTserverCatalogMessageLists(
+    const tserver::GetTserverCatalogMessageListsRequestPB& req,
+    tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
+  return master_->GetTserverCatalogMessageLists(req, resp);
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
@@ -238,6 +244,11 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
 
 const std::string& MasterTabletServer::permanent_uuid() const {
   return master_->permanent_uuid();
+}
+
+Result<std::string> MasterTabletServer::GetUniverseUuid() const {
+  LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
 }
 
 } // namespace master

@@ -6,7 +6,7 @@ SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 /*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
-                                                              QUERY PLAN
+                                                              QUERY PLAN                                                              
 --------------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=15 loops=1)
    Sort Key: rolname
@@ -25,7 +25,7 @@ SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' O
 
 /*+ BitmapScan(pg_authid) */
 SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
-          rolname
+          rolname          
 ---------------------------
  pg_checkpoint
  pg_database_owner
@@ -46,7 +46,7 @@ SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' O
 
 /*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-                                                                               QUERY PLAN
+                                                                               QUERY PLAN                                                                               
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_tablespace (actual rows=0 loops=1)
    Filter: (NOT (hashed SubPlan 1))
@@ -68,14 +68,14 @@ SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' O
 
 /*+ BitmapScan(pg_authid) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
- spcname
+ spcname 
 ---------
 (0 rows)
 
 SET yb_enable_expression_pushdown = false;
 /*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-                                                                               QUERY PLAN
+                                                                               QUERY PLAN                                                                               
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_tablespace (actual rows=0 loops=1)
    Filter: (NOT (hashed SubPlan 1))
@@ -96,7 +96,7 @@ SET yb_enable_expression_pushdown = false;
 
 /*+ BitmapScan(pg_authid) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
- spcname
+ spcname 
 ---------
 (0 rows)
 

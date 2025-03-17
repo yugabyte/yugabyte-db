@@ -59,6 +59,7 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
+    case DrConfigState.UPDATING:
       stateLabel = (
         <Typography
           variant={variant}
@@ -115,7 +116,7 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
   return (
     <div className={classes.stateLabelContainer}>
       {stateLabel}
-      {tableCountsOfConcern.uniqueTableCount === 0 && (
+      {tableCountsOfConcern.uniqueTableCount > 0 && (
         <Typography variant="body2" className={clsx(pillClasses.pill, pillClasses.danger)}>
           {t('tablesOfConcernExist', { keyPrefix: 'clusterDetail.xCluster.shared' })}
         </Typography>

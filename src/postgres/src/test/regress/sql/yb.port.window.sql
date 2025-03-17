@@ -225,7 +225,7 @@ FROM tenk1 WHERE unique1 < 10  ORDER by 1,2,3;
 
 SELECT first_value(unique1) over (ORDER BY unique1 rows between current row and 2 following exclude ties),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10  ORDER by 1,2,3; 
+FROM tenk1 WHERE unique1 < 10  ORDER by 1,2,3;
 
 SELECT last_value(unique1) over (order by unique1 rows between current row and 2 following exclude current row),
 	unique1, four
@@ -854,11 +854,11 @@ from t1 where f1 = f2;  -- error, must have order by
 explain (costs off)
 select f1, sum(f1) over (partition by f1 order by f2
                          range between 1 preceding and 1 following)
-from t1 where f1 = f2 
+from t1 where f1 = f2
 ORDER by 1,2;
 select f1, sum(f1) over (partition by f1 order by f2
                          range between 1 preceding and 1 following)
-from t1 where f1 = f2 
+from t1 where f1 = f2
 ORDER by 1,2;
 select f1, sum(f1) over (partition by f1, f1 order by f2
                          range between 2 preceding and 1 preceding)

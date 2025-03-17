@@ -391,12 +391,12 @@ public enum TaskType {
       CustomerTask.TaskType.Sync,
       CustomerTask.TargetType.DrConfig),
 
-  SetTablesDrConfig(
+  SetDatabasesDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
-  SetDatabasesDrConfig(
+  SetTablesDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
@@ -675,6 +675,8 @@ public enum TaskType {
   PersistResizeNode(com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode.class),
 
   PersistSystemdUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade.class),
+
+  PersistUseClockbound(com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound.class),
 
   UpdateNodeDetails(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails.class),
 

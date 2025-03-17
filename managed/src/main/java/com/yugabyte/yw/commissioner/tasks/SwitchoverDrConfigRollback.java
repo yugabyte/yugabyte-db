@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
@@ -38,6 +39,7 @@ import org.yb.cdc.CdcConsumer.XClusterRole;
 @Slf4j
 @Retryable
 @Abortable
+@CanRollback(enabled = false)
 public class SwitchoverDrConfigRollback extends SwitchoverDrConfig {
 
   @Inject

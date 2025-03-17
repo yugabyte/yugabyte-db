@@ -93,7 +93,6 @@ class PggateTest : public YBTest {
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
-  tserver::TServerSharedObject tserver_shared_object_;
 
  private:
   void CreateDB();

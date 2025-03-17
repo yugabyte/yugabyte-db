@@ -49,12 +49,16 @@
 
 using namespace std::chrono_literals;
 
+DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint64(ysql_lease_refresher_interval_ms);
+DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -73,7 +77,9 @@ MATCHER_P(EqualsStatus, expected_status, "") {
 }
 }  // namespace
 
-constexpr uint64_t kDefaultMasterYSQLLeaseTTLMilli = 3 * 1000;
+constexpr uint64_t kDefaultMasterYSQLLeaseTTLMilli = 5 * 1000;
+constexpr uint64_t kDefaultYSQLLeaseRefreshIntervalMilli = 500;
+const std::string kTServerYsqlLeaseRefreshFlagName = "TEST_tserver_enable_ysql_lease_refresh";
 
 class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
  public:
@@ -84,13 +90,17 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
         kDefaultMasterYSQLLeaseTTLMilli;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_lease_refresher_interval_ms) =
+        kDefaultYSQLLeaseRefreshIntervalMilli;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     MiniClusterTestWithClient::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
     opts.num_masters = num_masters();
     cluster_ = std::make_unique<MiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
-    ASSERT_OK(cluster_->WaitForTabletServerCount(opts.num_tablet_servers));
 
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
@@ -150,8 +160,17 @@ class ExternalObjectLockTest : public YBMiniClusterTestBase<ExternalMiniCluster>
  public:
   void SetUp() override;
   virtual ExternalMiniClusterOptions MakeExternalMiniClusterOptions();
+  virtual int ReplicationFactor() { return 3; }
+  virtual size_t NumberOfTabletServers() { return 3; }
   Result<pgwrapper::PGConn> ConnectToTabletServer(ExternalTabletServer* ts, size_t timeout_seconds);
   ExternalTabletServer* tablet_server(size_t index);
+  Status WaitForTServerLeaseToExpire(const std::string& ts_uuid, MonoDelta timeout);
+};
+
+class ExternalObjectLockTestOneTS : public ExternalObjectLockTest {
+ public:
+  int ReplicationFactor() override { return 1; }
+  size_t NumberOfTabletServers() override { return 1; }
 };
 
 auto kTxn1 = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
@@ -162,7 +181,7 @@ constexpr uint64_t kObjectId = 1;
 constexpr uint64_t kObjectId2 = 2;
 constexpr uint64_t kObjectId3 = 3;
 constexpr uint64_t kLeaseEpoch = 1;
-const MonoDelta kTimeout = MonoDelta::FromSeconds(5);
+const MonoDelta kTimeout = MonoDelta::FromSeconds(8);
 
 template <typename Request>
 Request AcquireRequestFor(
@@ -292,6 +311,21 @@ Status AcquireLockGlobally(
   return ResolveFutureStatus(future);
 }
 
+std::future<Status> AcquireLockGloballyAsync(
+    client::YBClient* client, const std::string& session_host_uuid,
+    const docdb::ObjectLockOwner& owner, uint64_t database_id, uint64_t object_id,
+    uint64_t lease_epoch = kLeaseEpoch, std::optional<HybridTime> opt_deadline = std::nullopt,
+    MonoDelta rpc_timeout = kTimeout) {
+  auto promise = std::make_shared<std::promise<Status>>();
+  auto future = promise->get_future();
+  auto req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
+      session_host_uuid, owner, database_id, object_id, TableLockType::ACCESS_EXCLUSIVE,
+      lease_epoch, client->Clock(), opt_deadline);
+  auto callback = [promise](const Status& s) { promise->set_value(s); };
+  client->AcquireObjectLocksGlobalAsync(req, std::move(callback), rpc_timeout);
+  return future;
+}
+
 template <typename Request>
 Request ReleaseRequestFor(
     const std::string& session_host_uuid, const docdb::ObjectLockOwner& owner,
@@ -338,6 +372,18 @@ Status ReleaseLockGloballyAt(
   auto req = ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
       session_host_uuid, owner, lease_epoch, clock, apply_after);
   return proxy->ReleaseObjectLocksGlobal(req, &resp, &controller);
+}
+
+Status ReleaseLockGlobally(
+    client::YBClient* client, const std::string& session_host_uuid,
+    const docdb::ObjectLockOwner& owner, uint64_t lease_epoch = kLeaseEpoch,
+    std::optional<HybridTime> apply_after = std::nullopt,
+    MonoDelta rpc_timeout = kTimeout) {
+  auto req = ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
+      session_host_uuid, owner, lease_epoch, client->Clock(), apply_after);
+  Synchronizer sync;
+  client->ReleaseObjectLocksGlobalAsync(req, sync.AsStdStatusCallback(), rpc_timeout);
+  return sync.Wait();
 }
 
 TEST_F(ObjectLockTest, AcquireObjectLocks) {
@@ -805,25 +851,6 @@ TEST_F(ObjectLockTest, TServerHeldExclusiveLocksReleasedAfterRestart) {
       kTimeout));
 }
 
-TEST_F(ObjectLockTest, TServerHeldExclusiveLocksReleasedAfterExpiry) {
-  auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(20);
-  ASSERT_GT(kLeaseTimeoutDeadline.ToMilliseconds(), FLAGS_master_ysql_operation_lease_ttl_ms);
-  auto ts_idx = 0;
-  auto ts_uuid = TSUuid(0);
-  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
-  ASSERT_OK(AcquireLockGlobally(
-      &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr, std::nullopt,
-      kTimeout));
-  cluster_->mini_tablet_server(ts_idx)->FailHeartbeats(true);
-  ASSERT_OK(WaitForTServerLeaseToExpire(ts_uuid, kLeaseTimeoutDeadline));
-  cluster_->mini_tablet_server(ts_idx)->FailHeartbeats(false);
-  // The task to release the locks should be kicked off when the master marks the tserver's lease as
-  // expired.
-  ASSERT_OK(AcquireLockGlobally(
-      &master_proxy, TSUuid(1), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr, std::nullopt,
-      kTimeout));
-}
-
 TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {
   auto ts_idx = 0;
   auto ts_uuid = TSUuid(ts_idx);
@@ -859,26 +886,47 @@ TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {
   EXPECT_THAT(status, EqualsStatus(BuildLeaseEpochMismatchErrorStatus(kLeaseEpoch, lease_epoch)));
 }
 
-TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterLeaseExpiry) {
+TEST_F(ExternalObjectLockTest, TServerHeldExclusiveLocksReleasedAfterExpiry) {
   auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(20);
   ASSERT_GT(kLeaseTimeoutDeadline.ToMilliseconds(), FLAGS_master_ysql_operation_lease_ttl_ms);
-  auto ts_idx = 0;
-  auto ts_uuid = TSUuid(ts_idx);
-  uint64_t lease_epoch = kLeaseEpoch;
-  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  auto ts = tablet_server(0);
   ASSERT_OK(AcquireLockGlobally(
-      &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId, lease_epoch, nullptr, std::nullopt,
+      &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr, std::nullopt,
       kTimeout));
-  cluster_->mini_tablet_server(ts_idx)->FailHeartbeats(true);
-  ASSERT_OK(WaitForTServerLeaseToExpire(ts_uuid, kLeaseTimeoutDeadline));
-  cluster_->mini_tablet_server(ts_idx)->FailHeartbeats(false);
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), kLeaseTimeoutDeadline));
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+  // The task to release the locks should be kicked off when the master marks the tserver's lease as
+  // expired.
+  auto other_ts = tablet_server(1);
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, other_ts->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr,
+      std::nullopt, kTimeout));
+}
+
+TEST_F(ExternalObjectLockTest, TServerCanAcquireLocksAfterLeaseExpiry) {
+  auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(20);
+  ASSERT_GT(
+      kLeaseTimeoutDeadline.ToMilliseconds(),
+      std::stoll(ASSERT_RESULT(cluster_->GetFlag(
+          ASSERT_NOTNULL(cluster_->GetLeaderMaster()), "master_ysql_operation_lease_ttl_ms"))));
+  uint64_t lease_epoch = kLeaseEpoch;
+  auto ts = tablet_server(0);
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId, lease_epoch, nullptr, std::nullopt,
+      kTimeout));
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), kLeaseTimeoutDeadline));
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
   // The lease epoch should be incremented when the tserver acquires a new lease.
   ++lease_epoch;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         // Acquire a lock on a different object with the new lease.
         auto status = AcquireLockGlobally(
-            &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId2, lease_epoch, nullptr,
+            &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId2, lease_epoch, nullptr,
             std::nullopt, kTimeout);
         if (status.ok()) {
           return true;
@@ -893,7 +941,7 @@ TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterLeaseExpiry) {
       kTimeout, "Try to acquire exclusive lock after tserver restart"));
   // Using the previous lease epoch should fail.
   auto status = AcquireLockGlobally(
-      &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId3, kLeaseEpoch, nullptr, std::nullopt,
+      &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId3, kLeaseEpoch, nullptr, std::nullopt,
       kTimeout);
   EXPECT_THAT(status, EqualsStatus(BuildLeaseEpochMismatchErrorStatus(kLeaseEpoch, lease_epoch)));
 }
@@ -972,33 +1020,19 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
   }
 }
 
-TEST_F(ExternalObjectLockTest, TabletServerKillsSessionsWhenItAcquiresNewLease) {
+TEST_F(ExternalObjectLockTestOneTS, TabletServerKillsSessionsWhenItAcquiresNewLease) {
   constexpr size_t kTSIdx = 0;
   MonoDelta timeout = MonoDelta::FromSeconds(10);
-  // We want to test the tserver kills hosted sessions when the master gives it a new lease so
-  // disable the lease expiration check task on the tserver.
   auto ts_uuid = tablet_server(kTSIdx)->uuid();
   constexpr std::string_view kTableName = "test_table";
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTSIdx));
   ASSERT_OK(conn.Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
-  ASSERT_OK(cluster_->SetFlag(tablet_server(kTSIdx), "TEST_tserver_disable_heartbeat", "true"));
-
+  ASSERT_OK(cluster_->SetFlag(tablet_server(kTSIdx), kTServerYsqlLeaseRefreshFlagName, "false"));
   auto cluster_client =
       master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
-  // Wait for the lease to be lost.
-  ASSERT_OK(WaitFor(
-      [&cluster_client, &ts_uuid]() -> Result<bool> {
-        auto ts_opt = VERIFY_RESULT(cluster_client.GetTabletServer(ts_uuid));
-        if (!ts_opt) {
-          return STATUS_FORMAT(IllegalState, "Couldn't find expected $0", ts_uuid);
-        }
-        if (!ts_opt->has_lease_info()) {
-          return STATUS_FORMAT(IllegalState, "Lease info not set for ts $0", ts_uuid);
-        }
-        return !ts_opt->lease_info().is_live();
-      },
-      timeout, "Wait for master to revoke tserver's lease"));
-  ASSERT_OK(cluster_->SetFlag(tablet_server(kTSIdx), "TEST_tserver_disable_heartbeat", "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts_uuid, kTimeout));
+  ASSERT_OK(
+      cluster_->SetFlag(tablet_server(kTSIdx), kTServerYsqlLeaseRefreshFlagName, "true"));
   ASSERT_OK(WaitFor(
       [&conn, kTableName]() -> Result<bool> {
         auto result = conn.FetchRow<int64_t>(Format("SELECT count(*) from $0", kTableName));
@@ -1012,6 +1046,69 @@ TEST_F(ExternalObjectLockTest, TabletServerKillsSessionsWhenItAcquiresNewLease) 
       },
       timeout, "Wait for pg session to be killed"));
 }
+
+class MultiMasterObjectLockTestWithFailover : public MultiMasterObjectLockTest,
+                                              public ::testing::WithParamInterface<bool> {
+ public:
+  Status FailoverLeaderMaster() {
+    auto graceful_stepdown = GetParam();
+    auto old_master_id = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->ToString();
+    LOG(INFO) << "Doing master_failover. Old master was " << old_master_id;
+    if (graceful_stepdown) {
+      RETURN_NOT_OK(cluster_->StepDownMasterLeader());
+    } else {
+      auto old_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+      old_master->Shutdown();
+    }
+    RETURN_NOT_OK(LoggedWaitFor(
+        [old_master_id, this]() -> Result<bool> {
+          auto new_master_id = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->ToString();
+          LOG(INFO) << "Current master UUID: " << new_master_id;
+          return old_master_id != new_master_id;
+        },
+        kTimeout, "wait for new master leader"));
+    return Status::OK();
+  }
+};
+
+TEST_P(MultiMasterObjectLockTestWithFailover, AcquireReleaseDdlLocksThroughYBClient) {
+  ASSERT_OK(EnsureClientCreated());
+  const auto& kSessionHostUuid = TSUuid(0);
+  // Acquire lock on TServer-0
+  auto* tserver0 = cluster_->mini_tablet_server(0);
+  auto tserver0_proxy = TServerProxy(0);
+  LOG(INFO) << "Taking DML lock on TServer-0, uuid: " << kSessionHostUuid;
+  ASSERT_OK(AcquireLockAt(&tserver0_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kObjectId));
+  auto tserver0_local_lock_manager = tserver0->server()->ts_local_lock_manager();
+  ASSERT_GT(tserver0_local_lock_manager->TEST_GrantedLocksSize(), 0);
+  ASSERT_EQ(tserver0_local_lock_manager->TEST_WaitingLocksSize(), 0);
+
+  auto ddl_future = AcquireLockGloballyAsync(
+      client_.get(), kSessionHostUuid, kTxn2, kDatabaseID, kObjectId, kLeaseEpoch, std::nullopt,
+      kTimeout * 5 * kTimeMultiplier);
+
+  ASSERT_OK(WaitFor(
+      [tserver0_local_lock_manager]() -> bool {
+        return tserver0_local_lock_manager->TEST_WaitingLocksSize() > 0;
+      },
+      kTimeout * kTimeMultiplier, "wait for request to block on tserver0"));
+  auto master_local_lock_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_GT(master_local_lock_manager->TEST_GrantedLocksSize(), 0);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+
+  ASSERT_OK(FailoverLeaderMaster());
+
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kTxn1));
+  ASSERT_OK(ResolveFutureStatus(ddl_future));
+  ASSERT_OK(ReleaseLockGlobally(client_.get(), kSessionHostUuid, kTxn2, kLeaseEpoch));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    StepdownAndShutdown, MultiMasterObjectLockTestWithFailover, ::testing::Bool());
 
 Status ObjectLockTest::WaitForTServerLeaseToExpire(const std::string& uuid, MonoDelta timeout) {
   return WaitFor(
@@ -1186,13 +1283,17 @@ void ExternalObjectLockTest::SetUp() {
 
 ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOptions() {
   ExternalMiniClusterOptions opts;
-  opts.num_tablet_servers = 3;
+  opts.num_tablet_servers = NumberOfTabletServers();
+  opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
   opts.extra_master_flags = {
       "--TEST_enable_object_locking_for_table_locks", "--TEST_enable_ysql_operation_lease",
-      Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli)};
+      Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
+      "--enable_load_balancing=false"};
   opts.extra_tserver_flags = {
-      "--TEST_enable_object_locking_for_table_locks", "--TEST_enable_ysql_operation_lease"};
+      "--TEST_enable_object_locking_for_table_locks", "--TEST_enable_ysql_operation_lease",
+      Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
+      Format("--$0", kTServerYsqlLeaseRefreshFlagName)};
   return opts;
 }
 
@@ -1208,6 +1309,24 @@ Result<pgwrapper::PGConn> ExternalObjectLockTest::ConnectToTabletServer(
 
 ExternalTabletServer* ExternalObjectLockTest::tablet_server(size_t index) {
   return cluster_->tablet_server(index);
+}
+
+Status ExternalObjectLockTest::WaitForTServerLeaseToExpire(
+    const std::string& ts_uuid, MonoDelta timeout) {
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  return WaitFor(
+      [&cluster_client, &ts_uuid]() -> Result<bool> {
+        auto ts_opt = VERIFY_RESULT(cluster_client.GetTabletServer(ts_uuid));
+        if (!ts_opt) {
+          return STATUS_FORMAT(IllegalState, "Couldn't find expected $0", ts_uuid);
+        }
+        if (!ts_opt->has_lease_info()) {
+          return STATUS_FORMAT(IllegalState, "Lease info not set for ts $0", ts_uuid);
+        }
+        return !ts_opt->lease_info().is_live();
+      },
+      timeout, "Wait for master to revoke tserver's lease");
 }
 
 }  // namespace yb

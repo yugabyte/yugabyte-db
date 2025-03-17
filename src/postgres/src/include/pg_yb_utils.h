@@ -783,10 +783,10 @@ extern const char *YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
 													bool *is_omitted);
 
 /* Same as above except it takes slot instead of tuple. */
-extern const char *YbTupleTableSlotToString(TupleTableSlot *slot);
+extern const char *YbSlotToString(TupleTableSlot *slot);
 
-extern const char *YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot,
-														 bool *is_omitted);
+extern const char *YbSlotToStringWithIsOmitted(TupleTableSlot *slot,
+											   bool *is_omitted);
 
 /* Get a string representation of a bitmapset (for debug purposes only!) */
 extern const char *YbBitmapsetToString(Bitmapset *bms);
@@ -798,6 +798,7 @@ bool		YBIsInitDbAlreadyDone();
 
 extern int YBGetDdlNestingLevel();
 extern NodeTag YBGetDdlOriginalNodeTag();
+extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 
@@ -805,7 +806,8 @@ typedef enum YbSysCatalogModificationAspect
 {
 	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
 	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
-	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4,
+	YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE = 8,
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
@@ -820,10 +822,17 @@ typedef enum YbDdlMode
 	YB_DDL_MODE_BREAKING_CHANGE = (YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 								   YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
 								   YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE),
+
+	YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT =
+		(YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
+		 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
+		 YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE),
 } YbDdlMode;
 
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
+
+extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
 {
@@ -1292,6 +1301,8 @@ extern bool yb_ysql_conn_mgr_superuser_existed;
 extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool yb_default_collation_resolved;
+
+extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 
 extern bool YbInvalidationMessagesTableExists();
 

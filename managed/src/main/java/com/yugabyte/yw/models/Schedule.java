@@ -373,11 +373,12 @@ public class Schedule extends Model {
 
   private void updateNewBackupScheduleTimes() {
     ScheduleTask lastTask = ScheduleTask.getLastTask(this.getScheduleUUID());
-    Date nextScheduleTaskTime = null;
+    // nextScheduleTaskTime should be updated first since
+    // ScheduleUtil.nextExpectedIncrementTaskTime uses it.
     if (lastTask == null || Util.isTimeExpired(nextExpectedTaskTime(lastTask.getScheduledTime()))) {
-      nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
+      this.nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
     } else {
-      nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
+      this.nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
     }
     Date nextExpectedIncrementScheduleTaskTime = null;
     long incrementalBackupFrequency =
@@ -385,7 +386,6 @@ public class Schedule extends Model {
     if (incrementalBackupFrequency != 0L) {
       nextExpectedIncrementScheduleTaskTime = ScheduleUtil.nextExpectedIncrementTaskTime(this);
     }
-    this.nextScheduleTaskTime = nextScheduleTaskTime;
     this.nextIncrementScheduleTaskTime = nextExpectedIncrementScheduleTaskTime;
   }
 
@@ -532,7 +532,9 @@ public class Schedule extends Model {
     schedule.taskParams = Json.toJson(params);
     schedule.frequency = frequency;
     schedule.status = status;
-    schedule.cronExpression = cronExpression;
+    if (StringUtils.isNotBlank(cronExpression)) {
+      schedule.cronExpression = cronExpression;
+    }
     schedule.setUseLocalTimezone(useLocalTimezone);
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
@@ -835,7 +837,7 @@ public class Schedule extends Model {
 
   public Date nextExpectedTaskTime(@Nullable Date lastScheduledTime) {
     long nextScheduleTime;
-    if (this.cronExpression == null) {
+    if (StringUtils.isBlank(this.cronExpression)) {
       if (lastScheduledTime != null) {
         nextScheduleTime = lastScheduledTime.getTime() + this.frequency;
       } else {

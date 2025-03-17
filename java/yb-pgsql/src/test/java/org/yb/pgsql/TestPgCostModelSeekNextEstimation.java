@@ -97,6 +97,16 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         NODE_INDEX_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
   }
 
+  private void testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(
+    Statement stmt, String query,
+    String table_name, String index_name,
+    double expected_seeks,
+    double expected_nexts,
+    Integer expected_docdb_result_width) throws Exception {
+  testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt, query, table_name, index_name,
+      NODE_INDEX_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
+}
+
   private void testSeekAndNextEstimationIndexOnlyScanHelper(
       Statement stmt, String query,
       String table_name, String index_name,
@@ -106,6 +116,16 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     testSeekAndNextEstimationIndexScanHelper(stmt, query, table_name, index_name,
         NODE_INDEX_ONLY_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
   }
+
+  private void testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(
+    Statement stmt, String query,
+    String table_name, String index_name,
+    double expected_seeks,
+    double expected_nexts,
+    Integer expected_docdb_result_width) throws Exception {
+  testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt, query, table_name, index_name,
+      NODE_INDEX_ONLY_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
+}
 
   private void testSeekAndNextEstimationIndexScanHelper(
       Statement stmt, String query,
@@ -221,6 +241,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   private void testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(
       Statement stmt, String query,
       String table_name, String index_name,
+      String node_type,
       double expected_seeks,
       double expected_nexts,
       Integer expected_docdb_result_width) throws Exception {
@@ -228,7 +249,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testExplainDebug(stmt, query,
           makeTopLevelBuilder()
               .plan(makePlanBuilder()
-                  .nodeType(NODE_INDEX_SCAN)
+                  .nodeType(node_type)
                   .relationName(table_name)
                   .indexName(index_name)
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
@@ -260,6 +281,30 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
                   .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
+  }
+
+  private void testSeekAndNextEstimationSeqScanHelper_IgnoreActualResults(
+      Statement stmt, String query,
+      String table_name, double expected_seeks,
+      double expected_nexts,
+      long expected_docdb_result_width) throws Exception {
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_SEQ_SCAN)
+                  .relationName(table_name)
+                  .estimatedSeeks(expectedSeeksRange(expected_seeks))
+                  .estimatedNexts(expectedNextsRange(expected_nexts))
+                  .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .build())
               .build());
     }
@@ -777,8 +822,8 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 40 AND k2 <= 40"),
-        T_NO_PKEY_NAME, 4000, 12000, 10,
-        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
+        T_NO_PKEY_NAME, 1600, 4800, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 80 AND k2 <= 80"),
@@ -1004,17 +1049,52 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 5, 6, 7)",
         T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
 
-        testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 6, 8, 10)",
         T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
 
-        testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 7, 10, 13)",
         T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
 
       testSeekAndNextEstimationIndexScanHelper(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 8, 12, 16)",
         T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
+    }
+  }
+
+  @Test
+  public void testSeekNextEstimation25862IntegerOverflow() throws Exception {
+    /*
+     * #25862 : Estimated seeks and nexts value can overflow in a large table
+     *
+     * This test case checks that estimated seeks and nexts values do not overflow
+     * when the table has a large number of rows.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t_25862 (k1 INT, v1 INT, PRIMARY KEY (k1 ASC))");
+      stmt.execute("CREATE INDEX t_25862_idx on t_25862 (v1 ASC)");
+      /* Simluate a large table by setting reltuples in pg_class to 4B rows. */
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
+      stmt.execute("UPDATE pg_class SET reltuples=4000000000 WHERE relname LIKE '%t_25862%'");
+      stmt.execute("UPDATE pg_yb_catalog_version SET current_version=current_version+1 "
+        + "WHERE db_oid=1");
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
+
+      stmt.execute("SET yb_enable_base_scans_cost_model = ON");
+
+      testSeekAndNextEstimationSeqScanHelper_IgnoreActualResults(stmt,
+        "/*+ SeqScan(t_25862) */ SELECT * FROM t_25862 WHERE k1 > 0",
+        "t_25862", 1302084.0, 4001302082.0, 2);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        "/*+ IndexScan(t_25862 t_25862_pkey) */ SELECT * FROM t_25862 WHERE k1 > 0",
+        "t_25862", "t_25862_pkey", 1302084.0, 1333333334.0, 2);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        "/*+ IndexScan(t_25862 t_25862_idx) */ SELECT * FROM t_25862 WHERE v1 > 0",
+        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 2);
+      testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
+        "/*+ IndexOnlyScan(t_25862 t_25862_idx) */ SELECT v1 FROM t_25862 WHERE v1 > 0",
+        "t_25862", "t_25862_idx", 1302084.0, 1333333334.0, 1);
     }
   }
 }

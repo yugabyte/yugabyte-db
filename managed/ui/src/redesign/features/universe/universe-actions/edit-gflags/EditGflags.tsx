@@ -1,5 +1,5 @@
-import { FC, useState, useRef, FocusEvent, useEffect } from 'react';
-import { useMutation } from 'react-query';
+import { FC, useState, useRef, FocusEvent } from 'react';
+import { useDispatch } from 'react-redux';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -33,13 +33,13 @@ import {
 import { GFlagsField } from '../../universe-form/form/fields';
 import { Universe } from '../../universe-form/utils/dto';
 import { PRECHECK_UPGRADE_TYPE } from '../../universe-form/utils/dto';
-import { fetchTaskUntilItCompletes } from '../../../../../actions/xClusterReplication';
+import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
 import { useFormMainStyles } from '../../universe-form/universeMainStyle';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { isPGEnabledFromIntent } from '../../universe-form/utils/helpers';
-import { isEmptyString } from '../../../../../utils/ObjectUtils';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 
 import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
@@ -114,9 +114,11 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   const [isPrimary, setIsPrimary] = useState(true);
   const [openInheritRRModal, setOpenInheritRRModal] = useState(false);
   const [openWarningModal, setWarningModal] = useState(false);
-  const [isPrecheckPolling, setIsPrecheckPolling] = useState<boolean>(false);
+
   const classes = useStyles();
+  const dispatch = useDispatch();
   const globalClasses = useFormMainStyles();
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const asyncCluster = getAsyncCluster(universeDetails);
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const asyncClusterCopy = _.cloneDeep(asyncCluster);
@@ -152,16 +154,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
     else return primaryFlags.some((f) => !f?.tags?.includes('runtime'));
   };
 
-  const handleTaskCompletion = (error: boolean) => {
-    if (error) {
-      toast.error('GFlags upgrade pre-check failed, please check the task logs');
-    } else {
-      toast.success('GFlags upgrade pre-checks completed successfully');
-    }
-    setIsPrecheckPolling(false);
-  };
-
-  const handleFormSubmit = (isPrecheck = false) =>
+  const handleFormSubmit = (runOnlyPrechecks = false) =>
     handleSubmit(async (values) => {
       const newUniverseData = await api.fetchUniverse(universeUUID);
       const newGflagSet = transformToEditFlagsForm(newUniverseData);
@@ -179,7 +172,6 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
           ybSoftwareVersion: currentVersion,
           clusters: []
         };
-
         if (isRollingUpgrade) {
           payload.rollMaxBatchSize = {
             primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize.primaryBatchSize,
@@ -225,17 +217,21 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
           delete asyncClusterCopy.userIntent.tserverGFlags;
           payload.clusters.push(asyncClusterCopy);
         }
-        payload.runOnlyPrechecks = isPrecheck;
+        payload.runOnlyPrechecks = runOnlyPrechecks;
         try {
           const response = await api.upgradeGflags(payload, universeUUID);
-          if (isPrecheck && 'taskUUID' in response) {
+          if ('taskUUID' in response) {
             const taskUUID = response.taskUUID;
-            setIsPrecheckPolling(true);
-            fetchTaskUntilItCompletes(taskUUID, handleTaskCompletion);
+            runOnlyPrechecks &&
+              toast.success(t('universeActions.precheckInitiatedMsg'), {
+                autoClose: TOAST_AUTO_DISMISS_INTERVAL
+              });
+            if (isNewTaskUIEnabled) {
+              dispatch(showTaskInDrawer(taskUUID));
+            }
           }
-          !isPrecheck && onClose();
+          onClose();
         } catch (error) {
-          setIsPrecheckPolling(false);
           toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
         }
       } else {
@@ -336,28 +332,44 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
       size="lg"
       overrideHeight={800}
       overrideWidth={1100}
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('common.applyChanges')}
       title={t('universeForm.gFlags.title')}
       onClose={onClose}
-      onSubmit={handleFormSubmit()}
-      submitTestId="EditGflags-Submit"
-      cancelTestId="EditGflags-Close"
-      buttonProps={{
-        primary: {
-          disabled: !canEditGFlags || isPrecheckPolling
-        }
-      }}
       footerAccessory={
-        <YBButton
-          disabled={isEmptyString(currentVersion) || isPrecheckPolling}
-          variant="secondary"
-          onClick={handleFormSubmit(true)}
-          showSpinner={isPrecheckPolling}
-          data-testid={'EditGFlags-RunPrechecksButton'}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
         >
-          {t('universeActions.runPrechecksButton')}
-        </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="EditGFlagsModal-Cancel"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            onClick={handleFormSubmit(true)}
+            data-testid="EditGFlagsModal-Precheck"
+          >
+            {t('universeActions.runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="primary"
+            disabled={!canEditGFlags}
+            onClick={handleFormSubmit()}
+            data-testid="EditGFlagsModal-UpgradeButton"
+          >
+            {t('common.applyChanges')}
+          </YBButton>
+        </div>
       }
       submitButtonTooltip={!canEditGFlags ? RBAC_ERR_MSG_NO_PERM : ''}
     >

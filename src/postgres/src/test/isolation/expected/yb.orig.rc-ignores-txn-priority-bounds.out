@@ -75,3 +75,4 @@ step s2_select: select * from demo;
 ---+-----
 123|    3
 (1 row)
+

@@ -23,7 +23,7 @@ LINE 1: INSERT INTO TIME_TBL VALUES ('24:01');
                                      ^
 -- ASC/DESC check
 SELECT * FROM TIME_TBL ORDER BY f1 ASC;
-     f1
+     f1      
 -------------
  00:00:00
  01:00:00
@@ -40,7 +40,7 @@ SELECT * FROM TIME_TBL ORDER BY f1 ASC;
 (12 rows)
 
 SELECT * FROM TIME_TBL ORDER BY f1 DESC;
-     f1
+     f1      
 -------------
  24:00:00
  24:00:00
@@ -64,7 +64,7 @@ INSERT INTO time_data_with_pk VALUES ('01:01:01','01:11:21');
 INSERT INTO time_data_with_pk VALUES ('02:02:02','02:12:22');
 INSERT INTO time_data_with_pk VALUES ('03:03:03','03:13:23');
 SELECT * FROM time_data_with_pk ORDER BY id;
-    id    |   val
+    id    |   val    
 ----------+----------
  01:01:01 | 01:11:21
  02:02:02 | 02:12:22
@@ -72,7 +72,7 @@ SELECT * FROM time_data_with_pk ORDER BY id;
 (3 rows)
 
 SELECT VAL FROM time_data_with_pk WHERE id = '02:02:02';
-   val
+   val    
 ----------
  02:12:22
 (1 row)

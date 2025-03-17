@@ -919,6 +919,8 @@ struct IndexOptInfo
 
 	bool		yb_amhasgetbitmap;	/* does AM have yb_amgetbitmap interface? */
 
+	bool		yb_amiscopartitioned; /* is AM for YB a copartitioned index? */
+
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
 };

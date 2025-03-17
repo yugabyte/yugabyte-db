@@ -5,14 +5,15 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -89,6 +90,8 @@ public class BackupsController extends AuthenticatedController {
   private final BackupHelper backupHelper;
   private final YbcManager ybcManager;
   private final StorageUtilFactory storageUtilFactory;
+  private final ScheduleTaskHelper scheduleTaskHelper;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   public BackupsController(
@@ -96,12 +99,16 @@ public class BackupsController extends AuthenticatedController {
       CustomerConfigService customerConfigService,
       BackupHelper backupHelper,
       YbcManager ybcManager,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      ScheduleTaskHelper scheduleTaskHelper,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
     this.backupHelper = backupHelper;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
+    this.scheduleTaskHelper = scheduleTaskHelper;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Inject TaskInfoManager taskManager;
@@ -348,34 +355,15 @@ public class BackupsController extends AuthenticatedController {
   })
   public Result createBackupScheduleAsync(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-
     BackupRequestParams requestParams = parseJsonAndValidate(request, BackupRequestParams.class);
     Universe universe = Universe.getOrBadRequest(requestParams.getUniverseUUID());
     BackupScheduleTaskParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
             request, BackupScheduleTaskParams.class, universe);
-    taskParams.setCustomerUUID(customerUUID);
+    taskParams.setCustomerUUID(customer.getUuid());
     taskParams.setScheduleParams(requestParams);
-
-    TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
-            ? TaskType.CreateBackupScheduleKubernetes
-            : TaskType.CreateBackupSchedule;
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
-    CustomerTask.create(
-        customer,
-        taskParams.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Schedule,
-        CustomerTask.TaskType.Create,
-        universe.getName());
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    UUID taskUUID =
+        scheduleTaskHelper.createCreateScheduledBackupTask(taskParams, customer, universe);
     auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
@@ -586,6 +574,11 @@ public class BackupsController extends AuthenticatedController {
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore backup with major version upgrade is in progress");
+    }
 
     Form<BackupTableParams> formData =
         formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);

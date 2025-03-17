@@ -17,8 +17,10 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/transaction.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/util/status_callback.h"
 
 namespace yb::rpc {
 class RpcContext;
@@ -55,6 +57,7 @@ class ObjectLockInfoManager {
   void UnlockObject(
       const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void ReleaseLocksForTxn(const TransactionId& txn_id);
 
   tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);

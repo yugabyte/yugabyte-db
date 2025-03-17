@@ -1,5 +1,5 @@
 SELECT * FROM yb_cacheinfo();
- cache_id |            name            | reloid | indoid | nkeys | key1 | key2 | key3 | key4 | nbuckets
+ cache_id |            name            | reloid | indoid | nkeys | key1 | key2 | key3 | key4 | nbuckets 
 ----------+----------------------------+--------+--------+-------+------+------+------+------+----------
         0 | AGGFNOID                   |   2600 |   2650 |     1 |    1 |    0 |    0 |    0 |       16
         1 | AMNAME                     |   2601 |   2651 |     1 |    2 |    0 |    0 |    0 |        4
@@ -87,3 +87,4 @@ SELECT * FROM yb_cacheinfo();
        83 | YBTABLEGROUPOID            |   8036 |   8037 |     1 |    1 |    0 |    0 |    0 |        4
        84 | YBCONSTRAINTRELIDTYPIDNAME |   2606 |   2665 |     3 |    8 |    9 |    2 |    0 |       16
 (85 rows)
+

@@ -87,7 +87,7 @@ public class PublicCloudConstants {
     GP3(Common.CloudType.aws, new Pair<>(3000, 16000), new Pair<>(125, 1000)),
     Scratch(Common.CloudType.gcp),
     Persistent(Common.CloudType.gcp),
-    Hyperdisk_Balanced(Common.CloudType.gcp, new Pair<>(2000, 160000), new Pair<>(250, 2400)),
+    Hyperdisk_Balanced(Common.CloudType.gcp, new Pair<>(3000, 160000), new Pair<>(250, 2400)),
     Hyperdisk_Extreme(Common.CloudType.gcp, new Pair<>(2, 350000), null),
     StandardSSD_LRS(Common.CloudType.azu),
     Premium_LRS(Common.CloudType.azu),

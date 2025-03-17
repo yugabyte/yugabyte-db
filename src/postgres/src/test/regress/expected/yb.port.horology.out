@@ -2153,7 +2153,7 @@ RESET TimeZone;
 explain (costs off)
 select count(*) from date_tbl
   where f1 between '1997-01-01' and '1998-01-01';
-                                     QUERY PLAN
+                                     QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on date_tbl
@@ -2171,7 +2171,7 @@ select count(*) from date_tbl
 explain (costs off)
 select count(*) from date_tbl
   where f1 not between '1997-01-01' and '1998-01-01';
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on date_tbl
@@ -2189,7 +2189,7 @@ select count(*) from date_tbl
 explain (costs off)
 select count(*) from date_tbl
   where f1 between symmetric '1997-01-01' and '1998-01-01';
-                                                                      QUERY PLAN
+                                                                      QUERY PLAN                                                                      
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on date_tbl
@@ -2207,7 +2207,7 @@ select count(*) from date_tbl
 explain (costs off)
 select count(*) from date_tbl
   where f1 not between symmetric '1997-01-01' and '1998-01-01';
-                                                                   QUERY PLAN
+                                                                   QUERY PLAN                                                                    
 -------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on date_tbl

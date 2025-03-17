@@ -39,6 +39,7 @@ node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
+configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound }}
 
 [Preprovision]
 
@@ -48,6 +49,8 @@ mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 
 [ConfigureChrony]
 chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
+
+[ConfigureClockbound]
 
 [CreateYugabyteUser]
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}

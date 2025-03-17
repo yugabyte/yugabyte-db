@@ -1,12 +1,12 @@
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
-                                QUERY PLAN
+                                QUERY PLAN                                
 --------------------------------------------------------------------------
  Index Scan using airport_type_region_idx on airports
    Index Cond: ((type = 'closed'::text) AND (iso_region = 'US-CA'::text))
 (2 rows)
 
 SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
- ident |  type  |                  name                  | elevation_ft | continent | iso_country | iso_region |  municipality   | gps_code | iata_code | local_code |              coordinates
+ ident |  type  |                  name                  | elevation_ft | continent | iso_country | iso_region |  municipality   | gps_code | iata_code | local_code |              coordinates               
 -------+--------+----------------------------------------+--------------+-----------+-------------+------------+-----------------+----------+-----------+------------+----------------------------------------
  0CA0  | closed | Drew Medical Center Heliport           |          180 | NA        | US          | US-CA      | Los Angeles     |          |           |            | -118.241997, 33.923302
  0CA1  | closed | Northside Airpark                      |          190 | NA        | US          | US-CA      | Santa Maria     |          |           |            | -120.458000183, 34.9883003235
@@ -41,7 +41,7 @@ SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
 -- This queries the first 10 rows.
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using airport_type_region_idx on airports
@@ -50,7 +50,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'small_airport' AND iso_
 
 SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
- ident |     type      |           name            | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |               coordinates
+ ident |     type      |           name            | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |               coordinates               
 -------+---------------+---------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+-----------------------------------------
  00CA  | small_airport | Goldstone /Gts/ Airport   |         3038 | NA        | US          | US-CA      | Barstow      | 00CA     |           | 00CA       | -116.888000488, 35.350498199499995
  00CL  | small_airport | Williams Ag Airport       |           87 | NA        | US          | US-CA      | Biggs        | 00CL     |           | 00CL       | -121.763427, 39.427188
@@ -68,7 +68,7 @@ SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
 -- This queries the last 10 rows.
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit
    ->  Index Scan Backward using airport_type_region_idx on airports
@@ -77,7 +77,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'small_airport' AND iso_
 
 SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
- ident |     type      |            name            | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |            name            | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates               
 -------+---------------+----------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+----------------------------------------
  9CL9  | small_airport | Spezia Airport             |              | NA        | US          | US-CA      | Walnut Grove | 9CL9     |           | 9CL9       | -121.53399658203125, 38.21659851074219
  9CL7  | small_airport | Old Aerodrome              |          700 | NA        | US          | US-CA      | Marysville   | 9CL7     |           | 9CL7       | -121.35900115966797, 39.32490158081055
@@ -95,7 +95,7 @@ SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
 -- This queries the first 10 rows with names in a specified range.
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Limit
    ->  Sort
@@ -107,7 +107,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND i
 
 SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
   ORDER BY ident LIMIT 10;
- ident |     type      |                       name                       | elevation_ft | continent | iso_country | iso_region |  municipality   | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |                       name                       | elevation_ft | continent | iso_country | iso_region |  municipality   | gps_code | iata_code | local_code |              coordinates               
 -------+---------------+--------------------------------------------------+--------------+-----------+-------------+------------+-----------------+----------+-----------+------------+----------------------------------------
  00CN  | heliport      | Kitchen Creek Helibase Heliport                  |         3350 | NA        | US          | US-CA      | Pine Valley     | 00CN     |           | 00CN       | -116.4597417, 32.7273736
  01CA  | heliport      | Lugo Substation Heliport                         |         3733 | NA        | US          | US-CA      | Hesperia        | 01CA     |           | 01CA       | -117.370058745, 34.368240591699994
@@ -125,7 +125,7 @@ SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
 -- This queries the last 10 rows with names in a specified range.
 EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
-                              QUERY PLAN
+                              QUERY PLAN                               
 -----------------------------------------------------------------------
  Limit
    ->  Sort
@@ -137,7 +137,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND i
 
 SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
   ORDER BY ident DESC LIMIT 10;
- ident |     type      |                   name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+ ident |     type      |                   name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates               
 -------+---------------+------------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+----------------------------------------
  9CN1  | heliport      | Hazel Hawkins Memorial Hospital Heliport |          397 | NA        | US          | US-CA      | Hollister    | 9CN1     |           | 9CN1       | -121.386479, 36.834811
  9CL7  | small_airport | Old Aerodrome                            |          700 | NA        | US          | US-CA      | Marysville   | 9CL7     |           | 9CL7       | -121.35900115966797, 39.32490158081055
@@ -150,3 +150,4 @@ SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
  9CA2  | heliport      | Pioneers Memorial Hospital Heliport      |          -99 | NA        | US          | US-CA      | Brawley      | 9CA2     |           | 9CA2       | -115.555000305, 32.9584007263
  9CA0  | small_airport | Psk Ranch Airport                        |         3840 | NA        | US          | US-CA      | Tehachapi    | 9CA0     |           | 9CA0       | -118.5979995727539, 35.11389923095703
 (10 rows)
+

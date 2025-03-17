@@ -33,6 +33,14 @@
 extern bool yb_disable_transactional_writes;
 
 /**
+ * YSQL guc variables that can be used to enable/disable fast-path transaction
+ * on colocated tables for copy.
+ * e.g. 'SET yb_fast_path_for_colocated_copy=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_fast_path_for_colocated_copy;
+
+/**
  * YSQL guc variables that can be used to enable upsert mode for writes.
  * e.g. 'SET yb_enable_upsert_mode=true'
  * See also the corresponding entries in guc.c.

@@ -27,8 +27,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(load_balancer_count_move_as_add);
-
 DECLARE_bool(load_balancer_ignore_cloud_info_similarity);
 
 namespace yb {
@@ -275,7 +273,7 @@ class LoadBalancerMockedBase : public YBTest {
       SCHECK_EQ(expected_to_ts, to_ts, IllegalState, "To ts mismatch");
     }
 
-    if (!from_ts.empty() && GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add)) {
+    if (!from_ts.empty()) {
       SCHECK_EQ(1, cb_.get_total_over_replication() - over_replication_at_start, IllegalState,
                 "Overreplication count mismatch");
       RETURN_NOT_OK(cb_.RemoveReplica(tablet_id, from_ts));

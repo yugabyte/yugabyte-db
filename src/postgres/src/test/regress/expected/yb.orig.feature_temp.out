@@ -8,13 +8,13 @@ CREATE INDEX i_temptest ON temptest(col);
 CREATE TEMP TABLE temptest(tcol int);
 CREATE INDEX i_temptest ON temptest(tcol);
 SELECT * FROM temptest;
- tcol
+ tcol 
 ------
 (0 rows)
 
 DROP TABLE temptest;
 SELECT * FROM temptest;
- col
+ col 
 -----
 (0 rows)
 
@@ -37,7 +37,7 @@ INSERT INTO temptest VALUES (1);
 CREATE TEMP TABLE temptest(tcol float);
 INSERT INTO temptest VALUES (2.1);
 SELECT * FROM temptest;
- tcol
+ tcol 
 ------
   2.1
 (1 row)
@@ -45,13 +45,13 @@ SELECT * FROM temptest;
 -- test temp table truncate
 TRUNCATE temptest;
 SELECT * FROM temptest;
- tcol
+ tcol 
 ------
 (0 rows)
 
 DROP TABLE temptest;
 SELECT * FROM temptest;
- col
+ col 
 -----
    1
 (1 row)
@@ -62,7 +62,7 @@ CREATE TABLE test (a int);
 INSERT INTO test VALUES (1);
 CREATE TEMP TABLE temp AS SELECT * FROM test;
 SELECT * FROM test;
- a
+ a 
 ---
  1
 (1 row)
@@ -73,7 +73,7 @@ BEGIN;
 INSERT INTO temptest VALUES (1);
 INSERT INTO temptest VALUES (2);
 SELECT * FROM temptest;
- col
+ col 
 -----
    1
    2
@@ -81,7 +81,7 @@ SELECT * FROM temptest;
 
 COMMIT;
 SELECT * FROM temptest;
- col
+ col 
 -----
 (0 rows)
 
@@ -89,14 +89,14 @@ DROP TABLE temptest;
 BEGIN;
 CREATE TEMP TABLE temptest(col) ON COMMIT DELETE ROWS AS SELECT 1;
 SELECT * FROM temptest;
- col
+ col 
 -----
    1
 (1 row)
 
 COMMIT;
 SELECT * FROM temptest;
- col
+ col 
 -----
 (0 rows)
 
@@ -127,7 +127,7 @@ INSERT INTO test VALUES (2);
 INSERT INTO test VALUES (1);
 UPDATE test SET a=3 WHERE a=1;
 SELECT * FROM test;
- a
+ a 
 ---
  2
  3
@@ -137,7 +137,7 @@ SELECT * FROM test;
 -- test temp table row deletion
 DELETE FROM test;
 SELECT * FROM test;
- a
+ a 
 ---
 (0 rows)
 
@@ -149,7 +149,7 @@ INSERT INTO test (d) VALUES (1); -- should fail
 ERROR:  duplicate key value violates unique constraint "uniq"
 DETAIL:  Key (d)=(1) already exists.
 SELECT * FROM test;
- a | d
+ a | d 
 ---+---
    | 1
 (1 row)
@@ -158,13 +158,13 @@ ALTER TABLE test DROP COLUMN d;
 DELETE FROM test;
 ALTER TABLE test ADD COLUMN b int;
 SELECT * FROM test;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 ALTER TABLE test RENAME COLUMN b to c;
 SELECT * FROM test;
- a | c
+ a | c 
 ---+---
 (0 rows)
 
@@ -175,17 +175,17 @@ DETAIL:  Failing row contains (null, -1).
 INSERT INTO test (c) VALUES (1);
 ALTER TABLE test DROP COLUMN c;
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
 (1 row)
 
 -- test COPY on a temp table
 COPY test (a) FROM stdin;
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
  1
 (2 rows)
 
@@ -202,9 +202,9 @@ INSERT INTO test VALUES (2);
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 END;
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
  1
 (2 rows)
 
@@ -216,9 +216,9 @@ LINE 1: INSERT INTO x VALUES (1);
                     ^
 END;
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
  1
 (2 rows)
 
@@ -226,9 +226,9 @@ BEGIN;
 INSERT INTO test VALUES (2);
 ROLLBACK;
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
  1
 (2 rows)
 
@@ -236,9 +236,9 @@ BEGIN;
 INSERT INTO test VALUES (2);
 COMMIT;
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
  1
  2
 (3 rows)
@@ -249,15 +249,15 @@ INSERT INTO test VALUES (2);
 INSERT INTO x VALUES (1);
 COMMIT;
 SELECT * FROM x;
- y
+ y 
 ---
  1
 (1 row)
 
 SELECT * FROM test;
- a
+ a 
 ---
-
+  
  1
  2
  2
@@ -273,12 +273,12 @@ ERROR:  new row for relation "x" violates check constraint "x_y_check"
 DETAIL:  Failing row contains (-1).
 COMMIT;
 SELECT * FROM x;
- y
+ y 
 ---
 (0 rows)
 
 SELECT * FROM test;
- a
+ a 
 ---
 (0 rows)
 
@@ -293,9 +293,9 @@ LINE 1: SELECT * FROM temptest;
                       ^
 -- Sleep a second as a workaround due to bug github #1469.
 SELECT pg_sleep(10);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 -- test temp table deletion
@@ -313,9 +313,9 @@ LINE 1: SELECT * FROM temptest;
                       ^
 -- Sleep a second as a workaround due to bug github #1469.
 SELECT pg_sleep(10);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 -- test temp table with indexes
@@ -352,7 +352,7 @@ INSERT INTO temptest VALUES (2, 2, 3);
 ERROR:  duplicate key value violates unique constraint "temptest_v1_idx"
 DETAIL:  Key (v1)=(2) already exists.
 SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
- k | v1 | v2
+ k | v1 | v2 
 ---+----+----
  1 |  2 |  3
  4 |  5 |  6
@@ -360,7 +360,7 @@ SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
 
 UPDATE temptest SET v1 = 0 WHERE k = 1;
 SELECT * FROM temptest ORDER BY k;
- k | v1 | v2
+ k | v1 | v2 
 ---+----+----
  1 |  0 |  3
  4 |  5 |  6
@@ -368,7 +368,7 @@ SELECT * FROM temptest ORDER BY k;
 
 DELETE FROM temptest WHERE k = 4;
 SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
- k | v1 | v2
+ k | v1 | v2 
 ---+----+----
  1 |  0 |  3
 (1 row)
@@ -385,7 +385,7 @@ DROP TABLE temptest;
 -- test temp table with primary index scan.
 CREATE TEMP TABLE temptest (a INT PRIMARY KEY);
 EXPLAIN (COSTS OFF) SELECT a FROM temptest WHERE a = 1;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Index Only Scan using temptest_pkey on temptest
    Index Cond: (a = 1)
@@ -397,7 +397,7 @@ INSERT INTO test1 VALUES (1, 2, 3);
 CREATE TEMP TABLE test2 as table test1;
 UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
 SELECT * FROM test1;
- x | y | z
+ x | y | z 
 ---+---+---
  1 | 2 | 2
 (1 row)
@@ -408,12 +408,12 @@ INSERT INTO t1(c1) VALUES(0.835), (0.703);
 ERROR:  duplicate key value violates unique constraint "t1_pkey"
 DETAIL:  Key (c0)=(3.61.4.60) already exists.
 SELECT t1.c0 FROM t1 ORDER BY t1.c0;
- c0
+ c0 
 ----
 (0 rows)
 
 SELECT t1.c0 FROM t1 where c0 in ('3.61.4.60');
- c0
+ c0 
 ----
 (0 rows)
 
@@ -422,7 +422,7 @@ CREATE temp TABLE t4(c0 DECIMAL NULL, UNIQUE(c0));
 INSERT INTO t4(c0) VALUES(0.03);
 UPDATE t4 SET c0 = (0.05) WHERE t4.c0 = 0.03;
 SELECT ALL t4.c0 FROM t4 ORDER BY t4.c0 ASC;
-  c0
+  c0  
 ------
  0.05
 (1 row)
@@ -434,7 +434,7 @@ INSERT INTO tempt VALUES (2, 2, 3);
 ERROR:  duplicate key value violates unique constraint "tempt_v1_idx"
 DETAIL:  Key (v1)=(2) already exists.
 SELECT * FROM tempt ORDER BY k;
- k | v1 | v2
+ k | v1 | v2 
 ---+----+----
  1 |  2 |  3
  4 |  5 |  6

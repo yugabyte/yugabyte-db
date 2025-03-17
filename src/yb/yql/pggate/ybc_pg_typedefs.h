@@ -230,6 +230,7 @@ typedef struct {
   // Yugabyte system columns.
   uint8_t *ybctid;
   uint8_t *ybbasectid;
+  uint8_t *ybuniqueidxkeysuffix;
 } YbcPgSysColumns;
 
 // Structure to hold parameters for preparing query plan.
@@ -340,6 +341,7 @@ typedef struct YbcPgExecParameters {
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
+  int yb_index_check;
 #endif
 } YbcPgExecParameters;
 
@@ -421,6 +423,7 @@ typedef struct {
   const bool*     TEST_yb_enable_invalidation_messages;
   const int32_t*  TEST_yb_invalidation_message_expiration_secs;
   const int32_t*  TEST_yb_max_num_invalidation_messages;
+  const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -451,6 +454,7 @@ typedef struct {
   bool is_primary;
   uint16_t pg_port;
   const char *uuid;
+  const char *universe_uuid;
 } YbcServerDescriptor;
 
 typedef struct {
@@ -651,6 +655,7 @@ typedef struct {
   int replica_identities_count;
   uint64_t last_pub_refresh_time;
   const char *yb_lsn_type;
+  uint64_t active_pid;
 } YbcReplicationSlotDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -951,6 +956,22 @@ typedef enum {
   YB_OBJECT_EXCLUSIVE_LOCK,
   YB_OBJECT_ACCESS_EXCLUSIVE_LOCK
 } YbcObjectLockMode;
+
+// Catalog cache invalidation message list associated with one catalog version for
+// a given database.
+typedef struct {
+  // NULL means a PG null value, which is different from a PG empty string ''.
+  char* message_list;
+  // num_bytes will be zero for both PG null value and a PG empty string ''.
+  size_t num_bytes;
+} YbcCatalogMessageList;
+
+// A list of YbcCatalogMessageList associated with a consecutive list of catalog versions
+// for a given database.
+typedef struct {
+  YbcCatalogMessageList* message_lists;
+  int num_lists;
+} YbcCatalogMessageLists;
 
 #ifdef __cplusplus
 }  // extern "C"

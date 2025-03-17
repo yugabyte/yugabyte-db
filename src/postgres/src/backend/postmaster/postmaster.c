@@ -147,6 +147,8 @@
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"
+#include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb_terminated_queries.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -1073,9 +1075,18 @@ PostmasterMain(int argc, char *argv[])
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
 
-	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
-		YbAshRegister();
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		/*
+		 * Set up reserved address segment for shared memory allocators. This needs to done before
+		 * any process that needs it is forked.
+		 */
+		YBCSetupSharedMemoryAddressSegment();
+
+		/* Register ASH collector */
+		if (yb_enable_ash)
+			YbAshRegister();
+	}
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -3794,14 +3805,10 @@ CleanupBackend(int pid,
 	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
 
-		/* TODO: #26081 - Backends killed by SIGKILL and SIGSEGV are not supported yet */
-#ifdef YB_TODO
-		/* Postgres changed the implemenation for stats. Need new code. */
 		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+			yb_report_query_termination("Terminated by SIGKILL", pid);
 		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-#endif
+			yb_report_query_termination("Terminated by SIGSEGV", pid);
 	}
 	else
 		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);

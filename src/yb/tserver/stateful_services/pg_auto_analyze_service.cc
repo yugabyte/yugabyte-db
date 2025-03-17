@@ -66,6 +66,7 @@ DEFINE_test_flag(bool, sort_auto_analyze_target_table_ids, false,
                  "for testing purpose.");
 
 DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 using namespace std::chrono_literals;
 
@@ -154,9 +155,18 @@ uint32 PgAutoAnalyzeService::PeriodicTaskIntervalMs() const {
 // (6) For successful ANALYZEs or for tables that don't exist, subtract the mutations used to
 //     decide an ANALYZE from the mutations in the YCQL table.
 Status PgAutoAnalyzeService::TriggerAnalyze() {
-  VLOG_WITH_FUNC(2);
+  if (FLAGS_ysql_yb_major_version_upgrade_compatibility > 0) {
+    YB_LOG_EVERY_N_SECS(INFO, 1800) << "Skipping auto analyze during YSQL major version upgrade";
+    return Status::OK();
+  }
+
+  VLOG_WITH_FUNC(3);
 
   auto table_id_to_mutations_maps = VERIFY_RESULT(ReadTableMutations());
+  if (table_id_to_mutations_maps.empty()) {
+    return Status::OK();
+  }
+  VLOG(1) << "table_id_to_mutations_maps: " << ToString(table_id_to_mutations_maps);
 
   RETURN_NOT_OK(GetTablePGSchemaAndName(table_id_to_mutations_maps));
 
@@ -179,7 +189,7 @@ Status PgAutoAnalyzeService::TriggerAnalyze() {
 }
 
 Result<PgAutoAnalyzeService::TableMutationsMap> PgAutoAnalyzeService::ReadTableMutations() {
-  VLOG_WITH_FUNC(2);
+  VLOG_WITH_FUNC(3);
   std::unordered_map<TableId, int64_t> table_id_to_mutations_maps;
   // Read from the underlying YCQL table to get all pairs of (table id, mutation count).
   auto session = VERIFY_RESULT(GetYBSession(
@@ -219,7 +229,7 @@ Result<PgAutoAnalyzeService::TableMutationsMap> PgAutoAnalyzeService::ReadTableM
 // Get tables' PG schema name and relation name.
 Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
     const TableMutationsMap& table_id_to_mutations_maps) {
-  VLOG_WITH_FUNC(2) << "table_id_to_mutations_maps: " << AsString(table_id_to_mutations_maps);
+  VLOG_WITH_FUNC(3);
 
   // Check if we have all mutated tables' names in cache.
   // If not, then we need to issue a ListTables RPC to retrieve tables' name.
@@ -229,12 +239,12 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
           [this](auto& tableid_mutation_pair) {
             const auto& [table_id, mutations] = tableid_mutation_pair;
             auto result = this->table_id_to_name_.contains(table_id);
-            VLOG_IF(3, !result)
+            VLOG_IF(1, !result)
                 << "GetTablePGSchemaAndName: Refresh because missing: "
                 << table_id;
             if (result) {
               result = mutations == FindWithDefault(pg_class_id_mutations_, table_id, mutations);
-              VLOG_IF(3, !result)
+              VLOG_IF(1, !result)
                   << "GetTablePGSchemaAndName: Refresh because pg_class modified "
                   << table_id;
             }
@@ -244,7 +254,7 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
     return Status::OK();
   }
 
-  VLOG_IF_WITH_FUNC(3, refresh_name_cache_) << "Refresh because of refresh_name_cache_";
+  VLOG_IF_WITH_FUNC(1, refresh_name_cache_) << "Refresh because of refresh_name_cache_";
 
   refresh_name_cache_ = false;
   // We don't have all mutated tables' name in cache, so we need to rebuild it.
@@ -270,7 +280,7 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
       }
     }
   }
-  VLOG(5) << "Built table name cache: " << ToString(table_id_to_name_)
+  VLOG(1) << "Built table name cache: " << ToString(table_id_to_name_)
           << " and database name cache " << ToString(namespace_id_to_name_);
 
   return Status::OK();
@@ -282,7 +292,7 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
 Status PgAutoAnalyzeService::FetchUnknownReltuples(
     const TableMutationsMap& table_id_to_mutations_maps,
     std::unordered_set<NamespaceId>& deleted_databases) {
-  VLOG_WITH_FUNC(2) << "table_id_to_mutations_maps: " << AsString(table_id_to_mutations_maps);
+  VLOG_WITH_FUNC(3);
   std::unordered_map<NamespaceId, std::vector<std::pair<TableId, PgOid>>>
       namespace_id_to_tables_with_unknown_reltuples;
   // Clean up dead entries from table_tuple_count_.
@@ -300,6 +310,7 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
           std::make_pair(table_id, table_oid));
     }
   }
+  VLOG(1) << "namespace_id_to_tables_with_unknown_reltuples: " << ToString(namespace_id_to_tables_with_unknown_reltuples);
   for (const auto& [namespace_id, tables] : namespace_id_to_tables_with_unknown_reltuples) {
     // If the database is deleted. We need to clean up table entries belonging to
     // this database from the YCQL service table.
@@ -309,8 +320,10 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
     bool is_deleted_or_renamed = false;
     auto conn_result = EstablishDBConnection(namespace_id, deleted_databases,
                                              &is_deleted_or_renamed);
-    if (is_deleted_or_renamed)
+    if (is_deleted_or_renamed) {
+      VLOG(1) << "DB deleted or renamed " << namespace_id << ", skipping";
       continue;
+    }
     if (!conn_result)
       return conn_result.status();
     auto& conn = *conn_result;
@@ -321,7 +334,7 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
       if (PQntuples(res.get()) > 0) {
         float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
         table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
-        VLOG(4) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
+        VLOG(1) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
                 << " reltuples";
       }
     }
@@ -333,16 +346,19 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
 // ANALYZE is triggered for tables crossing their analyze thresholds.
 Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::DetermineTablesForAnalyze(
     const TableMutationsMap& table_id_to_mutations_maps) {
-  VLOG_WITH_FUNC(2) << "table_id_to_mutations_maps: " << AsString(table_id_to_mutations_maps);
+  VLOG_WITH_FUNC(3);
   NamespaceTablesMap namespace_id_to_analyze_target_tables;
   for (const auto& [table_id, mutations] : table_id_to_mutations_maps) {
     auto it = table_tuple_count_.find(table_id);
-    if (it == table_tuple_count_.end())
+    if (it == table_tuple_count_.end()) {
+      VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
       continue;
+    }
     double analyze_threshold = FLAGS_ysql_auto_analyze_threshold +
         FLAGS_ysql_auto_analyze_scale_factor * it->second;
+    VLOG(2) << "table_id: " << table_id << ", analyze_threshold: " << analyze_threshold;
     if (mutations >= analyze_threshold) {
-      VLOG(5) << "Table with id " << table_id << " has " << mutations << " mutations "
+      VLOG(2) << "Table with id " << table_id << " has " << mutations << " mutations "
               << "and reaches its analyze threshold " << analyze_threshold;
       auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
       namespace_id_to_analyze_target_tables[namespace_id].push_back(table_id);
@@ -355,6 +371,8 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
     }
   }
 
+  VLOG(1) << "namespace_id_to_analyze_target_tables: "
+          << AsString(namespace_id_to_analyze_target_tables);
   return namespace_id_to_analyze_target_tables;
 }
 
@@ -363,8 +381,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
     PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
         const NamespaceTablesMap& namespace_id_to_analyze_target_tables,
         std::unordered_set<NamespaceId>& deleted_databases) {
-  VLOG_WITH_FUNC(2) << "namespace_id_to_analyze_target_tables: "
-                    << AsString(namespace_id_to_analyze_target_tables);
+  VLOG_WITH_FUNC(3);
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_analyze_deleted_table_secs > 0)) {
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_analyze_deleted_table_secs));
@@ -385,14 +402,21 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
     // If a connection setup fails due to a deleted or renamed database,
     // then continue doing ANALYZEs on tables in other databases.
     if (is_deleted_or_renamed) {
-      VLOG_WITH_FUNC(3) << "Deleted or renamed " << dbname << "/" << namespace_id << ", skipping";
+      VLOG_WITH_FUNC(1) << "Deleted or renamed " << dbname << "/" << namespace_id << ", skipping";
       continue;
     }
     if (!conn_result) {
-      VLOG_WITH_FUNC(3) << "Conn failed: " << conn_result.status();
+      VLOG_WITH_FUNC(1) << "Conn failed: " << conn_result.status();
       return conn_result.status();
     }
     auto& conn = *conn_result;
+
+    auto disabled = VERIFY_RESULT(conn.FetchRow<std::string>("SHOW yb_disable_auto_analyze"));
+    if (disabled == "on") {
+      YB_LOG_EVERY_N_SECS(INFO, 30) << "Auto analyze is disabled on database " << dbname;
+      continue;
+    }
+
     // Construct ANALYZE statement and RUN ANALYZE.
     // Try to analyze all tables in batches to minimize the number of catalog version increments.
     // More catalog version increments lead to a higher number of PG cache refreshes on all PG
@@ -444,11 +468,11 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
                                   Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE oid = '$0')",
                                          VERIFY_RESULT(GetPgsqlTableOid(table_id)))));
                 if (renamed) {
-                  VLOG(4) << "Table " << table_name << " was renamed";
+                  VLOG(1) << "Table " << table_name << " was renamed";
                   // Need to refresh name cache because the cached table name is outdated.
                   refresh_name_cache_ = true;
                 } else {
-                  VLOG(4) << "Table " << table_name << " was deleted";
+                  VLOG(1) << "Table " << table_name << " was deleted";
                   // Need to remove deleted table entries from the YCQL service table.
                   deleted_tables.push_back(table_id);
                 }
@@ -477,7 +501,6 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     const std::vector<TableId>& tables,
     const TableMutationsMap& table_id_to_mutations_maps) {
   VLOG_WITH_FUNC(2) << "tables: " << AsString(tables);
-  VLOG_WITH_FUNC(2) << "table_id_to_mutations_maps: " << AsString(table_id_to_mutations_maps);
   auto session = VERIFY_RESULT(GetYBSession(
       GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
@@ -520,7 +543,7 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
     const TableMutationsMap& table_id_to_mutations_maps,
     const std::vector<TableId>& deleted_tables,
     const std::unordered_set<NamespaceId>& deleted_databases) {
-  VLOG_WITH_FUNC(2) << "table_id_to_mutations_maps: " << AsString(table_id_to_mutations_maps);
+  VLOG_WITH_FUNC(3);
 
   std::vector<TableId> tables_of_deleted_databases;
   std::vector<TableId> tables_absent_in_name_cache;

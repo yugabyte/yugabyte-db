@@ -7,7 +7,7 @@ CREATE TABLE testjsonb (
 COPY testjsonb FROM :'filename';
 -- Strings.
 SELECT '""'::jsonb;				-- OK.
- jsonb
+ jsonb 
 -------
  ""
 (1 row)
@@ -19,7 +19,7 @@ LINE 1: SELECT $$''$$::jsonb;
 DETAIL:  Token "'" is invalid.
 CONTEXT:  JSON data, line 1: '...
 SELECT '"abc"'::jsonb;			-- OK
- jsonb
+ jsonb 
 -------
  "abc"
 (1 row)
@@ -38,7 +38,7 @@ LINE 1: SELECT '"abc
 DETAIL:  Character with value 0x0a must be escaped.
 CONTEXT:  JSON data, line 1: "abc
 SELECT '"\n\"\\"'::jsonb;		-- OK, legal escapes
-  jsonb
+  jsonb   
 ----------
  "\n\"\\"
 (1 row)
@@ -52,13 +52,13 @@ CONTEXT:  JSON data, line 1: "\v...
 -- see json_encoding test for input with unicode escapes
 -- Numbers.
 SELECT '1'::jsonb;				-- OK
- jsonb
+ jsonb 
 -------
  1
 (1 row)
 
 SELECT '0'::jsonb;				-- OK
- jsonb
+ jsonb 
 -------
  0
 (1 row)
@@ -70,25 +70,25 @@ LINE 1: SELECT '01'::jsonb;
 DETAIL:  Token "01" is invalid.
 CONTEXT:  JSON data, line 1: 01
 SELECT '0.1'::jsonb;				-- OK
- jsonb
+ jsonb 
 -------
  0.1
 (1 row)
 
 SELECT '9223372036854775808'::jsonb;	-- OK, even though it's too large for int8
-        jsonb
+        jsonb        
 ---------------------
  9223372036854775808
 (1 row)
 
 SELECT '1e100'::jsonb;			-- OK
-                                                 jsonb
+                                                 jsonb                                                 
 -------------------------------------------------------------------------------------------------------
  10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 (1 row)
 
 SELECT '1.3e100'::jsonb;			-- OK
-                                                 jsonb
+                                                 jsonb                                                 
 -------------------------------------------------------------------------------------------------------
  13000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 (1 row)
@@ -113,19 +113,19 @@ DETAIL:  Token "1.3ex100" is invalid.
 CONTEXT:  JSON data, line 1: 1.3ex100
 -- Arrays.
 SELECT '[]'::jsonb;				-- OK
- jsonb
+ jsonb 
 -------
  []
 (1 row)
 
 SELECT '[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]'::jsonb;  -- OK
-                                                                                                  jsonb
+                                                                                                  jsonb                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
 (1 row)
 
 SELECT '[1,2]'::jsonb;			-- OK
- jsonb
+ jsonb  
 --------
  [1, 2]
 (1 row)
@@ -150,7 +150,7 @@ DETAIL:  The input string ended unexpectedly.
 CONTEXT:  JSON data, line 1: [1,[2]
 -- Objects.
 SELECT '{}'::jsonb;				-- OK
- jsonb
+ jsonb 
 -------
  {}
 (1 row)
@@ -162,7 +162,7 @@ LINE 1: SELECT '{"abc"}'::jsonb;
 DETAIL:  Expected ":", but found "}".
 CONTEXT:  JSON data, line 1: {"abc"}
 SELECT '{"abc":1}'::jsonb;		-- OK
-   jsonb
+   jsonb    
 ------------
  {"abc": 1}
 (1 row)
@@ -192,7 +192,7 @@ LINE 1: SELECT '{"abc"::1}'::jsonb;
 DETAIL:  Expected JSON value, but found ":".
 CONTEXT:  JSON data, line 1: {"abc"::...
 SELECT '{"abc":1,"def":2,"ghi":[3,4],"hij":{"klm":5,"nop":[6]}}'::jsonb; -- OK
-                               jsonb
+                               jsonb                                
 --------------------------------------------------------------------
  {"abc": 1, "def": 2, "ghi": [3, 4], "hij": {"klm": 5, "nop": [6]}}
 (1 row)
@@ -220,25 +220,25 @@ HINT:  Increase the configuration parameter "max_stack_depth" (currently 100kB),
 RESET max_stack_depth;
 -- Miscellaneous stuff.
 SELECT 'true'::jsonb;			-- OK
- jsonb
+ jsonb 
 -------
  true
 (1 row)
 
 SELECT 'false'::jsonb;			-- OK
- jsonb
+ jsonb 
 -------
  false
 (1 row)
 
 SELECT 'null'::jsonb;			-- OK
- jsonb
+ jsonb 
 -------
  null
 (1 row)
 
 SELECT ' true '::jsonb;			-- OK, even with extra whitespace
- jsonb
+ jsonb 
 -------
  true
 (1 row)
@@ -272,20 +272,20 @@ ERROR:  invalid input syntax for type json
 LINE 1: SELECT ''::jsonb;
                ^
 DETAIL:  The input string ended unexpectedly.
-CONTEXT:  JSON data, line 1:
+CONTEXT:  JSON data, line 1: 
 SELECT '    '::jsonb;			-- ERROR, no value
 ERROR:  invalid input syntax for type json
 LINE 1: SELECT '    '::jsonb;
                ^
 DETAIL:  The input string ended unexpectedly.
-CONTEXT:  JSON data, line 1:
+CONTEXT:  JSON data, line 1:     
 -- Multi-line JSON input to check ERROR reporting
 SELECT '{
 		"one": 1,
 		"two":"two",
 		"three":
 		true}'::jsonb; -- OK
-                  jsonb
+                  jsonb                  
 -----------------------------------------
  {"one": 1, "two": "two", "three": true}
 (1 row)
@@ -312,7 +312,7 @@ CONTEXT:  JSON data, line 4: ...yveryveryveryveryveryveryveryverylongfieldname":
 -- ERROR missing value for last field
 -- make sure jsonb is passed through json generators without being escaped
 SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);
-      array_to_json
+      array_to_json       
 --------------------------
  [{"a": 1},{"b": [2, 3]}]
 (1 row)
@@ -327,7 +327,7 @@ from pg_stats
 where tablename = 'rows' and
       schemaname = pg_my_temp_schema()::regnamespace::text
 order by 1;
- attname |     histogram_bounds
+ attname |     histogram_bounds     
 ---------+--------------------------
  x       | [1, 2, 3]
  y       | ["txt1", "txt2", "txt3"]
@@ -335,7 +335,7 @@ order by 1;
 
 -- to_jsonb, timestamps
 select to_jsonb(timestamp '2014-05-28 12:22:35.614298');
-           to_jsonb
+           to_jsonb           
 ------------------------------
  "2014-05-28T12:22:35.614298"
 (1 row)
@@ -343,57 +343,57 @@ select to_jsonb(timestamp '2014-05-28 12:22:35.614298');
 BEGIN;
 SET LOCAL TIME ZONE 10.5;
 select to_jsonb(timestamptz '2014-05-28 12:22:35.614298-04');
-              to_jsonb
+              to_jsonb              
 ------------------------------------
  "2014-05-29T02:52:35.614298+10:30"
 (1 row)
 
 SET LOCAL TIME ZONE -8;
 select to_jsonb(timestamptz '2014-05-28 12:22:35.614298-04');
-              to_jsonb
+              to_jsonb              
 ------------------------------------
  "2014-05-28T08:22:35.614298-08:00"
 (1 row)
 
 COMMIT;
 select to_jsonb(date '2014-05-28');
-   to_jsonb
+   to_jsonb   
 --------------
  "2014-05-28"
 (1 row)
 
 select to_jsonb(date 'Infinity');
-  to_jsonb
+  to_jsonb  
 ------------
  "infinity"
 (1 row)
 
 select to_jsonb(date '-Infinity');
-  to_jsonb
+  to_jsonb   
 -------------
  "-infinity"
 (1 row)
 
 select to_jsonb(timestamp 'Infinity');
-  to_jsonb
+  to_jsonb  
 ------------
  "infinity"
 (1 row)
 
 select to_jsonb(timestamp '-Infinity');
-  to_jsonb
+  to_jsonb   
 -------------
  "-infinity"
 (1 row)
 
 select to_jsonb(timestamptz 'Infinity');
-  to_jsonb
+  to_jsonb  
 ------------
  "infinity"
 (1 row)
 
 select to_jsonb(timestamptz '-Infinity');
-  to_jsonb
+  to_jsonb   
 -------------
  "-infinity"
 (1 row)
@@ -405,14 +405,14 @@ SELECT jsonb_agg(q)
                ROW(y.*,ARRAY[4,5,6])] AS z
          FROM generate_series(1,2) x,
               generate_series(4,5) y) q;
-                                                                                                                                                                    jsonb_agg
+                                                                                                                                                                    jsonb_agg                                                                                                                                                                     
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  [{"b": "a1", "c": 4, "z": [{"f1": 1, "f2": [1, 2, 3]}, {"f1": 4, "f2": [4, 5, 6]}]}, {"b": "a1", "c": 5, "z": [{"f1": 1, "f2": [1, 2, 3]}, {"f1": 5, "f2": [4, 5, 6]}]}, {"b": "a2", "c": 4, "z": [{"f1": 2, "f2": [1, 2, 3]}, {"f1": 4, "f2": [4, 5, 6]}]}, {"b": "a2", "c": 5, "z": [{"f1": 2, "f2": [1, 2, 3]}, {"f1": 5, "f2": [4, 5, 6]}]}]
 (1 row)
 
 SELECT jsonb_agg(q ORDER BY x, y)
   FROM rows q;
-                               jsonb_agg
+                               jsonb_agg                               
 -----------------------------------------------------------------------
  [{"x": 1, "y": "txt1"}, {"x": 2, "y": "txt2"}, {"x": 3, "y": "txt3"}]
 (1 row)
@@ -420,7 +420,7 @@ SELECT jsonb_agg(q ORDER BY x, y)
 UPDATE rows SET x = NULL WHERE x = 1;
 SELECT jsonb_agg(q ORDER BY x NULLS FIRST, y)
   FROM rows q;
-                                jsonb_agg
+                                jsonb_agg                                 
 --------------------------------------------------------------------------
  [{"x": null, "y": "txt1"}, {"x": 2, "y": "txt2"}, {"x": 3, "y": "txt3"}]
 (1 row)
@@ -435,117 +435,117 @@ INSERT INTO test_jsonb VALUES
 ('array','["zero", "one","two",null,"four","five", [1,2,3],{"f1":9}]'),
 ('object','{"field1":"val1","field2":"val2","field3":null, "field4": 4, "field5": [1,2,3], "field6": {"f1":9}}');
 SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'scalar';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json -> 'field2' FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column? 
 ----------
  "val2"
 (1 row)
 
 SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'scalar';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column? 
 ----------
  val2
 (1 row)
 
 SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'scalar';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column? 
 ----------
  "two"
 (1 row)
 
 SELECT test_json -> 9 FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json ->> 6 FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column?  
 -----------
  [1, 2, 3]
 (1 row)
 
 SELECT test_json ->> 7 FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column?  
 -----------
  {"f1": 9}
 (1 row)
 
 SELECT test_json ->> 'field4' FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column? 
 ----------
  4
 (1 row)
 
 SELECT test_json ->> 'field5' FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column?  
 -----------
  [1, 2, 3]
 (1 row)
 
 SELECT test_json ->> 'field6' FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column?  
 -----------
  {"f1": 9}
 (1 row)
 
 SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'scalar';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'array';
- ?column?
+ ?column? 
 ----------
  two
 (1 row)
 
 SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'object';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'scalar';
@@ -553,7 +553,7 @@ ERROR:  cannot call jsonb_object_keys on a scalar
 SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'array';
 ERROR:  cannot call jsonb_object_keys on an array
 SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'object';
- jsonb_object_keys
+ jsonb_object_keys 
 -------------------
  field1
  field2
@@ -565,447 +565,447 @@ SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'object';
 
 -- nulls
 SELECT (test_json->'field3') IS NULL AS expect_false FROM test_jsonb WHERE json_type = 'object';
- expect_false
+ expect_false 
 --------------
  f
 (1 row)
 
 SELECT (test_json->>'field3') IS NULL AS expect_true FROM test_jsonb WHERE json_type = 'object';
- expect_true
+ expect_true 
 -------------
  t
 (1 row)
 
 SELECT (test_json->3) IS NULL AS expect_false FROM test_jsonb WHERE json_type = 'array';
- expect_false
+ expect_false 
 --------------
  f
 (1 row)
 
 SELECT (test_json->>3) IS NULL AS expect_true FROM test_jsonb WHERE json_type = 'array';
- expect_true
+ expect_true 
 -------------
  t
 (1 row)
 
 -- corner cases
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb -> null::text;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb -> null::int;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb -> 1;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb -> 'z';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb -> '';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb -> 1;
-  ?column?
+  ?column?   
 -------------
  {"b": "cc"}
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb -> 3;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb -> 'z';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": "c", "b": null}'::jsonb -> 'b';
- ?column?
+ ?column? 
 ----------
  null
 (1 row)
 
 select '"foo"'::jsonb -> 1;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '"foo"'::jsonb -> 'z';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> null::text;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> null::int;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> 1;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> 'z';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> '';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb ->> 1;
-  ?column?
+  ?column?   
 -------------
  {"b": "cc"}
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb ->> 3;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb ->> 'z';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": "c", "b": null}'::jsonb ->> 'b';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '"foo"'::jsonb ->> 1;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '"foo"'::jsonb ->> 'z';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 -- equality and inequality
 SELECT '{"x":"y"}'::jsonb = '{"x":"y"}'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"x":"y"}'::jsonb = '{"x":"z"}'::jsonb;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"x":"y"}'::jsonb <> '{"x":"y"}'::jsonb;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"x":"y"}'::jsonb <> '{"x":"z"}'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- containment
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"a":"b"}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  t
 (1 row)
 
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"a":"b", "c":null}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  t
 (1 row)
 
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"a":"b", "g":null}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  f
 (1 row)
 
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"g":null}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  f
 (1 row)
 
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"a":"c"}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  f
 (1 row)
 
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"a":"b"}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  t
 (1 row)
 
 SELECT jsonb_contains('{"a":"b", "b":1, "c":null}', '{"a":"b", "c":"q"}');
- jsonb_contains
+ jsonb_contains 
 ----------------
  f
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"a":"b"}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"a":"b", "c":null}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"a":"b", "g":null}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"g":null}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"a":"c"}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"a":"b"}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":"b", "b":1, "c":null}'::jsonb @> '{"a":"b", "c":"q"}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '[1,2]'::jsonb @> '[1,2,2]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '[1,1,2]'::jsonb @> '[1,2,2]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '[[1,2]]'::jsonb @> '[[1,2,2]]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '[1,2,2]'::jsonb <@ '[1,2]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '[1,2,2]'::jsonb <@ '[1,1,2]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '[[1,2,2]]'::jsonb <@ '[[1,2]]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb_contained('{"a":"b"}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  t
 (1 row)
 
 SELECT jsonb_contained('{"a":"b", "c":null}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  t
 (1 row)
 
 SELECT jsonb_contained('{"a":"b", "g":null}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  f
 (1 row)
 
 SELECT jsonb_contained('{"g":null}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  f
 (1 row)
 
 SELECT jsonb_contained('{"a":"c"}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  f
 (1 row)
 
 SELECT jsonb_contained('{"a":"b"}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  t
 (1 row)
 
 SELECT jsonb_contained('{"a":"b", "c":"q"}', '{"a":"b", "b":1, "c":null}');
- jsonb_contained
+ jsonb_contained 
 -----------------
  f
 (1 row)
 
 SELECT '{"a":"b"}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":"b", "c":null}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":"b", "g":null}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"g":null}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":"c"}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":"b"}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":"b", "c":"q"}'::jsonb <@ '{"a":"b", "b":1, "c":null}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- Raw scalar may contain another raw scalar, array may contain a raw scalar
 SELECT '[5]'::jsonb @> '[5]';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '5'::jsonb @> '5';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '[5]'::jsonb @> '5';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- But a raw scalar cannot contain an array
 SELECT '5'::jsonb @> '[5]';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- In general, one thing should always contain itself. Test array containment:
 SELECT '["9", ["7", "3"], 1]'::jsonb @> '["9", ["7", "3"], 1]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '["9", ["7", "3"], ["1"]]'::jsonb @> '["9", ["7", "3"], ["1"]]'::jsonb;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- array containment string matching confusion bug
 SELECT '{ "name": "Bob", "tags": [ "enim", "qui"]}'::jsonb @> '{"tags":["qu"]}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- array length
 SELECT jsonb_array_length('[1,2,3,{"f1":1,"f2":[5,6]},4]');
- jsonb_array_length
+ jsonb_array_length 
 --------------------
                   5
 (1 row)
 
 SELECT jsonb_array_length('[]');
- jsonb_array_length
+ jsonb_array_length 
 --------------------
                   0
 (1 row)
@@ -1016,7 +1016,7 @@ SELECT jsonb_array_length('4');
 ERROR:  cannot get array length of a scalar
 -- each
 SELECT jsonb_each('{"f1":[1,2,3],"f2":{"f3":1},"f4":null}');
-     jsonb_each
+     jsonb_each     
 --------------------
  (f1,"[1, 2, 3]")
  (f2,"{""f3"": 1}")
@@ -1024,7 +1024,7 @@ SELECT jsonb_each('{"f1":[1,2,3],"f2":{"f3":1},"f4":null}');
 (3 rows)
 
 SELECT jsonb_each('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc","1":"first","n":null}'::jsonb) AS q;
-                          q
+                          q                           
 ------------------------------------------------------
  (1,"""first""")
  (a,"{""1"": ""first"", ""b"": ""c"", ""c"": ""b""}")
@@ -1034,7 +1034,7 @@ SELECT jsonb_each('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc","1":"fi
 (5 rows)
 
 SELECT * FROM jsonb_each('{"f1":[1,2,3],"f2":{"f3":1},"f4":null,"f5":99,"f6":"stringy"}') q;
- key |   value
+ key |   value   
 -----+-----------
  f1  | [1, 2, 3]
  f2  | {"f3": 1}
@@ -1044,7 +1044,7 @@ SELECT * FROM jsonb_each('{"f1":[1,2,3],"f2":{"f3":1},"f4":null,"f5":99,"f6":"st
 (5 rows)
 
 SELECT * FROM jsonb_each('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc","1":"first","n":null}'::jsonb) AS q;
- key |               value
+ key |               value                
 -----+------------------------------------
  1   | "first"
  a   | {"1": "first", "b": "c", "c": "b"}
@@ -1054,7 +1054,7 @@ SELECT * FROM jsonb_each('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc",
 (5 rows)
 
 SELECT jsonb_each_text('{"f1":[1,2,3],"f2":{"f3":1},"f4":null,"f5":"null"}');
-  jsonb_each_text
+  jsonb_each_text   
 --------------------
  (f1,"[1, 2, 3]")
  (f2,"{""f3"": 1}")
@@ -1063,7 +1063,7 @@ SELECT jsonb_each_text('{"f1":[1,2,3],"f2":{"f3":1},"f4":null,"f5":"null"}');
 (4 rows)
 
 SELECT jsonb_each_text('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc","1":"first","n":null}'::jsonb) AS q;
-                          q
+                          q                           
 ------------------------------------------------------
  (1,first)
  (a,"{""1"": ""first"", ""b"": ""c"", ""c"": ""b""}")
@@ -1073,77 +1073,77 @@ SELECT jsonb_each_text('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc","1
 (5 rows)
 
 SELECT * FROM jsonb_each_text('{"f1":[1,2,3],"f2":{"f3":1},"f4":null,"f5":99,"f6":"stringy"}') q;
- key |   value
+ key |   value   
 -----+-----------
  f1  | [1, 2, 3]
  f2  | {"f3": 1}
- f4  |
+ f4  | 
  f5  | 99
  f6  | stringy
 (5 rows)
 
 SELECT * FROM jsonb_each_text('{"a":{"b":"c","c":"b","1":"first"},"b":[1,2],"c":"cc","1":"first","n":null}'::jsonb) AS q;
- key |               value
+ key |               value                
 -----+------------------------------------
  1   | first
  a   | {"1": "first", "b": "c", "c": "b"}
  b   | [1, 2]
  c   | cc
- n   |
+ n   | 
 (5 rows)
 
 -- exists
 SELECT jsonb_exists('{"a":null, "b":"qq"}', 'a');
- jsonb_exists
+ jsonb_exists 
 --------------
  t
 (1 row)
 
 SELECT jsonb_exists('{"a":null, "b":"qq"}', 'b');
- jsonb_exists
+ jsonb_exists 
 --------------
  t
 (1 row)
 
 SELECT jsonb_exists('{"a":null, "b":"qq"}', 'c');
- jsonb_exists
+ jsonb_exists 
 --------------
  f
 (1 row)
 
 SELECT jsonb_exists('{"a":"null", "b":"qq"}', 'a');
- jsonb_exists
+ jsonb_exists 
 --------------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ? 'a';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ? 'b';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ? 'c';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT jsonb '{"a":"null", "b":"qq"}' ? 'a';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- array exists - array elements should behave as keys
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
- count
+ count 
 -------
      3
 (1 row)
@@ -1151,292 +1151,292 @@ SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
 -- type sensitive array exists - should return no rows (since "exists" only
 -- matches strings that are either object keys or array elements)
 SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
- count
+ count 
 -------
      0
 (1 row)
 
 -- However, a raw scalar is *contained* within the array
 SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT jsonb_exists_any('{"a":null, "b":"qq"}', ARRAY['a','b']);
- jsonb_exists_any
+ jsonb_exists_any 
 ------------------
  t
 (1 row)
 
 SELECT jsonb_exists_any('{"a":null, "b":"qq"}', ARRAY['b','a']);
- jsonb_exists_any
+ jsonb_exists_any 
 ------------------
  t
 (1 row)
 
 SELECT jsonb_exists_any('{"a":null, "b":"qq"}', ARRAY['c','a']);
- jsonb_exists_any
+ jsonb_exists_any 
 ------------------
  t
 (1 row)
 
 SELECT jsonb_exists_any('{"a":null, "b":"qq"}', ARRAY['c','d']);
- jsonb_exists_any
+ jsonb_exists_any 
 ------------------
  f
 (1 row)
 
 SELECT jsonb_exists_any('{"a":null, "b":"qq"}', '{}'::text[]);
- jsonb_exists_any
+ jsonb_exists_any 
 ------------------
  f
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?| ARRAY['a','b'];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?| ARRAY['b','a'];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?| ARRAY['c','a'];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?| ARRAY['c','d'];
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?| '{}'::text[];
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT jsonb_exists_all('{"a":null, "b":"qq"}', ARRAY['a','b']);
- jsonb_exists_all
+ jsonb_exists_all 
 ------------------
  t
 (1 row)
 
 SELECT jsonb_exists_all('{"a":null, "b":"qq"}', ARRAY['b','a']);
- jsonb_exists_all
+ jsonb_exists_all 
 ------------------
  t
 (1 row)
 
 SELECT jsonb_exists_all('{"a":null, "b":"qq"}', ARRAY['c','a']);
- jsonb_exists_all
+ jsonb_exists_all 
 ------------------
  f
 (1 row)
 
 SELECT jsonb_exists_all('{"a":null, "b":"qq"}', ARRAY['c','d']);
- jsonb_exists_all
+ jsonb_exists_all 
 ------------------
  f
 (1 row)
 
 SELECT jsonb_exists_all('{"a":null, "b":"qq"}', '{}'::text[]);
- jsonb_exists_all
+ jsonb_exists_all 
 ------------------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?& ARRAY['a','b'];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?& ARRAY['b','a'];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?& ARRAY['c','a'];
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?& ARRAY['c','d'];
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?& ARRAY['a','a', 'b', 'b', 'b'];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT jsonb '{"a":null, "b":"qq"}' ?& '{}'::text[];
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- typeof
 SELECT jsonb_typeof('{}') AS object;
- object
+ object 
 --------
  object
 (1 row)
 
 SELECT jsonb_typeof('{"c":3,"p":"o"}') AS object;
- object
+ object 
 --------
  object
 (1 row)
 
 SELECT jsonb_typeof('[]') AS array;
- array
+ array 
 -------
  array
 (1 row)
 
 SELECT jsonb_typeof('["a", 1]') AS array;
- array
+ array 
 -------
  array
 (1 row)
 
 SELECT jsonb_typeof('null') AS "null";
- null
+ null 
 ------
  null
 (1 row)
 
 SELECT jsonb_typeof('1') AS number;
- number
+ number 
 --------
  number
 (1 row)
 
 SELECT jsonb_typeof('-1') AS number;
- number
+ number 
 --------
  number
 (1 row)
 
 SELECT jsonb_typeof('1.0') AS number;
- number
+ number 
 --------
  number
 (1 row)
 
 SELECT jsonb_typeof('1e2') AS number;
- number
+ number 
 --------
  number
 (1 row)
 
 SELECT jsonb_typeof('-1.0') AS number;
- number
+ number 
 --------
  number
 (1 row)
 
 SELECT jsonb_typeof('true') AS boolean;
- boolean
+ boolean 
 ---------
  boolean
 (1 row)
 
 SELECT jsonb_typeof('false') AS boolean;
- boolean
+ boolean 
 ---------
  boolean
 (1 row)
 
 SELECT jsonb_typeof('"hello"') AS string;
- string
+ string 
 --------
  string
 (1 row)
 
 SELECT jsonb_typeof('"true"') AS string;
- string
+ string 
 --------
  string
 (1 row)
 
 SELECT jsonb_typeof('"1.0"') AS string;
- string
+ string 
 --------
  string
 (1 row)
 
 -- jsonb_build_array, jsonb_build_object, jsonb_object_agg
 SELECT jsonb_build_array('a',1,'b',1.2,'c',true,'d',null,'e',json '{"x": 3, "y": [1,2,3]}');
-                            jsonb_build_array
+                            jsonb_build_array                            
 -------------------------------------------------------------------------
  ["a", 1, "b", 1.2, "c", true, "d", null, "e", {"x": 3, "y": [1, 2, 3]}]
 (1 row)
 
 SELECT jsonb_build_array('a', NULL); -- ok
- jsonb_build_array
+ jsonb_build_array 
 -------------------
  ["a", null]
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC NULL::text[]); -- ok
- jsonb_build_array
+ jsonb_build_array 
 -------------------
-
+ 
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC '{}'::text[]); -- ok
- jsonb_build_array
+ jsonb_build_array 
 -------------------
  []
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC '{a,b,c}'::text[]); -- ok
- jsonb_build_array
+ jsonb_build_array 
 -------------------
  ["a", "b", "c"]
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC ARRAY['a', NULL]::text[]); -- ok
- jsonb_build_array
+ jsonb_build_array 
 -------------------
  ["a", null]
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC '{1,2,3,4}'::text[]); -- ok
-  jsonb_build_array
+  jsonb_build_array   
 ----------------------
  ["1", "2", "3", "4"]
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC '{1,2,3,4}'::int[]); -- ok
- jsonb_build_array
+ jsonb_build_array 
 -------------------
  [1, 2, 3, 4]
 (1 row)
 
 SELECT jsonb_build_array(VARIADIC '{{1,4},{2,5},{3,6}}'::int[][]); -- ok
- jsonb_build_array
+ jsonb_build_array  
 --------------------
  [1, 4, 2, 5, 3, 6]
 (1 row)
 
 SELECT jsonb_build_object('a',1,'b',1.2,'c',true,'d',null,'e',json '{"x": 3, "y": [1,2,3]}');
-                           jsonb_build_object
+                           jsonb_build_object                            
 -------------------------------------------------------------------------
  {"a": 1, "b": 1.2, "c": true, "d": null, "e": {"x": 3, "y": [1, 2, 3]}}
 (1 row)
@@ -1445,7 +1445,7 @@ SELECT jsonb_build_object(
        'a', jsonb_build_object('b',false,'c',99),
        'd', jsonb_build_object('e',array[9,8,7]::int[],
            'f', (select row_to_json(r) from ( select relkind, oid::regclass as name from pg_class where relname = 'pg_class') r)));
-                                       jsonb_build_object
+                                       jsonb_build_object                                       
 ------------------------------------------------------------------------------------------------
  {"a": {"b": false, "c": 99}, "d": {"e": [9, 8, 7], "f": {"name": "pg_class", "relkind": "r"}}}
 (1 row)
@@ -1461,19 +1461,19 @@ HINT:  The arguments of jsonb_build_object() must consist of alternating keys an
 SELECT jsonb_build_object(NULL, 'a'); -- error, key cannot be NULL
 ERROR:  argument 1: key must not be null
 SELECT jsonb_build_object('a', NULL); -- ok
- jsonb_build_object
+ jsonb_build_object 
 --------------------
  {"a": null}
 (1 row)
 
 SELECT jsonb_build_object(VARIADIC NULL::text[]); -- ok
- jsonb_build_object
+ jsonb_build_object 
 --------------------
-
+ 
 (1 row)
 
 SELECT jsonb_build_object(VARIADIC '{}'::text[]); -- ok
- jsonb_build_object
+ jsonb_build_object 
 --------------------
  {}
 (1 row)
@@ -1482,7 +1482,7 @@ SELECT jsonb_build_object(VARIADIC '{a,b,c}'::text[]); -- error
 ERROR:  argument list must have even number of elements
 HINT:  The arguments of jsonb_build_object() must consist of alternating keys and values.
 SELECT jsonb_build_object(VARIADIC ARRAY['a', NULL]::text[]); -- ok
- jsonb_build_object
+ jsonb_build_object 
 --------------------
  {"a": null}
 (1 row)
@@ -1490,39 +1490,39 @@ SELECT jsonb_build_object(VARIADIC ARRAY['a', NULL]::text[]); -- ok
 SELECT jsonb_build_object(VARIADIC ARRAY[NULL, 'a']::text[]); -- error, key cannot be NULL
 ERROR:  argument 1: key must not be null
 SELECT jsonb_build_object(VARIADIC '{1,2,3,4}'::text[]); -- ok
-  jsonb_build_object
+  jsonb_build_object  
 ----------------------
  {"1": "2", "3": "4"}
 (1 row)
 
 SELECT jsonb_build_object(VARIADIC '{1,2,3,4}'::int[]); -- ok
- jsonb_build_object
+ jsonb_build_object 
 --------------------
  {"1": 2, "3": 4}
 (1 row)
 
 SELECT jsonb_build_object(VARIADIC '{{1,4},{2,5},{3,6}}'::int[][]); -- ok
-    jsonb_build_object
+    jsonb_build_object    
 --------------------------
  {"1": 4, "2": 5, "3": 6}
 (1 row)
 
 -- empty objects/arrays
 SELECT jsonb_build_array();
- jsonb_build_array
+ jsonb_build_array 
 -------------------
  []
 (1 row)
 
 SELECT jsonb_build_object();
- jsonb_build_object
+ jsonb_build_object 
 --------------------
  {}
 (1 row)
 
 -- make sure keys are quoted
 SELECT jsonb_build_object(1,2);
- jsonb_build_object
+ jsonb_build_object 
 --------------------
  {"1": 2}
 (1 row)
@@ -1538,7 +1538,7 @@ SELECT jsonb_build_object('{1,2,3}'::int[], 3);
 ERROR:  key value must be scalar, not array, composite, or json
 -- handling of NULL values
 SELECT jsonb_object_agg(1, NULL::jsonb);
- jsonb_object_agg
+ jsonb_object_agg 
 ------------------
  {"1": null}
 (1 row)
@@ -1551,13 +1551,13 @@ INSERT INTO foo VALUES (847002,'t16','GE1043');
 INSERT INTO foo VALUES (847003,'sub-alpha','GESS90');
 SELECT jsonb_build_object('turbines',jsonb_object_agg(serial_num,jsonb_build_object('name',name,'type',type)))
 FROM foo;
-                                                                     jsonb_build_object
+                                                                     jsonb_build_object                                                                      
 -------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"turbines": {"847001": {"name": "t15", "type": "GE1043"}, "847002": {"name": "t16", "type": "GE1043"}, "847003": {"name": "sub-alpha", "type": "GESS90"}}}
 (1 row)
 
 SELECT jsonb_object_agg(name, type) FROM foo;
-                     jsonb_object_agg
+                     jsonb_object_agg                      
 -----------------------------------------------------------
  {"t15": "GE1043", "t16": "GE1043", "sub-alpha": "GESS90"}
 (1 row)
@@ -1575,28 +1575,28 @@ SELECT jsonb_object_agg(DISTINCT 'a', 'abc');
 -- jsonb_object
 -- empty object, one dimension
 SELECT jsonb_object('{}');
- jsonb_object
+ jsonb_object 
 --------------
  {}
 (1 row)
 
 -- empty object, two dimensions
 SELECT jsonb_object('{}', '{}');
- jsonb_object
+ jsonb_object 
 --------------
  {}
 (1 row)
 
 -- one dimension
 SELECT jsonb_object('{a,1,b,2,3,NULL,"d e f","a b c"}');
-                   jsonb_object
+                   jsonb_object                    
 ---------------------------------------------------
  {"3": null, "a": "1", "b": "2", "d e f": "a b c"}
 (1 row)
 
 -- same but with two dimensions
 SELECT jsonb_object('{{a,1},{b,2},{3,NULL},{"d e f","a b c"}}');
-                   jsonb_object
+                   jsonb_object                    
 ---------------------------------------------------
  {"3": null, "a": "1", "b": "2", "d e f": "a b c"}
 (1 row)
@@ -1615,7 +1615,7 @@ SELECT jsonb_object('{{{a,b},{c,d}},{{b,c},{d,e}}}');
 ERROR:  wrong number of array subscripts
 --two argument form of jsonb_object
 select jsonb_object('{a,b,c,"d e f"}','{1,2,3,"a b c"}');
-                   jsonb_object
+                   jsonb_object                   
 --------------------------------------------------
  {"a": "1", "b": "2", "c": "3", "d e f": "a b c"}
 (1 row)
@@ -1633,378 +1633,378 @@ select jsonb_object('{a,b,NULL,"d e f"}','{1,2,3,"a b c"}');
 ERROR:  null value not allowed for object key
 -- empty key is allowed
 select jsonb_object('{a,b,"","d e f"}','{1,2,3,"a b c"}');
-                  jsonb_object
+                  jsonb_object                   
 -------------------------------------------------
  {"": "3", "a": "1", "b": "2", "d e f": "a b c"}
 (1 row)
 
 -- extract_path, extract_path_as_text
 SELECT jsonb_extract_path('{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}','f4','f6');
- jsonb_extract_path
+ jsonb_extract_path 
 --------------------
  "stringy"
 (1 row)
 
 SELECT jsonb_extract_path('{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}','f2');
- jsonb_extract_path
+ jsonb_extract_path 
 --------------------
  {"f3": 1}
 (1 row)
 
 SELECT jsonb_extract_path('{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}','f2',0::text);
- jsonb_extract_path
+ jsonb_extract_path 
 --------------------
  "f3"
 (1 row)
 
 SELECT jsonb_extract_path('{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}','f2',1::text);
- jsonb_extract_path
+ jsonb_extract_path 
 --------------------
  1
 (1 row)
 
 SELECT jsonb_extract_path_text('{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}','f4','f6');
- jsonb_extract_path_text
+ jsonb_extract_path_text 
 -------------------------
  stringy
 (1 row)
 
 SELECT jsonb_extract_path_text('{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}','f2');
- jsonb_extract_path_text
+ jsonb_extract_path_text 
 -------------------------
  {"f3": 1}
 (1 row)
 
 SELECT jsonb_extract_path_text('{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}','f2',0::text);
- jsonb_extract_path_text
+ jsonb_extract_path_text 
 -------------------------
  f3
 (1 row)
 
 SELECT jsonb_extract_path_text('{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}','f2',1::text);
- jsonb_extract_path_text
+ jsonb_extract_path_text 
 -------------------------
  1
 (1 row)
 
 -- extract_path nulls
 SELECT jsonb_extract_path('{"f2":{"f3":1},"f4":{"f5":null,"f6":"stringy"}}','f4','f5') IS NULL AS expect_false;
- expect_false
+ expect_false 
 --------------
  f
 (1 row)
 
 SELECT jsonb_extract_path_text('{"f2":{"f3":1},"f4":{"f5":null,"f6":"stringy"}}','f4','f5') IS NULL AS expect_true;
- expect_true
+ expect_true 
 -------------
  t
 (1 row)
 
 SELECT jsonb_extract_path('{"f2":{"f3":1},"f4":[0,1,2,null]}','f4','3') IS NULL AS expect_false;
- expect_false
+ expect_false 
 --------------
  f
 (1 row)
 
 SELECT jsonb_extract_path_text('{"f2":{"f3":1},"f4":[0,1,2,null]}','f4','3') IS NULL AS expect_true;
- expect_true
+ expect_true 
 -------------
  t
 (1 row)
 
 -- extract_path operators
 SELECT '{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>array['f4','f6'];
- ?column?
+ ?column?  
 -----------
  "stringy"
 (1 row)
 
 SELECT '{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>array['f2'];
- ?column?
+ ?column?  
 -----------
  {"f3": 1}
 (1 row)
 
 SELECT '{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>array['f2','0'];
- ?column?
+ ?column? 
 ----------
  "f3"
 (1 row)
 
 SELECT '{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>array['f2','1'];
- ?column?
+ ?column? 
 ----------
  1
 (1 row)
 
 SELECT '{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>>array['f4','f6'];
- ?column?
+ ?column? 
 ----------
  stringy
 (1 row)
 
 SELECT '{"f2":{"f3":1},"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>>array['f2'];
- ?column?
+ ?column?  
 -----------
  {"f3": 1}
 (1 row)
 
 SELECT '{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>>array['f2','0'];
- ?column?
+ ?column? 
 ----------
  f3
 (1 row)
 
 SELECT '{"f2":["f3",1],"f4":{"f5":99,"f6":"stringy"}}'::jsonb#>>array['f2','1'];
- ?column?
+ ?column? 
 ----------
  1
 (1 row)
 
 -- corner cases for same
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> '{}';
-          ?column?
+          ?column?          
 ----------------------------
  {"a": {"b": {"c": "foo"}}}
 (1 row)
 
 select '[1,2,3]'::jsonb #> '{}';
- ?column?
+ ?column?  
 -----------
  [1, 2, 3]
 (1 row)
 
 select '"foo"'::jsonb #> '{}';
- ?column?
+ ?column? 
 ----------
  "foo"
 (1 row)
 
 select '42'::jsonb #> '{}';
- ?column?
+ ?column? 
 ----------
  42
 (1 row)
 
 select 'null'::jsonb #> '{}';
- ?column?
+ ?column? 
 ----------
  null
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a'];
-      ?column?
+      ?column?       
 ---------------------
  {"b": {"c": "foo"}}
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a', null];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a', ''];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a','b'];
-   ?column?
+   ?column?   
 --------------
  {"c": "foo"}
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a','b','c'];
- ?column?
+ ?column? 
 ----------
  "foo"
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a','b','c','d'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #> array['a','z','c'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb #> array['a','1','b'];
- ?column?
+ ?column? 
 ----------
  "cc"
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb #> array['a','z','b'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb #> array['1','b'];
- ?column?
+ ?column? 
 ----------
  "cc"
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb #> array['z','b'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": null}]'::jsonb #> array['1','b'];
- ?column?
+ ?column? 
 ----------
  null
 (1 row)
 
 select '"foo"'::jsonb #> array['z'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '42'::jsonb #> array['f2'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '42'::jsonb #> array['0'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> '{}';
-          ?column?
+          ?column?          
 ----------------------------
  {"a": {"b": {"c": "foo"}}}
 (1 row)
 
 select '[1,2,3]'::jsonb #>> '{}';
- ?column?
+ ?column?  
 -----------
  [1, 2, 3]
 (1 row)
 
 select '"foo"'::jsonb #>> '{}';
- ?column?
+ ?column? 
 ----------
  foo
 (1 row)
 
 select '42'::jsonb #>> '{}';
- ?column?
+ ?column? 
 ----------
  42
 (1 row)
 
 select 'null'::jsonb #>> '{}';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a'];
-      ?column?
+      ?column?       
 ---------------------
  {"b": {"c": "foo"}}
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a', null];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a', ''];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a','b'];
-   ?column?
+   ?column?   
 --------------
  {"c": "foo"}
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a','b','c'];
- ?column?
+ ?column? 
 ----------
  foo
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a','b','c','d'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": {"b":{"c": "foo"}}}'::jsonb #>> array['a','z','c'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb #>> array['a','1','b'];
- ?column?
+ ?column? 
 ----------
  cc
 (1 row)
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb #>> array['a','z','b'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb #>> array['1','b'];
- ?column?
+ ?column? 
 ----------
  cc
 (1 row)
 
 select '[{"b": "c"}, {"b": "cc"}]'::jsonb #>> array['z','b'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '[{"b": "c"}, {"b": null}]'::jsonb #>> array['1','b'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '"foo"'::jsonb #>> array['z'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '42'::jsonb #>> array['f2'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select '42'::jsonb #>> array['0'];
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 -- array_elements
 SELECT jsonb_array_elements('[1,true,[1,[2,3]],null,{"f1":1,"f2":[7,8,9]},false]');
-    jsonb_array_elements
+    jsonb_array_elements    
 ----------------------------
  1
  true
@@ -2015,7 +2015,7 @@ SELECT jsonb_array_elements('[1,true,[1,[2,3]],null,{"f1":1,"f2":[7,8,9]},false]
 (6 rows)
 
 SELECT * FROM jsonb_array_elements('[1,true,[1,[2,3]],null,{"f1":1,"f2":[7,8,9]},false]') q;
-           value
+           value            
 ----------------------------
  1
  true
@@ -2026,24 +2026,24 @@ SELECT * FROM jsonb_array_elements('[1,true,[1,[2,3]],null,{"f1":1,"f2":[7,8,9]}
 (6 rows)
 
 SELECT jsonb_array_elements_text('[1,true,[1,[2,3]],null,{"f1":1,"f2":[7,8,9]},false,"stringy"]');
- jsonb_array_elements_text
+ jsonb_array_elements_text  
 ----------------------------
  1
  true
  [1, [2, 3]]
-
+ 
  {"f1": 1, "f2": [7, 8, 9]}
  false
  stringy
 (7 rows)
 
 SELECT * FROM jsonb_array_elements_text('[1,true,[1,[2,3]],null,{"f1":1,"f2":[7,8,9]},false,"stringy"]') q;
-           value
+           value            
 ----------------------------
  1
  true
  [1, [2, 3]]
-
+ 
  {"f1": 1, "f2": [7, 8, 9]}
  false
  stringy
@@ -2079,37 +2079,37 @@ CREATE TYPE jsbrec_i_not_null AS (
 	i	jsb_int_not_null
 );
 SELECT * FROM jsonb_populate_record(NULL::jbpop,'{"a":"blurfl","x":43.2}') q;
-   a    | b | c
+   a    | b | c 
 --------+---+---
- blurfl |   |
+ blurfl |   | 
 (1 row)
 
 SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a":"blurfl","x":43.2}') q;
-   a    | b |            c
+   a    | b |            c             
 --------+---+--------------------------
  blurfl | 3 | Mon Dec 31 15:30:56 2012
 (1 row)
 
 SELECT * FROM jsonb_populate_record(NULL::jbpop,'{"a":"blurfl","x":43.2}') q;
-   a    | b | c
+   a    | b | c 
 --------+---+---
- blurfl |   |
+ blurfl |   | 
 (1 row)
 
 SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a":"blurfl","x":43.2}') q;
-   a    | b |            c
+   a    | b |            c             
 --------+---+--------------------------
  blurfl | 3 | Mon Dec 31 15:30:56 2012
 (1 row)
 
 SELECT * FROM jsonb_populate_record(NULL::jbpop,'{"a":[100,200,false],"x":43.2}') q;
-         a         | b | c
+         a         | b | c 
 -------------------+---+---
- [100, 200, false] |   |
+ [100, 200, false] |   | 
 (1 row)
 
 SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a":[100,200,false],"x":43.2}') q;
-         a         | b |            c
+         a         | b |            c             
 -------------------+---+--------------------------
  [100, 200, false] | 3 | Mon Dec 31 15:30:56 2012
 (1 row)
@@ -2117,7 +2117,7 @@ SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a
 SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"c":[100,200,false],"x":43.2}') q;
 ERROR:  invalid input syntax for type timestamp: "[100, 200, false]"
 SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop, '{}') q;
- a | b |            c
+ a | b |            c             
 ---+---+--------------------------
  x | 3 | Mon Dec 31 15:30:56 2012
 (1 row)
@@ -2127,28 +2127,28 @@ ERROR:  domain jsb_int_not_null does not allow null values
 SELECT i FROM jsonb_populate_record(NULL::jsbrec_i_not_null, '{"i": null}') q;
 ERROR:  domain jsb_int_not_null does not allow null values
 SELECT i FROM jsonb_populate_record(NULL::jsbrec_i_not_null, '{"i": 12345}') q;
-   i
+   i   
 -------
  12345
 (1 row)
 
 SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": null}') q;
- ia
+ ia 
 ----
-
+ 
 (1 row)
 
 SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": 123}') q;
 ERROR:  expected JSON array
 HINT:  See the value of key "ia".
 SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [1, "2", null, 4]}') q;
-      ia
+      ia      
 --------------
  {1,2,NULL,4}
 (1 row)
 
 SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [[1, 2], [3, 4]]}') q;
-      ia
+      ia       
 ---------------
  {{1,2},{3,4}}
 (1 row)
@@ -2160,36 +2160,36 @@ SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [[1], [2, 3]]}') q;
 ERROR:  malformed JSON array
 DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
 SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": "{1,2,3}"}') q;
-   ia
+   ia    
 ---------
  {1,2,3}
 (1 row)
 
 SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": null}') q;
- ia1
+ ia1 
 -----
-
+ 
 (1 row)
 
 SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": 123}') q;
 ERROR:  expected JSON array
 HINT:  See the value of key "ia1".
 SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": [1, "2", null, 4]}') q;
-     ia1
+     ia1      
 --------------
  {1,2,NULL,4}
 (1 row)
 
 SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": [[1, 2, 3]]}') q;
-    ia1
+    ia1    
 -----------
  {{1,2,3}}
 (1 row)
 
 SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": null}') q;
- ia1d
+ ia1d 
 ------
-
+ 
 (1 row)
 
 SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": 123}') q;
@@ -2198,25 +2198,25 @@ HINT:  See the value of key "ia1d".
 SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": [1, "2", null, 4]}') q;
 ERROR:  value for domain jsb_int_array_1d violates check constraint "jsb_int_array_1d_check"
 SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": [1, "2", null]}') q;
-    ia1d
+    ia1d    
 ------------
  {1,2,NULL}
 (1 row)
 
 SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [1, "2", null, 4]}') q;
-     ia2
+     ia2      
 --------------
  {1,2,NULL,4}
 (1 row)
 
 SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [[1, 2], [null, 4]]}') q;
-       ia2
+       ia2        
 ------------------
  {{1,2},{NULL,4}}
 (1 row)
 
 SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [[], []]}') q;
- ia2
+ ia2 
 -----
  {}
 (1 row)
@@ -2230,37 +2230,37 @@ HINT:  See the array element [1] of key "ia2".
 SELECT ia2d FROM jsonb_populate_record(NULL::jsbrec, '{"ia2d": [[1, "2"], [null, 4]]}') q;
 ERROR:  value for domain jsb_int_array_2d violates check constraint "jsb_int_array_2d_check"
 SELECT ia2d FROM jsonb_populate_record(NULL::jsbrec, '{"ia2d": [[1, "2", 3], [null, 5, 6]]}') q;
-         ia2d
+         ia2d         
 ----------------------
  {{1,2,3},{NULL,5,6}}
 (1 row)
 
 SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [1, "2", null, 4]}') q;
-     ia3
+     ia3      
 --------------
  {1,2,NULL,4}
 (1 row)
 
 SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [[1, 2], [null, 4]]}') q;
-       ia3
+       ia3        
 ------------------
  {{1,2},{NULL,4}}
 (1 row)
 
 SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[], []], [[], []], [[], []] ]}') q;
- ia3
+ ia3 
 -----
  {}
 (1 row)
 
 SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[1, 2]], [[3, 4]] ]}') q;
-        ia3
+        ia3        
 -------------------
  {{{1,2}},{{3,4}}}
 (1 row)
 
 SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[1, 2], [3, 4]], [[5, 6], [7, 8]] ]}') q;
-              ia3
+              ia3              
 -------------------------------
  {{{1,2},{3,4}},{{5,6},{7,8}}}
 (1 row)
@@ -2269,16 +2269,16 @@ SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[1, 2], [3, 4]],
 ERROR:  malformed JSON array
 DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
 SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": null}') q;
- ta
+ ta 
 ----
-
+ 
 (1 row)
 
 SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": 123}') q;
 ERROR:  expected JSON array
 HINT:  See the value of key "ta".
 SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": [1, "2", null, 4]}') q;
-      ta
+      ta      
 --------------
  {1,2,NULL,4}
 (1 row)
@@ -2287,19 +2287,19 @@ SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": [[1, 2, 3], {"k": "v"
 ERROR:  expected JSON array
 HINT:  See the array element [1] of key "ta".
 SELECT c FROM jsonb_populate_record(NULL::jsbrec, '{"c": null}') q;
- c
+ c 
 ---
-
+ 
 (1 row)
 
 SELECT c FROM jsonb_populate_record(NULL::jsbrec, '{"c": "aaa"}') q;
-     c
+     c      
 ------------
- aaa
+ aaa       
 (1 row)
 
 SELECT c FROM jsonb_populate_record(NULL::jsbrec, '{"c": "aaaaaaaaaa"}') q;
-     c
+     c      
 ------------
  aaaaaaaaaa
 (1 row)
@@ -2307,16 +2307,16 @@ SELECT c FROM jsonb_populate_record(NULL::jsbrec, '{"c": "aaaaaaaaaa"}') q;
 SELECT c FROM jsonb_populate_record(NULL::jsbrec, '{"c": "aaaaaaaaaaaaa"}') q;
 ERROR:  value too long for type character(10)
 SELECT ca FROM jsonb_populate_record(NULL::jsbrec, '{"ca": null}') q;
- ca
+ ca 
 ----
-
+ 
 (1 row)
 
 SELECT ca FROM jsonb_populate_record(NULL::jsbrec, '{"ca": 123}') q;
 ERROR:  expected JSON array
 HINT:  See the value of key "ca".
 SELECT ca FROM jsonb_populate_record(NULL::jsbrec, '{"ca": [1, "2", null, 4]}') q;
-                      ca
+                      ca                       
 -----------------------------------------------
  {"1         ","2         ",NULL,"4         "}
 (1 row)
@@ -2327,106 +2327,106 @@ SELECT ca FROM jsonb_populate_record(NULL::jsbrec, '{"ca": [[1, 2, 3], {"k": "v"
 ERROR:  expected JSON array
 HINT:  See the array element [1] of key "ca".
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": null}') q;
- js
+ js 
 ----
-
+ 
 (1 row)
 
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": true}') q;
-  js
+  js  
 ------
  true
 (1 row)
 
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": 123.45}') q;
-   js
+   js   
 --------
  123.45
 (1 row)
 
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": "123.45"}') q;
-    js
+    js    
 ----------
  "123.45"
 (1 row)
 
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": "abc"}') q;
-  js
+  js   
 -------
  "abc"
 (1 row)
 
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": [123, "123", null, {"key": "value"}]}') q;
-                  js
+                  js                  
 --------------------------------------
  [123, "123", null, {"key": "value"}]
 (1 row)
 
 SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": {"a": "bbb", "b": null, "c": 123.45}}') q;
-                  js
+                  js                  
 --------------------------------------
  {"a": "bbb", "b": null, "c": 123.45}
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": null}') q;
- jsb
+ jsb 
 -----
-
+ 
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": true}') q;
- jsb
+ jsb  
 ------
  true
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": 123.45}') q;
-  jsb
+  jsb   
 --------
  123.45
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": "123.45"}') q;
-   jsb
+   jsb    
 ----------
  "123.45"
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": "abc"}') q;
-  jsb
+  jsb  
 -------
  "abc"
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": [123, "123", null, {"key": "value"}]}') q;
-                 jsb
+                 jsb                  
 --------------------------------------
  [123, "123", null, {"key": "value"}]
 (1 row)
 
 SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": {"a": "bbb", "b": null, "c": 123.45}}') q;
-                 jsb
+                 jsb                  
 --------------------------------------
  {"a": "bbb", "b": null, "c": 123.45}
 (1 row)
 
 SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": null}') q;
- jsa
+ jsa 
 -----
-
+ 
 (1 row)
 
 SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": 123}') q;
 ERROR:  expected JSON array
 HINT:  See the value of key "jsa".
 SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": [1, "2", null, 4]}') q;
-        jsa
+        jsa         
 --------------------
  {1,"\"2\"",NULL,4}
 (1 row)
 
 SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": ["aaa", null, [1, 2, "3", {}], { "k" : "v" }]}') q;
-                          jsa
+                          jsa                          
 -------------------------------------------------------
  {"\"aaa\"",NULL,"[1, 2, \"3\", {}]","{\"k\": \"v\"}"}
 (1 row)
@@ -2436,13 +2436,13 @@ ERROR:  cannot call populate_composite on a scalar
 SELECT rec FROM jsonb_populate_record(NULL::jsbrec, '{"rec": [1, 2]}') q;
 ERROR:  cannot call populate_composite on an array
 SELECT rec FROM jsonb_populate_record(NULL::jsbrec, '{"rec": {"a": "abc", "c": "01.02.2003", "x": 43.2}}') q;
-                rec
+                rec                
 -----------------------------------
  (abc,,"Thu Jan 02 00:00:00 2003")
 (1 row)
 
 SELECT rec FROM jsonb_populate_record(NULL::jsbrec, '{"rec": "(abc,42,01.02.2003)"}') q;
-                 rec
+                 rec                 
 -------------------------------------
  (abc,42,"Thu Jan 02 00:00:00 2003")
 (1 row)
@@ -2453,19 +2453,19 @@ HINT:  See the value of key "reca".
 SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": [1, 2]}') q;
 ERROR:  cannot call populate_composite on a scalar
 SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": [{"a": "abc", "b": 456}, null, {"c": "01.02.2003", "x": 43.2}]}') q;
-                          reca
+                          reca                          
 --------------------------------------------------------
  {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
 (1 row)
 
 SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": ["(abc,42,01.02.2003)"]}') q;
-                   reca
+                   reca                    
 -------------------------------------------
  {"(abc,42,\"Thu Jan 02 00:00:00 2003\")"}
 (1 row)
 
 SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": "{\"(abc,42,01.02.2003)\"}"}') q;
-                   reca
+                   reca                    
 -------------------------------------------
  {"(abc,42,\"Thu Jan 02 00:00:00 2003\")"}
 (1 row)
@@ -2475,7 +2475,7 @@ SELECT rec FROM jsonb_populate_record(
 		row('x',3,'2012-12-31 15:30:56')::jbpop,NULL)::jsbrec,
 	'{"rec": {"a": "abc", "c": "01.02.2003", "x": 43.2}}'
 ) q;
-                rec
+                rec                 
 ------------------------------------
  (abc,3,"Thu Jan 02 00:00:00 2003")
 (1 row)
@@ -2485,27 +2485,27 @@ SELECT jsonb_populate_record(null::record, '{"x": 0, "y": 1}');
 ERROR:  could not determine row type for result of jsonb_populate_record
 HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
 SELECT jsonb_populate_record(row(1,2), '{"f1": 0, "f2": 1}');
- jsonb_populate_record
+ jsonb_populate_record 
 -----------------------
  (0,1)
 (1 row)
 
 SELECT * FROM
   jsonb_populate_record(null::record, '{"x": 776}') AS (x int, y int);
-  x  | y
+  x  | y 
 -----+---
- 776 |
+ 776 |  
 (1 row)
 
 -- composite domain
 SELECT jsonb_populate_record(null::jb_ordered_pair, '{"x": 0, "y": 1}');
- jsonb_populate_record
+ jsonb_populate_record 
 -----------------------
  (0,1)
 (1 row)
 
 SELECT jsonb_populate_record(row(1,2)::jb_ordered_pair, '{"x": 0}');
- jsonb_populate_record
+ jsonb_populate_record 
 -----------------------
  (0,2)
 (1 row)
@@ -2514,60 +2514,60 @@ SELECT jsonb_populate_record(row(1,2)::jb_ordered_pair, '{"x": 1, "y": 0}');
 ERROR:  value for domain jb_ordered_pair violates check constraint "jb_ordered_pair_check"
 -- populate_recordset
 SELECT * FROM jsonb_populate_recordset(NULL::jbpop,'[{"a":"blurfl","x":43.2},{"b":3,"c":"2012-01-20 10:42:53"}]') q;
-   a    | b |            c
+   a    | b |            c             
 --------+---+--------------------------
- blurfl |   |
+ blurfl |   | 
         | 3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"a":"blurfl","x":43.2},{"b":3,"c":"2012-01-20 10:42:53"}]') q;
-   a    | b  |            c
+   a    | b  |            c             
 --------+----+--------------------------
- blurfl | 99 |
+ blurfl | 99 | 
  def    |  3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(NULL::jbpop,'[{"a":"blurfl","x":43.2},{"b":3,"c":"2012-01-20 10:42:53"}]') q;
-   a    | b |            c
+   a    | b |            c             
 --------+---+--------------------------
- blurfl |   |
+ blurfl |   | 
         | 3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"a":"blurfl","x":43.2},{"b":3,"c":"2012-01-20 10:42:53"}]') q;
-   a    | b  |            c
+   a    | b  |            c             
 --------+----+--------------------------
- blurfl | 99 |
+ blurfl | 99 | 
  def    |  3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"a":[100,200,300],"x":43.2},{"a":{"z":true},"b":3,"c":"2012-01-20 10:42:53"}]') q;
-        a        | b  |            c
+        a        | b  |            c             
 -----------------+----+--------------------------
- [100, 200, 300] | 99 |
+ [100, 200, 300] | 99 | 
  {"z": true}     |  3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"c":[100,200,300],"x":43.2},{"a":{"z":true},"b":3,"c":"2012-01-20 10:42:53"}]') q;
 ERROR:  invalid input syntax for type timestamp: "[100, 200, 300]"
 SELECT * FROM jsonb_populate_recordset(NULL::jbpop,'[{"a":"blurfl","x":43.2},{"b":3,"c":"2012-01-20 10:42:53"}]') q;
-   a    | b |            c
+   a    | b |            c             
 --------+---+--------------------------
- blurfl |   |
+ blurfl |   | 
         | 3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"a":"blurfl","x":43.2},{"b":3,"c":"2012-01-20 10:42:53"}]') q;
-   a    | b  |            c
+   a    | b  |            c             
 --------+----+--------------------------
- blurfl | 99 |
+ blurfl | 99 | 
  def    |  3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
 SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"a":[100,200,300],"x":43.2},{"a":{"z":true},"b":3,"c":"2012-01-20 10:42:53"}]') q;
-        a        | b  |            c
+        a        | b  |            c             
 -----------------+----+--------------------------
- [100, 200, 300] | 99 |
+ [100, 200, 300] | 99 | 
  {"z": true}     |  3 | Fri Jan 20 10:42:53 2012
 (2 rows)
 
@@ -2576,14 +2576,14 @@ SELECT jsonb_populate_recordset(null::record, '[{"x": 0, "y": 1}]');
 ERROR:  could not determine row type for result of jsonb_populate_recordset
 HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
 SELECT jsonb_populate_recordset(row(1,2), '[{"f1": 0, "f2": 1}]');
- jsonb_populate_recordset
+ jsonb_populate_recordset 
 --------------------------
  (0,1)
 (1 row)
 
 SELECT i, jsonb_populate_recordset(row(i,50), '[{"f1":"42"},{"f2":"43"}]')
 FROM (VALUES (1),(2)) v(i);
- i | jsonb_populate_recordset
+ i | jsonb_populate_recordset 
 ---+--------------------------
  1 | (42,50)
  1 | (1,43)
@@ -2593,9 +2593,9 @@ FROM (VALUES (1),(2)) v(i);
 
 SELECT * FROM
   jsonb_populate_recordset(null::record, '[{"x": 776}]') AS (x int, y int);
-  x  | y
+  x  | y 
 -----+---
- 776 |
+ 776 |  
 (1 row)
 
 -- empty array is a corner case
@@ -2603,30 +2603,30 @@ SELECT jsonb_populate_recordset(null::record, '[]');
 ERROR:  could not determine row type for result of jsonb_populate_recordset
 HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
 SELECT jsonb_populate_recordset(row(1,2), '[]');
- jsonb_populate_recordset
+ jsonb_populate_recordset 
 --------------------------
 (0 rows)
 
 SELECT * FROM jsonb_populate_recordset(NULL::jbpop,'[]') q;
- a | b | c
+ a | b | c 
 ---+---+---
 (0 rows)
 
 SELECT * FROM
   jsonb_populate_recordset(null::record, '[]') AS (x int, y int);
- x | y
+ x | y 
 ---+---
 (0 rows)
 
 -- composite domain
 SELECT jsonb_populate_recordset(null::jb_ordered_pair, '[{"x": 0, "y": 1}]');
- jsonb_populate_recordset
+ jsonb_populate_recordset 
 --------------------------
  (0,1)
 (1 row)
 
 SELECT jsonb_populate_recordset(row(1,2)::jb_ordered_pair, '[{"x": 0}, {"y": 3}]');
- jsonb_populate_recordset
+ jsonb_populate_recordset 
 --------------------------
  (0,2)
  (1,3)
@@ -2650,23 +2650,23 @@ DETAIL:  Returned type integer at ordinal position 1, but query expects text.
 -- jsonb_to_record and jsonb_to_recordset
 select * from jsonb_to_record('{"a":1,"b":"foo","c":"bar"}')
     as x(a int, b text, d text);
- a |  b  | d
+ a |  b  | d 
 ---+-----+---
- 1 | foo |
+ 1 | foo | 
 (1 row)
 
 select * from jsonb_to_recordset('[{"a":1,"b":"foo","d":false},{"a":2,"b":"bar","c":true}]')
     as x(a int, b text, c boolean);
- a |  b  | c
+ a |  b  | c 
 ---+-----+---
- 1 | foo |
+ 1 | foo | 
  2 | bar | t
 (2 rows)
 
 select *, c is null as c_is_null
 from jsonb_to_record('{"a":1, "b":{"c":16, "d":2}, "x":8, "ca": ["1 2", 3], "ia": [[1,2],[3,4]], "r": {"a": "aaa", "b": 123}}'::jsonb)
     as t(a int, b jsonb, c text, x int, ca char(5)[], ia int[][], r jbpop);
- a |         b         | c | x |        ca         |      ia       |     r      | c_is_null
+ a |         b         | c | x |        ca         |      ia       |     r      | c_is_null 
 ---+-------------------+---+---+-------------------+---------------+------------+-----------
  1 | {"c": 16, "d": 2} |   | 8 | {"1 2  ","3    "} | {{1,2},{3,4}} | (aaa,123,) | t
 (1 row)
@@ -2674,28 +2674,28 @@ from jsonb_to_record('{"a":1, "b":{"c":16, "d":2}, "x":8, "ca": ["1 2", 3], "ia"
 select *, c is null as c_is_null
 from jsonb_to_recordset('[{"a":1, "b":{"c":16, "d":2}, "x":8}]'::jsonb)
     as t(a int, b jsonb, c text, x int);
- a |         b         | c | x | c_is_null
+ a |         b         | c | x | c_is_null 
 ---+-------------------+---+---+-----------
  1 | {"c": 16, "d": 2} |   | 8 | t
 (1 row)
 
 select * from jsonb_to_record('{"ia": null}') as x(ia _int4);
- ia
+ ia 
 ----
-
+ 
 (1 row)
 
 select * from jsonb_to_record('{"ia": 123}') as x(ia _int4);
 ERROR:  expected JSON array
 HINT:  See the value of key "ia".
 select * from jsonb_to_record('{"ia": [1, "2", null, 4]}') as x(ia _int4);
-      ia
+      ia      
 --------------
  {1,2,NULL,4}
 (1 row)
 
 select * from jsonb_to_record('{"ia": [[1, 2], [3, 4]]}') as x(ia _int4);
-      ia
+      ia       
 ---------------
  {{1,2},{3,4}}
 (1 row)
@@ -2707,55 +2707,55 @@ select * from jsonb_to_record('{"ia": [[1], [2, 3]]}') as x(ia _int4);
 ERROR:  malformed JSON array
 DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
 select * from jsonb_to_record('{"ia2": [1, 2, 3]}') as x(ia2 int[][]);
-   ia2
+   ia2   
 ---------
  {1,2,3}
 (1 row)
 
 select * from jsonb_to_record('{"ia2": [[1, 2], [3, 4]]}') as x(ia2 int4[][]);
-      ia2
+      ia2      
 ---------------
  {{1,2},{3,4}}
 (1 row)
 
 select * from jsonb_to_record('{"ia2": [[[1], [2], [3]]]}') as x(ia2 int4[][]);
-       ia2
+       ia2       
 -----------------
  {{{1},{2},{3}}}
 (1 row)
 
 select * from jsonb_to_record('{"out": {"key": 1}}') as x(out json);
-    out
+    out     
 ------------
  {"key": 1}
 (1 row)
 
 select * from jsonb_to_record('{"out": [{"key": 1}]}') as x(out json);
-     out
+     out      
 --------------
  [{"key": 1}]
 (1 row)
 
 select * from jsonb_to_record('{"out": "{\"key\": 1}"}') as x(out json);
-      out
+      out       
 ----------------
  "{\"key\": 1}"
 (1 row)
 
 select * from jsonb_to_record('{"out": {"key": 1}}') as x(out jsonb);
-    out
+    out     
 ------------
  {"key": 1}
 (1 row)
 
 select * from jsonb_to_record('{"out": [{"key": 1}]}') as x(out jsonb);
-     out
+     out      
 --------------
  [{"key": 1}]
 (1 row)
 
 select * from jsonb_to_record('{"out": "{\"key\": 1}"}') as x(out jsonb);
-      out
+      out       
 ----------------
  "{\"key\": 1}"
 (1 row)
@@ -2770,7 +2770,7 @@ SELECT '{
 }'::jsonb
 FROM generate_series(1, 3);
 SELECT (jsonb_populate_record(NULL::jsbrec, js)).* FROM jsbpoptest;
- i | ia | ia1 | ia2 | ia3 | ia1d | ia2d | t | ta | c | ca | ts | js | jsb |        jsa         |                rec                |                          reca
+ i | ia | ia1 | ia2 | ia3 | ia1d | ia2d | t | ta | c | ca | ts | js | jsb |        jsa         |                rec                |                          reca                          
 ---+----+-----+-----+-----+------+------+---+----+---+----+----+----+-----+--------------------+-----------------------------------+--------------------------------------------------------
    |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
    |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
@@ -2786,163 +2786,163 @@ DROP DOMAIN jb_ordered_pair;
 DROP TYPE jb_unordered_pair;
 -- indexing
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ? 'public';
- count
+ count 
 -------
    194
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ? 'bar';
- count
+ count 
 -------
      0
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
- count
+ count 
 -------
    337
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
- count
+ count 
 -------
     42
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
- count
+ count 
 -------
   1012
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
- count
+ count 
 -------
    194
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
- count
+ count 
 -------
      0
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
- count
+ count 
 -------
    337
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
- count
+ count 
 -------
     42
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$';
- count
+ count 
 -------
   1012
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
- count
+ count 
 -------
    194
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
- count
+ count 
 -------
      0
 (1 row)
@@ -2953,43 +2953,43 @@ SET enable_seqscan = off;
 -- index scan even if it is detected to be not supported.
 SET yb_test_ybgin_disable_cost_factor = 0.5;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"array":["foo"]}';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"array":["bar"]}';
- count
+ count 
 -------
      3
 (1 row)
@@ -2999,13 +2999,13 @@ SELECT count(*) FROM testjsonb WHERE j @> '{}';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j ? 'public';
- count
+ count 
 -------
    194
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ? 'bar';
- count
+ count 
 -------
      0
 (1 row)
@@ -3014,14 +3014,14 @@ SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
- count
+ count 
 -------
     42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Aggregate
    ->  Index Scan using jidx on testjsonb
@@ -3029,73 +3029,73 @@ SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
- count
+ count 
 -------
      3
 (1 row)
@@ -3117,7 +3117,7 @@ ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Aggregate
    ->  Index Scan using jidx on testjsonb
@@ -3125,49 +3125,49 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
- count
+ count 
 -------
      3
 (1 row)
@@ -3184,7 +3184,7 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
- count
+ count 
 -------
      3
 (1 row)
@@ -3192,14 +3192,14 @@ SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
 -- type sensitive array exists - should return no rows (since "exists" only
 -- matches strings that are either object keys or array elements)
 SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
- count
+ count 
 -------
      0
 (1 row)
 
 -- However, a raw scalar is *contained* within the array
 SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
- count
+ count 
 -------
      1
 (1 row)
@@ -3207,13 +3207,13 @@ SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
 RESET yb_test_ybgin_disable_cost_factor;
 RESET enable_seqscan;
 SELECT count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow;
- count
+ count 
 -------
   4791
 (1 row)
 
 SELECT key, count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow GROUP BY key ORDER BY count DESC, key;
-    key    | count
+    key    | count 
 -----------+-------
  line      |   884
  query     |   207
@@ -3245,14 +3245,14 @@ SELECT key, count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow GRO
 
 -- sort/hash
 SELECT count(distinct j) FROM testjsonb;
- count
+ count 
 -------
    894
 (1 row)
 
 SET enable_hashagg = off;
 SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
- count
+ count 
 -------
    894
 (1 row)
@@ -3260,13 +3260,13 @@ SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * 
 SET enable_hashagg = on;
 SET enable_sort = off;
 SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
- count
+ count 
 -------
    894
 (1 row)
 
 SELECT distinct * FROM (values (jsonb '{}' || ''::text),('{}')) v(j);
- j
+ j  
 ----
  {}
 (1 row)
@@ -3282,13 +3282,13 @@ NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 ERROR:  INDEX on column of type 'JSONB' not yet supported
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j > '{"p":1}';
- count
+ count 
 -------
    884
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "indexed":true}';
- count
+ count 
 -------
      1
 (1 row)
@@ -3302,31 +3302,31 @@ SET enable_seqscan = off;
 -- index scan even if it is detected to be not supported.
 SET yb_test_ybgin_disable_cost_factor = 0.5;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
- count
+ count 
 -------
      2
 (1 row)
@@ -3336,73 +3336,73 @@ SELECT count(*) FROM testjsonb WHERE j @> '{}';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
- count
+ count 
 -------
      3
 (1 row)
@@ -3412,7 +3412,7 @@ ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Aggregate
    ->  Index Scan using jidx on testjsonb
@@ -3420,49 +3420,49 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
- count
+ count 
 -------
      1
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
- count
+ count 
 -------
     15
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
- count
+ count 
 -------
      2
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
- count
+ count 
 -------
      3
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
- count
+ count 
 -------
      3
 (1 row)
@@ -3481,37 +3481,37 @@ RESET enable_seqscan;
 DROP INDEX jidx;
 -- nested tests
 SELECT '{"ff":{"a":12,"b":16}}'::jsonb;
-           jsonb
+           jsonb            
 ----------------------------
  {"ff": {"a": 12, "b": 16}}
 (1 row)
 
 SELECT '{"ff":{"a":12,"b":16},"qq":123}'::jsonb;
-                 jsonb
+                 jsonb                 
 ---------------------------------------
  {"ff": {"a": 12, "b": 16}, "qq": 123}
 (1 row)
 
 SELECT '{"aa":["a","aaa"],"qq":{"a":12,"b":16,"c":["c1","c2"],"d":{"d1":"d1","d2":"d2","d1":"d3"}}}'::jsonb;
-                                              jsonb
+                                              jsonb                                               
 --------------------------------------------------------------------------------------------------
  {"aa": ["a", "aaa"], "qq": {"a": 12, "b": 16, "c": ["c1", "c2"], "d": {"d1": "d3", "d2": "d2"}}}
 (1 row)
 
 SELECT '{"aa":["a","aaa"],"qq":{"a":"12","b":"16","c":["c1","c2"],"d":{"d1":"d1","d2":"d2"}}}'::jsonb;
-                                                jsonb
+                                                jsonb                                                 
 ------------------------------------------------------------------------------------------------------
  {"aa": ["a", "aaa"], "qq": {"a": "12", "b": "16", "c": ["c1", "c2"], "d": {"d1": "d1", "d2": "d2"}}}
 (1 row)
 
 SELECT '{"aa":["a","aaa"],"qq":{"a":"12","b":"16","c":["c1","c2",["c3"],{"c4":4}],"d":{"d1":"d1","d2":"d2"}}}'::jsonb;
-                                                          jsonb
+                                                          jsonb                                                          
 -------------------------------------------------------------------------------------------------------------------------
  {"aa": ["a", "aaa"], "qq": {"a": "12", "b": "16", "c": ["c1", "c2", ["c3"], {"c4": 4}], "d": {"d1": "d1", "d2": "d2"}}}
 (1 row)
 
 SELECT '{"ff":["a","aaa"]}'::jsonb;
-        jsonb
+        jsonb         
 ----------------------
  {"ff": ["a", "aaa"]}
 (1 row)
@@ -3522,110 +3522,110 @@ SELECT
   ('{"ff":{"a":12,"b":16},"qq":123,"x":[1,2],"Y":null}'::jsonb -> 'Y') IS NULL AS f,
   ('{"ff":{"a":12,"b":16},"qq":123,"x":[1,2],"Y":null}'::jsonb ->> 'Y') IS NULL AS t,
    '{"ff":{"a":12,"b":16},"qq":123,"x":[1,2],"Y":null}'::jsonb -> 'x';
-      ?column?      | ?column? | f | t | ?column?
+      ?column?      | ?column? | f | t | ?column? 
 --------------------+----------+---+---+----------
  {"a": 12, "b": 16} | 123      | f | t | [1, 2]
 (1 row)
 
 -- nested containment
 SELECT '{"a":[1,2],"c":"b"}'::jsonb @> '{"a":[1,2]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":[2,1],"c":"b"}'::jsonb @> '{"a":[1,2]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":{"1":2},"c":"b"}'::jsonb @> '{"a":[1,2]}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":{"2":1},"c":"b"}'::jsonb @> '{"a":[1,2]}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":{"1":2},"c":"b"}'::jsonb @> '{"a":{"1":2}}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":{"2":1},"c":"b"}'::jsonb @> '{"a":{"1":2}}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '["a","b"]'::jsonb @> '["a","b","c","b"]';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '["a","b","c","b"]'::jsonb @> '["a","b"]';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '["a","b","c",[1,2]]'::jsonb @> '["a",[1,2]]';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '["a","b","c",[1,2]]'::jsonb @> '["b",[1,2]]';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":[1,2],"c":"b"}'::jsonb @> '{"a":[1]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":[1,2],"c":"b"}'::jsonb @> '{"a":[2]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":[1,2],"c":"b"}'::jsonb @> '{"a":[3]}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":[1,2,{"c":3,"x":4}],"c":"b"}'::jsonb @> '{"a":[{"c":3}]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":[1,2,{"c":3,"x":4}],"c":"b"}'::jsonb @> '{"a":[{"x":4}]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"a":[1,2,{"c":3,"x":4}],"c":"b"}'::jsonb @> '{"a":[{"x":4},3]}';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 SELECT '{"a":[1,2,{"c":3,"x":4}],"c":"b"}'::jsonb @> '{"a":[{"x":4},1]}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -3639,19 +3639,19 @@ create index on nestjsonb using gin(j jsonb_path_ops);
 set enable_seqscan = on;
 set enable_bitmapscan = off;
 select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
-                         j
+                         j                         
 ---------------------------------------------------
  {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
 (1 row)
 
 select * from nestjsonb where j @> '{"c":3}';
-                         j
+                         j                         
 ---------------------------------------------------
  {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
 (1 row)
 
 select * from nestjsonb where j @> '[[14]]';
-        j
+        j        
 -----------------
  [[14, 2, 3]]
  [1, [14, 2, 3]]
@@ -3660,19 +3660,19 @@ select * from nestjsonb where j @> '[[14]]';
 set enable_seqscan = off;
 set enable_bitmapscan = on;
 select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
-                         j
+                         j                         
 ---------------------------------------------------
  {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
 (1 row)
 
 select * from nestjsonb where j @> '{"c":3}';
-                         j
+                         j                         
 ---------------------------------------------------
  {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
 (1 row)
 
 select * from nestjsonb where j @> '[[14]]';
-        j
+        j        
 -----------------
  [[14, 2, 3]]
  [1, [14, 2, 3]]
@@ -3682,287 +3682,287 @@ reset enable_seqscan;
 reset enable_bitmapscan;
 -- nested object field / array index lookup
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'n';
- ?column?
+ ?column? 
 ----------
  null
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'a';
- ?column?
+ ?column? 
 ----------
  1
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'b';
- ?column?
+ ?column? 
 ----------
  [1, 2]
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'c';
- ?column?
+ ?column? 
 ----------
  {"1": 2}
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'd';
-   ?column?
+   ?column?    
 ---------------
  {"1": [2, 3]}
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'd' -> '1';
- ?column?
+ ?column? 
 ----------
  [2, 3]
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 'e';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb -> 0; --expecting error
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 0;
- ?column?
+ ?column? 
 ----------
  "a"
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 1;
- ?column?
+ ?column? 
 ----------
  "b"
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 2;
- ?column?
+ ?column? 
 ----------
  "c"
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 3;
- ?column?
+ ?column? 
 ----------
  [1, 2]
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 3 -> 1;
- ?column?
+ ?column? 
 ----------
  2
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 4;
- ?column?
+ ?column? 
 ----------
  null
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> 5;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> -1;
- ?column?
+ ?column? 
 ----------
  null
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> -5;
- ?column?
+ ?column? 
 ----------
  "a"
 (1 row)
 
 SELECT '["a","b","c",[1,2],null]'::jsonb -> -6;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 --nested path extraction
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{0}';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{a}';
- ?column?
+ ?column? 
 ----------
  "b"
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c}';
- ?column?
+ ?column?  
 -----------
  [1, 2, 3]
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,0}';
- ?column?
+ ?column? 
 ----------
  1
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,1}';
- ?column?
+ ?column? 
 ----------
  2
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,2}';
- ?column?
+ ?column? 
 ----------
  3
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,3}';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,-1}';
- ?column?
+ ?column? 
 ----------
  3
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,-3}';
- ?column?
+ ?column? 
 ----------
  1
 (1 row)
 
 SELECT '{"a":"b","c":[1,2,3]}'::jsonb #> '{c,-4}';
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SELECT '[0,1,2,[3,4],{"5":"five"}]'::jsonb #> '{0}';
- ?column?
+ ?column? 
 ----------
  0
 (1 row)
 
 SELECT '[0,1,2,[3,4],{"5":"five"}]'::jsonb #> '{3}';
- ?column?
+ ?column? 
 ----------
  [3, 4]
 (1 row)
 
 SELECT '[0,1,2,[3,4],{"5":"five"}]'::jsonb #> '{4}';
-   ?column?
+   ?column?    
 ---------------
  {"5": "five"}
 (1 row)
 
 SELECT '[0,1,2,[3,4],{"5":"five"}]'::jsonb #> '{4,5}';
- ?column?
+ ?column? 
 ----------
  "five"
 (1 row)
 
 --nested exists
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb ? 'n';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb ? 'a';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb ? 'b';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb ? 'c';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb ? 'd';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::jsonb ? 'e';
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- jsonb_strip_nulls
 select jsonb_strip_nulls(null);
- jsonb_strip_nulls
+ jsonb_strip_nulls 
 -------------------
-
+ 
 (1 row)
 
 select jsonb_strip_nulls('1');
- jsonb_strip_nulls
+ jsonb_strip_nulls 
 -------------------
  1
 (1 row)
 
 select jsonb_strip_nulls('"a string"');
- jsonb_strip_nulls
+ jsonb_strip_nulls 
 -------------------
  "a string"
 (1 row)
 
 select jsonb_strip_nulls('null');
- jsonb_strip_nulls
+ jsonb_strip_nulls 
 -------------------
  null
 (1 row)
 
 select jsonb_strip_nulls('[1,2,null,3,4]');
- jsonb_strip_nulls
+ jsonb_strip_nulls  
 --------------------
  [1, 2, null, 3, 4]
 (1 row)
 
 select jsonb_strip_nulls('{"a":1,"b":null,"c":[2,null,3],"d":{"e":4,"f":null}}');
-             jsonb_strip_nulls
+             jsonb_strip_nulls              
 --------------------------------------------
  {"a": 1, "c": [2, null, 3], "d": {"e": 4}}
 (1 row)
 
 select jsonb_strip_nulls('[1,{"a":1,"b":null,"c":2},3]');
-    jsonb_strip_nulls
+    jsonb_strip_nulls     
 --------------------------
  [1, {"a": 1, "c": 2}, 3]
 (1 row)
 
 -- an empty object is not null and should not be stripped
 select jsonb_strip_nulls('{"a": {"b": null, "c": null}, "d": {} }');
- jsonb_strip_nulls
+ jsonb_strip_nulls  
 --------------------
  {"a": {}, "d": {}}
 (1 row)
 
 select jsonb_pretty('{"a": "test", "b": [1, 2, 3], "c": "test3", "d":{"dd": "test4", "dd2":{"ddd": "test5"}}}');
-        jsonb_pretty
+        jsonb_pretty        
 ----------------------------
  {                         +
      "a": "test",          +
@@ -3982,7 +3982,7 @@ select jsonb_pretty('{"a": "test", "b": [1, 2, 3], "c": "test3", "d":{"dd": "tes
 (1 row)
 
 select jsonb_pretty('[{"f1":1,"f2":null},2,null,[[{"x":true},6,7],8],3]');
-       jsonb_pretty
+       jsonb_pretty        
 ---------------------------
  [                        +
      {                    +
@@ -4006,7 +4006,7 @@ select jsonb_pretty('[{"f1":1,"f2":null},2,null,[[{"x":true},6,7],8],3]');
 (1 row)
 
 select jsonb_pretty('{"a":["b", "c"], "d": {"e":"f"}}');
-   jsonb_pretty
+   jsonb_pretty   
 ------------------
  {               +
      "a": [      +
@@ -4020,325 +4020,325 @@ select jsonb_pretty('{"a":["b", "c"], "d": {"e":"f"}}');
 (1 row)
 
 select jsonb_concat('{"d": "test", "a": [1, 2]}', '{"g": "test2", "c": {"c1":1, "c2":2}}');
-                           jsonb_concat
+                           jsonb_concat                            
 -------------------------------------------------------------------
  {"a": [1, 2], "c": {"c1": 1, "c2": 2}, "d": "test", "g": "test2"}
 (1 row)
 
 select '{"aa":1 , "b":2, "cq":3}'::jsonb || '{"cq":"l", "b":"g", "fg":false}';
-                  ?column?
+                  ?column?                   
 ---------------------------------------------
  {"b": "g", "aa": 1, "cq": "l", "fg": false}
 (1 row)
 
 select '{"aa":1 , "b":2, "cq":3}'::jsonb || '{"aq":"l"}';
-               ?column?
+               ?column?                
 ---------------------------------------
  {"b": 2, "aa": 1, "aq": "l", "cq": 3}
 (1 row)
 
 select '{"aa":1 , "b":2, "cq":3}'::jsonb || '{"aa":"l"}';
-           ?column?
+           ?column?           
 ------------------------------
  {"b": 2, "aa": "l", "cq": 3}
 (1 row)
 
 select '{"aa":1 , "b":2, "cq":3}'::jsonb || '{}';
-          ?column?
+          ?column?          
 ----------------------------
  {"b": 2, "aa": 1, "cq": 3}
 (1 row)
 
 select '["a", "b"]'::jsonb || '["c"]';
-    ?column?
+    ?column?     
 -----------------
  ["a", "b", "c"]
 (1 row)
 
 select '["a", "b"]'::jsonb || '["c", "d"]';
-       ?column?
+       ?column?       
 ----------------------
  ["a", "b", "c", "d"]
 (1 row)
 
 select '["c"]' || '["a", "b"]'::jsonb;
-    ?column?
+    ?column?     
 -----------------
  ["c", "a", "b"]
 (1 row)
 
 select '["a", "b"]'::jsonb || '"c"';
-    ?column?
+    ?column?     
 -----------------
  ["a", "b", "c"]
 (1 row)
 
 select '"c"' || '["a", "b"]'::jsonb;
-    ?column?
+    ?column?     
 -----------------
  ["c", "a", "b"]
 (1 row)
 
 select '[]'::jsonb || '["a"]'::jsonb;
- ?column?
+ ?column? 
 ----------
  ["a"]
 (1 row)
 
 select '[]'::jsonb || '"a"'::jsonb;
- ?column?
+ ?column? 
 ----------
  ["a"]
 (1 row)
 
 select '"b"'::jsonb || '"a"'::jsonb;
-  ?column?
+  ?column?  
 ------------
  ["b", "a"]
 (1 row)
 
 select '{}'::jsonb || '{"a":"b"}'::jsonb;
-  ?column?
+  ?column?  
 ------------
  {"a": "b"}
 (1 row)
 
 select '[]'::jsonb || '{"a":"b"}'::jsonb;
-   ?column?
+   ?column?   
 --------------
  [{"a": "b"}]
 (1 row)
 
 select '{"a":"b"}'::jsonb || '[]'::jsonb;
-   ?column?
+   ?column?   
 --------------
  [{"a": "b"}]
 (1 row)
 
 select '"a"'::jsonb || '{"a":1}';
-    ?column?
+    ?column?     
 -----------------
  ["a", {"a": 1}]
 (1 row)
 
 select '{"a":1}' || '"a"'::jsonb;
-    ?column?
+    ?column?     
 -----------------
  [{"a": 1}, "a"]
 (1 row)
 
 select '[3]'::jsonb || '{}'::jsonb;
- ?column?
+ ?column? 
 ----------
  [3, {}]
 (1 row)
 
 select '3'::jsonb || '[]'::jsonb;
- ?column?
+ ?column? 
 ----------
  [3]
 (1 row)
 
 select '3'::jsonb || '4'::jsonb;
- ?column?
+ ?column? 
 ----------
  [3, 4]
 (1 row)
 
 select '3'::jsonb || '{}'::jsonb;
- ?column?
+ ?column? 
 ----------
  [3, {}]
 (1 row)
 
 select '["a", "b"]'::jsonb || '{"c":1}';
-       ?column?
+       ?column?       
 ----------------------
  ["a", "b", {"c": 1}]
 (1 row)
 
 select '{"c": 1}'::jsonb || '["a", "b"]';
-       ?column?
+       ?column?       
 ----------------------
  [{"c": 1}, "a", "b"]
 (1 row)
 
 select '{}'::jsonb || '{"cq":"l", "b":"g", "fg":false}';
-              ?column?
+              ?column?              
 ------------------------------------
  {"b": "g", "cq": "l", "fg": false}
 (1 row)
 
 select pg_column_size('{}'::jsonb || '{}'::jsonb) = pg_column_size('{}'::jsonb);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select pg_column_size('{"aa":1}'::jsonb || '{"b":2}'::jsonb) = pg_column_size('{"aa":1, "b":2}'::jsonb);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select pg_column_size('{"aa":1, "b":2}'::jsonb || '{}'::jsonb) = pg_column_size('{"aa":1, "b":2}'::jsonb);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select pg_column_size('{}'::jsonb || '{"aa":1, "b":2}'::jsonb) = pg_column_size('{"aa":1, "b":2}'::jsonb);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select jsonb_delete('{"a":1 , "b":2, "c":3}'::jsonb, 'a');
-   jsonb_delete
+   jsonb_delete   
 ------------------
  {"b": 2, "c": 3}
 (1 row)
 
 select jsonb_delete('{"a":null , "b":2, "c":3}'::jsonb, 'a');
-   jsonb_delete
+   jsonb_delete   
 ------------------
  {"b": 2, "c": 3}
 (1 row)
 
 select jsonb_delete('{"a":1 , "b":2, "c":3}'::jsonb, 'b');
-   jsonb_delete
+   jsonb_delete   
 ------------------
  {"a": 1, "c": 3}
 (1 row)
 
 select jsonb_delete('{"a":1 , "b":2, "c":3}'::jsonb, 'c');
-   jsonb_delete
+   jsonb_delete   
 ------------------
  {"a": 1, "b": 2}
 (1 row)
 
 select jsonb_delete('{"a":1 , "b":2, "c":3}'::jsonb, 'd');
-       jsonb_delete
+       jsonb_delete       
 --------------------------
  {"a": 1, "b": 2, "c": 3}
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - 'a';
-     ?column?
+     ?column?     
 ------------------
  {"b": 2, "c": 3}
 (1 row)
 
 select '{"a":null , "b":2, "c":3}'::jsonb - 'a';
-     ?column?
+     ?column?     
 ------------------
  {"b": 2, "c": 3}
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - 'b';
-     ?column?
+     ?column?     
 ------------------
  {"a": 1, "c": 3}
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - 'c';
-     ?column?
+     ?column?     
 ------------------
  {"a": 1, "b": 2}
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - 'd';
-         ?column?
+         ?column?         
 --------------------------
  {"a": 1, "b": 2, "c": 3}
 (1 row)
 
 select pg_column_size('{"a":1 , "b":2, "c":3}'::jsonb - 'b') = pg_column_size('{"a":1, "b":2}'::jsonb);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select '["a","b","c"]'::jsonb - 3;
-    ?column?
+    ?column?     
 -----------------
  ["a", "b", "c"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - 2;
-  ?column?
+  ?column?  
 ------------
  ["a", "b"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - 1;
-  ?column?
+  ?column?  
 ------------
  ["a", "c"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - 0;
-  ?column?
+  ?column?  
 ------------
  ["b", "c"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - -1;
-  ?column?
+  ?column?  
 ------------
  ["a", "b"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - -2;
-  ?column?
+  ?column?  
 ------------
  ["a", "c"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - -3;
-  ?column?
+  ?column?  
 ------------
  ["b", "c"]
 (1 row)
 
 select '["a","b","c"]'::jsonb - -4;
-    ?column?
+    ?column?     
 -----------------
  ["a", "b", "c"]
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - '{b}'::text[];
-     ?column?
+     ?column?     
 ------------------
  {"a": 1, "c": 3}
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - '{c,b}'::text[];
- ?column?
+ ?column? 
 ----------
  {"a": 1}
 (1 row)
 
 select '{"a":1 , "b":2, "c":3}'::jsonb - '{}'::text[];
-         ?column?
+         ?column?         
 --------------------------
  {"a": 1, "b": 2, "c": 3}
 (1 row)
 
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{n}', '[1,2,3]');
-                                jsonb_set
+                                jsonb_set                                 
 --------------------------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": [1, 2, 3]}
 (1 row)
 
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{b,-1}', '[1,2,3]');
-                                  jsonb_set
+                                  jsonb_set                                  
 -----------------------------------------------------------------------------
  {"a": 1, "b": [1, [1, 2, 3]], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": null}
 (1 row)
 
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{d,1,0}', '[1,2,3]');
-                                  jsonb_set
+                                  jsonb_set                                  
 -----------------------------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [[1, 2, 3], 3]}, "n": null}
 (1 row)
@@ -4346,19 +4346,19 @@ select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::j
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{d,NULL,0}', '[1,2,3]');
 ERROR:  path element at position 2 is null
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{n}', '{"1": 2}');
-                                jsonb_set
+                                jsonb_set                                
 -------------------------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": {"1": 2}}
 (1 row)
 
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{b,-1}', '{"1": 2}');
-                                 jsonb_set
+                                 jsonb_set                                  
 ----------------------------------------------------------------------------
  {"a": 1, "b": [1, {"1": 2}], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": null}
 (1 row)
 
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{d,1,0}', '{"1": 2}');
-                                 jsonb_set
+                                 jsonb_set                                  
 ----------------------------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [{"1": 2}, 3]}, "n": null}
 (1 row)
@@ -4366,43 +4366,43 @@ select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::j
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{d,NULL,0}', '{"1": 2}');
 ERROR:  path element at position 2 is null
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{b,-1}', '"test"');
-                                jsonb_set
+                                jsonb_set                                 
 --------------------------------------------------------------------------
  {"a": 1, "b": [1, "test"], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": null}
 (1 row)
 
 select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb, '{b,-1}', '{"f": "test"}');
-                                    jsonb_set
+                                    jsonb_set                                    
 ---------------------------------------------------------------------------------
  {"a": 1, "b": [1, {"f": "test"}], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": null}
 (1 row)
 
 select jsonb_delete_path('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}', '{n}');
-                    jsonb_delete_path
+                    jsonb_delete_path                     
 ----------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [2, 3]}}
 (1 row)
 
 select jsonb_delete_path('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}', '{b,-1}');
-                        jsonb_delete_path
+                        jsonb_delete_path                         
 ------------------------------------------------------------------
  {"a": 1, "b": [1], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": null}
 (1 row)
 
 select jsonb_delete_path('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}', '{d,1,0}');
-                        jsonb_delete_path
+                        jsonb_delete_path                         
 ------------------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [3]}, "n": null}
 (1 row)
 
 select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{n}';
-                         ?column?
+                         ?column?                         
 ----------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [2, 3]}}
 (1 row)
 
 select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{b,-1}';
-                             ?column?
+                             ?column?                             
 ------------------------------------------------------------------
  {"a": 1, "b": [1], "c": {"1": 2}, "d": {"1": [2, 3]}, "n": null}
 (1 row)
@@ -4410,7 +4410,7 @@ select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{
 select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{b,-1e}'; -- invalid array subscript
 ERROR:  path element at position 2 is not an integer: "-1e"
 select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{d,1,0}';
-                             ?column?
+                             ?column?                             
 ------------------------------------------------------------------
  {"a": 1, "b": [1, 2], "c": {"1": 2}, "d": {"1": [3]}, "n": null}
 (1 row)
@@ -4419,13 +4419,13 @@ select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{
 select '"a"'::jsonb - 'a'; -- error
 ERROR:  cannot delete from scalar
 select '{}'::jsonb - 'a';
- ?column?
+ ?column? 
 ----------
  {}
 (1 row)
 
 select '[]'::jsonb - 'a';
- ?column?
+ ?column? 
 ----------
  []
 (1 row)
@@ -4435,7 +4435,7 @@ ERROR:  cannot delete from scalar
 select '{}'::jsonb -  1; -- error
 ERROR:  cannot delete from object using integer index
 select '[]'::jsonb - 1;
- ?column?
+ ?column? 
 ----------
  []
 (1 row)
@@ -4443,13 +4443,13 @@ select '[]'::jsonb - 1;
 select '"a"'::jsonb #- '{a}'; -- error
 ERROR:  cannot delete path in scalar
 select '{}'::jsonb #- '{a}';
- ?column?
+ ?column? 
 ----------
  {}
 (1 row)
 
 select '[]'::jsonb #- '{a}';
- ?column?
+ ?column? 
 ----------
  []
 (1 row)
@@ -4457,19 +4457,19 @@ select '[]'::jsonb #- '{a}';
 select jsonb_set('"a"','{a}','"b"'); --error
 ERROR:  cannot set path in scalar
 select jsonb_set('{}','{a}','"b"', false);
- jsonb_set
+ jsonb_set 
 -----------
  {}
 (1 row)
 
 select jsonb_set('[]','{1}','"b"', false);
- jsonb_set
+ jsonb_set 
 -----------
  []
 (1 row)
 
 select jsonb_set('[{"f1":1,"f2":null},2,null,3]', '{0}','[2,3,4]', false);
-        jsonb_set
+        jsonb_set        
 -------------------------
  [[2, 3, 4], 2, null, 3]
 (1 row)
@@ -4477,67 +4477,67 @@ select jsonb_set('[{"f1":1,"f2":null},2,null,3]', '{0}','[2,3,4]', false);
 -- jsonb_set adding instead of replacing
 -- prepend to array
 select jsonb_set('{"a":1,"b":[0,1,2],"c":{"d":4}}','{b,-33}','{"foo":123}');
-                       jsonb_set
+                       jsonb_set                       
 -------------------------------------------------------
  {"a": 1, "b": [{"foo": 123}, 0, 1, 2], "c": {"d": 4}}
 (1 row)
 
 -- append to array
 select jsonb_set('{"a":1,"b":[0,1,2],"c":{"d":4}}','{b,33}','{"foo":123}');
-                       jsonb_set
+                       jsonb_set                       
 -------------------------------------------------------
  {"a": 1, "b": [0, 1, 2, {"foo": 123}], "c": {"d": 4}}
 (1 row)
 
 -- check nesting levels addition
 select jsonb_set('{"a":1,"b":[4,5,[0,1,2],6,7],"c":{"d":4}}','{b,2,33}','{"foo":123}');
-                              jsonb_set
+                              jsonb_set                              
 ---------------------------------------------------------------------
  {"a": 1, "b": [4, 5, [0, 1, 2, {"foo": 123}], 6, 7], "c": {"d": 4}}
 (1 row)
 
 -- add new key
 select jsonb_set('{"a":1,"b":[0,1,2],"c":{"d":4}}','{c,e}','{"foo":123}');
-                         jsonb_set
+                         jsonb_set                          
 ------------------------------------------------------------
  {"a": 1, "b": [0, 1, 2], "c": {"d": 4, "e": {"foo": 123}}}
 (1 row)
 
 -- adding doesn't do anything if elements before last aren't present
 select jsonb_set('{"a":1,"b":[0,1,2],"c":{"d":4}}','{x,-33}','{"foo":123}');
-                jsonb_set
+                jsonb_set                
 -----------------------------------------
  {"a": 1, "b": [0, 1, 2], "c": {"d": 4}}
 (1 row)
 
 select jsonb_set('{"a":1,"b":[0,1,2],"c":{"d":4}}','{x,y}','{"foo":123}');
-                jsonb_set
+                jsonb_set                
 -----------------------------------------
  {"a": 1, "b": [0, 1, 2], "c": {"d": 4}}
 (1 row)
 
 -- add to empty object
 select jsonb_set('{}','{x}','{"foo":123}');
-      jsonb_set
+      jsonb_set      
 ---------------------
  {"x": {"foo": 123}}
 (1 row)
 
 --add to empty array
 select jsonb_set('[]','{0}','{"foo":123}');
-   jsonb_set
+   jsonb_set    
 ----------------
  [{"foo": 123}]
 (1 row)
 
 select jsonb_set('[]','{99}','{"foo":123}');
-   jsonb_set
+   jsonb_set    
 ----------------
  [{"foo": 123}]
 (1 row)
 
 select jsonb_set('[]','{-99}','{"foo":123}');
-   jsonb_set
+   jsonb_set    
 ----------------
  [{"foo": 123}]
 (1 row)
@@ -4552,26 +4552,26 @@ ERROR:  path element at position 3 is null
 \pset null NULL
 -- pass though non nulls to jsonb_set
 select jsonb_set_lax('{"a":1,"b":2}','{b}','5') ;
-  jsonb_set_lax
+  jsonb_set_lax   
 ------------------
  {"a": 1, "b": 5}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}','{d}','6', true) ;
-      jsonb_set_lax
+      jsonb_set_lax       
 --------------------------
  {"a": 1, "b": 2, "d": 6}
 (1 row)
 
 -- using the default treatment
 select jsonb_set_lax('{"a":1,"b":2}','{b}',null);
-    jsonb_set_lax
+    jsonb_set_lax    
 ---------------------
  {"a": 1, "b": null}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}','{d}',null,true);
-        jsonb_set_lax
+        jsonb_set_lax        
 -----------------------------
  {"a": 1, "b": 2, "d": null}
 (1 row)
@@ -4587,19 +4587,19 @@ ERROR:  JSON value must not be null
 DETAIL:  Exception was raised because null_value_treatment is "raise_exception".
 HINT:  To avoid, either change the null_value_treatment argument or ensure that an SQL NULL is not passed.
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'return_target') as return_target;
-  return_target
+  return_target   
 ------------------
  {"a": 1, "b": 2}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'delete_key') as delete_key;
- delete_key
+ delete_key 
 ------------
  {"a": 1}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_json_null') as use_json_null;
-    use_json_null
+    use_json_null    
 ---------------------
  {"a": 1, "b": null}
 (1 row)
@@ -4607,123 +4607,123 @@ select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_
 \pset null ''
 -- jsonb_insert
 select jsonb_insert('{"a": [0,1,2]}', '{a, 1}', '"new_value"');
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, "new_value", 1, 2]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 1}', '"new_value"', true);
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, 1, "new_value", 2]}
 (1 row)
 
 select jsonb_insert('{"a": {"b": {"c": [0, 1, "test1", "test2"]}}}', '{a, b, c, 2}', '"new_value"');
-                        jsonb_insert
+                        jsonb_insert                        
 ------------------------------------------------------------
  {"a": {"b": {"c": [0, 1, "new_value", "test1", "test2"]}}}
 (1 row)
 
 select jsonb_insert('{"a": {"b": {"c": [0, 1, "test1", "test2"]}}}', '{a, b, c, 2}', '"new_value"', true);
-                        jsonb_insert
+                        jsonb_insert                        
 ------------------------------------------------------------
  {"a": {"b": {"c": [0, 1, "test1", "new_value", "test2"]}}}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 1}', '{"b": "value"}');
-           jsonb_insert
+           jsonb_insert           
 ----------------------------------
  {"a": [0, {"b": "value"}, 1, 2]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 1}', '["value1", "value2"]');
-              jsonb_insert
+              jsonb_insert              
 ----------------------------------------
  {"a": [0, ["value1", "value2"], 1, 2]}
 (1 row)
 
 -- edge cases
 select jsonb_insert('{"a": [0,1,2]}', '{a, 0}', '"new_value"');
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": ["new_value", 0, 1, 2]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 0}', '"new_value"', true);
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, "new_value", 1, 2]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 2}', '"new_value"');
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, 1, "new_value", 2]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 2}', '"new_value"', true);
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, 1, 2, "new_value"]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, -1}', '"new_value"');
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, 1, "new_value", 2]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, -1}', '"new_value"', true);
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, 1, 2, "new_value"]}
 (1 row)
 
 select jsonb_insert('[]', '{1}', '"new_value"');
- jsonb_insert
+ jsonb_insert  
 ---------------
  ["new_value"]
 (1 row)
 
 select jsonb_insert('[]', '{1}', '"new_value"', true);
- jsonb_insert
+ jsonb_insert  
 ---------------
  ["new_value"]
 (1 row)
 
 select jsonb_insert('{"a": []}', '{a, 1}', '"new_value"');
-     jsonb_insert
+     jsonb_insert     
 ----------------------
  {"a": ["new_value"]}
 (1 row)
 
 select jsonb_insert('{"a": []}', '{a, 1}', '"new_value"', true);
-     jsonb_insert
+     jsonb_insert     
 ----------------------
  {"a": ["new_value"]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, 10}', '"new_value"');
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": [0, 1, 2, "new_value"]}
 (1 row)
 
 select jsonb_insert('{"a": [0,1,2]}', '{a, -10}', '"new_value"');
-         jsonb_insert
+         jsonb_insert          
 -------------------------------
  {"a": ["new_value", 0, 1, 2]}
 (1 row)
 
 -- jsonb_insert should be able to insert new value for objects, but not to replace
 select jsonb_insert('{"a": {"b": "value"}}', '{a, c}', '"new_value"');
-              jsonb_insert
+              jsonb_insert               
 -----------------------------------------
  {"a": {"b": "value", "c": "new_value"}}
 (1 row)
 
 select jsonb_insert('{"a": {"b": "value"}}', '{a, c}', '"new_value"', true);
-              jsonb_insert
+              jsonb_insert               
 -----------------------------------------
  {"a": {"b": "value", "c": "new_value"}}
 (1 row)
@@ -4736,61 +4736,61 @@ ERROR:  cannot replace existing key
 HINT:  Try using the function jsonb_set to replace key value.
 -- jsonb subscript
 select ('123'::jsonb)['a'];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('123'::jsonb)[0];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('123'::jsonb)[NULL];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('{"a": 1}'::jsonb)['a'];
- jsonb
+ jsonb 
 -------
  1
 (1 row)
 
 select ('{"a": 1}'::jsonb)[0];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('{"a": 1}'::jsonb)['not_exist'];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('{"a": 1}'::jsonb)[NULL];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('[1, "2", null]'::jsonb)['a'];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('[1, "2", null]'::jsonb)[0];
- jsonb
+ jsonb 
 -------
  1
 (1 row)
 
 select ('[1, "2", null]'::jsonb)['1'];
- jsonb
+ jsonb 
 -------
  "2"
 (1 row)
@@ -4801,85 +4801,85 @@ LINE 1: select ('[1, "2", null]'::jsonb)[1.0];
                                          ^
 HINT:  jsonb subscript must be coercible to either integer or text.
 select ('[1, "2", null]'::jsonb)[2];
- jsonb
+ jsonb 
 -------
  null
 (1 row)
 
 select ('[1, "2", null]'::jsonb)[3];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('[1, "2", null]'::jsonb)[-2];
- jsonb
+ jsonb 
 -------
  "2"
 (1 row)
 
 select ('[1, "2", null]'::jsonb)[1]['a'];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('[1, "2", null]'::jsonb)[1][0];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['b'];
- jsonb
+ jsonb 
 -------
  "c"
 (1 row)
 
 select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['d'];
-   jsonb
+   jsonb   
 -----------
  [1, 2, 3]
 (1 row)
 
 select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['d'][1];
- jsonb
+ jsonb 
 -------
  2
 (1 row)
 
 select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['d']['a'];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('{"a": {"a1": {"a2": "aaa"}}, "b": "bbb", "c": "ccc"}'::jsonb)['a']['a1'];
-     jsonb
+     jsonb     
 ---------------
  {"a2": "aaa"}
 (1 row)
 
 select ('{"a": {"a1": {"a2": "aaa"}}, "b": "bbb", "c": "ccc"}'::jsonb)['a']['a1']['a2'];
- jsonb
+ jsonb 
 -------
  "aaa"
 (1 row)
 
 select ('{"a": {"a1": {"a2": "aaa"}}, "b": "bbb", "c": "ccc"}'::jsonb)['a']['a1']['a2']['a3'];
- jsonb
+ jsonb 
 -------
-
+ 
 (1 row)
 
 select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1]['b1'];
-         jsonb
+         jsonb         
 -----------------------
  ["aaa", "bbb", "ccc"]
 (1 row)
 
 select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1]['b1'][2];
- jsonb
+ jsonb 
 -------
  "ccc"
 (1 row)
@@ -4913,7 +4913,7 @@ insert into test_jsonb_subscript values
 -- update empty jsonb
 update test_jsonb_subscript set test_json['a'] = '1' where id = 1;
 select * from test_jsonb_subscript;
- id |    test_json
+ id |    test_json     
 ----+------------------
   2 | {"key": "value"}
   1 | {"a": 1}
@@ -4922,7 +4922,7 @@ select * from test_jsonb_subscript;
 -- update jsonb with some data
 update test_jsonb_subscript set test_json['a'] = '1' where id = 2;
 select * from test_jsonb_subscript;
- id |        test_json
+ id |        test_json         
 ----+--------------------------
   1 | {"a": 1}
   2 | {"a": 1, "key": "value"}
@@ -4931,7 +4931,7 @@ select * from test_jsonb_subscript;
 -- replace jsonb
 update test_jsonb_subscript set test_json['a'] = '"test"';
 select * from test_jsonb_subscript;
- id |           test_json
+ id |           test_json           
 ----+-------------------------------
   1 | {"a": "test"}
   2 | {"a": "test", "key": "value"}
@@ -4940,7 +4940,7 @@ select * from test_jsonb_subscript;
 -- replace by object
 update test_jsonb_subscript set test_json['a'] = '{"b": 1}'::jsonb;
 select * from test_jsonb_subscript;
- id |            test_json
+ id |            test_json            
 ----+---------------------------------
   1 | {"a": {"b": 1}}
   2 | {"a": {"b": 1}, "key": "value"}
@@ -4949,7 +4949,7 @@ select * from test_jsonb_subscript;
 -- replace by array
 update test_jsonb_subscript set test_json['a'] = '[1, 2, 3]'::jsonb;
 select * from test_jsonb_subscript;
- id |            test_json
+ id |            test_json             
 ----+----------------------------------
   1 | {"a": [1, 2, 3]}
   2 | {"a": [1, 2, 3], "key": "value"}
@@ -4957,18 +4957,18 @@ select * from test_jsonb_subscript;
 
 -- use jsonb subscription in where clause
 select * from test_jsonb_subscript where test_json['key'] = '"value"';
- id |            test_json
+ id |            test_json             
 ----+----------------------------------
   2 | {"a": [1, 2, 3], "key": "value"}
 (1 row)
 
 select * from test_jsonb_subscript where test_json['key_doesnt_exists'] = '"value"';
- id | test_json
+ id | test_json 
 ----+-----------
 (0 rows)
 
 select * from test_jsonb_subscript where test_json['key'] = '"wrong_value"';
- id | test_json
+ id | test_json 
 ----+-----------
 (0 rows)
 
@@ -4977,7 +4977,7 @@ update test_jsonb_subscript set test_json[NULL] = '1';
 ERROR:  jsonb subscript in assignment must not be null
 update test_jsonb_subscript set test_json['another_key'] = NULL;
 select * from test_jsonb_subscript;
- id |                       test_json
+ id |                       test_json                       
 ----+-------------------------------------------------------
   1 | {"a": [1, 2, 3], "another_key": null}
   2 | {"a": [1, 2, 3], "key": "value", "another_key": null}
@@ -4987,7 +4987,7 @@ select * from test_jsonb_subscript;
 insert into test_jsonb_subscript values (3, NULL);
 update test_jsonb_subscript set test_json['a'] = '1' where id = 3;
 select * from test_jsonb_subscript;
- id |                       test_json
+ id |                       test_json                       
 ----+-------------------------------------------------------
   1 | {"a": [1, 2, 3], "another_key": null}
   2 | {"a": [1, 2, 3], "key": "value", "another_key": null}
@@ -4997,7 +4997,7 @@ select * from test_jsonb_subscript;
 update test_jsonb_subscript set test_json = NULL where id = 3;
 update test_jsonb_subscript set test_json[0] = '1';
 select * from test_jsonb_subscript;
- id |                           test_json
+ id |                           test_json                           
 ----+---------------------------------------------------------------
   1 | {"0": 1, "a": [1, 2, 3], "another_key": null}
   2 | {"0": 1, "a": [1, 2, 3], "key": "value", "another_key": null}
@@ -5009,14 +5009,14 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '[0]');
 update test_jsonb_subscript set test_json[5] = '1';
 select * from test_jsonb_subscript;
- id |           test_json
+ id |           test_json            
 ----+--------------------------------
   1 | [0, null, null, null, null, 1]
 (1 row)
 
 update test_jsonb_subscript set test_json[-4] = '1';
 select * from test_jsonb_subscript;
- id |          test_json
+ id |          test_json          
 ----+-----------------------------
   1 | [0, null, 1, null, null, 1]
 (1 row)
@@ -5024,7 +5024,7 @@ select * from test_jsonb_subscript;
 update test_jsonb_subscript set test_json[-8] = '1';
 ERROR:  path element at position 1 is out of range: -8
 select * from test_jsonb_subscript;
- id |          test_json
+ id |          test_json          
 ----+-----------------------------
   1 | [0, null, 1, null, null, 1]
 (1 row)
@@ -5034,7 +5034,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '[]');
 update test_jsonb_subscript set test_json[5] = '1';
 select * from test_jsonb_subscript;
- id |             test_json
+ id |             test_json             
 ----+-----------------------------------
   1 | [null, null, null, null, null, 1]
 (1 row)
@@ -5044,7 +5044,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '{}');
 update test_jsonb_subscript set test_json['a'][0]['b'][0]['c'] = '1';
 select * from test_jsonb_subscript;
- id |         test_json
+ id |         test_json          
 ----+----------------------------
   1 | {"a": [{"b": [{"c": 1}]}]}
 (1 row)
@@ -5053,7 +5053,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '{}');
 update test_jsonb_subscript set test_json['a'][2]['b'][2]['c'][2] = '1';
 select * from test_jsonb_subscript;
- id |                            test_json
+ id |                            test_json                             
 ----+------------------------------------------------------------------
   1 | {"a": [null, null, {"b": [null, null, {"c": [null, null, 1]}]}]}
 (1 row)
@@ -5063,7 +5063,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '{"b": 1}');
 update test_jsonb_subscript set test_json['a'][0] = '2';
 select * from test_jsonb_subscript;
- id |     test_json
+ id |     test_json      
 ----+--------------------
   1 | {"a": [2], "b": 1}
 (1 row)
@@ -5073,7 +5073,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '{}');
 update test_jsonb_subscript set test_json[0]['a'] = '1';
 select * from test_jsonb_subscript;
- id |    test_json
+ id |    test_json    
 ----+-----------------
   1 | {"0": {"a": 1}}
 (1 row)
@@ -5084,7 +5084,7 @@ insert into test_jsonb_subscript values (1, '[]');
 update test_jsonb_subscript set test_json[0]['a'] = '1';
 update test_jsonb_subscript set test_json[2]['b'] = '2';
 select * from test_jsonb_subscript;
- id |         test_json
+ id |         test_json          
 ----+----------------------------
   1 | [{"a": 1}, null, {"b": 2}]
 (1 row)
@@ -5095,7 +5095,7 @@ insert into test_jsonb_subscript values (1, '{}');
 update test_jsonb_subscript set test_json['a']['b'][1] = '1';
 update test_jsonb_subscript set test_json['a']['b'][10] = '1';
 select * from test_jsonb_subscript;
- id |                                 test_json
+ id |                                 test_json                                  
 ----+----------------------------------------------------------------------------
   1 | {"a": {"b": [null, 1, null, null, null, null, null, null, null, null, 1]}}
 (1 row)
@@ -5105,7 +5105,7 @@ insert into test_jsonb_subscript values (1, '[]');
 update test_jsonb_subscript set test_json[0][0][0] = '1';
 update test_jsonb_subscript set test_json[0][0][1] = '1';
 select * from test_jsonb_subscript;
- id | test_json
+ id | test_json  
 ----+------------
   1 | [[[1, 1]]]
 (1 row)
@@ -5115,7 +5115,7 @@ insert into test_jsonb_subscript values (1, '{}');
 update test_jsonb_subscript set test_json['a']['b'][10] = '1';
 update test_jsonb_subscript set test_json['a'][10][10] = '1';
 select * from test_jsonb_subscript;
- id |                                                                      test_json
+ id |                                                                      test_json                                                                       
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
   1 | {"a": {"b": [null, null, null, null, null, null, null, null, null, null, 1], "10": [null, null, null, null, null, null, null, null, null, null, 1]}}
 (1 row)
@@ -5125,7 +5125,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '{"a": {}}');
 update test_jsonb_subscript set test_json['a']['b']['c'][2] = '1';
 select * from test_jsonb_subscript;
- id |              test_json
+ id |              test_json               
 ----+--------------------------------------
   1 | {"a": {"b": {"c": [null, null, 1]}}}
 (1 row)
@@ -5134,7 +5134,7 @@ delete from test_jsonb_subscript;
 insert into test_jsonb_subscript values (1, '{"a": []}');
 update test_jsonb_subscript set test_json['a'][1]['c'][2] = '1';
 select * from test_jsonb_subscript;
- id |               test_json
+ id |               test_json               
 ----+---------------------------------------
   1 | {"a": [null, {"c": [null, null, 1]}]}
 (1 row)
@@ -5176,7 +5176,7 @@ insert into test_jsonb_subscript values('foo', '{"foo": "bar"}');
 insert into test_jsonb_subscript
   select s, ('{"' || s || '": "bar"}')::jsonb from repeat('xyzzy', 500) s;
 select length(id), test_json[id] from test_jsonb_subscript;
- length | test_json
+ length | test_json 
 --------+-----------
       3 | "bar"
    2500 | "bar"
@@ -5184,7 +5184,7 @@ select length(id), test_json[id] from test_jsonb_subscript;
 
 update test_jsonb_subscript set test_json[id] = '"baz"';
 select length(id), test_json[id] from test_jsonb_subscript;
- length | test_json
+ length | test_json 
 --------+-----------
       3 | "baz"
    2500 | "baz"
@@ -5414,7 +5414,7 @@ select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
 
 -- casts
 select 'true'::jsonb::bool;
- bool
+ bool 
 ------
  t
 (1 row)
@@ -5422,7 +5422,7 @@ select 'true'::jsonb::bool;
 select '[]'::jsonb::bool;
 ERROR:  cannot cast jsonb array to type boolean
 select '1.0'::jsonb::float;
- float8
+ float8 
 --------
       1
 (1 row)
@@ -5430,7 +5430,7 @@ select '1.0'::jsonb::float;
 select '[1.0]'::jsonb::float;
 ERROR:  cannot cast jsonb array to type double precision
 select '12345'::jsonb::int4;
- int4
+ int4  
 -------
  12345
 (1 row)
@@ -5438,7 +5438,7 @@ select '12345'::jsonb::int4;
 select '"hello"'::jsonb::int4;
 ERROR:  cannot cast jsonb string to type integer
 select '12345'::jsonb::numeric;
- numeric
+ numeric 
 ---------
    12345
 (1 row)
@@ -5446,73 +5446,74 @@ select '12345'::jsonb::numeric;
 select '{}'::jsonb::numeric;
 ERROR:  cannot cast jsonb object to type numeric
 select '12345.05'::jsonb::numeric;
- numeric
+ numeric  
 ----------
  12345.05
 (1 row)
 
 select '12345.05'::jsonb::float4;
-  float4
+  float4  
 ----------
  12345.05
 (1 row)
 
 select '12345.05'::jsonb::float8;
-  float8
+  float8  
 ----------
  12345.05
 (1 row)
 
 select '12345.05'::jsonb::int2;
- int2
+ int2  
 -------
  12345
 (1 row)
 
 select '12345.05'::jsonb::int4;
- int4
+ int4  
 -------
  12345
 (1 row)
 
 select '12345.05'::jsonb::int8;
- int8
+ int8  
 -------
  12345
 (1 row)
 
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::numeric;
-                       numeric
+                       numeric                        
 ------------------------------------------------------
  12345.0000000000000000000000000000000000000000000005
 (1 row)
 
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::float4;
- float4
+ float4 
 --------
   12345
 (1 row)
 
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::float8;
- float8
+ float8 
 --------
   12345
 (1 row)
 
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int2;
- int2
+ int2  
 -------
  12345
 (1 row)
 
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int4;
- int4
+ int4  
 -------
  12345
 (1 row)
 
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int8;
- int8
+ int8  
 -------
  12345
 (1 row)
+

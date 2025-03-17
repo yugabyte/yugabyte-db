@@ -57,7 +57,7 @@ var deleteBackupScheduleCmd = &cobra.Command{
 
 		scheduleAPIFilter := ybaclient.ScheduleApiFilter{}
 
-		scheduleAPIDirection := "DESC"
+		scheduleAPIDirection := util.DescSortDirection
 		scheduleAPISort := "scheduleName"
 
 		universeName, err := cmd.Flags().GetString("universe-name")

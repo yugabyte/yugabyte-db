@@ -5,7 +5,7 @@ import _ from 'lodash';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { InstanceTags } from './InstanceTags';
 import { CommunicationPorts } from './CommunicationPorts';
-import { YBModal } from '../../../../components';
+import { YBButton, YBModal } from '../../../../components';
 import {
   getAdvancedConfigChanges,
   getAsyncCluster,
@@ -22,7 +22,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   regionBox: {
     backgroundColor: '#f7f7f7',
-    borderRadius: theme.spacing[0.75],
+    borderRadius: theme.spacing(0.75),
     padding: theme.spacing(1.5, 2)
   },
   configConfirmationBox: {
@@ -38,7 +38,7 @@ interface FMModalProps {
   open: boolean;
   isPrimary: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (runOnlyPrechecks: boolean) => void;
 }
 
 export const FullMoveModal: FC<FMModalProps> = ({
@@ -180,13 +180,43 @@ export const FullMoveModal: FC<FMModalProps> = ({
       open={open}
       onClose={onClose}
       size="sm"
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('common.proceed')}
-      onSubmit={onSubmit}
       overrideHeight="auto"
       titleSeparator
-      submitTestId="submit-full-move"
-      cancelTestId="close-full-move"
+      footerAccessory={
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
+        >
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="FullMoveModal-CancelButton"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            onClick={() => onSubmit(true)}
+            data-testid="FullMoveModal-RunPrechecksButton"
+          >
+            {t('universeActions.runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            variant="primary"
+            onClick={() => onSubmit(false)}
+            data-testid="FullMoveModal-SubmitButton"
+          >
+            {t('common.proceed')}
+          </YBButton>
+        </div>
+      }
     >
       <Box display="flex" width="100%" flexDirection="column" data-testid="full-move-modal">
         <Box>

@@ -8,3 +8,4 @@ test: yb.orig.bitmap_scans
 test: yb.orig.bitmap_scans_colo
 test: yb.orig.bitmap_scans_joins
 test: yb.orig.bitmap_scans_system
+test: yb.orig.bitmap_scans_distinct

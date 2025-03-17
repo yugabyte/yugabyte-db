@@ -6,27 +6,27 @@
 --
 \d pg_yb_role_profile
                          Table "pg_catalog.pg_yb_role_profile"
-          Column           |           Type           | Collation | Nullable | Default
+          Column           |           Type           | Collation | Nullable | Default 
 ---------------------------+--------------------------+-----------+----------+---------
- oid                       | oid                      |           | not null |
- rolprfrole                | oid                      |           | not null |
- rolprfprofile             | oid                      |           | not null |
- rolprfstatus              | "char"                   |           | not null |
- rolprffailedloginattempts | integer                  |           | not null |
- rolprflockeduntil         | timestamp with time zone |           |          |
+ oid                       | oid                      |           | not null | 
+ rolprfrole                | oid                      |           | not null | 
+ rolprfprofile             | oid                      |           | not null | 
+ rolprfstatus              | "char"                   |           | not null | 
+ rolprffailedloginattempts | integer                  |           | not null | 
+ rolprflockeduntil         | timestamp with time zone |           |          | 
 Indexes:
     "pg_yb_role_profile_oid_index" PRIMARY KEY, lsm (oid ASC), tablespace "pg_global"
 Tablespace: "pg_global"
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_role_profile', 'pg_yb_role_profile_oid_index');
- oid  |           relname            | reltype | relnatts
+ oid  |           relname            | reltype | relnatts 
 ------+------------------------------+---------+----------
  8054 | pg_yb_role_profile           |    8056 |        6
  8055 | pg_yb_role_profile_oid_index |       0 |        1
 (2 rows)
 
 SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_role_profile';
- oid  |      typname       | typrelid
+ oid  |      typname       | typrelid 
 ------+--------------------+----------
  8056 | pg_yb_role_profile |     8054
 (1 row)
@@ -49,13 +49,13 @@ ALTER USER restricted_user PROFILE non_existent;
 ERROR:  profile "non_existent" does not exist
 -- Attach role to a profile
 SELECT prfname, prfmaxfailedloginattempts FROM pg_catalog.pg_yb_profile ORDER BY OID;
-   prfname    | prfmaxfailedloginattempts
+   prfname    | prfmaxfailedloginattempts 
 --------------+---------------------------
  test_profile |                         3
 (1 row)
 
 SELECT rolname from pg_catalog.pg_roles WHERE rolname = 'restricted_user';
-     rolname
+     rolname     
 -----------------
  restricted_user
 (1 row)
@@ -66,7 +66,7 @@ ALTER USER restricted_user PROFILE test_profile;
 -- and pg_yb_role_profile & pg_roles is setup correctly
 -- There should be one row
 SELECT count(*) FROM pg_yb_role_profile;
- count
+ count 
 -------
      1
 (1 row)
@@ -75,7 +75,7 @@ SELECT count(*) FROM pg_yb_role_profile;
 SELECT count(*) FROM pg_shdepend shdep
                 JOIN pg_roles rol on rol.oid = shdep.objid
                 WHERE shdep.deptype = 'f' and rol.rolname = 'restricted_user';
- count
+ count 
 -------
      1
 (1 row)
@@ -86,7 +86,7 @@ SELECT count(*) FROM pg_shdepend shdep
 SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
     pg_catalog.pg_yb_role_profile rp JOIN pg_catalog.pg_roles rol ON rp.rolprfrole = rol.oid
     JOIN pg_catalog.pg_yb_profile lp ON rp.rolprfprofile = lp.oid;
- rolprfstatus | rolprffailedloginattempts |     rolname     |   prfname
+ rolprfstatus | rolprffailedloginattempts |     rolname     |   prfname    
 --------------+---------------------------+-----------------+--------------
  o            |                         0 | restricted_user | test_profile
 (1 row)
@@ -95,7 +95,7 @@ ALTER USER restricted_user ACCOUNT LOCK;
 SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
     pg_catalog.pg_yb_role_profile rp JOIN pg_catalog.pg_roles rol ON rp.rolprfrole = rol.oid
     JOIN pg_catalog.pg_yb_profile lp ON rp.rolprfprofile = lp.oid;
- rolprfstatus | rolprffailedloginattempts |     rolname     |   prfname
+ rolprfstatus | rolprffailedloginattempts |     rolname     |   prfname    
 --------------+---------------------------+-----------------+--------------
  l            |                         0 | restricted_user | test_profile
 (1 row)
@@ -104,7 +104,7 @@ ALTER USER restricted_user ACCOUNT UNLOCK;
 SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
     pg_catalog.pg_yb_role_profile rp JOIN pg_catalog.pg_roles rol ON rp.rolprfrole = rol.oid
     JOIN pg_catalog.pg_yb_profile lp ON rp.rolprfprofile = lp.oid;
- rolprfstatus | rolprffailedloginattempts |     rolname     |   prfname
+ rolprfstatus | rolprffailedloginattempts |     rolname     |   prfname    
 --------------+---------------------------+-----------------+--------------
  o            |                         0 | restricted_user | test_profile
 (1 row)
@@ -121,7 +121,7 @@ ALTER USER restricted_user NOPROFILE;
 SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
     pg_catalog.pg_yb_role_profile rp JOIN pg_catalog.pg_roles rol ON rp.rolprfrole = rol.oid
     JOIN pg_catalog.pg_yb_profile lp ON rp.rolprfprofile = lp.oid;
- rolprfstatus | rolprffailedloginattempts | rolname | prfname
+ rolprfstatus | rolprffailedloginattempts | rolname | prfname 
 --------------+---------------------------+---------+---------
 (0 rows)
 
@@ -130,7 +130,7 @@ SELECT rolprfstatus, rolprffailedloginattempts, rolname, prfname FROM
 -- and pg_yb_role_profile & pg_roles is setup correctly
 -- There should be zero rows
 SELECT count(*) FROM pg_yb_role_profile;
- count
+ count 
 -------
      0
 (1 row)
@@ -139,7 +139,7 @@ SELECT count(*) FROM pg_yb_role_profile;
 SELECT count(*) FROM pg_shdepend shdep
                 JOIN pg_roles rol on rol.oid = shdep.objid
                 WHERE shdep.deptype = 'f' and rol.rolname = 'restricted_user';
- count
+ count 
 -------
      0
 (1 row)
@@ -147,7 +147,7 @@ SELECT count(*) FROM pg_shdepend shdep
 -- Can drop user as it removes dependencies automatically.
 DROP USER restricted_user;
 SELECT count(*) FROM pg_yb_role_profile;
- count
+ count 
 -------
      0
 (1 row)

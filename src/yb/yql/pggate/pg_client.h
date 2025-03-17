@@ -53,6 +53,7 @@ namespace yb::pggate {
 struct DdlMode {
   bool has_docdb_schema_changes{false};
   std::optional<uint32_t> silently_altered_db;
+  bool use_regular_transaction_block{true};
 
   std::string ToString() const;
   void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
@@ -129,7 +130,7 @@ class PgClient {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object,
+               const tserver::TServerSharedData& tserver_shared_object,
                std::optional<uint64_t> session_id);
 
   void Shutdown();
@@ -232,6 +233,9 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
+      uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
@@ -244,7 +248,10 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t* lag_metric);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids);

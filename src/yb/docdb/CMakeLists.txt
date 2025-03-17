@@ -38,34 +38,36 @@ set(DOCDB_SRCS
         deadline_info.cc
         deadlock_detector.cc
         doc_boundary_values_extractor.cc
-        docdb.cc
-        docdb_debug.cc
-        docdb_filter_policy.cc
-        docdb_pgapi.cc
-        docdb_statistics.cc
-        docdb_util.cc
-        docdb_compaction_context.cc
-        docdb_compaction_filter_intents.cc
-        docdb-internal.cc
-        doc_reader.cc
-        doc_reader_redis.cc
-        docdb_rocksdb_util.cc
         doc_expr.cc
         doc_pg_expr.cc
         doc_pgsql_scanspec.cc
+        doc_ql_filefilter.cc
         doc_ql_scanspec.cc
         doc_read_context.cc
+        doc_reader.cc
+        doc_reader_redis.cc
         doc_rowwise_iterator_base.cc
         doc_rowwise_iterator.cc
+        doc_vector_index.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
-        doc_ql_filefilter.cc
+        docdb.cc
+        docdb_compaction_context.cc
+        docdb_compaction_filter_intents.cc
+        docdb_debug.cc
+        docdb_filter_policy.cc
+        docdb_pgapi.cc
+        docdb_rocksdb_util.cc
+        docdb_statistics.cc
+        docdb_util.cc
+        docdb-internal.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
         intent_iterator.cc
         iter_util.cc
         key_bounds.cc
         kv_debug.cc
+        local_waiting_txn_registry.cc
         lock_batch.cc
         lock_util.cc
         object_lock_manager.cc
@@ -78,8 +80,6 @@ set(DOCDB_SRCS
         shared_lock_manager.cc
         transaction_dump.cc
         transaction_status_cache.cc
-        local_waiting_txn_registry.cc
-        vector_index.cc
         wait_queue.cc
         )
 

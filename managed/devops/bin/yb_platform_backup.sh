@@ -232,7 +232,7 @@ restore_postgres_backup() {
   pgrestore_path="$7"
   skip_dump_check="$8"
   skip_dump_file_delete="$9"
-  data_dir="$10"
+  data_dir="${10}"
   pg_restore="pg_restore"
   psql="psql"
 

@@ -392,6 +392,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
+  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
+                          RefreshYsqlLeaseResponsePB* resp,
+                          rpc::RpcContext* rpc,
+                          const LeaderEpoch& epoch);
+
   // Get the information about an in-progress truncate operation.
   Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                              IsTruncateTableDoneResponsePB* resp);
@@ -536,7 +541,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
-      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
+      REQUIRES(ddl_txn_verifier_mutex_);
 
   void RemoveDdlTransactionState(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
@@ -766,6 +771,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ReVerifyChildrenEntriesOnTabletSplit(
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
+
+  // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
+  // will be effectively invalidated when that TServer receives a heartbeat response from master.
+  Status InvalidateTserverOidCaches() override;
 
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
 
@@ -1768,9 +1777,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                           const NamespaceId& id,
                           int64_t term) REQUIRES(mutex_);
 
-  void ProcessPendingNamespace(NamespaceId id,
-                               std::vector<scoped_refptr<TableInfo>> template_tables,
-                               TransactionMetadata txn, const LeaderEpoch& epoch);
+  void ProcessPendingNamespace(const NamespaceId& id,
+                               const std::vector<TableInfoPtr>& template_tables,
+                               const TransactionMetadata& txn,
+                               const LeaderEpoch& epoch);
 
   // Called when transaction associated with NS create finishes. Verifies postgres layer present.
   void ScheduleVerifyNamespacePgLayer(TransactionMetadata txn,
@@ -2653,7 +2663,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override;
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse) override;
 
   server::Clock* Clock() override;
 
@@ -2917,6 +2928,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfo& table_info, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map)
       EXCLUDES(mutex_);
 
+  void MarkTabletAsHiddenPostReload(TabletId tablet, const LeaderEpoch& epoch);
   void MarkTabletAsHidden(
       SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
       const TabletDeleteRetainerInfo& delete_retainer) const;
@@ -2952,6 +2964,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveNamespaceFromMaps(
       YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) EXCLUDES(mutex_);
+
+  void DoReleaseObjectLocksIfNecessary(
+      const TransactionId& txn_id) REQUIRES(ddl_txn_verifier_mutex_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

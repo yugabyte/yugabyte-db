@@ -121,7 +121,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
 
     int nodeCnt = getRollingUpgradeNodeOrder(MASTER).size();
-    verify(mockNodeManager, times(13 * nodeCnt)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(12 * nodeCnt)).nodeCommand(any(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade

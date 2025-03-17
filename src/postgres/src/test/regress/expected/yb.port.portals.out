@@ -26,39 +26,39 @@ DECLARE foo21 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 DECLARE foo22 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 DECLARE foo23 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 FETCH 1 in foo1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
 (1 row)
 
 FETCH NEXT in foo1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
 (1 row)
 
 FETCH FORWARD in foo1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     3420 |       2 |   0 |    0 |   0 |      0 |      20 |      420 |        1420 |      3420 |     3420 |  40 |   41 | OBAAAA   | CAAAAA   | OOOOxx
 (1 row)
 
 FETCH FORWARD 2 in foo1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     9850 |       3 |   0 |    2 |   0 |     10 |      50 |      850 |        1850 |      4850 |     9850 | 100 |  101 | WOAAAA   | DAAAAA   | VVVVxx
     7164 |       4 |   0 |    0 |   4 |      4 |      64 |      164 |        1164 |      2164 |     7164 | 128 |  129 | OPAAAA   | EAAAAA   | AAAAxx
 (2 rows)
 
 FETCH 2 in foo2;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
 (2 rows)
 
 FETCH 3 in foo2;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     3420 |       2 |   0 |    0 |   0 |      0 |      20 |      420 |        1420 |      3420 |     3420 |  40 |   41 | OBAAAA   | CAAAAA   | OOOOxx
     9850 |       3 |   0 |    2 |   0 |     10 |      50 |      850 |        1850 |      4850 |     9850 | 100 |  101 | WOAAAA   | DAAAAA   | VVVVxx
@@ -66,7 +66,7 @@ FETCH 3 in foo2;
 (3 rows)
 
 FETCH 3 in foo3;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -74,7 +74,7 @@ FETCH 3 in foo3;
 (3 rows)
 
 FETCH 4 in foo4;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -83,7 +83,7 @@ FETCH 4 in foo4;
 (4 rows)
 
 FETCH 5 in foo5;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -93,7 +93,7 @@ FETCH 5 in foo5;
 (5 rows)
 
 FETCH 6 in foo6;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -104,7 +104,7 @@ FETCH 6 in foo6;
 (6 rows)
 
 FETCH 7 in foo7;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -116,7 +116,7 @@ FETCH 7 in foo7;
 (7 rows)
 
 FETCH 8 in foo8;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -129,7 +129,7 @@ FETCH 8 in foo8;
 (8 rows)
 
 FETCH 9 in foo9;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -143,7 +143,7 @@ FETCH 9 in foo9;
 (9 rows)
 
 FETCH 10 in foo10;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -158,7 +158,7 @@ FETCH 10 in foo10;
 (10 rows)
 
 FETCH 11 in foo11;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -174,7 +174,7 @@ FETCH 11 in foo11;
 (11 rows)
 
 FETCH 12 in foo12;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -191,7 +191,7 @@ FETCH 12 in foo12;
 (12 rows)
 
 FETCH 13 in foo13;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -209,7 +209,7 @@ FETCH 13 in foo13;
 (13 rows)
 
 FETCH 14 in foo14;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -228,7 +228,7 @@ FETCH 14 in foo14;
 (14 rows)
 
 FETCH 15 in foo15;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -248,7 +248,7 @@ FETCH 15 in foo15;
 (15 rows)
 
 FETCH 16 in foo16;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -269,7 +269,7 @@ FETCH 16 in foo16;
 (16 rows)
 
 FETCH 17 in foo17;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -291,7 +291,7 @@ FETCH 17 in foo17;
 (17 rows)
 
 FETCH 18 in foo18;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -314,7 +314,7 @@ FETCH 18 in foo18;
 (18 rows)
 
 FETCH 19 in foo19;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -338,7 +338,7 @@ FETCH 19 in foo19;
 (19 rows)
 
 FETCH 20 in foo20;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -363,7 +363,7 @@ FETCH 20 in foo20;
 (20 rows)
 
 FETCH 21 in foo21;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -389,7 +389,7 @@ FETCH 21 in foo21;
 (21 rows)
 
 FETCH 22 in foo22;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -416,7 +416,7 @@ FETCH 22 in foo22;
 (22 rows)
 
 FETCH 23 in foo23;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
@@ -482,7 +482,7 @@ CLOSE foo12;
 -- record this in the system view as well (do not query the time field there
 -- however)
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY 1;
- name  |                               statement                               | is_holdable | is_binary | is_scrollable
+ name  |                               statement                               | is_holdable | is_binary | is_scrollable 
 -------+-----------------------------------------------------------------------+-------------+-----------+---------------
  foo13 | DECLARE foo13 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2; | f           | f         | t
  foo14 | DECLARE foo14 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2; | f           | f         | t
@@ -499,7 +499,7 @@ SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors OR
 
 END;
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
- name | statement | is_holdable | is_binary | is_scrollable
+ name | statement | is_holdable | is_binary | is_scrollable 
 ------+-----------+-------------+-----------+---------------
 (0 rows)
 
@@ -509,7 +509,7 @@ SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
 BEGIN;
 DECLARE foo24 NO SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 FETCH 1 FROM foo24;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
 (1 row)
@@ -520,27 +520,27 @@ END;
 -- Cursors outside transaction blocks
 --
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
- name | statement | is_holdable | is_binary | is_scrollable
+ name | statement | is_holdable | is_binary | is_scrollable 
 ------+-----------+-------------+-----------+---------------
 (0 rows)
 
 BEGIN;
 DECLARE foo25 SCROLL CURSOR WITH HOLD FOR SELECT * FROM tenk2 ORDER BY unique2;
 FETCH FROM foo25;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     8800 |       0 |   0 |    0 |   0 |      0 |       0 |      800 |         800 |      3800 |     8800 |   0 |    1 | MAAAAA   | AAAAAA   | AAAAxx
 (1 row)
 
 FETCH FROM foo25;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     1891 |       1 |   1 |    3 |   1 |     11 |      91 |      891 |        1891 |      1891 |     1891 | 182 |  183 | TUAAAA   | BAAAAA   | HHHHxx
 (1 row)
 
 COMMIT;
 FETCH FROM foo25;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
     3420 |       2 |   0 |    0 |   0 |      0 |      20 |      420 |        1420 |      3420 |     3420 |  40 |   41 | OBAAAA   | CAAAAA   | OOOOxx
 (1 row)
@@ -553,7 +553,7 @@ LINE 1: FETCH -3 FROM foo25;
               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
- name  |                                    statement                                    | is_holdable | is_binary | is_scrollable
+ name  |                                    statement                                    | is_holdable | is_binary | is_scrollable 
 -------+---------------------------------------------------------------------------------+-------------+-----------+---------------
  foo25 | DECLARE foo25 SCROLL CURSOR WITH HOLD FOR SELECT * FROM tenk2 ORDER BY unique2; | t           | f         | t
 (1 row)
@@ -577,13 +577,13 @@ CREATE FUNCTION declares_cursor(text)
    AS 'DECLARE c CURSOR FOR SELECT stringu1 FROM tenk1 WHERE stringu1 LIKE $1;'
    LANGUAGE SQL;
 SELECT declares_cursor('AB%');
- declares_cursor
+ declares_cursor 
 -----------------
-
+ 
 (1 row)
 
 FETCH ALL FROM c;
- stringu1
+ stringu1 
 ----------
  ABAAAA
  ABAAAA
@@ -605,13 +605,13 @@ FETCH ALL FROM c;
 CLOSE c;
 -- Run the same statements but with FORWARD option.
 SELECT declares_cursor('AB%');
- declares_cursor
+ declares_cursor 
 -----------------
-
+ 
 (1 row)
 
 FETCH FORWARD ALL FROM c;
- stringu1
+ stringu1 
 ----------
  ABAAAA
  ABAAAA
@@ -646,7 +646,7 @@ insert into tt1 values(1);
 declare c1 cursor for select count_tt1_v(), count_tt1_s();
 insert into tt1 values(2);
 fetch all from c1;
- count_tt1_v | count_tt1_s
+ count_tt1_v | count_tt1_s 
 -------------+-------------
            2 |           1
 (1 row)
@@ -659,7 +659,7 @@ insert into tt1 values(2);
 commit;
 delete from tt1;
 fetch all from c2;
- count_tt1_v | count_tt1_s
+ count_tt1_v | count_tt1_s 
 -------------+-------------
            2 |           1
 (1 row)
@@ -669,14 +669,14 @@ drop function count_tt1_s();
 -- Create a cursor with the BINARY option and check the pg_cursors view
 BEGIN;
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
- name |                              statement                               | is_holdable | is_binary | is_scrollable
+ name |                              statement                               | is_holdable | is_binary | is_scrollable 
 ------+----------------------------------------------------------------------+-------------+-----------+---------------
  c2   | declare c2 cursor with hold for select count_tt1_v(), count_tt1_s(); | t           | f         | f
 (1 row)
 
 DECLARE bc BINARY CURSOR FOR SELECT * FROM tenk1;
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY 1;
- name |                              statement                               | is_holdable | is_binary | is_scrollable
+ name |                              statement                               | is_holdable | is_binary | is_scrollable 
 ------+----------------------------------------------------------------------+-------------+-----------+---------------
  bc   | DECLARE bc BINARY CURSOR FOR SELECT * FROM tenk1;                    | f           | t         | f
  c2   | declare c2 cursor with hold for select count_tt1_v(), count_tt1_s(); | t           | f         | f
@@ -688,21 +688,21 @@ ROLLBACK;
 PREPARE cprep AS
   SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
 EXECUTE cprep;
- name |                              statement                               | is_holdable | is_binary | is_scrollable
+ name |                              statement                               | is_holdable | is_binary | is_scrollable 
 ------+----------------------------------------------------------------------+-------------+-----------+---------------
  c2   | declare c2 cursor with hold for select count_tt1_v(), count_tt1_s(); | t           | f         | f
 (1 row)
 
 -- test CLOSE ALL;
 SELECT name FROM pg_cursors ORDER BY 1;
- name
+ name 
 ------
  c2
 (1 row)
 
 CLOSE ALL;
 SELECT name FROM pg_cursors ORDER BY 1;
- name
+ name 
 ------
 (0 rows)
 
@@ -710,7 +710,7 @@ BEGIN;
 DECLARE foo1 CURSOR WITH HOLD FOR SELECT 1;
 DECLARE foo2 CURSOR WITHOUT HOLD FOR SELECT 1;
 SELECT name FROM pg_cursors ORDER BY 1;
- name
+ name 
 ------
  foo1
  foo2
@@ -718,7 +718,7 @@ SELECT name FROM pg_cursors ORDER BY 1;
 
 CLOSE ALL;
 SELECT name FROM pg_cursors ORDER BY 1;
- name
+ name 
 ------
 (0 rows)
 
@@ -729,7 +729,7 @@ COMMIT;
 CREATE TEMP TABLE uctest(f1 int, f2 text);
 INSERT INTO uctest VALUES (1, 'one'), (2, 'two'), (3, 'three');
 SELECT * FROM uctest ORDER BY f1;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -740,7 +740,7 @@ SELECT * FROM uctest ORDER BY f1;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest ORDER BY f1;
 FETCH 2 FROM c1;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | one
   2 | two
@@ -768,7 +768,7 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 COMMIT;
 -- should still see deletion
 SELECT * FROM uctest;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -781,7 +781,7 @@ BEGIN;
 -- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | one
 (1 row)
@@ -795,7 +795,7 @@ SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT * FROM uctest;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -806,7 +806,7 @@ SELECT * FROM uctest;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | one
 (1 row)
@@ -851,7 +851,7 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 -- FETCH RELATIVE 0 FROM c1;
 ROLLBACK;
 SELECT * FROM uctest;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -863,7 +863,7 @@ BEGIN;
 -- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | one
 (1 row)
@@ -907,7 +907,7 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 -- FETCH RELATIVE 0 FROM c1;
 ROLLBACK;
 SELECT * FROM uctest;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -925,7 +925,7 @@ ERROR:  relation "ucchild" does not exist
 LINE 1: INSERT INTO ucchild values(100, 'hundred');
                     ^
 SELECT * FROM uctest;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -937,7 +937,7 @@ BEGIN;
 -- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH 1 FROM c1;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | one
 (1 row)
@@ -965,7 +965,7 @@ FETCH 1 FROM c1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT * FROM uctest;
- f1 |  f2
+ f1 |  f2   
 ----+-------
   1 | one
   2 | two
@@ -976,7 +976,7 @@ SELECT * FROM uctest;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5;
 FETCH 1 FROM c1;
- f1 | f2 | f1 | f2
+ f1 | f2 | f1 | f2 
 ----+----+----+----
 (0 rows)
 
@@ -991,7 +991,7 @@ BEGIN;
 -- DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR UPDATE;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5;
 FETCH 1 FROM c1;
- f1 | f2 | f1 | f2
+ f1 | f2 | f1 | f2 
 ----+----+----+----
 (0 rows)
 
@@ -1004,7 +1004,7 @@ ROLLBACK;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR SHARE OF a;
 FETCH 1 FROM c1;
- f1 | f2 | f1 | f2
+ f1 | f2 | f1 | f2 
 ----+----+----+----
 (0 rows)
 
@@ -1080,7 +1080,7 @@ CREATE RULE ucrule AS ON DELETE TO ucview DO INSTEAD
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM ucview;
 FETCH FROM c1;
- f1 | f2
+ f1 | f2  
 ----+-----
   1 | one
 (1 row)
@@ -1095,7 +1095,7 @@ ROLLBACK;
 BEGIN;
 EXPLAIN (costs off)
 DECLARE c1 CURSOR FOR SELECT stringu1 FROM onek WHERE stringu1 = 'DZAAAA';
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Index Only Scan using onek_stringu1 on onek
    Index Cond: (stringu1 = 'DZAAAA'::name)
@@ -1103,7 +1103,7 @@ DECLARE c1 CURSOR FOR SELECT stringu1 FROM onek WHERE stringu1 = 'DZAAAA';
 
 DECLARE c1 CURSOR FOR SELECT stringu1 FROM onek WHERE stringu1 = 'DZAAAA';
 FETCH FROM c1;
- stringu1
+ stringu1 
 ----------
  DZAAAA
 (1 row)
@@ -1190,7 +1190,7 @@ rollback;
 -- Check handling of non-backwards-scan-capable plans with scroll cursors
 begin;
 explain (costs off) declare c1 cursor for select (select 42) as x;
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Result
    InitPlan 1 (returns $0)
@@ -1198,7 +1198,7 @@ explain (costs off) declare c1 cursor for select (select 42) as x;
 (3 rows)
 
 explain (costs off) declare c1 scroll cursor for select (select 42) as x;
-        QUERY PLAN
+        QUERY PLAN         
 ---------------------------
  Materialize
    InitPlan 1 (returns $0)
@@ -1208,7 +1208,7 @@ explain (costs off) declare c1 scroll cursor for select (select 42) as x;
 
 declare c1 scroll cursor for select (select 42) as x;
 fetch all in c1;
- x
+ x  
 ----
  42
 (1 row)
@@ -1221,14 +1221,14 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumb
 rollback;
 begin;
 explain (costs off) declare c2 cursor for select generate_series(1,3) as g;
-  QUERY PLAN
+  QUERY PLAN  
 --------------
  ProjectSet
    ->  Result
 (2 rows)
 
 explain (costs off) declare c2 scroll cursor for select generate_series(1,3) as g;
-     QUERY PLAN
+     QUERY PLAN     
 --------------------
  Materialize
    ->  ProjectSet
@@ -1237,7 +1237,7 @@ explain (costs off) declare c2 scroll cursor for select generate_series(1,3) as 
 
 declare c2 scroll cursor for select generate_series(1,3) as g;
 fetch all in c2;
- g
+ g 
 ---
  1
  2

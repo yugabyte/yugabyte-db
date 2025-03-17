@@ -4,9 +4,9 @@
 -- set the whitespace-only search_path to test that the
 -- GUC list syntax is preserved during a schema creation
 SELECT pg_catalog.set_config('search_path', ' ', false);
- set_config
+ set_config 
 ------------
-
+  
 (1 row)
 
 CREATE SCHEMA test_ns_schema_1
@@ -37,7 +37,7 @@ LINE 1: CREATE VIEW test_ns_schema_2.abc_view AS SELECT c FROM abc;
 COMMIT;
 DROP SCHEMA test_ns_schema_2 CASCADE; -- YB: manually drop SCHEMA because above COMMIT rollback fails to roll back CREATE SCHEMA DDL
 SHOW search_path;
- search_path
+ search_path 
 -------------
  public
 (1 row)
@@ -49,14 +49,14 @@ SET search_path to public, test_ns_schema_1;
 CREATE SCHEMA test_ns_schema_2; -- YB: TODO(dmitry): schema creation with elements
 CREATE VIEW test_ns_schema_2.abc_view AS SELECT a FROM abc; -- YB
 SHOW search_path;
-       search_path
+       search_path        
 --------------------------
  public, test_ns_schema_1
 (1 row)
 
 COMMIT;
 SHOW search_path;
-       search_path
+       search_path        
 --------------------------
  public, test_ns_schema_1
 (1 row)
@@ -66,7 +66,7 @@ NOTICE:  drop cascades to view test_ns_schema_2.abc_view
 -- verify that the objects were created
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_1');
- count
+ count 
 -------
      5
 (1 row)
@@ -75,25 +75,25 @@ INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 SELECT * FROM test_ns_schema_1.abc;
- a | b
+ a | b 
 ---+---
- 1 |
- 2 |
- 3 |
+ 1 |  
+ 2 |  
+ 3 |  
 (3 rows)
 
 SELECT * FROM test_ns_schema_1.abc_view;
- a | b
+ a | b 
 ---+---
- 2 |
- 3 |
- 4 |
+ 2 |  
+ 3 |  
+ 4 |  
 (3 rows)
 
 ALTER SCHEMA test_ns_schema_1 RENAME TO test_ns_schema_renamed;
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_1');
- count
+ count 
 -------
      0
 (1 row)
@@ -118,7 +118,8 @@ drop cascades to view test_ns_schema_renamed.abc_view
 -- verify that the objects were dropped
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_renamed');
- count
+ count 
 -------
      0
 (1 row)
+

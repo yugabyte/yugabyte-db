@@ -3,51 +3,51 @@ ERROR:  advisory locks feature is currently in preview
 HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.
 CONTEXT:  PL/pgSQL function inline_code_block line 4 at IF
 SELECT pg_sleep(3);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
-/*
+/* 
  * DBMS_ALERT is used for one-way communication of one session to other.
  *
- * This session mainly sends signals for testing the alert functionality in
+ * This session mainly sends signals for testing the alert functionality in 
  * session B and C.
  *
- * The following alerts are used to ensure that signals are sent at correct
- * times to session B for testing. These signals are sent from session B
- * indicating completion of an event.
+ * The following alerts are used to ensure that signals are sent at correct 
+ * times to session B for testing. These signals are sent from session B 
+ * indicating completion of an event. 
  * After the signal is received, the next required signal for testing is sent
- * from this session.
+ * from this session. 
  */
 SELECT dbms_alert.register('b1');
- register
+ register 
 ----------
-
+ 
 (1 row)
 
 SELECT dbms_alert.register('b2');
- register
+ register 
 ----------
-
+ 
 (1 row)
 
 SELECT dbms_alert.register('b3');
- register
+ register 
 ----------
-
+ 
 (1 row)
 
 SELECT dbms_alert.register('b4');
- register
+ register 
 ----------
-
+ 
 (1 row)
 
 SELECT dbms_alert.register('b5');
- register
+ register 
 ----------
-
+ 
 (1 row)
 
 SELECT dbms_alert.signal('a1','Msg1 for a1');
@@ -62,11 +62,11 @@ SELECT dbms_alert.signal('a2','Msg1 for a2');
  
 (1 row)
 
-/*
- * Test: defered_signal
+/* 
+ * Test: defered_signal 
  * The signal is received only when the signalling transaction commits.
- * To test this, an explict BEGIN-COMMIT block is used.
- */
+ * To test this, an explict BEGIN-COMMIT block is used. 
+ */ 
 SELECT dbms_alert.signal('tds','Begin defered_signal test');
  signal 
 --------
@@ -93,13 +93,13 @@ COMMIT;
  * signal is received only after commit.
  */
 SELECT dbms_alert.waitone('b1',20);
- waitone
+ waitone 
 ---------
  (,1)
 (1 row)
 
 SELECT dbms_alert.waitone('b2',20);
- waitone
+ waitone 
 ---------
  (,1)
 (1 row)
@@ -120,7 +120,7 @@ SELECT dbms_alert.signal('a4','Test- Register after signal');
 
 /* This signal indicates at remove() is called */
 SELECT dbms_alert.waitone('b3',20);
- waitone
+ waitone 
 ---------
  (,1)
 (1 row)
@@ -133,7 +133,7 @@ SELECT dbms_alert.signal('a1','Msg2 for a1');
 (1 row)
 
 SELECT dbms_alert.waitone('b4',20);
- waitone
+ waitone 
 ---------
  (,1)
 (1 row)
@@ -147,7 +147,7 @@ SELECT dbms_alert.signal('a4','Msg1 for a4');
 
 /* This signal inidcates that removeall() is called */
 SELECT dbms_alert.waitone('b5',20);
- waitone
+ waitone 
 ---------
  (,1)
 (1 row)
@@ -161,7 +161,8 @@ SELECT dbms_alert.signal('a2','Msg2 for a2');
 
 /* cleanup */
 SELECT dbms_alert.removeall();
- removeall
+ removeall 
 -----------
-
+ 
 (1 row)
+

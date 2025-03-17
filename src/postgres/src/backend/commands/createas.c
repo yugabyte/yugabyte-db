@@ -602,7 +602,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		 */
 		if (myState->rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
 			IsYugaByteEnabled())
-			SetTxnWithPGRel();
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 		if (IsYBRelation(myState->rel))
 		{

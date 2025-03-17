@@ -130,6 +130,8 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 
 - Select **Use Managed Identity from this YBA host's instance**.
 
+    This option is only available if YugabyteDB Anywhere is deployed on an Azure VM that has a managed identity assigned.
+
 #### Additional fields
 
 - **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.

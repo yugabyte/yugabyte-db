@@ -59,7 +59,8 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+    createSoftwareUpgradePrecheckTasks(
+        taskParams().ybSoftwareVersion, false /* ysqlMajorVersionUpgrade */);
     addBasicPrecheckTasks();
   }
 

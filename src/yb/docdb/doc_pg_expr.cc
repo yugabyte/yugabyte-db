@@ -141,15 +141,15 @@ class TSCallExecutor {
                           &var_map_);
   }
 
-  Status AddWhere(const PgsqlBCallPB& tscall) {
-    where_clause_.push_back(VERIFY_RESULT(PrepareExprCall(tscall)));
+  Status AddWhere(const PgsqlBCallPB& tscall, const std::optional<int> version) {
+    where_clause_.push_back(VERIFY_RESULT(PrepareExprCall(tscall, version)));
     VLOG(1) << "A condition has been added";
     return Status::OK();
   }
 
-  Status AddTarget(const PgsqlBCallPB& tscall) {
+  Status AddTarget(const PgsqlBCallPB& tscall, const std::optional<int> version) {
     DocPgVarRef expr_type;
-    auto* prepared_expr = VERIFY_RESULT(PrepareExprCall(tscall, &expr_type));
+    auto* prepared_expr = VERIFY_RESULT(PrepareExprCall(tscall, version, &expr_type));
     targets_.emplace_back(prepared_expr, expr_type);
     VLOG(1) << "A target expression has been added";
     return Status::OK();
@@ -186,7 +186,9 @@ class TSCallExecutor {
 
  private:
   Result<YbgPreparedExpr> PrepareExprCall(
-      const PgsqlBCallPB& tscall, DocPgVarRef* expr_type = nullptr) {
+      const PgsqlBCallPB& tscall,
+      const std::optional<int> version,
+      DocPgVarRef* expr_type = nullptr) {
     // Presence of row_ctx_ indicates that execution was started we do not allow to modify
     // the executor dynamically.
     RSTATUS_DCHECK(!row_ctx_, InternalError, "Can not add expression, execution has started");
@@ -196,7 +198,7 @@ class TSCallExecutor {
     MemoryContextGuard mem_guard(YbgSetCurrentMemoryContext(mem_ctx_));
     // Perform deserialization and get result data type info
     YbgPreparedExpr prepared_expr = nullptr;
-    RETURN_NOT_OK(DocPgPrepareExpr(expr_str, &prepared_expr, expr_type));
+    RETURN_NOT_OK(DocPgPrepareExpr(expr_str, &prepared_expr, expr_type, version));
     if (tscall.operands_size() > 1) {
       // Pre-pushdown nodes e.g. v2.12 may create and send serialized PG expression when executing
       // statements like UPDATE table SET col = col + 1 WHERE pk = 1; during upgrade.
@@ -313,16 +315,16 @@ class DocPgExprExecutor::State {
     return tscall_executor().AddColumnRef(column_ref);
   }
 
-  Status AddWhere(const PgsqlExpressionPB& expr) {
+  Status AddWhere(const PgsqlExpressionPB& expr, const std::optional<int> version) {
     if (expr.has_condition()) {
       condition_filter().Add(expr.condition());
       return Status::OK();
     }
-    return tscall_executor().AddWhere(VERIFY_RESULT_REF(GetTSCall(expr)));
+    return tscall_executor().AddWhere(VERIFY_RESULT_REF(GetTSCall(expr)), version);
   }
 
-  Status AddTarget(const PgsqlExpressionPB& expr) {
-    return tscall_executor().AddTarget(VERIFY_RESULT_REF(GetTSCall(expr)));
+  Status AddTarget(const PgsqlExpressionPB& expr, const std::optional<int> version) {
+    return tscall_executor().AddTarget(VERIFY_RESULT_REF(GetTSCall(expr)), version);
   }
 
   Result<bool> Exec(
@@ -387,12 +389,14 @@ DocPgExprExecutor::DocPgExprExecutor(DocPgExprExecutor&&) = default;
 DocPgExprExecutor& DocPgExprExecutor::operator=(DocPgExprExecutor&&) = default;
 DocPgExprExecutorBuilder::~DocPgExprExecutorBuilder() = default;
 
-Status DocPgExprExecutorBuilder::AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr) {
-  return state_->AddWhere(expr);
+Status DocPgExprExecutorBuilder::AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr,
+                                          const std::optional<int> version) {
+  return state_->AddWhere(expr, version);
 }
 
-Status DocPgExprExecutorBuilder::AddTarget(const PgsqlExpressionPB& expr) {
-  return state_->AddTarget(expr);
+Status DocPgExprExecutorBuilder::AddTarget(const PgsqlExpressionPB& expr,
+                                           const std::optional<int> version) {
+  return state_->AddTarget(expr, version);
 }
 
 bool DocPgExprExecutorBuilder::IsColumnRefsRequired() const {

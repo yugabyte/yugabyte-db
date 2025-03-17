@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -214,14 +213,18 @@ public class BackupRequestParams extends UniverseTaskParams {
     }
   }
 
-  public void validateExistingSchedule(boolean isFirstTry, UUID customerUUID) {
+  public void validateExistingSchedule(UUID customerUUID, boolean isFirstTry) {
     Optional<Schedule> optionalSchedule =
         Schedule.maybeGetScheduleByUniverseWithName(
             this.scheduleName, this.universeUUID, customerUUID);
     if (optionalSchedule.isPresent()) {
       Schedule schedule = optionalSchedule.get();
-      if (isFirstTry || !(schedule.getStatus() == State.Error)) {
-        throw new PlatformServiceException(BAD_REQUEST, "Schedule with same name already exists");
+      if (isFirstTry || !(schedule.getStatus() == Schedule.State.Error)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Schedule with same name %s already exists",
+                optionalSchedule.get().getScheduleName()));
       }
     }
   }
@@ -323,6 +326,12 @@ public class BackupRequestParams extends UniverseTaskParams {
           "Incremental backup frequency required for Incremental backup enabled schedules");
     }
     this.validateScheduleParams(backupHelper, universe);
+  }
+
+  public boolean compareScheduleParams(BackupRequestParams other) {
+    return this.schedulingFrequency != other.schedulingFrequency
+        || this.incrementalBackupFrequency != other.incrementalBackupFrequency
+        || !StringUtils.equals(this.cronExpression, other.cronExpression);
   }
 
   @ApiModel(description = "Keyspace and table info for backup")

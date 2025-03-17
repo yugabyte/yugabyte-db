@@ -31,8 +31,6 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "yb/tserver/tablet_server_interface.h"
-
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/debug/sanitizer_scopes.h"
@@ -82,6 +80,7 @@ DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
 
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
+
 // Default to 5MB
 DEFINE_UNKNOWN_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -193,6 +192,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, true,
     "Enable the pg_locks view. This view provides information about the locks held by "
     "active postgres sessions.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pg_locks_integrate_advisory_locks, kLocalPersisted,
+    false, true,
+    "Enables pg_locks to integrate and display advisory locks details correctly.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
     "Enable using the DocDB Vector type from YSQL.");
@@ -686,8 +689,7 @@ string GetPostgresInstallRoot() {
 
 Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     const std::string& bind_addresses,
-    const std::string& data_dir,
-    const int tserver_shm_fd) {
+    const std::string& data_dir) {
   PgProcessConf conf;
   if (!bind_addresses.empty()) {
     auto pg_host_port = VERIFY_RESULT(HostPort::FromString(
@@ -696,7 +698,6 @@ Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     conf.pg_port = pg_host_port.port();
   }
   conf.data_dir = data_dir;
-  conf.tserver_shm_fd = tserver_shm_fd;
   PgWrapper pg_wrapper(conf);
   RETURN_NOT_OK(pg_wrapper.PreflightCheck());
   RETURN_NOT_OK(pg_wrapper.InitDbLocalOnlyIfNeeded());
@@ -834,7 +835,7 @@ Status PgWrapper::Start() {
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGQUIT));
-  proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
+  proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
   proc_->SetEnv("FLAGS_mem_tracker_tcmalloc_gc_release_bytes",
@@ -893,9 +894,13 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
-  initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
+  initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
+
+  const std::string initdb_log_path = Format("$0/$1", FLAGS_log_dir, "initdb.log");
+  initdb_subprocess.SetEnv("YB_INITDB_LOG_FILE_PATH", initdb_log_path);
+
   if (global_initdb) {
     const auto& global_initdb_params = std::get<GlobalInitdbParams>(initdb_params);
 
@@ -908,7 +913,12 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  RETURN_NOT_OK(initdb_subprocess.Run());
+  Status initdb_status = initdb_subprocess.Run();
+  if (!initdb_status.ok()) {
+    LOG(ERROR) << "Initdb failed. Initdb log file path: "
+               << boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", getenv("TEST_TMPDIR"));
+    return initdb_status;
+  }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
   return Status::OK();
@@ -950,13 +960,6 @@ namespace {
 
 constexpr auto kVersionChars = 2;
 
-Result<int32_t> GetCurrentPgVersion() {
-  const char* curr_pg_ver_cstr;
-  PG_RETURN_NOT_OK(YbgGetPgVersion(&curr_pg_ver_cstr));
-  string curr_pg_ver_str = curr_pg_ver_cstr;
-  return CheckedStoi(curr_pg_ver_str.substr(0, kVersionChars));
-}
-
 Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
   std::unique_ptr<SequentialFile> result;
   std::string full_path = JoinPathSegments(data_dir, "PG_VERSION");
@@ -984,7 +987,7 @@ string PgWrapper::MakeVersionedDataDir(int32_t version) {
 // directory.
 // This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  int32_t current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+  int32_t current_pg_version = YbgGetPgVersion();
 
   // One-time migration in case this installation is not yet using a symlink
   if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
@@ -1040,7 +1043,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 }
 
 Status PgWrapper::CleanupPgData(const std::string& data_dir) {
-  const auto current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+  const auto current_pg_version = YbgGetPgVersion();
   const std::string versioned_data_dir =
       pgwrapper::MakeVersionedDataDir(data_dir, current_pg_version);
   auto env = Env::Default();
@@ -1051,8 +1054,9 @@ Status PgWrapper::CleanupPgData(const std::string& data_dir) {
 }
 
 Status PgWrapper::InitDbForYSQL(
-    const server::ServerBaseOptions& options, FsManager& fs_manager, const string& tmp_dir_base,
-    int tserver_shm_fd, std::vector<std::pair<string, YbcPgOid>> db_to_oid, bool is_major_upgrade) {
+    PgWrapperContext* server, const server::ServerBaseOptions& options, FsManager& fs_manager,
+    const string& tmp_dir_base, std::vector<std::pair<string, YbcPgOid>> db_to_oid,
+    bool is_major_upgrade) {
   const auto master_addresses = server::MasterAddressesToString(*options.GetMasterAddresses());
 
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
@@ -1062,7 +1066,6 @@ Status PgWrapper::InitDbForYSQL(
   conf.pg_port = 0;  // We should not use this port.
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
-  conf.tserver_shm_fd = tserver_shm_fd;
   auto se = ScopeExit([&conf] {
     auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
     if (is_dir.ok()) {
@@ -1081,6 +1084,7 @@ Status PgWrapper::InitDbForYSQL(
   RETURN_NOT_OK(conf.SetSslConf(options, fs_manager));
 
   PgWrapper pg_wrapper(conf);
+  pg_wrapper.PrepareSharedMemoryNegotiation(server);
   auto start_time = std::chrono::steady_clock::now();
   Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
@@ -1091,6 +1095,12 @@ Status PgWrapper::InitDbForYSQL(
     LOG(ERROR) << "initdb failed: " << initdb_status;
   }
   return initdb_status;
+}
+
+void PgWrapper::PrepareSharedMemoryNegotiation(PgWrapperContext* server) {
+  CHECK_OK(server->StartSharedMemoryNegotiation());
+  address_negotiator_fd_ = server->SharedMemoryNegotiationFd();
+  shared_mem_uuid_ = server->permanent_uuid();
 }
 
 string PgWrapper::GetPostgresExecutablePath() {
@@ -1123,9 +1133,8 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
-  CHECK_NE(conf_.tserver_shm_fd, -1);
-  proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
-  proc->SetEnv("FLAGS_log_dir", FLAGS_log_dir);
+  proc->SetEnv("YB_PG_ADDRESS_NEGOTIATOR_FD", Format("$0", address_negotiator_fd_));
+  proc->SetEnv("FLAGS_pggate_tserver_shared_memory_uuid", shared_mem_uuid_);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {
@@ -1260,16 +1269,26 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
 
-PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
-    : conf_(std::move(conf)) {
-  if (tserver) {
-    tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
+    : conf_(std::move(conf)), server_(server) {
+  if (server_) {
+    server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
   }
 }
 
 PgSupervisor::~PgSupervisor() {
+  Stop();
+
   std::lock_guard lock(mtx_);
   DeregisterPgFlagChangeNotifications();
+}
+
+void PgSupervisor::Stop() {
+  ProcessSupervisor::Stop();
+  if (server_) {
+    CHECK_OK(server_->StopSharedMemoryNegotiation());
+    server_ = nullptr;
+  }
 }
 
 Status PgSupervisor::ReloadConfig() {
@@ -1340,6 +1359,9 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     FLAGS_enable_ysql_conn_mgr_stats = false;
   }
 
+  if (server_) {
+    pgwrapper->PrepareSharedMemoryNegotiation(server_);
+  }
   return pgwrapper;
 }
 

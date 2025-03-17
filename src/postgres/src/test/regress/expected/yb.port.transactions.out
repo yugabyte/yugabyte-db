@@ -29,7 +29,7 @@ SELECT * FROM xacttest;
 ABORT;
 -- should not exist
 SELECT count(oid) FROM pg_class WHERE relname = 'disappear'; -- YB: change to count, TODO: transactional DDL
- count
+ count 
 -------
      1
 (1 row)
@@ -891,17 +891,17 @@ DROP TABLE abc;
 create temp table i_table (f1 int);
 -- psql will show all results of a multi-statement Query
 SELECT 1\; SELECT 2\; SELECT 3;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
- ?column?
+ ?column? 
 ----------
         2
 (1 row)
 
- ?column?
+ ?column? 
 ----------
         3
 (1 row)
@@ -915,7 +915,7 @@ insert into i_table values(1)\; select * from i_table;
 
 -- 1/0 error will cause rolling back the whole implicit transaction
 insert into i_table values(2)\; select * from i_table\; select 1/0;
- f1
+ f1 
 ----
   1
   2
@@ -940,14 +940,14 @@ WARNING:  there is no transaction in progress
 -- begin converts implicit transaction into a regular one that
 -- can extend past the end of the Query
 select 1\; begin\; insert into i_table values(5);
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 commit;
 select 1\; begin\; insert into i_table values(6);
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -979,7 +979,7 @@ WARNING:  there is no transaction in progress
 -- implicit transaction block is still a transaction block, for e.g. VACUUM
 SELECT 1\; VACUUM;
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -987,14 +987,14 @@ NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collectio
 SELECT 1\; COMMIT\; VACUUM;
 WARNING:  there is no transaction in progress
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
 
 -- we disallow savepoint-related commands in implicit-transaction state
 SELECT 1\; SAVEPOINT sp;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -1002,7 +1002,7 @@ SELECT 1\; SAVEPOINT sp;
 ERROR:  SAVEPOINT can only be used in transaction blocks
 SELECT 1\; COMMIT\; SAVEPOINT sp;
 WARNING:  there is no transaction in progress
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -1011,7 +1011,7 @@ ERROR:  SAVEPOINT can only be used in transaction blocks
 ROLLBACK TO SAVEPOINT sp\; SELECT 2;
 ERROR:  ROLLBACK TO SAVEPOINT can only be used in transaction blocks
 SELECT 2\; RELEASE SAVEPOINT sp\; SELECT 3;
- ?column?
+ ?column? 
 ----------
         2
 (1 row)
@@ -1019,7 +1019,7 @@ SELECT 2\; RELEASE SAVEPOINT sp\; SELECT 3;
 ERROR:  RELEASE SAVEPOINT can only be used in transaction blocks
 -- but this is OK, because the BEGIN converts it to a regular xact
 SELECT 1\; BEGIN\; SAVEPOINT sp\; ROLLBACK TO SAVEPOINT sp\; COMMIT;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)

@@ -320,6 +320,8 @@ message DeleteUniverseReplicationRequestPB {
   optional bool skip_producer_stream_deletion = 3 [ default = false ];
   // Used to validate that the request is sent to the correct universe.
   optional string universe_uuid = 4;
+  // producer_namespace_id -> oid_to_bump_above
+  map<string,uint32> producer_namespace_oids = 5;
 }
 
 message DeleteUniverseReplicationResponsePB {

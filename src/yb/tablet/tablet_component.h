@@ -80,7 +80,7 @@ class TabletComponent {
 
   void RefreshYBMetaDataCache();
 
-  docdb::VectorIndexesPtr VectorIndexesList() const;
+  docdb::DocVectorIndexesPtr VectorIndexesList() const;
 
  private:
   Tablet& tablet_;

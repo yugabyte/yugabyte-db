@@ -120,7 +120,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b": 2, "a": 1}'::json WHERE h = 1;
 -- One with white spaces
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{    "b" : 2   ,     "a" :  1}'::jsonb WHERE h = 1;
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b":2,"a":1}'::json WHERE h = 1; , 
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b":2,"a":1}'::json WHERE h = 1; ,
 -- Casting via not specifying type
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}', v3 = '{"a": 1, "b": 1}' WHERE h = 2;
 -- Casting via specifying input as a castable type

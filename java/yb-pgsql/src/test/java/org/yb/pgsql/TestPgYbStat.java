@@ -26,9 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
-import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,7 +148,6 @@ public class TestPgYbStat extends BasePgSQLTest {
     return false;
   }
 
-  @Ignore("Backends killed by SIGSEGV and SIGKILL not supported yet.")
   @Test
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
     // (DB-12741) Test is flaky with connection manager irrespective of warmup

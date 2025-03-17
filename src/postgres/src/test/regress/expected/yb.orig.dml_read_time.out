@@ -10,7 +10,7 @@ INSERT INTO read_time_test1 SELECT * FROM read_time_test1;
 INSERT INTO read_time_test1 SELECT * FROM read_time_test1;
 INSERT INTO read_time_test1 SELECT * FROM read_time_test1;
 SELECT count(*) FROM read_time_test1;
- count
+ count 
 -------
     64
 (1 row)
@@ -23,7 +23,7 @@ INSERT INTO read_time_test2 VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3), (4, 4, 4), (
                                    (6, 6, 6), (7, 7, 7), (8, 8, 8), (9, 9, 9);
 UPDATE read_time_test2 SET k = 777;
 SELECT * FROM read_time_test2 ORDER BY i;
- i | j |  k
+ i | j |  k  
 ---+---+-----
  1 | 1 | 777
  2 | 2 | 777
@@ -46,7 +46,7 @@ DELETE FROM read_time_test3 WHERE i > 0;
 UPDATE read_time_test3 SET j = 10 WHERE i = 1;
 END;
 SELECT * FROM read_time_test3 ORDER BY i;
- i | j
+ i | j 
 ---+---
 (0 rows)
 
@@ -60,12 +60,12 @@ DELETE FROM read_time_test4;
 INSERT INTO read_time_test4 VALUES (1), (2), (3), (4);
 END;
 SELECT * FROM read_time_test4 ORDER BY i;
- i | j
+ i | j 
 ---+---
- 1 |
- 2 |
- 3 |
- 4 |
+ 1 |  
+ 2 |  
+ 3 |  
+ 4 |  
 (4 rows)
 
 --

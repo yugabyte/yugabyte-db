@@ -1,6 +1,41 @@
 --
 -- YB tests for materialized views
 --
+CREATE TABLE t_simple (k INT PRIMARY KEY);
+INSERT INTO t_simple (SELECT i FROM generate_series(1, 10) AS i);
+
+-- GH-26205: Test that PostgreSQL XID increases by 1 for a concurrent refresh
+-- and remains the same for a non-concurrent refresh. Placing this at the top
+-- of the file to ensure that this is close to being the first set of commands
+-- that are executed upon cluster creation and there is no variability in the
+-- XIDs generated.
+CREATE MATERIALIZED VIEW mv_xid_test AS (SELECT * FROM t_simple);
+CREATE UNIQUE INDEX ON mv_xid_test (k);
+SELECT age('3'::xid);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
+SELECT age('3'::xid);
+REFRESH MATERIALIZED VIEW mv_xid_test;
+SELECT age('3'::xid);
+-- A few variations of the above test.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+REFRESH MATERIALIZED VIEW mv_xid_test;
+INSERT INTO t_simple VALUES (11), (12);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
+SELECT COUNT(*) FROM mv_xid_test;
+COMMIT;
+SELECT age('3'::xid);
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
+REFRESH MATERIALIZED VIEW mv_xid_test;
+INSERT INTO t_simple VALUES (13), (14);
+SELECT COUNT(*) FROM mv_xid_test;
+COMMIT;
+-- The XID should jump by 2 in Read Committed mode as the concurrent refresh of
+-- the matview is run as a sub-transaction. So, an additional XID is assigned to
+-- its parent. In release builds where Read Committed isolation is disabled, the
+-- XID should increase by 1.
+SELECT age('3'::xid);
 
 CREATE TABLE test_yb (col int);
 INSERT INTO test_yb VALUES (null);
@@ -272,3 +307,43 @@ CREATE MATERIALIZED VIEW mv TABLESPACE mv_tblspace1 AS SELECT * FROM test_yb;
 \d mv;
 ALTER MATERIALIZED VIEW mv SET TABLESPACE mv_tblspace2;
 \d mv;
+
+-- Matview with temp tables + transactions
+CREATE TEMPORARY TABLE t_temp (a INT, b INT);
+BEGIN;
+INSERT INTO t_temp VALUES (1, 1), (2, 2);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
+SELECT COUNT(*) FROM t_temp;
+COMMIT;
+SELECT COUNT(*) FROM t_temp;
+
+-- Rolling back operations on temp tables should also roll back any
+-- transactional side effects of the corresponding postgres transaction.
+BEGIN;
+SAVEPOINT sp1;
+INSERT INTO t_temp VALUES (3, 3), (4, 4);
+SAVEPOINT sp2;
+ROLLBACK TO sp1;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
+COMMIT;
+SELECT COUNT(*) FROM t_temp;
+
+BEGIN;
+SAVEPOINT sp1;
+REFRESH MATERIALIZED VIEW mv_xid_test;
+SAVEPOINT sp2;
+INSERT INTO t_temp VALUES (3, 3), (4, 4);
+ROLLBACK TO sp2;
+COMMIT;
+SELECT COUNT(*) FROM t_temp;
+
+-- Matview with prepared statements + temp tables
+PREPARE temp_stmt AS INSERT INTO t_temp VALUES (5, 5), (6, 6);
+BEGIN;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
+SAVEPOINT sp1;
+EXECUTE temp_stmt;
+ROLLBACK TO sp1;
+EXECUTE temp_stmt;
+COMMIT;
+SELECT COUNT(*) FROM t_temp;

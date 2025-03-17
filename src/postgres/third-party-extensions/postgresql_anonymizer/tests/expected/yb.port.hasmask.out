@@ -68,7 +68,7 @@ SELECT anon.remove_masks_for_all_roles(); -- YB: workaround for lack of transact
 (1 row)
 
 SELECT anon.stop_dynamic_masking(); -- YB: workaround for lack of transactional DDL
- stop_dynamic_masking
+ stop_dynamic_masking 
 ----------------------
  t
 (1 row)

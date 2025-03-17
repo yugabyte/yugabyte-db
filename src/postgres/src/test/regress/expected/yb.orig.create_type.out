@@ -7,20 +7,20 @@ CREATE TYPE composite_type AS (
 );
 \dT+ composite_type;
                                             List of data types
- Schema |      Name      | Internal name  | Size  | Elements |  Owner   | Access privileges | Description
+ Schema |      Name      | Internal name  | Size  | Elements |  Owner   | Access privileges | Description 
 --------+----------------+----------------+-------+----------+----------+-------------------+-------------
- public | composite_type | composite_type | tuple |          | yugabyte |                   |
+ public | composite_type | composite_type | tuple |          | yugabyte |                   | 
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%composite_type';
-     typname
+     typname     
 -----------------
  _composite_type
  composite_type
 (2 rows)
 
 SELECT (1, 'a')::composite_type;
-  row
+  row  
 -------
  (1,a)
 (1 row)
@@ -33,10 +33,10 @@ INSERT INTO composite_table (a, b) VALUES ((2, 'bb')::composite_type, TRUE);
 INSERT INTO composite_table (a) VALUES ((3, 'ccc')::composite_type);
 INSERT INTO composite_table (b) VALUES (FALSE);
 SELECT * FROM composite_table ORDER BY a;
-    a    | b
+    a    | b 
 ---------+---
  (2,bb)  | t
- (3,ccc) |
+ (3,ccc) | 
          | f
 (3 rows)
 
@@ -46,22 +46,22 @@ SELECT * FROM composite_table ORDER BY a;
 CREATE TYPE enum_type AS ENUM ('baa', 'caw', 'moo');
 \dT+ enum_type;
                                         List of data types
- Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
+ Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description 
 --------+-----------+---------------+------+----------+----------+-------------------+-------------
- public | enum_type | enum_type     | 4    | baa     +| yugabyte |                   |
-        |           |               |      | caw     +|          |                   |
-        |           |               |      | moo      |          |                   |
+ public | enum_type | enum_type     | 4    | baa     +| yugabyte |                   | 
+        |           |               |      | caw     +|          |                   | 
+        |           |               |      | moo      |          |                   | 
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%enum_type';
-  typname
+  typname   
 ------------
  _enum_type
  enum_type
 (2 rows)
 
 SELECT 'moo'::enum_type;
- enum_type
+ enum_type 
 -----------
  moo
 (1 row)
@@ -71,9 +71,9 @@ INSERT INTO enum_table (a) VALUES ('baa');
 INSERT INTO enum_table (a, b) VALUES ('caw', FALSE);
 INSERT INTO enum_table (b) VALUES (TRUE);
 SELECT * FROM enum_table ORDER BY a;
-  a  | b
+  a  | b 
 -----+---
- baa |
+ baa | 
  caw | f
      | t
 (3 rows)
@@ -86,13 +86,13 @@ CREATE TYPE range_type AS RANGE (
 );
 \dT+ range_type;
                                          List of data types
- Schema |    Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
+ Schema |    Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description 
 --------+------------+---------------+------+----------+----------+-------------------+-------------
- public | range_type | range_type    | var  |          | yugabyte |                   |
+ public | range_type | range_type    | var  |          | yugabyte |                   | 
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%range_type';
-     typname
+     typname      
 ------------------
  _range_type
  multirange_type
@@ -101,7 +101,7 @@ SELECT typname FROM pg_type WHERE typname LIKE '%range_type';
 (4 rows)
 
 SELECT '[1.111, 2.222]'::range_type;
-  range_type
+  range_type   
 ---------------
  [1.111,2.222]
 (1 row)
@@ -119,45 +119,45 @@ LINE 1: INSERT INTO range_table (a) VALUES ('[6.0, 3.8]');
 INSERT INTO range_table (b) VALUES (TRUE);
 INSERT INTO range_table (a, b) VALUES ('[1.4, 3.3]', FALSE);
 SELECT * FROM range_table ORDER BY a;
-     a     | b
+     a     | b 
 -----------+---
  [1.4,3.3] | f
- [3,4.8]   |
+ [3,4.8]   | 
            | t
 (3 rows)
 
 -- Borrowed from https://www.postgresql.org/docs/11/rangetypes.html#RANGETYPES-BUILTIN
 -- Containment
 SELECT int4range(10, 20) @> 3;
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- Overlaps
 SELECT numrange(11.1, 22.2) && numrange(20.0, 30.0);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- Extract the upper bound
 SELECT upper(int8range(15, 25));
- upper
+ upper 
 -------
     25
 (1 row)
 
 -- Compute the intersection
 SELECT int4range(10, 20) * int4range(15, 25);
- ?column?
+ ?column? 
 ----------
  [15,20)
 (1 row)
 
 -- Is the range empty?
 SELECT isempty(numrange(1, 5));
- isempty
+ isempty 
 ---------
  f
 (1 row)
@@ -192,20 +192,20 @@ CREATE TYPE base_type (
 );
 \dT+ base_type;
                                         List of data types
- Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
+ Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description 
 --------+-----------+---------------+------+----------+----------+-------------------+-------------
- public | base_type | base_type     | 2    |          | yugabyte |                   |
+ public | base_type | base_type     | 2    |          | yugabyte |                   | 
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%base_type';
-  typname
+  typname   
 ------------
  base_type
  _base_type
 (2 rows)
 
 SELECT '32767'::base_type;
- base_type
+ base_type 
 -----------
  32767
 (1 row)
@@ -228,10 +228,10 @@ LINE 1: SELECT * FROM base_table ORDER BY a;
                                           ^
 HINT:  Use an explicit ordering operator or modify the query.
 SELECT * FROM base_table ORDER BY CAST(a AS text);
- a  | b
+ a  | b 
 ----+---
  1  | t
- 22 |
+ 22 | 
     | f
 (3 rows)
 
@@ -239,7 +239,7 @@ SELECT * FROM base_table ORDER BY CAST(a AS text);
 -- Summary
 --
 SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 18;
-     typname
+     typname      
 ------------------
  base_table
  _base_table
@@ -273,12 +273,12 @@ DROP TYPE composite_type CASCADE;
 NOTICE:  drop cascades to column a of table composite_table
 \dT+ composite_type;
                                     List of data types
- Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description 
 --------+------+---------------+------+----------+-------+-------------------+-------------
 (0 rows)
 
 SELECT oid, typname FROM pg_type WHERE typname LIKE '%composite_type';
- oid | typname
+ oid | typname 
 -----+---------
 (0 rows)
 
@@ -293,11 +293,11 @@ ERROR:  column "a" does not exist
 LINE 1: SELECT * FROM composite_table ORDER BY a;
                                                ^
 SELECT * FROM composite_table ORDER BY b;
- b
+ b 
 ---
  f
  t
-
+ 
 (3 rows)
 
 --
@@ -311,12 +311,12 @@ DROP TYPE enum_type CASCADE;
 NOTICE:  drop cascades to column a of table enum_table
 \dT+ enum_type;
                                     List of data types
- Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description 
 --------+------+---------------+------+----------+-------+-------------------+-------------
 (0 rows)
 
 SELECT oid, typname FROM pg_type WHERE typname LIKE '%enum_type';
- oid | typname
+ oid | typname 
 -----+---------
 (0 rows)
 
@@ -331,11 +331,11 @@ ERROR:  column "a" does not exist
 LINE 1: SELECT * FROM enum_table ORDER BY a;
                                           ^
 SELECT * FROM enum_table ORDER BY b;
- b
+ b 
 ---
  f
  t
-
+ 
 (3 rows)
 
 --
@@ -349,12 +349,12 @@ DROP TYPE range_type CASCADE;
 NOTICE:  drop cascades to column a of table range_table
 \dT+ range_type;
                                     List of data types
- Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description 
 --------+------+---------------+------+----------+-------+-------------------+-------------
 (0 rows)
 
 SELECT oid, typname FROM pg_type WHERE typname LIKE '%range_type';
- oid | typname
+ oid | typname 
 -----+---------
 (0 rows)
 
@@ -369,11 +369,11 @@ ERROR:  column "a" does not exist
 LINE 1: SELECT * FROM range_table ORDER BY a;
                                            ^
 SELECT * FROM range_table ORDER BY b;
- b
+ b 
 ---
  f
  t
-
+ 
 (3 rows)
 
 --
@@ -387,12 +387,12 @@ NOTICE:  drop cascades to 5 other objects
 \set VERBOSITY default
 \dT+ base_type;
                                     List of data types
- Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description 
 --------+------+---------------+------+----------+-------+-------------------+-------------
 (0 rows)
 
 SELECT oid, typname FROM pg_type WHERE typname LIKE '%base_type';
- oid | typname
+ oid | typname 
 -----+---------
 (0 rows)
 
@@ -407,18 +407,18 @@ ERROR:  column "a" does not exist
 LINE 1: SELECT * FROM base_table ORDER BY CAST(a AS text);
                                                ^
 SELECT * FROM base_table ORDER BY b;
- b
+ b 
 ---
  f
  t
-
+ 
 (3 rows)
 
 --
 -- Summary
 --
 SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 8;
-     typname
+     typname      
 ------------------
  base_table
  _base_table

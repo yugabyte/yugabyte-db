@@ -136,7 +136,7 @@ ALTER DEFAULT PRIVILEGES GRANT CREATE ON TABLEGROUPS TO user_1;
 CREATE TABLEGROUP test_adef;
 \ddp
               Default access privileges
-  Owner   | Schema |    Type    |  Access privileges
+  Owner   | Schema |    Type    |  Access privileges  
 ----------+--------+------------+---------------------
  yugabyte |        | tablegroup | yugabyte=C/yugabyte+
           |        |            | user_1=C/yugabyte
@@ -150,6 +150,7 @@ CREATE TABLE i(i text) TABLEGROUP test_adef;
 ALTER DEFAULT PRIVILEGES REVOKE CREATE ON TABLEGROUPS FROM user_1;
 \ddp
          Default access privileges
- Owner | Schema | Type | Access privileges
+ Owner | Schema | Type | Access privileges 
 -------+--------+------+-------------------
 (0 rows)
+

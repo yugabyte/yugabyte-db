@@ -96,14 +96,16 @@ install_pywheels() {
     done
     # Define the dependency order (without versions)
     declare -a DEP_ORDER=(
-        "markupsafe"  # Required by Jinja2
-        "jinja2"  # Needs MarkupSafe
+        "setuptools"          # Python devtools
+        "wheel"               # Python devtools
+        "markupsafe"          # Required by Jinja2
+        "jinja2"              # Needs MarkupSafe
         "charset-normalizer"  # Used by Requests
-        "idna"  # Used by Requests
-        "urllib3"  # Used by Requests
-        "certifi"  # Used by Requests
-        "requests"  # Needs urllib3, certifi, idna, charset-normalizer
-        "pyyaml"  # Independent
+        "idna"                # Used by Requests
+        "urllib3"             # Used by Requests
+        "certifi"             # Used by Requests
+        "requests"            # Needs urllib3, certifi, idna, charset-normalizer
+        "pyyaml"              # Independent
     )
 
     # Step 1: Install dependencies in order
@@ -113,8 +115,12 @@ install_pywheels() {
             python3 -m pip install \
                     --no-index --no-build-isolation \
                     --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
-                echo "Error installing $package" >&2
-                exit 1
+                echo "Retrying without --no-build-isolation for $package..."
+                python3 -m pip install --no-index \
+                        --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
+                    echo "Error installing $package" >&2
+                    exit 1
+                }
             }
         else
             echo "Warning: Package $package not found in PACKAGE_FILES."
@@ -178,7 +184,6 @@ setup_pip() {
     else
         echo "Upgrading pip for $PYTHON_VERSION_DETECTED..."
     fi
-    $PYTHON_CMD -m pip install --upgrade pip setuptools wheel
 }
 
 # Function to check for Python
@@ -202,15 +207,14 @@ execute_python() {
 
 # Function for importing the GPG key if required.
 import_gpg_key_if_required() {
-    if [[ "$cloud_type" == "gcp" ]]; then
-        # Check if the OS is Red Hat-based (RHEL, Rocky, Alma)
-        if grep -qiE "rhel|rocky|almalinux" /etc/os-release; then
-            echo "Importing RPM keys for Red Hat-based OS"
-            rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
-            echo "Successfully imported GPG keys"
-        else
-            echo "Skipping GPG key import as the OS is not Red Hat-based."
-        fi
+    # Check if the OS is Red Hat-based (RHEL, Rocky, Alma)
+    if grep -qiE "rhel|rocky|almalinux" /etc/os-release && \
+        grep -qIE 'VERSION_ID="8([.][0-9]+)?"' /etc/os-release; then
+        echo "Importing RPM keys for Red Hat-based OS"
+        rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
+        echo "Successfully imported GPG keys"
+    else
+        echo "Skipping GPG key import as the OS is not Red Hat-based."
     fi
 }
 

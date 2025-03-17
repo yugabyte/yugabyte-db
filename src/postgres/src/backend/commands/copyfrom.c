@@ -751,7 +751,8 @@ CopyFrom(CopyFromState cstate)
 	 */
 	bool has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
-	if (!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+	if (yb_fast_path_for_colocated_copy &&
+		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
 		!has_rule_or_trigger && !IsTransactionBlock())
 	{

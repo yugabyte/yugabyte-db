@@ -44,13 +44,13 @@ CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_block
 -- describe command
 \db
        List of tablespaces
-    Name    |  Owner   | Location
+    Name    |  Owner   | Location 
 ------------+----------+----------
- pg_default | postgres |
- pg_global  | postgres |
- x          | yugabyte |
- y          | yugabyte |
- z          | yugabyte |
+ pg_default | postgres | 
+ pg_global  | postgres | 
+ x          | yugabyte | 
+ y          | yugabyte | 
+ z          | yugabyte | 
 (5 rows)
 
 CREATE TABLEGROUP grp TABLESPACE x;
@@ -69,7 +69,7 @@ ERROR:  unrecognized parameter "some_nonexistent_parameter"
 CREATE TABLESPACE regress_tblspacewith WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}'); -- ok
 -- check to see if WITH clause parameter was used
 SELECT spcoptions FROM pg_tablespace WHERE spcname = 'regress_tblspacewith';
-                                                                                                              spcoptions
+                                                                                                              spcoptions                                                                                                              
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {"replica_placement={\"num_replicas\":3, \"placement_blocks\":[{\"cloud\":\"cloud1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1},{\"cloud\":\"cloud2\",\"region\":\"r2\", \"zone\":\"z2\", \"min_num_replicas\":2}]}"}
 (1 row)
@@ -114,7 +114,7 @@ DROP TABLESPACE invalid_tablespace;
 CREATE TABLE testschema.foo (i int) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'foo';
- relname |     spcname
+ relname |     spcname      
 ---------+------------------
  foo     | regress_tblspace
 (1 row)
@@ -125,7 +125,7 @@ INSERT INTO testschema.foo VALUES(2);
 CREATE TABLE testschema.asselect TABLESPACE regress_tblspace AS SELECT 1;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'asselect';
- relname  |     spcname
+ relname  |     spcname      
 ----------+------------------
  asselect | regress_tblspace
 (1 row)
@@ -145,7 +145,7 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
 CREATE TABLE testschema.foo_pk (i int, PRIMARY KEY(i)) TABLESPACE regress_tblspace;
 \d testschema.foo_pk_pkey
     Index "testschema.foo_pk_pkey"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  i      | integer | yes  | i
 primary key, lsm, for table "testschema.foo_pk"
@@ -153,9 +153,9 @@ Tablespace: "regress_tblspace"
 
 \d testschema.foo_pk;
              Table "testschema.foo_pk"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- i      | integer |           | not null |
+ i      | integer |           | not null | 
 Indexes:
     "foo_pk_pkey" PRIMARY KEY, lsm (i HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
@@ -168,7 +168,7 @@ SET default_tablespace TO regress_tblspace;
 CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
 \d testschema.foo_pk_default_tblspc_pkey;
 Index "testschema.foo_pk_default_tblspc_pkey"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  i      | integer | yes  | i
 primary key, lsm, for table "testschema.foo_pk_default_tblspc"
@@ -176,9 +176,9 @@ Tablespace: "regress_tblspace"
 
 \d testschema.foo_pk_default_tblspc;
      Table "testschema.foo_pk_default_tblspc"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- i      | integer |           | not null |
+ i      | integer |           | not null | 
 Indexes:
     "foo_pk_default_tblspc_pkey" PRIMARY KEY, lsm (i HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
@@ -199,17 +199,17 @@ CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regres
 CREATE TABLE testschema.using_index3 (a int, UNIQUE(a) USING INDEX TABLESPACE regress_tblspace);
 \d testschema.using_index2;
           Table "testschema.using_index2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Indexes:
     "using_index2_a_key" UNIQUE CONSTRAINT, lsm (a HASH), tablespace "regress_tblspace"
 
 \d testschema.using_index3;
           Table "testschema.using_index3"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Indexes:
     "using_index3_a_key" UNIQUE CONSTRAINT, lsm (a HASH), tablespace "regress_tblspace"
 
@@ -218,9 +218,9 @@ NOTICE:  data movement for table using_index2_a_key is successfully initiated
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.using_index2;
           Table "testschema.using_index2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Indexes:
     "using_index2_a_key" UNIQUE CONSTRAINT, lsm (a HASH)
 
@@ -228,7 +228,7 @@ Indexes:
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'foo_idx';
- relname |     spcname
+ relname |     spcname      
 ---------+------------------
  foo_idx | regress_tblspace
 (1 row)
@@ -245,12 +245,12 @@ CREATE TABLE testschema.part12_2 PARTITION OF testschema.part12 FOR VALUES IN (2
 SELECT relname, spcname FROM pg_catalog.pg_class c
     LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
     where c.relname LIKE 'part%' order by relname;
- relname  |     spcname
+ relname  |     spcname      
 ----------+------------------
- part     |
- part12   |
+ part     | 
+ part12   | 
  part12_1 | regress_tblspace
- part12_2 |
+ part12_2 | 
 (4 rows)
 
 DROP TABLE testschema.part;
@@ -285,7 +285,7 @@ CREATE INDEX part_a_idx ON testschema.part (a) TABLESPACE regress_tblspace;
 CREATE TABLE testschema.part2 PARTITION OF testschema.part FOR VALUES IN (2);
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname LIKE 'part%_idx' ORDER BY relname;
-   relname   |     spcname
+   relname   |     spcname      
 -------------+------------------
  part1_a_idx | regress_tblspace
  part2_a_idx | regress_tblspace
@@ -300,13 +300,13 @@ DETAIL:  Data movement is a long running asynchronous process and can be monitor
 CREATE TABLE testschema.part4 PARTITION OF testschema.part34 FOR VALUES IN (4);
 SELECT relname, spcname FROM pg_catalog.pg_class c LEFT OUTER JOIN pg_catalog.pg_tablespace t
     ON c.reltablespace = t.oid WHERE c.relname LIKE 'part%_idx' ORDER BY relname;
-   relname    |     spcname
+   relname    |     spcname      
 --------------+------------------
  part1_a_idx  | regress_tblspace
  part2_a_idx  | regress_tblspace
- part34_a_idx |
+ part34_a_idx | 
  part3_a_idx  | regress_tblspace
- part4_a_idx  |
+ part4_a_idx  | 
  part_a_idx   | regress_tblspace
 (6 rows)
 
@@ -317,14 +317,14 @@ CREATE INDEX test_index1 on testschema.test_default_tab (id);
 CREATE INDEX test_index2 on testschema.test_default_tab (id) TABLESPACE regress_tblspace;
 \d testschema.test_index1
    Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
+ Column |  Type  | Key? | Definition 
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
+ Column |  Type  | Key? | Definition 
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
@@ -336,21 +336,21 @@ SET default_tablespace TO regress_tblspace;
 ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
 \d testschema.test_index1
    Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
+ Column |  Type  | Key? | Definition 
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
+ Column |  Type  | Key? | Definition 
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 SELECT * FROM testschema.test_default_tab;
- id
+ id 
 ----
   1
 (1 row)
@@ -362,21 +362,21 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_index1
     Index "testschema.test_index1"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
     Index "testschema.test_index2"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 SELECT * FROM testschema.test_default_tab;
- id
+ id 
 ----
   1
 (1 row)
@@ -387,14 +387,14 @@ SET default_tablespace TO '';
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
 \d testschema.test_index1
     Index "testschema.test_index1"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
     Index "testschema.test_index2"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
@@ -407,14 +407,14 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_index1
    Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
+ Column |  Type  | Key? | Definition 
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
+ Column |  Type  | Key? | Definition 
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
@@ -433,7 +433,7 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_tab_unique
   Index "testschema.test_tab_unique"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  id     | integer | yes  | id
 unique, lsm, for table "testschema.test_tab"
@@ -441,7 +441,7 @@ Tablespace: "regress_tblspace"
 
 \d testschema.test_tab_pkey
    Index "testschema.test_tab_pkey"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  id     | integer | yes  | id
 primary key, lsm, for table "testschema.test_tab"
@@ -449,16 +449,16 @@ Tablespace: "regress_tblspace"
 
 \d testschema.test_tab;
             Table "testschema.test_tab"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- id     | integer |           | not null |
+ id     | integer |           | not null | 
 Indexes:
     "test_tab_pkey" PRIMARY KEY, lsm (id HASH), tablespace "regress_tblspace"
     "test_tab_unique" UNIQUE CONSTRAINT, lsm (id HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
 
 SELECT * FROM testschema.test_tab;
- id
+ id 
 ----
   1
 (1 row)
@@ -475,9 +475,9 @@ NOTICE:  data movement for table anindex is successfully initiated
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.atable
              Table "testschema.atable"
- Column  |  Type   | Collation | Nullable | Default
+ Column  |  Type   | Collation | Nullable | Default 
 ---------+---------+-----------+----------+---------
- column1 | integer |           |          |
+ column1 | integer |           |          | 
 Indexes:
     "anindex" UNIQUE, lsm (column1 HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
@@ -486,9 +486,9 @@ ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_global;
 ERROR:  only shared relations can be placed in pg_global tablespace
 \d testschema.part
         Partitioned table "testschema.part"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition key: LIST (a)
 Indexes:
     "part_a_idx" lsm (a HASH), tablespace "regress_tblspace"
@@ -499,9 +499,9 @@ NOTICE:  data movement for table part_a_idx is successfully initiated
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.part
         Partitioned table "testschema.part"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition key: LIST (a)
 Indexes:
     "part_a_idx" lsm (a HASH)
@@ -512,9 +512,9 @@ NOTICE:  data movement for table part_a_idx is successfully initiated
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
 \d testschema.part
         Partitioned table "testschema.part"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Partition key: LIST (a)
 Indexes:
     "part_a_idx" lsm (a HASH), tablespace "regress_tblspace"
@@ -524,7 +524,7 @@ INSERT INTO testschema.atable VALUES(3);
 INSERT INTO testschema.atable VALUES(1);
 ERROR:  duplicate key value violates unique constraint "anindex"
 SELECT COUNT(*) FROM testschema.atable;
- count
+ count 
 -------
      3
 (1 row)
@@ -610,7 +610,7 @@ CREATE UNIQUE INDEX regionlocal_ind ON foo(x) INCLUDE (y) TABLESPACE regionlocal
 CREATE UNIQUE INDEX cloudlocal_ind ON foo(x) INCLUDE (y) TABLESPACE cloudlocal;
 CREATE UNIQUE INDEX bad ON foo(x) INCLUDE (y) TABLESPACE far;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Only Scan using good on foo
    Index Cond: (x = 5)
@@ -618,7 +618,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 SET yb_enable_geolocation_costing = off;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-            QUERY PLAN
+            QUERY PLAN            
 ----------------------------------
  Index Only Scan using bad on foo
    Index Cond: (x = 5)
@@ -627,7 +627,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 SET yb_enable_geolocation_costing = on;
 DROP INDEX good;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                  QUERY PLAN
+                  QUERY PLAN                  
 ----------------------------------------------
  Index Only Scan using regionlocal_ind on foo
    Index Cond: (x = 5)
@@ -635,7 +635,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX regionlocal_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-            QUERY PLAN
+            QUERY PLAN            
 ----------------------------------
  Index Only Scan using bad on foo
    Index Cond: (x = 5)
@@ -646,7 +646,7 @@ CREATE TABLE foo(id int primary key, val int);
 CREATE UNIQUE INDEX bad ON foo(id) INCLUDE (val) TABLESPACE far;
 CREATE UNIQUE INDEX good ON foo(id) INCLUDE (val) TABLESPACE near;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
-            QUERY PLAN
+            QUERY PLAN             
 -----------------------------------
  Index Only Scan using good on foo
    Index Cond: (id = 5)
@@ -752,7 +752,7 @@ WHERE
     ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
 ORDER BY
     c.relname;
-   relname    | spcname
+   relname    | spcname 
 --------------+---------
  index_1      | tsp1
  mat_view     | tsp3
@@ -796,7 +796,7 @@ CREATE UNIQUE INDEX zone_pref_ind ON foo(x) INCLUDE (y) TABLESPACE zone_pref;
 CREATE UNIQUE INDEX region_pref_ind ON foo(x) INCLUDE (y) TABLESPACE region_pref;
 CREATE UNIQUE INDEX cloud_pref_ind ON foo(x) INCLUDE (y) TABLESPACE cloud_pref;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using zone_pref_ind on foo
    Index Cond: (x = 5)
@@ -804,7 +804,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 SET yb_enable_geolocation_costing = off;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Index Only Scan using cloud_pref_ind on foo
    Index Cond: (x = 5)
@@ -813,7 +813,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 SET yb_enable_geolocation_costing = on;
 DROP INDEX zone_pref_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                  QUERY PLAN
+                  QUERY PLAN                  
 ----------------------------------------------
  Index Only Scan using region_pref_ind on foo
    Index Cond: (x = 5)
@@ -821,7 +821,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX region_pref_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Index Only Scan using cloud_pref_ind on foo
    Index Cond: (x = 5)
@@ -858,7 +858,7 @@ CREATE UNIQUE INDEX zone_pref_ind ON foo(x) INCLUDE (y) TABLESPACE zone_pref;
 CREATE UNIQUE INDEX region_pref_ind ON foo(x) INCLUDE (y) TABLESPACE region_pref;
 CREATE UNIQUE INDEX cloud_pref_ind ON foo(x) INCLUDE (y) TABLESPACE cloud_pref;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using zone_pref_ind on foo
    Index Cond: (x = 5)
@@ -866,7 +866,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX zone_pref_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                  QUERY PLAN
+                  QUERY PLAN                  
 ----------------------------------------------
  Index Only Scan using region_pref_ind on foo
    Index Cond: (x = 5)
@@ -874,7 +874,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX region_pref_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                  
 ---------------------------------------------
  Index Only Scan using cloud_pref_ind on foo
    Index Cond: (x = 5)
@@ -905,7 +905,7 @@ CREATE TABLESPACE has_pref
 CREATE UNIQUE INDEX no_pref_ind ON foo(x) INCLUDE (y) TABLESPACE no_pref;
 CREATE UNIQUE INDEX has_pref_ind ON foo(x) INCLUDE (y) TABLESPACE has_pref;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                QUERY PLAN
+                QUERY PLAN                 
 -------------------------------------------
  Index Only Scan using has_pref_ind on foo
    Index Cond: (x = 5)
@@ -941,7 +941,7 @@ CREATE UNIQUE INDEX few_pref_ind ON foo(x) INCLUDE (y) TABLESPACE few_pref;
 CREATE UNIQUE INDEX some_pref_ind ON foo(x) INCLUDE (y) TABLESPACE some_pref;
 CREATE UNIQUE INDEX most_pref_ind ON foo(x) INCLUDE (y) TABLESPACE most_pref;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                QUERY PLAN
+                QUERY PLAN                 
 -------------------------------------------
  Index Only Scan using few_pref_ind on foo
    Index Cond: (x = 5)
@@ -949,7 +949,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX few_pref_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using some_pref_ind on foo
    Index Cond: (x = 5)
@@ -957,7 +957,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 
 DROP INDEX some_pref_ind;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using most_pref_ind on foo
    Index Cond: (x = 5)
@@ -991,7 +991,7 @@ CREATE TABLESPACE medium_pref
 CREATE UNIQUE INDEX close_far_pref_ind ON foo(x) INCLUDE (y) TABLESPACE close_far_pref;
 CREATE UNIQUE INDEX medium_pref_ind ON foo(x) INCLUDE (y) TABLESPACE medium_pref;
 EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
-                  QUERY PLAN
+                  QUERY PLAN                  
 ----------------------------------------------
  Index Only Scan using medium_pref_ind on foo
    Index Cond: (x = 5)

@@ -2023,6 +2023,8 @@ create foreign table remp (a int check (a in (1)), b text) server loopback optio
 create table locp (a int check (a in (2)), b text);
 alter table utrtest attach partition remp for values in (1);
 alter table utrtest attach partition locp for values in (2);
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
 
 insert into utrtest values (1, 'foo');
 insert into utrtest values (2, 'qux');

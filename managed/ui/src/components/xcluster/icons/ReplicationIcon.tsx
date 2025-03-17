@@ -38,6 +38,7 @@ export const ReplicationIcon = ({ drConfig }: ReplicationIconProps) => {
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
+    case DrConfigState.UPDATING:
       return (
         <div className={classes.iconBorder}>
           <i className={clsx('fa fa-spinner fa-spin', classes.icon, classes.inProgress)} />

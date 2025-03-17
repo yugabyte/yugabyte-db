@@ -18,6 +18,7 @@ import {
   CommunicationPorts
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
 import {
   ASYNC_FIELDS,
   PRIMARY_FIELDS,
@@ -44,6 +45,9 @@ export const transitToUniverse = (universeUUID?: string) =>
   universeUUID
     ? browserHistory.push(`/universes/${universeUUID}/tasks`)
     : browserHistory.push(`/universes`);
+
+export const transitToUniverseOverview = (universeUUID: string) =>
+  browserHistory.push(`/universes/${universeUUID}`);
 
 export const getClusterByType = (universeData: UniverseDetails, clusterType: ClusterType) =>
   universeData?.clusters?.find((cluster) => cluster.clusterType === clusterType);
@@ -258,11 +262,15 @@ export const getFormData = (
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
   }
 
-  if (
-    data.cloudConfig.provider?.code === CloudType.kubernetes &&
-    data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
-  ) {
+  if (data.cloudConfig.provider?.code === CloudType.kubernetes) {
     data.instanceConfig.masterK8SNodeResourceSpec = userIntent.masterK8SNodeResourceSpec;
+    data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
+  }
+
+  if (
+    [CloudType.kubernetes, CloudType.onprem].includes(data.cloudConfig.provider?.code as CloudType)
+  ) {
+    data.instanceConfig.useTimeSync = false;
   }
 
   return data;
@@ -353,15 +361,17 @@ export const getUserIntent = (
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
-  if (
-    cloudConfig.provider?.code === CloudType.kubernetes &&
-    cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
-  ) {
-    intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
+  if ([CloudType.kubernetes, CloudType.onprem].includes(cloudConfig.provider?.code as CloudType)) {
+    instanceConfig.useTimeSync = false;
   }
 
   if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     intent.masterInstanceType = instanceConfig.masterInstanceType;
+    intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+  }
+
+  if (cloudConfig.provider?.code === CloudType.kubernetes) {
+    intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
     intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
   }
 
@@ -441,13 +451,29 @@ export const createReadReplica = async (configurePayload: UniverseConfigure) => 
   }
 };
 
-export const editReadReplica = async (configurePayload: UniverseConfigure) => {
+export const editReadReplica = async (
+  configurePayload: UniverseConfigure,
+  dispatch: any,
+  isNewTaskUIEnabled: boolean,
+  runOnlyPrechecks = false
+) => {
+  configurePayload.runOnlyPrechecks = runOnlyPrechecks;
   const universeUUID = configurePayload.universeUUID;
   if (!universeUUID) return false;
   try {
     // now everything is ready to edit universe
     const response = await api.editUniverse(configurePayload, universeUUID);
-    response && transitToUniverse(universeUUID);
+    if ('taskUUID' in response) {
+      const taskUUID = response.taskUUID;
+      runOnlyPrechecks &&
+        toast.success('Running Prechecks...', {
+          autoClose: TOAST_AUTO_DISMISS_INTERVAL
+        });
+      if (isNewTaskUIEnabled) {
+        dispatch(showTaskInDrawer(taskUUID));
+      }
+    }
+    response && transitToUniverseOverview(universeUUID);
     return response;
   } catch (error) {
     console.error(error);

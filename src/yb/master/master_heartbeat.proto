@@ -269,16 +269,6 @@ message TSHeartbeatRequestPB {
       xcluster_consumer_replication_status = 23;
 }
 
-// todo(zdrudi): rename this. client operation lease is too general.
-// it's for ysql to support table locking.
-message ClientOperationLeaseUpdatePB {
-  optional bool new_lease = 1;
-  optional uint64 lease_epoch = 2;
-  // TODO: If this ends up being too big, consider adding a way to break this up
-  // into multiple messages.
-  optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
-}
-
 message TSHeartbeatResponsePB {
   optional MasterErrorPB error = 1;
 
@@ -350,11 +340,11 @@ message TSHeartbeatResponsePB {
 
   optional string universe_uuid = 25;
 
-  optional ClientOperationLeaseUpdatePB op_lease_update = 26;
-
   // Only set if error is set. When set, indicates that the yb-master believes
   // the server to be in a severe bad state and should be immediately shutdown.
   optional bool is_fatal_error = 27;
+
+  optional uint32 oid_cache_invalidations_count = 29;
 }
 
 service MasterHeartbeat {

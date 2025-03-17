@@ -111,7 +111,7 @@ CREATE TABLE array_gin_test (a int[]);
 INSERT INTO array_gin_test SELECT ARRAY[1, g%5, g] FROM generate_series(1, 10000) g;
 CREATE INDEX array_gin_test_idx ON array_gin_test USING gin (a);
 SELECT COUNT(*) FROM array_gin_test WHERE a @> '{2}';
- count
+ count 
 -------
   2000
 (1 row)
@@ -178,13 +178,13 @@ unique, lsm, for table "public.unique_tbl"
 unique nulls not distinct, lsm, for table "public.unique_tbl"
 
 SELECT pg_get_indexdef('unique_idx3'::regclass);
-                            pg_get_indexdef
+                            pg_get_indexdef                             
 ------------------------------------------------------------------------
  CREATE UNIQUE INDEX unique_idx3 ON public.unique_tbl USING lsm (i ASC)
 (1 row)
 
 SELECT pg_get_indexdef('unique_idx4'::regclass);
-                                      pg_get_indexdef
+                                      pg_get_indexdef                                      
 -------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX unique_idx4 ON public.unique_tbl USING lsm (i ASC) NULLS NOT DISTINCT
 (1 row)
@@ -251,17 +251,17 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d cwi_test
                      Table "public.cwi_test"
- Column |         Type          | Collation | Nullable | Default
+ Column |         Type          | Collation | Nullable | Default 
 --------+-----------------------+-----------+----------+---------
- a      | integer               |           | not null |
- b      | character varying(10) |           | not null |
- c      | character(1)          |           |          |
+ a      | integer               |           | not null | 
+ b      | character varying(10) |           | not null | 
+ c      | character(1)          |           |          | 
 Indexes:
     "cwi_uniq_idx" PRIMARY KEY, lsm (a ASC, b ASC)
 
 \d cwi_uniq_idx
             Index "public.cwi_uniq_idx"
- Column |         Type          | Key? | Definition
+ Column |         Type          | Key? | Definition 
 --------+-----------------------+------+------------
  a      | integer               | yes  | a
  b      | character varying(10) | yes  | b
@@ -277,17 +277,17 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d cwi_test
                      Table "public.cwi_test"
- Column |         Type          | Collation | Nullable | Default
+ Column |         Type          | Collation | Nullable | Default 
 --------+-----------------------+-----------+----------+---------
- a      | integer               |           | not null |
- b      | character varying(10) |           | not null |
- c      | character(1)          |           |          |
+ a      | integer               |           | not null | 
+ b      | character varying(10) |           | not null | 
+ c      | character(1)          |           |          | 
 Indexes:
     "cwi_replaced_pkey" PRIMARY KEY, lsm (b ASC, a ASC)
 
 \d cwi_replaced_pkey
           Index "public.cwi_replaced_pkey"
- Column |         Type          | Key? | Definition
+ Column |         Type          | Key? | Definition 
 --------+-----------------------+------+------------
  b      | character varying(10) | yes  | b
  a      | integer               | yes  | a

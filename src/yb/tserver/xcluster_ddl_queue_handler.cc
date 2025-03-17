@@ -30,6 +30,9 @@
 #include "yb/util/scope_exit.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DEFINE_RUNTIME_int32(xcluster_ddl_queue_max_retries_per_ddl, 5,
+    "Maximum number of retries per DDL before we pause processing of the ddl_queue table.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -246,6 +249,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
       safe_time_ht, target_safe_ht, TryAgain, "Waiting for other pollers to catch up to safe time");
 
   RETURN_NOT_OK(InitPGConnection());
+  RETURN_NOT_OK(CheckForFailedQuery());
 
   // TODO(#20928): Make these calls async.
   auto rows = VERIFY_RESULT(GetRowsToProcess(target_safe_ht));
@@ -394,11 +398,44 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   }
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
-  RETURN_NOT_OK(RunAndLogQuery(query_info.query));
+  RETURN_NOT_OK(ProcessFailedDDLQuery(RunAndLogQuery(query_info.query), query_info));
   RETURN_NOT_OK(
       // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
       RunAndLogQuery("SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');"
                      "SET yb_skip_data_insert_for_table_rewrite=false;"));
+  return Status::OK();
+}
+
+Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
+    const Status& s, const DDLQueryInfo& query_info) {
+  if (s.ok()) {
+    num_fails_for_this_ddl_ = 0;
+    last_failed_query_.reset();
+    return Status::OK();
+  }
+
+  DCHECK(!last_failed_query_ || last_failed_query_->MatchesQueryInfo(query_info));
+  if (last_failed_query_ && last_failed_query_->MatchesQueryInfo(query_info)) {
+    num_fails_for_this_ddl_++;
+    if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
+      LOG_WITH_PREFIX(ERROR) << "Failed to process DDL after " << num_fails_for_this_ddl_
+                             << " retries. Pausing DDL replication.";
+    }
+  } else {
+    last_failed_query_ = QueryIdentifier{query_info.ddl_end_time, query_info.query_id};
+    num_fails_for_this_ddl_ = 1;
+  }
+
+  last_failed_status_ = s;
+  return s;
+}
+
+Status XClusterDDLQueueHandler::CheckForFailedQuery() {
+  if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
+    return last_failed_status_.CloneAndPrepend(
+        "DDL replication is paused due to repeated failures. Manual fix is required, followed by a "
+        "leader stepdown of the target's ddl_queue tablet. ");
+  }
   return Status::OK();
 }
 
@@ -411,8 +448,8 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& 
   doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
-      query_info.query_id, common::WriteRapidJsonToString(doc))));
+      "EXECUTE $0($1, $2, $4$3$4)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
+      query_info.query_id, common::WriteRapidJsonToString(doc), "$manual_query$")));
   return Status::OK();
 }
 
@@ -432,8 +469,8 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     return Status::OK();
   }
+  auto se = ScopeExit([this] { pg_conn_.reset(); });
   // Create pg connection if it doesn't exist.
-  // TODO(#20693) Create prepared statements as part of opening the connection.
   CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
   pg_conn_ = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
@@ -445,15 +482,16 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   query << "SET yb_non_ddl_txn_for_sys_tables_allowed = 1;";
   // Prepare replicated_ddls insert for manually replicated ddls.
   query << "PREPARE " << kDDLPrepStmtManualInsert << "(bigint, bigint, text) AS "
-        << "INSERT INTO " << xcluster::kDDLQueuePgSchemaName << "."
-        << xcluster::kDDLReplicatedTableName << " VALUES ($1, $2, $3::jsonb);";
+        << "INSERT INTO " << kReplicatedDDLsFullTableName << " VALUES ($1, $2, $3::jsonb);";
   // Prepare replicated_ddls select query.
   query << "PREPARE " << kDDLPrepStmtAlreadyProcessed << "(bigint, bigint) AS "
-        << "SELECT EXISTS(SELECT 1 FROM " << xcluster::kDDLQueuePgSchemaName << "."
-        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueDDLEndTimeColumn
-        << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn << " = $2);";
+        << "SELECT EXISTS(SELECT 1 FROM " << kReplicatedDDLsFullTableName << " WHERE "
+        << xcluster::kDDLQueueDDLEndTimeColumn << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn
+        << " = $2);";
+
   RETURN_NOT_OK(pg_conn_->Execute(query.str()));
 
+  se.Cancel();
   return Status::OK();
 }
 
@@ -465,8 +503,11 @@ Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
 Result<std::vector<std::tuple<int64, int64, std::string>>>
 XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
+  // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
+  // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
+      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
+      apply_safe_time.GetPhysicalValueMicros()));
   // Select all rows that are in ddl_queue but not in replicated_ddls.
   // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
   // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).
@@ -477,7 +518,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
   // DDLs are blocked when yb_read_time is non-zero, so reset.
-  RETURN_NOT_OK(pg_conn_->Execute("SET yb_read_time = 0"));
+  RETURN_NOT_OK(
+      pg_conn_->Execute("SET yb_read_time = 0; SET yb_disable_catalog_version_check = 0"));
   return rows;
 }
 

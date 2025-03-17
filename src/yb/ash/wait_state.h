@@ -252,6 +252,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
+  (kGetTserverCatalogMessageLists)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -268,6 +269,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kExportTxnSnapshot)
   (kSetTxnSnapshot)
   (kClearExportedTxnSnapshots)
+  (kPollVectorIndexReady)
 );
 
 struct WaitStatesDescription {

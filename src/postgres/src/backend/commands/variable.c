@@ -648,7 +648,7 @@ check_follower_reads(bool *newval, void **extra, GucSource source)
 		return is_staleness_acceptable(yb_follower_read_staleness_ms);
 	}
 
-	if (IsTransactionState())
+	if (XactReadOnly && IsTransactionState())
 	{
 		if (FirstSnapshotSet)
 		{
@@ -698,7 +698,7 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 		}
 		return is_staleness_acceptable(*newval);
 	}
-	if (YBTransactionsEnabled())
+	if (XactReadOnly && YBTransactionsEnabled())
 	{
 		if (FirstSnapshotSet)
 		{

@@ -44,25 +44,32 @@
 
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
+
 #include "yb/consensus/metadata.pb.h"
-#include "yb/cdc/xrepl_types.h"
+
 #include "yb/cdc/cdc_consumer.fwd.h"
+#include "yb/cdc/xrepl_types.h"
+
 #include "yb/client/client_fwd.h"
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/server/webserver_options.h"
+
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
-#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -90,6 +97,12 @@ class CDCServiceImpl;
 
 }
 
+namespace master {
+
+class RefreshYsqlLeaseInfoPB;
+
+}
+
 namespace stateful_service {
 class PgCronLeaderService;
 }  // namespace stateful_service
@@ -101,6 +114,7 @@ class TserverXClusterContext;
 class TserverXClusterContextIf;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
+class YsqlLeaseClient;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -185,11 +199,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
-  tserver::TServerSharedData& SharedObject() override { return shared_object(); }
+  ConcurrentPointerReference<TServerSharedData> SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
-      const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time);
+      const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -235,6 +249,23 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
   void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data)
       EXCLUDES(lock_);
+  void SetYsqlDBCatalogInvalMessages(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
+      EXCLUDES(lock_);
+  void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
+
+  uint32_t get_oid_cache_invalidations_count() const override {
+    return oid_cache_invalidations_count_.load();
+  }
+
+  void set_oid_cache_invalidations_count(uint32_t oid_cache_invalidations_count) {
+    uint32_t old_value = oid_cache_invalidations_count_.load();
+    if (old_value < oid_cache_invalidations_count) {
+      LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
+                << oid_cache_invalidations_count << " > " << old_value << ")";
+      oid_cache_invalidations_count_.store(oid_cache_invalidations_count);
+    }
+  }
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const EXCLUDES(lock_) override {
@@ -275,6 +306,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const EXCLUDES(lock_) override;
+
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -377,6 +412,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
 
+  Result<std::string> GetUniverseUuid() const override;
+
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
  protected:
@@ -421,6 +458,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
 
+  std::unique_ptr<YsqlLeaseClient> ysql_lease_poller_;
+
   std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
   // Thread responsible for collecting metrics snapshots for native storage.
@@ -458,10 +497,27 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
+  // Highest value of SysXClusterConfigEntryPB.oid_cache_invalidations_count received from any
+  // TSHeartbeatResponsePB.  This value is bumped to invalidate all the TServer OID caches.
+  std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
+
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
+
+  // This map represents an extended history of pg_yb_invalidation_messages except message_time
+  // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of
+  // (current_version, inval messages) pairs. If the message value is nullopt, it means a SQL
+  // null value. If it is empty string, it means there is no invalidation messages associated
+  // with this (db_oid, current_version). A PG backend needs to do a catalog cache refresh on
+  // a SQL null value, but treats an empty string as a noop because an empty string represents
+  // that there is no invalidation message. There is nothing in the PG catalog cache that can
+  // be invalidated by an empty string.
+  using InvalidationMessagesQueue = std::deque<std::pair<uint64_t, std::optional<std::string>>>;
+  using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesQueue>;
+  DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
+
   // See same variable comments in CatalogManager.
   std::optional<bool> catalog_version_table_in_perdb_mode_{std::nullopt};
 

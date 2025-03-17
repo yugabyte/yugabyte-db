@@ -107,16 +107,25 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   // Disable reuse unclosed segment feature to prevent log from reusing
   // the last segment and skipping building footer.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = -1;
+  string tablet_id;
+  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
   auto timestamp_before_write = GetCurrentTimeMicros();
-  PutKeyValue("key", "value");
+  {
+    auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
+    PutKeyValue("key", "value");
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return tablet_peer->log()->GetLatestEntryOpId().index == 2;
+        },
+        5s * kTimeMultiplier, "the write is synced"));
+  }
   auto timestamp_after_write = GetCurrentTimeMicros();
 
-  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
   ASSERT_OK(tablet_server->Restart());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
 
-  string tablet_id;
-  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
   auto tablet_peer = ASSERT_RESULT(
       tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   ASSERT_OK(tablet_server->WaitStarted());
@@ -129,7 +138,6 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());
   ASSERT_TRUE(segment->footer().close_timestamp_micros() > timestamp_before_write &&
               segment->footer().close_timestamp_micros() < timestamp_after_write);
-
 }
 
 TEST_F(LogSyncTest, BackgroundSync) {

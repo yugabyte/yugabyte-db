@@ -8,7 +8,7 @@ CREATE TABLE t1_gen (k INT PRIMARY KEY, k_gen TEXT GENERATED ALWAYS AS ('Text ' 
 INSERT INTO t0_gen (k, v1, v2) (SELECT i, i, i FROM generate_series(1, 10) AS i);
 INSERT INTO t1_gen (k, v1, v2, v3) (SELECT i, i, i, NULL FROM generate_series(1, 10) AS i);
 SELECT * FROM t0_gen ORDER BY k;
- k  | v1 | v2 | v1_gen
+ k  | v1 | v2 | v1_gen  
 ----+----+----+---------
   1 |  1 |  1 | Text 1
   2 |  2 |  2 | Text 2
@@ -23,7 +23,7 @@ SELECT * FROM t0_gen ORDER BY k;
 (10 rows)
 
 SELECT * FROM t1_gen ORDER BY k;
- k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen
+ k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
 ----+---------+----+----+----+-----------
   1 | Text 1  |  1 |  1 |    |         2
   2 | Text 2  |  2 |  2 |    |         4
@@ -40,7 +40,7 @@ SELECT * FROM t1_gen ORDER BY k;
 -- Updates that don't involve generated columns + columns they depend on should
 -- eligible for single-row optimization or expression pushdown.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -52,7 +52,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int WHERE k = 2;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -66,7 +66,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int W
 -- Updates involving generated columns should not be eligible for single-row optimization
 -- and should not be pushed down.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 3;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
@@ -81,7 +81,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 3;
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v2 + 1, v2 = v1 + 1 WHERE k = 4;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
@@ -96,7 +96,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
 (10 rows)
 
 SELECT * FROM t0_gen WHERE k NOT IN (2) ORDER BY k;
- k  | v1 | v2 | v1_gen
+ k  | v1 | v2 | v1_gen  
 ----+----+----+---------
   1 |  1 |  2 | Text 1
   3 |  4 |  3 | Text 4
@@ -112,7 +112,7 @@ SELECT * FROM t0_gen WHERE k NOT IN (2) ORDER BY k;
 CREATE INDEX NONCONCURRENTLY v1_gen_idx ON t0_gen (v1_gen) WHERE k > 100;
 -- Modifytable operations must correctly work with indexes on generated columns.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (101, 101, 101), (102, 102, 102);
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
    ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
@@ -125,7 +125,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (101, 101, 101), (1
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (103, 103);
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -138,7 +138,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (103, 103);
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (104, 104);
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -151,16 +151,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (104, 104);
 (8 rows)
 
 SELECT * FROM t0_gen WHERE k >= 100 ORDER BY k;
-  k  | v1  | v2  |  v1_gen
+  k  | v1  | v2  |  v1_gen  
 -----+-----+-----+----------
  101 | 101 | 101 | Text 101
  102 | 102 | 102 | Text 102
- 103 |     | 103 |
+ 103 |     | 103 | 
  104 | 104 |     | Text 104
 (4 rows)
 
 EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(t0_gen v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 100;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using v1_gen_idx on t0_gen
@@ -169,13 +169,13 @@ EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(t0_gen v1_gen_idx) */ SELECT COUNT(v1_gen)
 
 -- COUNT(col) will skip over NULL values.
 /*+ IndexOnlyScan(t0_gen v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 100;
- count
+ count 
 -------
      3
 (1 row)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1, v2 = v2 + 1 WHERE k > 100;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
@@ -191,7 +191,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 100;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
@@ -206,7 +206,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 100;
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET k = k + 10 WHERE k > 100;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
@@ -222,22 +222,22 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET k = k + 10 WHERE k > 100;
 (11 rows)
 
 SELECT * FROM t0_gen WHERE k > 100 ORDER BY k;
-  k  | v1  | v2  |  v1_gen
+  k  | v1  | v2  |  v1_gen  
 -----+-----+-----+----------
  111 | 102 | 101 | Text 102
  112 | 103 | 102 | Text 103
- 113 |     | 103 |
+ 113 |     | 103 | 
  114 | 105 |     | Text 105
 (4 rows)
 
 /*+ IndexOnlyScan(t0_gen v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 100;
- count
+ count 
 -------
      3
 (1 row)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 110 AND k < 112;
-                    QUERY PLAN
+                    QUERY PLAN                     
 ---------------------------------------------------
  Delete on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
@@ -253,7 +253,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 110 AND k < 112;
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen = 'Text 103';
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Delete on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
@@ -269,7 +269,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen = 'Text 103';
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen IS NULL;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Delete on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
@@ -285,13 +285,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen IS NULL;
 (11 rows)
 
 SELECT * FROM t0_gen WHERE k > 100 ORDER BY k;
-  k  | v1  | v2 |  v1_gen
+  k  | v1  | v2 |  v1_gen  
 -----+-----+----+----------
  114 | 105 |    | Text 105
 (1 row)
 
 /*+ IndexOnlyScan(t0_gen v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 100;
- count
+ count 
 -------
      1
 (1 row)
@@ -299,7 +299,7 @@ SELECT * FROM t0_gen WHERE k > 100 ORDER BY k;
 -- Modifytable operations must correctly work with multi-column indexes involving generated columns.
 CREATE INDEX NONCONCURRENTLY v2_v1_gen_idx ON t0_gen (v2, v1_gen) WHERE k > 200;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (201, 201, 201), (202, 202, 202);
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
    ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
@@ -312,7 +312,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (201, 201, 201), (2
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (203, 203);
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -325,7 +325,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (203, 203);
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (204, 204);
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -338,16 +338,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (204, 204);
 (8 rows)
 
 SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
-  k  | v1  | v2  |  v1_gen
+  k  | v1  | v2  |  v1_gen  
 -----+-----+-----+----------
  201 | 201 | 201 | Text 201
  202 | 202 | 202 | Text 202
- 203 |     | 203 |
+ 203 |     | 203 | 
  204 | 204 |     | Text 204
 (4 rows)
 
 EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(t0_gen v2_v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 200;
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  Finalize Aggregate
    ->  Index Only Scan using v2_v1_gen_idx on t0_gen
@@ -355,7 +355,7 @@ EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(t0_gen v2_v1_gen_idx) */ SELECT COUNT(v1_g
 (3 rows)
 
 /*+ IndexOnlyScan(t0_gen v2_v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 200;
- count
+ count 
 -------
      3
 (1 row)
@@ -365,7 +365,7 @@ EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(t0_gen v2_v1_gen_idx) */ SELECT COUNT(v1_g
 -- needs only the entry in v2_v1_gen_idx to be updated because the entry in v1_gen_idx evaluates to
 -- NULL both before and after the update.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1, v2 = v2 + 1 WHERE k > 200;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
@@ -381,7 +381,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 200;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
@@ -397,7 +397,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 200;
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 204;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
@@ -413,22 +413,22 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 204;
 (11 rows)
 
 SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
-  k  | v1  | v2  |  v1_gen
+  k  | v1  | v2  |  v1_gen  
 -----+-----+-----+----------
  201 | 202 | 201 | Text 202
  202 | 203 | 202 | Text 203
- 203 |     | 203 |
+ 203 |     | 203 | 
  204 | 206 |     | Text 206
 (4 rows)
 
 /*+ IndexOnlyScan(t0_gen v2_v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 200;
- count
+ count 
 -------
      3
 (1 row)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k = 201;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Delete on t0_gen (actual rows=0 loops=1)
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
@@ -444,7 +444,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k = 201;
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 200 AND (v1 < 203 OR v1 IS NULL);
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Delete on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
@@ -460,7 +460,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 200 AND (v1 < 20
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 100 AND v2 < 203;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Delete on t0_gen (actual rows=0 loops=1)
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
@@ -476,19 +476,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 100 AND v2 < 203
 (11 rows)
 
 SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
-  k  | v1  | v2 |  v1_gen
+  k  | v1  | v2 |  v1_gen  
 -----+-----+----+----------
  204 | 206 |    | Text 206
 (1 row)
 
 /*+ IndexOnlyScan(t0_gen v2_v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 200;
- count
+ count 
 -------
      1
 (1 row)
 
 /*+ IndexOnlyScan(t0_gen v1_gen_idx) */ SELECT COUNT(v1_gen) FROM t0_gen WHERE k > 100;
- count
+ count 
 -------
      2
 (1 row)
@@ -498,7 +498,7 @@ SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
 -- depends on, then the query should not be eligible for single-row optimization
 -- or expression pushdown on those columns.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1 WHERE k = 1;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -513,7 +513,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1 WHERE k = 1;
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = 2 WHERE k = 1;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -528,7 +528,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = 2 WHERE k = 1;
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WHERE k = 2;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -543,7 +543,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = 2 WHERE k = 2;
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Result (actual rows=1 loops=1)
@@ -555,7 +555,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = 2 WHERE k = 2;
 (7 rows)
 
 SELECT * FROM t1_gen WHERE k IN (1, 2) ORDER BY k;
- k | k_gen  | v1 | v2 | v3 | v1_v2_gen
+ k | k_gen  | v1 | v2 | v3 | v1_v2_gen 
 ---+--------+----+----+----+-----------
  1 | Text 1 |  2 |  2 |    |         4
  2 | Text 2 |  3 |  3 |  2 |         6
@@ -564,7 +564,7 @@ SELECT * FROM t1_gen WHERE k IN (1, 2) ORDER BY k;
 CREATE INDEX NONCONCURRENTLY t1_gen_v1_v2_gen ON t1_gen (v1_v2_gen);
 CREATE INDEX NONCONCURRENTLY ON t1_gen (k_gen) WHERE k < 100;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WHERE k = 3;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -580,7 +580,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2, v3 = v3 + 1 WHERE k = 4;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -595,7 +595,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2, v3 = v3 + 1 WHERE 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = k + 1 WHERE k = 5;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -611,7 +611,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = k + 1 WHERE k = 5;
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10 WHERE k = 6;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -627,7 +627,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10 WHERE k = 6;
 (11 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10, v1 = v1 + 5, v2 = v2 + 5 WHERE k = 7;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -643,7 +643,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10, v1 = v1 + 5, v2
 (11 rows)
 
 SELECT * FROM t1_gen ORDER BY k;
- k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen
+ k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
 ----+---------+----+----+----+-----------
   1 | Text 1  |  2 |  2 |    |         4
   2 | Text 2  |  3 |  3 |  2 |         6
@@ -683,7 +683,7 @@ $$;
 CREATE TRIGGER t1_gen_v1_trigger BEFORE UPDATE ON t1_gen FOR EACH ROW EXECUTE FUNCTION increment_v1();
 BEGIN;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = v3 + 1 WHERE k = 8;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -700,7 +700,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = v3 + 1 WHERE k = 8;
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WHERE k = 9;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -717,7 +717,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
 (12 rows)
 
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
- k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen
+ k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
 ----+---------+----+----+----+-----------
   8 | Text 8  |  9 |  8 |    |        17
   9 | Text 9  | 11 | 10 |    |        21
@@ -731,7 +731,7 @@ ROLLBACK;
 CREATE TRIGGER t1_gen_v2_trigger BEFORE UPDATE OF v2 ON t1_gen FOR EACH ROW EXECUTE FUNCTION increment_v2();
 BEGIN;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = v2, v3 = v3 + 1 WHERE k = 8;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -749,7 +749,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = v2, v3 = v3 + 1 WHERE 
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WHERE k = 9;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -767,7 +767,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
 (13 rows)
 
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
- k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen
+ k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
 ----+---------+----+----+----+-----------
   8 | Text 8  |  9 |  9 |    |        18
   9 | Text 9  | 11 | 11 |    |        22
@@ -783,7 +783,7 @@ CREATE TRIGGER t1_gen_after_gen AFTER UPDATE OF v1_v2_gen ON t1_gen FOR EACH ROW
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = v3 + 1 WHERE k = 10;
 NOTICE:  BEFORE ROW trigger on generated column invoked
 NOTICE:  AFTER ROW trigger on generated column invoked
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
@@ -802,7 +802,7 @@ NOTICE:  AFTER ROW trigger on generated column invoked
 (14 rows)
 
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
- k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen
+ k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
 ----+---------+----+----+----+-----------
   8 | Text 8  |  8 |  8 |    |        16
   9 | Text 9  |  9 |  9 |    |        18
@@ -810,3 +810,4 @@ SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
  16 | Text 16 |  6 |  6 |    |        12
  17 | Text 17 | 12 | 12 |    |        24
 (5 rows)
+

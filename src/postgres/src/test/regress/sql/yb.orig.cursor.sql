@@ -95,7 +95,7 @@ $body$;
 --
 CALL proc();
 --
--- Use CURSOR to call FUNCTION in anonymous block. 
+-- Use CURSOR to call FUNCTION in anonymous block.
 --
 CREATE FUNCTION cnt() RETURNS BIGINT AS
 'select count(*) from test_cursor' LANGUAGE sql;

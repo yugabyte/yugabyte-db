@@ -182,9 +182,9 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -244,7 +244,6 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import io.ebean.Model;
 import java.io.File;
 import java.io.IOException;
@@ -335,6 +334,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateUniverse,
           TaskType.CreateKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.ReadOnlyClusterDelete,
           TaskType.EditUniverse,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
@@ -399,7 +399,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ReadOnlyClusterDelete,
           TaskType.CreateSupportBundle,
           TaskType.CreateBackupSchedule,
           TaskType.CreateBackupScheduleKubernetes,
@@ -430,6 +429,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.MultiTableBackup,
           TaskType.ResumeKubernetesUniverse,
           TaskType.ReadOnlyClusterDelete,
+          TaskType.FailoverDrConfig,
           TaskType.ResumeUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
@@ -919,13 +919,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           throw new UniverseInProgressException(msg);
         }
         if (taskParams().getPreviousTaskUUID() != null) {
-          // If the task is retried, check if the task UUID is same as the one in the universe.
           // Check this condition only on retry to retain same behavior as before.
-          boolean isLastTaskOrLastPlacementTaskRetry =
-              Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
-                  || Objects.equals(
-                      taskParams().getPreviousTaskUUID(),
-                      universeDetails.placementModificationTaskUuid);
+          boolean isLastTaskOrLastPlacementTaskRetry = true;
+          // For xCluster tasks, don't perform this check because the updatingTaskUUID is not set
+          // on one of the participating universes.
+          if (!(taskParams() instanceof XClusterConfigTaskParams)) {
+            // If the task is retried, check if the task UUID is same as the one in the universe.
+            isLastTaskOrLastPlacementTaskRetry =
+                Objects.equals(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)
+                    || Objects.equals(
+                        taskParams().getPreviousTaskUUID(),
+                        universeDetails.placementModificationTaskUuid);
+          }
           if (!isLastTaskOrLastPlacementTaskRetry) {
             String msg =
                 "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
@@ -1361,10 +1366,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
 
-    if (isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
-    }
-
     params.instanceType = node.cloudInfo.instance_type;
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
@@ -1386,18 +1387,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     return params;
-  }
-
-  public static boolean isYsqlMajorUpgradeStateInPreFinalizeState(
-      Universe universe, GFlagsValidation gFlagsValidation) {
-    if (universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.PreFinalize)
-        || universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-      String currentVersion =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-      String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-      return gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, currentVersion);
-    }
-    return false;
   }
 
   /** Create a task to mark the change on a universe as success. */
@@ -1714,11 +1703,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createPGUpgradeTServerCheckTask(String ybSoftwareVersion) {
+    return createPGUpgradeTServerCheckTask(ybSoftwareVersion, true /* downloadPackage */);
+  }
+
+  public SubTaskGroup createPGUpgradeTServerCheckTask(
+      String ybSoftwareVersion, boolean downloadPackage) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("PGUpgradeTServerCheck", SubTaskGroupType.PreflightChecks);
     PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
     PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.downloadPackage = downloadPackage;
     params.ybSoftwareVersion = ybSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -3704,17 +3699,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isLoadBalancerAltered) {
     if (!CollectionUtils.isEmpty(backupList)) {
       for (Backup backup : backupList) {
-        if (backup != null && !isAbort && backup.getState().equals(BackupState.InProgress)) {
-          backup.transitionState(BackupState.Failed);
-          backup.setCompletionTime(new Date());
-          backup.save();
+        if (backup != null && !isAbort) {
+          backup.refresh();
+          if (backup.getState() == BackupState.InProgress) {
+            backup.transitionState(BackupState.Failed);
+            backup.setCompletionTime(new Date());
+            backup.save();
+          }
         }
       }
     }
     if (!CollectionUtils.isEmpty(restoreList)) {
       for (Restore restore : restoreList) {
-        if (restore != null && !isAbort && restore.getState().equals(Restore.State.InProgress)) {
-          restore.update(restore.getTaskUUID(), Restore.State.Failed);
+        if (restore != null && !isAbort) {
+          // Some of the restore related code, fetch the restore object from the DB by task UUID and
+          // directly updates the DB without affecting the object that is already retrieved in the
+          // parent task.
+          restore.refresh();
+          if (restore.getState() == Restore.State.InProgress) {
+            restore.update(restore.getTaskUUID(), Restore.State.Failed);
+          }
         }
       }
     }
@@ -4562,8 +4566,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createDnsManipulationTask(
       DnsManager.DnsCommandType eventType, boolean isForceDelete, Universe universe) {
+    return createDnsManipulationTask(eventType, isForceDelete, universe, Collections.emptySet());
+  }
+
+  public SubTaskGroup createDnsManipulationTask(
+      DnsManager.DnsCommandType eventType,
+      boolean isForceDelete,
+      Universe universe,
+      Set<String> serversToExclude) {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster);
+    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster, serversToExclude);
   }
 
   /**
@@ -4572,10 +4584,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param eventType the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
    * @param primaryCluster primary cluster information.
+   * @param serversToExclude servers to exclude
    * @return subtask group
    */
   public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType, boolean isForceDelete, Cluster primaryCluster) {
+      DnsManager.DnsCommandType eventType,
+      boolean isForceDelete,
+      Cluster primaryCluster,
+      Set<String> serversToExclude) {
     UserIntent userIntent = primaryCluster.userIntent;
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDnsEntry");
     Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
@@ -4596,6 +4612,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         String.format(
             "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
     params.isForceDelete = isForceDelete;
+    params.serversToExclude = serversToExclude;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
     task.initialize(params);
@@ -6102,8 +6119,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 != CloudType.kubernetes)) {
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       File targetRootCertDirPath = sourceUniverse.getUniverseDetails().getSourceRootCertDirPath();
-      // Delete the source universe root cert from the target universe if it is transferred.
-      if (targetRootCertDirPath != null) {
+      // For the failover task, ignore running this subtask to improve its performance.
+      TaskType taskType = getTaskExecutor().getTaskType(getClass());
+      // Delete the target universe root cert from the source universe if it is transferred.
+      if (targetRootCertDirPath != null && taskType != TaskType.FailoverDrConfig) {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
                 xClusterConfig.getReplicationGroupName(),
@@ -6556,6 +6575,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       String stableYbcVersion) {
+    addAllCreateBackupScheduleTasks(
+        backupScheduleSubTasks,
+        scheduleParams,
+        customerUUID,
+        stableYbcVersion,
+        null /* kubernetesStatus */);
+  }
+
+  protected void addAllCreateBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      String stableYbcVersion,
+      @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
     Universe universe = getUniverse();
     Schedule schedule = null;
 
@@ -6563,13 +6596,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     lockAndFreezeUniverseForUpdate(
         universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
     try {
-      // Get or create schedule
+      // Create schedule
       schedule = Schedule.getOrCreateSchedule(customerUUID, scheduleParams);
       UUID scheduleUUID = schedule.getScheduleUUID();
       log.info(
           "Creating backup schedule for customer {}, schedule uuid = {}.",
           scheduleParams.customerUUID,
           scheduleUUID);
+
+      // Update kubernetes status
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
 
       boolean ybcBackup =
           !BackupCategory.YB_BACKUP_SCRIPT.equals(scheduleParams.backupCategory)
@@ -6611,13 +6650,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       getRunnableTask().runSubTasks();
 
       // Mark schedule Active
-      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       // Update schedule state to Error
       if (schedule != null) {
-        Schedule.updateStatusAndSave(
-            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        schedule =
+            Schedule.updateStatusAndSave(
+                customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        if (kubernetesStatus != null) {
+          kubernetesStatus.updateBackupScheduleStatus(
+              scheduleParams.getKubernetesResourceDetails(), schedule);
+        }
       }
       throw t;
     } finally {
@@ -6631,6 +6680,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       UUID scheduleUUID) {
+    addAllEditBackupScheduleTasks(
+        backupScheduleSubTasks,
+        scheduleParams,
+        customerUUID,
+        scheduleUUID,
+        null /* kubernetesStatus */);
+  }
+
+  protected void addAllEditBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      UUID scheduleUUID,
+      @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     Universe universe = getUniverse();
     // Lock schedule
@@ -6649,8 +6712,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           customerUUID,
           scheduleUUID);
       // Modify params and set state to Editing
-      Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
-          customerUUID, scheduleUUID, State.Editing, scheduleParams);
+      schedule =
+          Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
+              customerUUID, scheduleUUID, State.Editing, scheduleParams);
+
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
 
       if (scheduleParams.enablePointInTimeRestore) {
         backupScheduleSubTasks.run();
@@ -6660,13 +6729,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getRunnableTask().runSubTasks();
       }
       // Mark schedule Active
-      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       // Update schedule state to Error
       if (schedule != null) {
-        Schedule.updateStatusAndSave(
-            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        schedule =
+            Schedule.updateStatusAndSave(
+                customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        if (kubernetesStatus != null) {
+          kubernetesStatus.updateBackupScheduleStatus(
+              scheduleParams.getKubernetesResourceDetails(), schedule);
+        }
       }
       throw t;
     } finally {
@@ -6685,7 +6763,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       BackupRequestParams scheduleParams,
       UUID customerUUID,
       UUID scheduleUUID) {
-    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    addAllDeleteBackupScheduleTasks(
+        backupScheduleSubTasks,
+        scheduleParams,
+        customerUUID,
+        scheduleUUID,
+        null /* kubernetesStatus */);
+  }
+
+  protected void addAllDeleteBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      UUID scheduleUUID,
+      @Nullable KubernetesOperatorStatusUpdater kubernetesStatus) {
+    Optional<Schedule> optSchedule = Schedule.maybeGet(customerUUID, scheduleUUID);
+    if (!optSchedule.isPresent()) {
+      log.info("Schedule already deleted!");
+      return;
+    }
+    Schedule schedule = optSchedule.get();
     Universe universe = getUniverse();
     // Lock schedule
     // Ok to fail, don't put this inside try block.
@@ -6702,7 +6799,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           "Deleting backup schedule for customer {}, schedule uuid = {}.",
           customerUUID,
           scheduleUUID);
-      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, State.Deleting);
+      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, State.Deleting);
+
+      if (kubernetesStatus != null) {
+        kubernetesStatus.updateBackupScheduleStatus(
+            scheduleParams.getKubernetesResourceDetails(), schedule);
+      }
 
       if (scheduleParams.enablePointInTimeRestore) {
         backupScheduleSubTasks.run();
@@ -6720,8 +6822,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       // Update schedule state to Error
       if (schedule != null) {
-        Schedule.updateStatusAndSave(
-            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        schedule =
+            Schedule.updateStatusAndSave(
+                customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+        if (kubernetesStatus != null) {
+          kubernetesStatus.updateBackupScheduleStatus(
+              scheduleParams.getKubernetesResourceDetails(), schedule);
+        }
       }
       throw t;
     } finally {

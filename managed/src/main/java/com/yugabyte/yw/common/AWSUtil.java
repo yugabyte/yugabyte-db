@@ -92,6 +92,8 @@ import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -113,7 +115,10 @@ public class AWSUtil implements CloudUtil {
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   private static final String AWS_REGION_SPECIFIC_HOST_BASE_FORMAT = "s3.%s.amazonaws.com";
-  private static final String AWS_STANDARD_HOST_BASE_PATTERN = "s3([.](.+)|)[.]amazonaws[.]com";
+  private static final String AWS_STANDARD_HOST_BASE_PATTERN =
+      // Allows 's3', followed by any number of alphanumerics and dots and hyphens (or nothing),
+      // followed by '.amazonaws.com'
+      "^s3(?:[a-zA-Z0-9.-]+)?[.]amazonaws[.]com$";
   public static final String AWS_DEFAULT_REGION = "us-east-1";
   public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
 
@@ -125,6 +130,14 @@ public class AWSUtil implements CloudUtil {
   public static final String YBC_USE_AWS_IAM_FIELDNAME = "USE_AWS_IAM";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
+
+  @AllArgsConstructor
+  @Data
+  public static class AWSHostBase {
+    public String awsHostBase;
+    public boolean globalBucketAccess;
+    public String signingRegion;
+  }
 
   private void tryListObjects(AmazonS3 s3Client, String bucketName, String prefix)
       throws SdkClientException {
@@ -737,9 +750,11 @@ public class AWSUtil implements CloudUtil {
       s3ClientBuilder.withPathStyleAccessEnabled(true);
     }
     //  Use region specific hostbase
-    String endpoint = getRegionHostBaseMap(s3Data).get(region);
-    String clientRegion = getClientRegion(s3Data.fallbackRegion);
-    if (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint)) {
+    AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);
+    String endpoint = hostBase.awsHostBase;
+    boolean globalFlag = hostBase.globalBucketAccess;
+    String clientRegion = getClientRegion(hostBase.signingRegion);
+    if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
       // Use global bucket access only for standard S3.
       s3ClientBuilder.withForceGlobalBucketAccessEnabled(true);
     }
@@ -813,10 +828,12 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  public static Map<String, String> getRegionHostBaseMap(CustomerConfigData configData) {
+  public static Map<String, AWSHostBase> getRegionHostBaseMap(CustomerConfigData configData) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    Map<String, String> regionHostBaseMap = new HashMap<>();
-    regionHostBaseMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data.awsHostBase);
+    Map<String, AWSHostBase> regionHostBaseMap = new HashMap<>();
+    AWSHostBase hostBase =
+        new AWSHostBase(s3Data.awsHostBase, s3Data.globalBucketAccess, s3Data.fallbackRegion);
+    regionHostBaseMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, hostBase);
     if (CollectionUtils.isNotEmpty(s3Data.regionLocations)) {
       s3Data.regionLocations.stream()
           // Populate default region's host base if empty.
@@ -824,7 +841,7 @@ public class AWSUtil implements CloudUtil {
               rL ->
                   regionHostBaseMap.put(
                       rL.region,
-                      StringUtils.isBlank(rL.awsHostBase) ? s3Data.awsHostBase : rL.awsHostBase));
+                      new AWSHostBase(rL.awsHostBase, rL.globalBucketAccess, rL.fallbackRegion)));
     }
     return regionHostBaseMap;
   }
@@ -865,13 +882,14 @@ public class AWSUtil implements CloudUtil {
   }
 
   public boolean isHostBaseS3Standard(String hostBase) {
-    return standardHostBaseCompiled.matcher(hostBase).find();
+    return standardHostBaseCompiled.matcher(hostBase).matches();
   }
 
   public String getOrCreateHostBase(
       CustomerConfigStorageS3Data s3Data, String bucketName, String bucketRegion, String region) {
-    Map<String, String> hostBaseMap = getRegionHostBaseMap(s3Data);
-    String hostBase = hostBaseMap.get(region);
+    Map<String, AWSHostBase> hostBaseMap = getRegionHostBaseMap(s3Data);
+    AWSHostBase globalHostBase = hostBaseMap.get(region);
+    String hostBase = globalHostBase.awsHostBase;
     if (StringUtils.isEmpty(hostBase) || hostBase.equals(AWS_DEFAULT_ENDPOINT)) {
       hostBase = createBucketRegionSpecificHostBase(bucketName, bucketRegion);
     }

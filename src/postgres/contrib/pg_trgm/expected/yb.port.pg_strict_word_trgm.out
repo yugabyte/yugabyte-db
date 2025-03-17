@@ -4,7 +4,7 @@ ERROR:  relation "test_trgm3" does not exist
 -- reduce noise
 set extra_float_digits = 0;
 select t,strict_word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal' <<% t order by sml desc, t;
-                  t                  |   sml
+                  t                  |   sml    
 -------------------------------------+----------
  Baykal                              |        1
  Boloto Baykal                       |        1
@@ -26,7 +26,7 @@ select t,strict_word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal
 (17 rows)
 
 select t,strict_word_similarity('Kabankala',t) as sml from test_trgm2 where 'Kabankala' <<% t order by sml desc, t;
-              t               |   sml
+              t               |   sml    
 ------------------------------+----------
  Kabankala                    |        1
  Kabankalan City Public Plaza |     0.75
@@ -35,7 +35,7 @@ select t,strict_word_similarity('Kabankala',t) as sml from test_trgm2 where 'Kab
 (4 rows)
 
 select t,strict_word_similarity('Baykal',t) as sml from test_trgm2 where t %>> 'Baykal' order by sml desc, t;
-                  t                  |   sml
+                  t                  |   sml    
 -------------------------------------+----------
  Baykal                              |        1
  Boloto Baykal                       |        1
@@ -57,7 +57,7 @@ select t,strict_word_similarity('Baykal',t) as sml from test_trgm2 where t %>> '
 (17 rows)
 
 select t,strict_word_similarity('Kabankala',t) as sml from test_trgm2 where t %>> 'Kabankala' order by sml desc, t;
-              t               |   sml
+              t               |   sml    
 ------------------------------+----------
  Kabankala                    |        1
  Kabankalan City Public Plaza |     0.75
@@ -66,7 +66,7 @@ select t,strict_word_similarity('Kabankala',t) as sml from test_trgm2 where t %>
 (4 rows)
 
 select t <->>> 'Alaikallupoddakulam', t from test_trgm2 order by t <->>> 'Alaikallupoddakulam' limit 7;
- ?column? |            t
+ ?column? |            t             
 ----------+--------------------------
         0 | Alaikallupoddakulam
      0.25 | Alaikallupodda Alankulam

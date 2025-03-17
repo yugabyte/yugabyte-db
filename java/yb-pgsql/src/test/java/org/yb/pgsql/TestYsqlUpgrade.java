@@ -721,7 +721,28 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + "         WHEN stakind3 = 5 THEN stanumbers3"
           + "         WHEN stakind4 = 5 THEN stanumbers4"
           + "         WHEN stakind5 = 5 THEN stanumbers5"
-          + "     END AS elem_count_histogram"
+          + "     END AS elem_count_histogram,"
+          + "     CASE"
+          + "         WHEN stakind1 = 6 THEN stavalues1"
+          + "         WHEN stakind2 = 6 THEN stavalues2"
+          + "         WHEN stakind3 = 6 THEN stavalues3"
+          + "         WHEN stakind4 = 6 THEN stavalues4"
+          + "         WHEN stakind5 = 6 THEN stavalues5"
+          + "     END AS range_length_histogram,"
+          + "     CASE"
+          + "         WHEN stakind1 = 6 THEN stanumbers1[1]"
+          + "         WHEN stakind2 = 6 THEN stanumbers2[1]"
+          + "         WHEN stakind3 = 6 THEN stanumbers3[1]"
+          + "         WHEN stakind4 = 6 THEN stanumbers4[1]"
+          + "         WHEN stakind5 = 6 THEN stanumbers5[1]"
+          + "     END AS range_empty_frac,"
+          + "     CASE"
+          + "         WHEN stakind1 = 7 THEN stavalues1"
+          + "         WHEN stakind2 = 7 THEN stavalues2"
+          + "         WHEN stakind3 = 7 THEN stavalues3"
+          + "         WHEN stakind4 = 7 THEN stavalues4"
+          + "         WHEN stakind5 = 7 THEN stavalues5"
+          + "     END AS range_bounds_histogram"
           + " FROM pg_statistic s JOIN pg_class c ON (c.oid = s.starelid)"
           + "      JOIN pg_attribute a ON (c.oid = attrelid AND attnum = s.staattnum)"
           + "      LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)"
@@ -1948,7 +1969,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     SysCatalogSnapshot simplifiedMigratedSnapshot = simplifyCatalogSnapshot.apply(migratedSnapshot);
 
     List<String> tablesToSkip = Arrays.asList(
-      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE);
+      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE,
+      INVALIDATION_MESSAGES_TABLE);
 
     simplifiedMigratedSnapshot.catalog.forEach((tableName, migratedRows) -> {
       if (tablesToSkip.contains(tableName))
@@ -1956,15 +1978,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       List<Row> reinitdbRows = simplifiedFreshSnapshot.catalog.get(tableName);
 
-      // The table pg_yb_invalidation_messages isn't empty in reinitdbRows because of DDLs
-      // executed in test setup code. Also it may not be empty after running migration scripts
-      // that contain DDLs if they are executed after the table pg_yb_invalidation_messages is
-      // created, so we are not expected to see pg_yb_invalidation_messages has same size or
-      // contents between reinitdbRows and migratedRows.
-      if (!tableName.equals(INVALIDATION_MESSAGES_TABLE)) {
-        assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
-            reinitdbRows, migratedRows);
-      }
+      assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
+          reinitdbRows, migratedRows);
 
       for (int i = 0; i < migratedRows.size(); ++i) {
         Row reinitdbRow = reinitdbRows.get(i);

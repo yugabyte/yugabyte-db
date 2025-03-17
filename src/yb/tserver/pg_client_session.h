@@ -108,7 +108,7 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, rpc::Scheduler& scheduler);
+      uint64_t id, uint64_t lease_epoch, rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;

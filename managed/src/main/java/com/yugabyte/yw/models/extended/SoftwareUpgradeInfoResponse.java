@@ -18,4 +18,10 @@ public class SoftwareUpgradeInfoResponse {
       accessMode = AccessMode.READ_ONLY)
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.2.0")
   private boolean finalizeRequired;
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. YSQL Major version upgrade",
+      accessMode = AccessMode.READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
+  private boolean ysqlMajorVersionUpgrade;
 }

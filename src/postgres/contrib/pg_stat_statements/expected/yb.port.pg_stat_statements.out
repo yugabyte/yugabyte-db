@@ -6,13 +6,13 @@ CREATE EXTENSION pg_stat_statements;
 SET pg_stat_statements.track_utility = FALSE;
 SET pg_stat_statements.track_planning = TRUE;
 SELECT pg_stat_statements_reset();
- pg_stat_statements_reset
+ pg_stat_statements_reset 
 --------------------------
-
+ 
 (1 row)
 
 SELECT 1 AS "int";
- int
+ int 
 -----
    1
 (1 row)
@@ -20,13 +20,13 @@ SELECT 1 AS "int";
 SELECT 'hello'
   -- multiline
   AS "text";
- text
+ text  
 -------
  hello
 (1 row)
 
 SELECT 'world' AS "text";
- text
+ text  
 -------
  world
 (1 row)
@@ -34,13 +34,13 @@ SELECT 'world' AS "text";
 -- transaction
 BEGIN;
 SELECT 1 AS "int";
- int
+ int 
 -----
    1
 (1 row)
 
 SELECT 'hello' AS "text";
- text
+ text  
 -------
  hello
 (1 row)
@@ -89,7 +89,7 @@ SELECT :add + 1 + 1 AS "add" \gset
 
 -- set operator
 SELECT 1 AS i UNION SELECT 2 ORDER BY i;
- i
+ i 
 ---
  1
  2
@@ -97,7 +97,7 @@ SELECT 1 AS i UNION SELECT 2 ORDER BY i;
 
 -- ? operator
 select '{"a":1, "b":2}'::jsonb ? 'b';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -107,7 +107,7 @@ WITH t(f) AS (
   VALUES (1.0), (2.0)
 )
   SELECT f FROM t ORDER BY f;
-  f
+  f  
 -----
  1.0
  2.0
@@ -116,7 +116,7 @@ WITH t(f) AS (
 -- prepared statement with parameter
 PREPARE pgss_test (int) AS SELECT $1, 'test' LIMIT 1;
 EXECUTE pgss_test(1);
- ?column? | ?column?
+ ?column? | ?column? 
 ----------+----------
         1 | test
 (1 row)
@@ -148,9 +148,9 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 -- CRUD: INSERT SELECT UPDATE DELETE on test table
 --
 SELECT pg_stat_statements_reset();
- pg_stat_statements_reset
+ pg_stat_statements_reset 
 --------------------------
-
+ 
 (1 row)
 
 -- utility "create table" should not be shown
@@ -175,52 +175,52 @@ COMMIT ;
 INSERT INTO test (a, b) VALUES (1, 'a'), (2, 'b'), (3, 'c');
 -- SELECT with constants
 SELECT * FROM test WHERE a > 5 ORDER BY a ;
- a |          b
+ a |          b           
 ---+----------------------
- 6 | 666
- 7 | aaa
- 8 | bbb
- 9 | bbb
+ 6 | 666                 
+ 7 | aaa                 
+ 8 | bbb                 
+ 9 | bbb                 
 (4 rows)
 
 SELECT *
   FROM test
   WHERE a > 9
   ORDER BY a ;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 -- SELECT without constants
 SELECT * FROM test ORDER BY a;
- a |          b
+ a |          b           
 ---+----------------------
- 1 | a
- 1 | 111
- 2 | b
- 2 | 222
- 3 | c
- 3 | 333
- 4 | 444
- 5 | 555
- 6 | 666
- 7 | aaa
- 8 | bbb
- 9 | bbb
+ 1 | a                   
+ 1 | 111                 
+ 2 | b                   
+ 2 | 222                 
+ 3 | c                   
+ 3 | 333                 
+ 4 | 444                 
+ 5 | 555                 
+ 6 | 666                 
+ 7 | aaa                 
+ 8 | bbb                 
+ 9 | bbb                 
 (12 rows)
 
 -- SELECT with IN clause
 SELECT * FROM test WHERE a IN (1, 2, 3, 4, 5);
- a |          b
+ a |          b           
 ---+----------------------
- 1 | 111
- 2 | 222
- 3 | 333
- 4 | 444
- 5 | 555
- 1 | a
- 2 | b
- 3 | c
+ 1 | 111                 
+ 2 | 222                 
+ 3 | 333                 
+ 4 | 444                 
+ 5 | 555                 
+ 1 | a                   
+ 2 | b                   
+ 3 | c                   
 (8 rows)
 
 -- MERGE
@@ -230,7 +230,7 @@ MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
 ERROR:  This statement not supported yet
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
-                                    query                                     | calls | rows
+                                    query                                     | calls | rows 
 ------------------------------------------------------------------------------+-------+------
  DELETE FROM test WHERE a > $1                                                |     1 |    1
  INSERT INTO test (a, b) VALUES ($1, $2), ($3, $4), ($5, $6)                  |     1 |    3
@@ -270,17 +270,17 @@ wal_bytes > 0 as wal_bytes_generated,
 wal_records > 0 as wal_records_generated,
 wal_records = rows as wal_records_as_rows
 FROM pg_stat_statements ORDER BY query COLLATE "C";
-                           query                           | calls | rows | wal_bytes_generated | wal_records_generated | wal_records_as_rows
+                           query                           | calls | rows | wal_bytes_generated | wal_records_generated | wal_records_as_rows 
 -----------------------------------------------------------+-------+------+---------------------+-----------------------+---------------------
  DELETE FROM pgss_test WHERE a > $1                        |     1 |    1 | f                   | f                     | f
  DROP TABLE pgss_test                                      |     1 |    0 | t                   | t                     | f
  INSERT INTO pgss_test VALUES(generate_series($1, $2), $3) |     1 |   10 | f                   | f                     | f
  SELECT pg_stat_statements_reset()                         |     1 |    1 | f                   | f                     | f
  SELECT query, calls, rows,                               +|     0 |    0 | f                   | f                     | t
- wal_bytes > $1 as wal_bytes_generated,                   +|       |      |                     |                       |
- wal_records > $2 as wal_records_generated,               +|       |      |                     |                       |
- wal_records = rows as wal_records_as_rows                +|       |      |                     |                       |
- FROM pg_stat_statements ORDER BY query COLLATE "C"        |       |      |                     |                       |
+ wal_bytes > $1 as wal_bytes_generated,                   +|       |      |                     |                       | 
+ wal_records > $2 as wal_records_generated,               +|       |      |                     |                       | 
+ wal_records = rows as wal_records_as_rows                +|       |      |                     |                       | 
+ FROM pg_stat_statements ORDER BY query COLLATE "C"        |       |      |                     |                       | 
  SET pg_stat_statements.track_utility = FALSE              |     1 |    0 | f                   | f                     | t
  UPDATE pgss_test SET b = $1 WHERE a > $2                  |     1 |    3 | f                   | f                     | f
 (7 rows)
@@ -290,25 +290,25 @@ FROM pg_stat_statements ORDER BY query COLLATE "C";
 --
 SET pg_stat_statements.track = 'none';
 SELECT pg_stat_statements_reset();
- pg_stat_statements_reset
+ pg_stat_statements_reset 
 --------------------------
-
+ 
 (1 row)
 
 SELECT 1 AS "one";
- one
+ one 
 -----
    1
 (1 row)
 
 SELECT 1 + 1 AS "two";
- two
+ two 
 -----
    2
 (1 row)
 
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
- query | calls | rows
+ query | calls | rows 
 -------+-------+------
 (0 rows)
 
@@ -317,9 +317,9 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 --
 SET pg_stat_statements.track = 'top';
 SELECT pg_stat_statements_reset();
- pg_stat_statements_reset
+ pg_stat_statements_reset 
 --------------------------
-
+ 
 (1 row)
 
 DO LANGUAGE plpgsql $$
@@ -337,13 +337,13 @@ BEGIN
   RETURN r;
 END; $$ LANGUAGE plpgsql;
 SELECT PLUS_TWO(3);
- plus_two
+ plus_two 
 ----------
         5
 (1 row)
 
 SELECT PLUS_TWO(7);
- plus_two
+ plus_two 
 ----------
         9
 (1 row)
@@ -352,13 +352,13 @@ SELECT PLUS_TWO(7);
 CREATE FUNCTION PLUS_ONE(i INTEGER) RETURNS INTEGER AS
 $$ SELECT (i + 1.0)::INTEGER LIMIT 1 $$ LANGUAGE SQL;
 SELECT PLUS_ONE(8);
- plus_one
+ plus_one 
 ----------
         9
 (1 row)
 
 SELECT PLUS_ONE(10);
- plus_one
+ plus_one 
 ----------
        11
 (1 row)
@@ -378,9 +378,9 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 --
 SET pg_stat_statements.track = 'all';
 SELECT pg_stat_statements_reset();
- pg_stat_statements_reset
+ pg_stat_statements_reset 
 --------------------------
-
+ 
 (1 row)
 
 -- we drop and recreate the functions to avoid any caching funnies
@@ -395,13 +395,13 @@ BEGIN
   RETURN r;
 END; $$ LANGUAGE plpgsql;
 SELECT PLUS_TWO(-1);
- plus_two
+ plus_two 
 ----------
         1
 (1 row)
 
 SELECT PLUS_TWO(2);
- plus_two
+ plus_two 
 ----------
         4
 (1 row)
@@ -410,13 +410,13 @@ SELECT PLUS_TWO(2);
 CREATE FUNCTION PLUS_ONE(i INTEGER) RETURNS INTEGER AS
 $$ SELECT (i + 1.0)::INTEGER LIMIT 1 $$ LANGUAGE SQL;
 SELECT PLUS_ONE(3);
- plus_one
+ plus_one 
 ----------
         4
 (1 row)
 
 SELECT PLUS_ONE(1);
- plus_one
+ plus_one 
 ----------
         2
 (1 row)
@@ -525,13 +525,13 @@ DROP TABLE pgss_a, pgss_b CASCADE;
 --
 SET pg_stat_statements.track_utility = TRUE;
 SELECT pg_stat_statements_reset();
- pg_stat_statements_reset
+ pg_stat_statements_reset 
 --------------------------
-
+ 
 (1 row)
 
 SELECT 1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -974,7 +974,7 @@ ERROR:  relation "tbl_inh_1" does not exist
 LINE 1: INSERT INTO tbl_inh_1 SELECT 1;
                     ^
 SELECT * FROM tbl_inh;
- id
+ id 
 ----
 (0 rows)
 

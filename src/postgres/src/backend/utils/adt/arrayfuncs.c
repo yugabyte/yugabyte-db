@@ -3415,6 +3415,104 @@ construct_array(Datum *elems, int nelems,
 }
 
 /*
+ * Like construct_array(), where elmtype must be a built-in type, and
+ * elmlen/elmbyval/elmalign is looked up from hardcoded data.  This is often
+ * useful when manipulating arrays from/for system catalogs.
+ */
+ArrayType *
+construct_array_builtin(Datum *elems, int nelems, Oid elmtype)
+{
+	int			elmlen;
+	bool		elmbyval;
+	char		elmalign;
+
+	switch (elmtype)
+	{
+		case CHAROID:
+			elmlen = 1;
+			elmbyval = true;
+			elmalign = TYPALIGN_CHAR;
+			break;
+
+		case CSTRINGOID:
+			elmlen = -2;
+			elmbyval = false;
+			elmalign = TYPALIGN_CHAR;
+			break;
+
+		case FLOAT4OID:
+			elmlen = sizeof(float4);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case FLOAT8OID:
+			elmlen = sizeof(float8);
+			elmbyval = FLOAT8PASSBYVAL;
+			elmalign = TYPALIGN_DOUBLE;
+			break;
+
+		case INT2OID:
+			elmlen = sizeof(int16);
+			elmbyval = true;
+			elmalign = TYPALIGN_SHORT;
+			break;
+
+		case INT4OID:
+			elmlen = sizeof(int32);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case INT8OID:
+			elmlen = sizeof(int64);
+			elmbyval = FLOAT8PASSBYVAL;
+			elmalign = TYPALIGN_DOUBLE;
+			break;
+
+		case NAMEOID:
+			elmlen = NAMEDATALEN;
+			elmbyval = false;
+			elmalign = TYPALIGN_CHAR;
+			break;
+
+		case OIDOID:
+		case REGTYPEOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case TEXTOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case TIDOID:
+			elmlen = sizeof(ItemPointerData);
+			elmbyval = false;
+			elmalign = TYPALIGN_SHORT;
+			break;
+
+		case XIDOID:
+			elmlen = sizeof(TransactionId);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		default:
+			elog(ERROR, "type %u not supported by construct_array_builtin()", elmtype);
+			/* keep compiler quiet */
+			elmlen = 0;
+			elmbyval = false;
+			elmalign = 0;
+	}
+
+	return construct_array(elems, nelems, elmtype, elmlen, elmbyval, elmalign);
+}
+
+/*
  * construct_md_array	--- simple method for constructing an array object
  *							with arbitrary dimensions and possible NULLs
  *

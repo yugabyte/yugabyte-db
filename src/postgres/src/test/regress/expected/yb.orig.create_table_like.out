@@ -6,11 +6,11 @@ CREATE TABLE tbsptest1 (id int CHECK (id > 0) PRIMARY KEY, b text UNIQUE, c int 
 CREATE TABLE tbsptest2 (LIKE tbsptest1 INCLUDING ALL);
 \d+ tbsptest2
                                  Table "public.tbsptest2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- id     | integer |           | not null |         | plain    |              |
- b      | text    |           |          |         | extended |              |
- c      | integer |           |          | 0       | plain    |              |
+ id     | integer |           | not null |         | plain    |              | 
+ b      | text    |           |          |         | extended |              | 
+ c      | integer |           |          | 0       | plain    |              | 
 Indexes:
     "tbsptest2_pkey" PRIMARY KEY, lsm (id HASH)
     "tbsptest2_b_key" UNIQUE CONSTRAINT, lsm (b HASH)
@@ -21,11 +21,11 @@ Check constraints:
 CREATE TABLE tbsptest3 (LIKE tbsptest2 INCLUDING ALL) TABLESPACE testtablespace;
 \d+ tbsptest3
                                  Table "public.tbsptest3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- id     | integer |           | not null |         | plain    |              |
- b      | text    |           |          |         | extended |              |
- c      | integer |           |          | 0       | plain    |              |
+ id     | integer |           | not null |         | plain    |              | 
+ b      | text    |           |          |         | extended |              | 
+ c      | integer |           |          | 0       | plain    |              | 
 Indexes:
     "tbsptest3_pkey" PRIMARY KEY, lsm (id HASH), tablespace "testtablespace"
     "tbsptest3_b_key" UNIQUE CONSTRAINT, lsm (b HASH)
@@ -40,26 +40,26 @@ CREATE TABLE testpk(h1 int, h2 text, d text, a int, value text, PRIMARY KEY ((h1
 CREATE TABLE testlikepk(LIKE testpk INCLUDING INDEXES);
 \d+ testlikepk
                                  Table "public.testlikepk"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- h1     | integer |           | not null |         | plain    |              |
- h2     | text    |           | not null |         | extended |              |
- d      | text    |           | not null |         | extended |              |
- a      | integer |           | not null |         | plain    |              |
- value  | text    |           |          |         | extended |              |
+ h1     | integer |           | not null |         | plain    |              | 
+ h2     | text    |           | not null |         | extended |              | 
+ d      | text    |           | not null |         | extended |              | 
+ a      | integer |           | not null |         | plain    |              | 
+ value  | text    |           |          |         | extended |              | 
 Indexes:
     "testlikepk_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, d DESC, a ASC)
 
 CREATE TABLE testlikenopk(LIKE testpk);
 \d+ testlikenopk;
                                 Table "public.testlikenopk"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- h1     | integer |           | not null |         | plain    |              |
- h2     | text    |           | not null |         | extended |              |
- d      | text    |           | not null |         | extended |              |
- a      | integer |           | not null |         | plain    |              |
- value  | text    |           |          |         | extended |              |
+ h1     | integer |           | not null |         | plain    |              | 
+ h2     | text    |           | not null |         | extended |              | 
+ d      | text    |           | not null |         | extended |              | 
+ a      | integer |           | not null |         | plain    |              | 
+ value  | text    |           |          |         | extended |              | 
 
 DROP TABLE testpk, testlikepk, testlikenopk CASCADE;
 -- Test adding SPLIT AT syntax with copied PK.
@@ -80,7 +80,7 @@ Indexes:
     "testlikesplitat_a_idx" lsm (a ASC)
 
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
-           yb_get_range_split_clause
+           yb_get_range_split_clause           
 -----------------------------------------------
  SPLIT AT VALUES ((-100, 'bar'), (250, 'foo'))
 (1 row)
@@ -121,9 +121,9 @@ SELECT num_tablets, num_hash_key_columns
 -- Split info is not copied.
 CREATE TABLE neg_splitat (LIKE testlikesplitat INCLUDING ALL);
 SELECT yb_get_range_split_clause('neg_splitat'::regclass);
- yb_get_range_split_clause
+ yb_get_range_split_clause 
 ---------------------------
-
+ 
 (1 row)
 
 SELECT yb_get_range_split_clause('neg_splitat_a_idx'::regclass);
@@ -154,13 +154,13 @@ CREATE UNIQUE INDEX hashrangeidx ON testunique using lsm ((h1, h2) HASH, a, d DE
 CREATE TABLE testlikeunique(LIKE testunique INCLUDING INDEXES);
 \d+ testlikeunique
                                Table "public.testlikeunique"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- h1     | integer |           |          |         | plain    |              |
- h2     | text    |           |          |         | extended |              |
- d      | text    |           |          |         | extended |              |
- a      | integer |           |          |         | plain    |              |
- value  | text    |           |          |         | extended |              |
+ h1     | integer |           |          |         | plain    |              | 
+ h2     | text    |           |          |         | extended |              | 
+ d      | text    |           |          |         | extended |              | 
+ a      | integer |           |          |         | plain    |              | 
+ value  | text    |           |          |         | extended |              | 
 Indexes:
     "testlikeunique_d_a_h1_idx" UNIQUE, lsm (d DESC, a ASC) INCLUDE (h1)
     "testlikeunique_h1_h2_a_d_value_idx" UNIQUE, lsm ((h1, h2) HASH, a ASC, d DESC) INCLUDE (value)
@@ -195,30 +195,30 @@ $$ LANGUAGE SQL;
 -- Without specifying INCLUDING COMMENTS, comments are not copied.
 CREATE TABLE comments1 (LIKE liketest1 INCLUDING INDEXES, LIKE liketest2 INCLUDING CONSTRAINTS);
 SELECT * FROM get_comments('comments1');
- object_type |      obj_name      | comments
+ object_type |      obj_name      | comments 
 -------------+--------------------+----------
- column      | a                  |
- column      | b                  |
- column      | c                  |
- index       | comments1_b_idx    |
- index       | comments1_expr_idx |
- constraint  | comments1_pkey     |
- index       | comments1_pkey     |
- column      | d                  |
- constraint  | liketest2_c_check  |
+ column      | a                  | 
+ column      | b                  | 
+ column      | c                  | 
+ index       | comments1_b_idx    | 
+ index       | comments1_expr_idx | 
+ constraint  | comments1_pkey     | 
+ index       | comments1_pkey     | 
+ column      | d                  | 
+ constraint  | liketest2_c_check  | 
 (9 rows)
 
 -- Comments are copied over if INCLUDING COMMENTS/INCLUDING ALL is specified.
 CREATE TABLE comments2(LIKE liketest1 INCLUDING INDEXES INCLUDING COMMENTS, LIKE liketest2 INCLUDING CONSTRAINTS INCLUDING COMMENTS);
 SELECT * FROM get_comments('comments2');
- object_type |      obj_name      |  comments
+ object_type |      obj_name      |  comments  
 -------------+--------------------+------------
  column      | a                  | A
  column      | b                  | B
  column      | c                  | C
  index       | comments2_b_idx    | index b
- index       | comments2_expr_idx |
- constraint  | comments2_pkey     |
+ index       | comments2_expr_idx | 
+ constraint  | comments2_pkey     | 
  index       | comments2_pkey     | index pkey
  column      | d                  | D
  constraint  | liketest2_c_check  | c_check
@@ -226,13 +226,13 @@ SELECT * FROM get_comments('comments2');
 
 CREATE TABLE comments3(LIKE liketest1 INCLUDING ALL);
 SELECT * FROM get_comments('comments3');
- object_type |      obj_name      |  comments
+ object_type |      obj_name      |  comments  
 -------------+--------------------+------------
  column      | a                  | A
  column      | b                  | B
  index       | comments3_b_idx    | index b
- index       | comments3_expr_idx |
- constraint  | comments3_pkey     |
+ index       | comments3_expr_idx | 
+ constraint  | comments3_pkey     | 
  index       | comments3_pkey     | index pkey
  constraint  | liketest1_a_check  | a_check
 (7 rows)
@@ -244,25 +244,25 @@ CREATE STATISTICS liketest1_stat ON a,b FROM liketest1;
 CREATE TABLE neg_stats_test (LIKE liketest1);
 \d+ neg_stats_test;
                              Table "public.neg_stats_test"
- Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              |
- b      | text |           |          |         | extended |              |
+ a      | text |           | not null |         | extended |              | 
+ b      | text |           |          |         | extended |              | 
 
 CREATE TABLE stats_test1 (LIKE liketest1 INCLUDING STATISTICS);
 \d+ stats_test1
                                Table "public.stats_test1"
- Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              |
- b      | text |           |          |         | extended |              |
+ a      | text |           | not null |         | extended |              | 
+ b      | text |           |          |         | extended |              | 
 Statistics objects:
     "public.stats_test1_a_b_stat" ON a, b FROM stats_test1
 
 CREATE TABLE stats_test2 (LIKE liketest1 INCLUDING ALL);
 \d+ stats_test2
                                  Table "public.stats_test2"
- Column | Type | Collation | Nullable |   Default   | Storage  | Stats target | Description
+ Column | Type | Collation | Nullable |   Default   | Storage  | Stats target | Description 
 --------+------+-----------+----------+-------------+----------+--------------+-------------
  a      | text |           | not null |             | extended |              | A
  b      | text |           |          | 'abc'::text | extended |              | B
@@ -283,12 +283,12 @@ CREATE TABLEGROUP tgroup1;
 CREATE TABLE testtgroup1 (LIKE liketest1 INCLUDING DEFAULTS, LIKE liketest2 INCLUDING CONSTRAINTS) TABLEGROUP tgroup1;
 \d+ testtgroup1
                                  Table "public.testtgroup1"
- Column | Type | Collation | Nullable |   Default   | Storage  | Stats target | Description
+ Column | Type | Collation | Nullable |   Default   | Storage  | Stats target | Description 
 --------+------+-----------+----------+-------------+----------+--------------+-------------
- a      | text |           | not null |             | extended |              |
- b      | text |           |          | 'abc'::text | extended |              |
- c      | text |           | not null |             | extended |              |
- d      | text |           |          |             | extended |              |
+ a      | text |           | not null |             | extended |              | 
+ b      | text |           |          | 'abc'::text | extended |              | 
+ c      | text |           | not null |             | extended |              | 
+ d      | text |           |          |             | extended |              | 
 Check constraints:
     "liketest2_c_check" CHECK (length(c) > 2)
 Tablegroup: "tgroup1"
@@ -302,7 +302,7 @@ CREATE INDEX liketest2_d ON liketest2 (d ASC);
 CREATE TABLE testtgroup2 (LIKE liketest2 INCLUDING ALL) TABLEGROUP tgroup1;
 \d+ testtgroup2
                                Table "public.testtgroup2"
- Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
  c      | text |           | not null |         | extended |              | C
  d      | text |           |          |         | extended |              | D
@@ -317,7 +317,7 @@ Tablegroup: "tgroup1"
 CREATE TABLE neg_tgroup (LIKE testtgroup2 INCLUDING ALL);
 \d+ neg_tgroup;
                                Table "public.neg_tgroup"
- Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
  c      | text |           | not null |         | extended |              | C
  d      | text |           |          |         | extended |              | D
@@ -337,12 +337,12 @@ CREATE TABLE colocate_source (k int, v1 text DEFAULT 'hello world', v2 int CHECK
 CREATE TABLE uncolocated_target_test (LIKE colocate_source INCLUDING ALL) with (colocation = false);
 \d uncolocated_target_test
                  Table "public.uncolocated_target_test"
- Column |       Type       | Collation | Nullable |       Default
+ Column |       Type       | Collation | Nullable |       Default       
 --------+------------------+-----------+----------+---------------------
- k      | integer          |           | not null |
+ k      | integer          |           | not null | 
  v1     | text             |           |          | 'hello world'::text
- v2     | integer          |           |          |
- v3     | double precision |           |          |
+ v2     | integer          |           |          | 
+ v3     | double precision |           |          | 
 Indexes:
     "uncolocated_target_test_pkey" PRIMARY KEY, lsm (k ASC)
 Check constraints:
@@ -351,12 +351,12 @@ Check constraints:
 CREATE TABLE colocated_target_test (LIKE colocate_source INCLUDING ALL);
 \d colocated_target_test
                   Table "public.colocated_target_test"
- Column |       Type       | Collation | Nullable |       Default
+ Column |       Type       | Collation | Nullable |       Default       
 --------+------------------+-----------+----------+---------------------
- k      | integer          |           | not null |
+ k      | integer          |           | not null | 
  v1     | text             |           |          | 'hello world'::text
- v2     | integer          |           |          |
- v3     | double precision |           |          |
+ v2     | integer          |           |          | 
+ v3     | double precision |           |          | 
 Indexes:
     "colocated_target_test_pkey" PRIMARY KEY, lsm (k ASC), colocation: true
 Check constraints:
@@ -370,9 +370,9 @@ ERROR:  cannot colocate hash partitioned table
 CREATE TABLE hash_k_test (LIKE hash_k INCLUDING ALL) with (colocation = false);
 \d hash_k_test
             Table "public.hash_k_test"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- i      | integer |           | not null |
+ i      | integer |           | not null | 
 Indexes:
     "hash_k_test_pkey" PRIMARY KEY, lsm (i HASH)
 
@@ -390,11 +390,11 @@ CREATE INDEX d2 ON test_dupe_idx(desckey DESC);
 CREATE TABLE test_dupe_idx_like (LIKE test_dupe_idx INCLUDING ALL);
 \d test_dupe_idx_like
          Table "public.test_dupe_idx_like"
- Column  |  Type   | Collation | Nullable | Default
+ Column  |  Type   | Collation | Nullable | Default 
 ---------+---------+-----------+----------+---------
- hashkey | integer |           |          |
- asckey  | text    |           |          |
- desckey | text    |           |          |
+ hashkey | integer |           |          | 
+ asckey  | text    |           |          | 
+ desckey | text    |           |          | 
 Indexes:
     "test_dupe_idx_like_asckey_idx" lsm (asckey ASC)
     "test_dupe_idx_like_asckey_idx1" lsm (asckey ASC)
@@ -414,12 +414,12 @@ NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 \d liketemptest
                       Table "public.liketemptest"
- Column |       Type       | Collation | Nullable |       Default
+ Column |       Type       | Collation | Nullable |       Default       
 --------+------------------+-----------+----------+---------------------
- k      | integer          |           | not null |
+ k      | integer          |           | not null | 
  v1     | text             |           |          | 'hello world'::text
- v2     | integer          |           |          |
- v3     | double precision |           |          |
+ v2     | integer          |           |          | 
+ v3     | double precision |           |          | 
 Indexes:
     "liketemptest_pkey" PRIMARY KEY, lsm (k ASC)
     "liketemptest_v1_idx" lsm (v1 ASC)
@@ -455,7 +455,7 @@ select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'p
  Check constraints:                                                      +
      "temptest_v2_check" CHECK (v2 > 0)                                  +
                                                                          +
-
+ 
 (1 row)
 
 -- Test using LIKE clause where the target table is a temp table.
@@ -464,9 +464,9 @@ CREATE INDEX ON gin_test USING GIN (a);
 CREATE TABLE gin_like_test (LIKE gin_test INCLUDING ALL);
 \d gin_like_test
             Table "public.gin_like_test"
- Column |   Type    | Collation | Nullable | Default
+ Column |   Type    | Collation | Nullable | Default 
 --------+-----------+-----------+----------+---------
- a      | integer[] |           |          |
+ a      | integer[] |           |          | 
 Indexes:
     "gin_like_test_a_idx" ybgin (a)
 
@@ -481,9 +481,9 @@ CREATE VIEW test_view AS SELECT k FROM test_table WHERE v = 10;
 CREATE TABLE like_view (LIKE test_view INCLUDING ALL);
 \d like_view
              Table "public.like_view"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- k      | integer |           |          |
+ k      | integer |           |          | 
 
 DROP VIEW test_view;
 DROP TABLE test_table, like_view CASCADE;
@@ -494,9 +494,9 @@ CREATE FOREIGN TABLE test_foreign (id int CHECK (id > 0), b int DEFAULT 0) SERVE
 CREATE TABLE test_foreign_like (LIKE test_foreign INCLUDING ALL);
 \d test_foreign_like
          Table "public.test_foreign_like"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- id     | integer |           |          |
+ id     | integer |           |          | 
  b      | integer |           |          | 0
 Check constraints:
     "test_foreign_id_check" CHECK (id > 0)
@@ -511,10 +511,10 @@ CREATE TYPE type_pair_with_int AS (f1 type_pair, f2 int);
 CREATE TABLE test_like_type (LIKE type_pair_with_int);
 \d test_like_type
             Table "public.test_like_type"
- Column |   Type    | Collation | Nullable | Default
+ Column |   Type    | Collation | Nullable | Default 
 --------+-----------+-----------+----------+---------
- f1     | type_pair |           |          |
- f2     | integer   |           |          |
+ f1     | type_pair |           |          | 
+ f2     | integer   |           |          | 
 
 DROP TABLE test_like_type;
 DROP TYPE type_pair_with_int, type_pair CASCADE;

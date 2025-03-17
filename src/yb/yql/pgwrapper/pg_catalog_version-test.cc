@@ -104,7 +104,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
     RestartClusterSetDBCatalogVersionMode(true, extra_tserver_flags);
   }
 
-  void RestartClusterWithInvalMessageEnabled() {
+  void RestartClusterWithInvalMessageEnabled(
+      const std::vector<string>& extra_tserver_flags = {}) {
     LOG(INFO) << "Restart the cluster with --TEST_yb_enable_invalidation_messages=true";
     cluster_->Shutdown();
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
@@ -114,6 +115,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(
           "--TEST_yb_enable_invalidation_messages=true");
+      for (const auto& flag : extra_tserver_flags) {
+        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+      }
     }
     ASSERT_OK(cluster_->Restart());
   }
@@ -155,31 +159,27 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
-          cluster_->tablet_server(tablet_index));
-      rpc::RpcController controller;
-      controller.set_timeout(kRpcTimeout);
-      tserver::GetSharedDataRequestPB shared_data_req;
-      tserver::GetSharedDataResponsePB shared_data_resp;
-      RETURN_NOT_OK(proxy.GetSharedData(shared_data_req, &shared_data_resp, &controller));
-      const auto& data = shared_data_resp.data();
-      tserver::TServerSharedData tserver_shared_data;
-      SCHECK_EQ(
-          data.size(), sizeof(tserver_shared_data),
-          IllegalState, "Unexpected response size");
-      memcpy(pointer_cast<void*>(&tserver_shared_data), data.c_str(), data.size());
+      auto uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+      tserver::SharedMemoryManager shared_mem_manager;
+      RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
+
+      auto tserver_shared_data = shared_mem_manager.SharedData();
+
       size_t initialized_slots_count = 0;
       for (size_t i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
-        if (tserver_shared_data.ysql_db_catalog_version(i)) {
+        if (tserver_shared_data->ysql_db_catalog_version(i)) {
           ++initialized_slots_count;
         }
       }
 
       // Get the tserver catalog version info from tserver at 'tablet_index'.
+      rpc::RpcController controller;
+      controller.set_timeout(kRpcTimeout);
+      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+          cluster_->tablet_server(tablet_index));
+
       tserver::GetTserverCatalogVersionInfoRequestPB catalog_version_req;
       tserver::GetTserverCatalogVersionInfoResponsePB catalog_version_resp;
-      controller.Reset();
-      controller.set_timeout(kRpcTimeout);
       RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(
           catalog_version_req, &catalog_version_resp, &controller));
       if (catalog_version_resp.has_error()) {
@@ -191,7 +191,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
         SCHECK(entry.has_db_oid() && entry.has_shm_index(), IllegalState, "missed fields");
         auto db_oid = entry.db_oid();
         auto shm_index = entry.shm_index();
-        const auto current_version = tserver_shared_data.ysql_db_catalog_version(shm_index);
+        const auto current_version = tserver_shared_data->ysql_db_catalog_version(shm_index);
         SCHECK_NE(current_version, 0UL, IllegalState, "uninitialized version is not expected");
         catalog_versions.emplace(db_oid, current_version);
         if (!output.empty()) {
@@ -489,6 +489,37 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 0);
     ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 0);
   }
+
+  void VerifyCatCacheRefreshMetricsHelper(
+      int num_full_refreshes, int num_delta_refreshes) {
+    ExternalTabletServer* ts = cluster_->tablet_server(0);
+    auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+    EasyCurl c;
+    faststring buf;
+
+    auto json_metrics_url =
+        Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+    ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
+    auto json_metrics = ParseJsonMetrics(buf.ToString());
+
+    int count = 0;
+    for (const auto& metric : json_metrics) {
+      // Should see one full refresh.
+      if (metric.name.find("CatalogCacheRefreshes") != std::string::npos) {
+        ++count;
+        ASSERT_EQ(metric.value, num_full_refreshes);
+      }
+      // Should not see any incremental refresh.
+      if (metric.name.find("CatalogCacheDeltaRefreshes") != std::string::npos) {
+        ++count;
+        ASSERT_EQ(metric.value, num_delta_refreshes);
+      }
+      if (count == 2) {
+        break;
+      }
+    }
+  }
+
 };
 
 TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
@@ -2015,6 +2046,62 @@ TEST_F(PgCatalogVersionTest, InvalMessageMultiDDLTest) {
              "WHERE db_oid = $0", yugabyte_db_oid)));
   LOG(INFO) << "result: " << result;
   ASSERT_EQ(result, "2, 120; 3, 144; 4, 144; 5, 144; 6, 144");
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageCatCacheRefreshTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn2.Execute("SET log_min_messages = DEBUG1"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(1)"));
+
+  auto query = "SELECT * FROM foo"s;
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  auto expected_result1 = "1";
+  ASSERT_EQ(result, expected_result1);
+
+  ASSERT_OK(conn1.Execute("ALTER TABLE foo ADD COLUMN value TEXT"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(2, '2')"));
+
+  WaitForCatalogVersionToPropagate();
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  auto expected_result2 = "1, NULL; 2, 2";
+  ASSERT_EQ(result, expected_result2);
+
+  // Verify that the incremental catalog cache refresh happened on conn2.
+  VerifyCatCacheRefreshMetricsHelper(0 /* num_full_refreshes */, 1 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_max_invalidation_message_queue_size=2"});
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn2.Execute("SET log_min_messages = DEBUG1"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+
+  auto query = "SELECT 1"s;
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  // Execute 4 DDLs that cause catalog version to bump to cause the
+  // tserver message queue to overflow.
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK(conn1.Execute("ALTER TABLE foo ADD COLUMN value TEXT"));
+    ASSERT_OK(conn1.Execute("ALTER TABLE foo DROP COLUMN value"));
+  }
+
+  WaitForCatalogVersionToPropagate();
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  // Since the message queue overflowed, we will see a full catalog cache refresh on conn2.
+  VerifyCatCacheRefreshMetricsHelper(1 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
 }
 
 } // namespace pgwrapper

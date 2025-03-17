@@ -41,8 +41,8 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/fs/fs_manager.h"
 

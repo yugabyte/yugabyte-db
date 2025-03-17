@@ -7,14 +7,14 @@ INSERT INTO hashcode_rowfilter VALUES (2, 3, 4), (1, 2, 4), (3, 4, 5);
 \set filter 'yb_hash_code(k) = yb_hash_code(4) AND row(j, i) > row(2, 3)'
 /*+IndexScan(hashcode_rowfilter)*/
 SELECT * FROM hashcode_rowfilter WHERE :filter;
- i | j | k
+ i | j | k 
 ---+---+---
  2 | 3 | 4
 (1 row)
 
 /*+IndexOnlyScan(hashcode_rowfilter)*/
 SELECT k FROM hashcode_rowfilter WHERE :filter;
- k
+ k 
 ---
  4
 (1 row)
@@ -30,7 +30,7 @@ HINT:  Use explicit casts to ensure input types are as desired.
 \set is '/*+IndexScan(hashcode_rowfilter)*/'
 -- TODO(#18347): fix output.
 :explain :query; :explain :is :query; :query; :is :query;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Sort
    Sort Key: j
@@ -38,7 +38,7 @@ HINT:  Use explicit casts to ensure input types are as desired.
          Filter: (ROW(i, yb_hash_code(k)) > ROW(1, 40623))
 (4 rows)
 
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Sort
    Sort Key: j
@@ -46,13 +46,13 @@ HINT:  Use explicit casts to ensure input types are as desired.
          Index Cond: (ROW(i, yb_hash_code(k)) > ROW(1, 40623))
 (4 rows)
 
- i | j | k
+ i | j | k 
 ---+---+---
  2 | 3 | 4
  3 | 4 | 5
 (2 rows)
 
- i | j | k
+ i | j | k 
 ---+---+---
  2 | 3 | 4
  3 | 4 | 5
@@ -70,13 +70,13 @@ INSERT INTO large_filter VALUES (0), (1);
 \set filter ':sixty AND i>0 AND i>0 AND i>0 AND i>0'
 \set query 'SELECT i FROM large_filter WHERE :filter'
 :explain :query; :query;
-                                                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN
+                                                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                  
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Only Scan using large_filter_i_idx on large_filter
    Index Cond: ((i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0))
 (2 rows)
 
- i
+ i 
 ---
  1
 (1 row)
@@ -84,7 +84,7 @@ INSERT INTO large_filter VALUES (0), (1);
 -- 65 scan keys:
 \set filter ':sixty AND i>0 AND i>0 AND i>0 AND i>0 AND i>0'
 :explain :query; :query;
-                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN
+                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                        
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Only Scan using large_filter_i_idx on large_filter
    Index Cond: ((i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0) AND (i > 0))
@@ -101,13 +101,13 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
 -- 64 scan keys (1 header + 63 arguments):
 \set filter 'row(:sixtyi,i,i,i) > row(:sixty0,0,0,0)'
 :explain :query; :query;
-                                                                                                                                                                                                     QUERY PLAN
+                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                      
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Only Scan using large_filter_i_idx on large_filter
    Index Cond: (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i) > ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 (2 rows)
 
- i
+ i 
 ---
  1
 (1 row)
@@ -115,7 +115,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
 -- 65 scan keys (1 header + 64 arguments):
 \set filter 'row(:sixtyi,i,i,i,i) > row(:sixty0,0,0,0,0)'
 :explain :query; :query;
-                                                                                                                                                                                                        QUERY PLAN
+                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                         
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Only Scan using large_filter_i_idx on large_filter
    Index Cond: (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i) > ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
@@ -128,7 +128,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY j'
 \set filter 'row(:sixtyi,i,i,i) > row(:sixty0,0,0,0) AND yb_hash_code(k) = yb_hash_code(4)'
 :explain :is :query; :is :query;
-                                                                                                                                                                                                                        QUERY PLAN
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: j
@@ -136,7 +136,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
          Index Cond: ((yb_hash_code(k) = 40623) AND (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i) > ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))
 (4 rows)
 
- i | j | k
+ i | j | k 
 ---+---+---
  1 | 2 | 4
  2 | 3 | 4
@@ -145,7 +145,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
 -- TODO(#18347): fix output.
 \set filter 'row(:sixtyi,i,i,i,yb_hash_code(k)) >= row(:sixty0,0,0,0,0)'
 :explain :is :query; :is :query;
-                                                                                                                                                                                                                   QUERY PLAN
+                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: j
@@ -165,7 +165,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
 \set filter ':sixty AND :ten'
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY i'
 :explain :is :query; :is :query;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: i
@@ -173,7 +173,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
          Index Cond: ((yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0) AND (yb_hash_code(k) >= 0))
 (4 rows)
 
- i | j | k
+ i | j | k 
 ---+---+---
  1 | 2 | 4
  2 | 3 | 4
@@ -183,7 +183,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
 -- #18360
 \set one 'yb_hash_code(k) > -1'
 :explain :is :query; :is :query;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: i
@@ -191,9 +191,10 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
          Index Cond: ((yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer) AND (yb_hash_code(k) > '-1'::integer))
 (4 rows)
 
- i | j | k
+ i | j | k 
 ---+---+---
  1 | 2 | 4
  2 | 3 | 4
  3 | 4 | 5
 (3 rows)
+

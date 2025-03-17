@@ -79,6 +79,8 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
 
 uint64_t CDCSDKUniqueRecordID::GetCommitTime() const { return commit_time_; }
 
+RowMessage_Op CDCSDKUniqueRecordID::GetOp() const { return op_; }
+
 VWALRecordType CDCSDKUniqueRecordID::GetVWALRecordTypeFromOp(
     const bool& is_publication_refresh, const RowMessage_Op& op) {
   if (is_publication_refresh) {

@@ -38,7 +38,7 @@ class NonTransactionalWriter : public rocksdb::DirectWriter {
 
   bool Empty() const;
 
-  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
 
  private:
   const LWKeyValueWriteBatchPB& put_batch_;
@@ -74,7 +74,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       IntraTxnWriteId intra_txn_write_id,
       tablet::TransactionIntentApplier* applier);
 
-  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
 
   IntraTxnWriteId intra_txn_write_id() const {
     return intra_txn_write_id_;
@@ -120,7 +120,7 @@ class PostApplyMetadataWriter : public rocksdb::DirectWriter {
  public:
   explicit PostApplyMetadataWriter(std::span<const PostApplyTransactionMetadata> metadatas);
 
-  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
 
  private:
   std::span<const PostApplyTransactionMetadata> metadatas_;
@@ -143,9 +143,11 @@ class IntentsWriterContext {
   // Returns true if we should interrupt iteration, false otherwise.
   virtual Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
-      rocksdb::DirectWriteHandler* handler) = 0;
+      rocksdb::DirectWriteHandler& handler) = 0;
 
-  virtual Status Complete(rocksdb::DirectWriteHandler* handler) = 0;
+  virtual Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) = 0;
+
+  virtual Status Complete(rocksdb::DirectWriteHandler& handler) = 0;
 
   const TransactionId& transaction_id() const {
     return transaction_id_;
@@ -186,7 +188,7 @@ class IntentsWriter : public rocksdb::DirectWriter {
                 bool ignore_metadata = false,
                 const Slice& key_to_apply = Slice());
 
-  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
   bool key_applied() { return key_applied_; }
 
  private:
@@ -247,23 +249,25 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db,
-      const VectorIndexesPtr& vector_indexes,
+      const DocVectorIndexesPtr& vector_indexes,
       const StorageSet& apply_to_storages);
 
   void Start(const boost::optional<Slice>& first_key) override;
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
-      rocksdb::DirectWriteHandler* handler) override;
+      rocksdb::DirectWriteHandler& handler) override;
 
-  Status Complete(rocksdb::DirectWriteHandler* handler) override;
+  Status Complete(rocksdb::DirectWriteHandler& handler) override;
+
+  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
 
  private:
-  Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
-  Status ProcessVectorIndexes(rocksdb::DirectWriteHandler* handler, Slice key, Slice value);
+  Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler& handler);
+  Status ProcessVectorIndexes(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
   template <class Decoder>
   Status ProcessVectorIndexesForPackedRow(
-      rocksdb::DirectWriteHandler* handler, size_t prefix_size, Slice key, Slice value);
+      rocksdb::DirectWriteHandler& handler, size_t prefix_size, Slice key, Slice value);
 
   bool ApplyToRegularDB() const {
     return apply_to_storages_.TestRegularDB();
@@ -281,11 +285,11 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   const HybridTime log_ht_;
   const OpId apply_op_id_;
   const KeyBounds* key_bounds_;
-  VectorIndexesPtr vector_indexes_;
+  DocVectorIndexesPtr vector_indexes_;
   StorageSet apply_to_storages_;
   BoundedRocksDbIterator intent_iter_;
   // TODO(vector_index) Optimize memory management
-  std::vector<VectorIndexInsertEntries> vector_index_batches_;
+  std::vector<DocVectorIndexInsertEntries> vector_index_batches_;
 
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
@@ -298,9 +302,12 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
-      rocksdb::DirectWriteHandler* handler) override;
+      rocksdb::DirectWriteHandler& handler) override;
 
-  Status Complete(rocksdb::DirectWriteHandler* handler) override;
+  Status Complete(rocksdb::DirectWriteHandler& handler) override;
+
+  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+
  private:
   uint8_t reason_;
 };
@@ -331,27 +338,27 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider* schema_packing_provider);
   bool Empty() const;
 
-  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
 
  private:
   // Reads all stored external intents for provided transactions and prepares batches that will
   // apply them into regular db and remove from intents db.
   Status PrepareApplyExternalIntents(
-      ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler);
+      ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler& handler);
 
   // Adds external pair to write batch.
   // Returns true if add was skipped because pair is a regular (non external) record.
   Result<bool> AddEntryToWriteBatch(
       const yb::docdb::LWKeyValuePairPB& kv_pair,
       ExternalTxnApplyState* apply_external_transactions,
-      rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id);
+      rocksdb::DirectWriteHandler& regular_write_handler, IntraTxnWriteId* write_id);
 
   // Parse the merged external intent value, and write them to regular writer handler. Also updates
   // min/max schema version.
   // Returns true when the entire batch was applied, and false if some intents were skipped.
   Result<bool> PrepareApplyExternalIntentsBatch(
       const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
-      rocksdb::DirectWriteHandler* regular_write_handler);
+      rocksdb::DirectWriteHandler& regular_write_handler);
 
  private:
   const LWKeyValueWriteBatchPB& put_batch_;

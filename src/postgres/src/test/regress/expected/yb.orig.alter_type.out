@@ -6,7 +6,7 @@ ERROR:  type "bogus" does not exist
 LINE 1: SELECT 'good'::bogus;
                        ^
 SELECT 'good'::bogon;
- bogon
+ bogon 
 -------
  good
 (1 row)
@@ -21,7 +21,7 @@ CREATE TABLE holidays (
 INSERT INTO holidays(num_weeks,happiness_level) VALUES (4, 'happy');
 INSERT INTO holidays(num_weeks,happiness_level) VALUES (6, 'very happy');
 SELECT * FROM holidays ORDER BY num_weeks;
- num_weeks | happiness_level
+ num_weeks | happiness_level 
 -----------+-----------------
          4 | happy
          6 | very happy
@@ -30,23 +30,23 @@ SELECT * FROM holidays ORDER BY num_weeks;
 ALTER TYPE happiness RENAME TO new_name;
 \dT+ new_name
                                          List of data types
- Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description
+ Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description 
 --------+----------+---------------+------+------------+----------+-------------------+-------------
- public | new_name | new_name      | 4    | happy     +| yugabyte |                   |
-        |          |               |      | very happy+|          |                   |
-        |          |               |      | ecstatic   |          |                   |
+ public | new_name | new_name      | 4    | happy     +| yugabyte |                   | 
+        |          |               |      | very happy+|          |                   | 
+        |          |               |      | ecstatic   |          |                   | 
 (1 row)
 
 \d holidays
                    Table "public.holidays"
-     Column      |   Type   | Collation | Nullable | Default
+     Column      |   Type   | Collation | Nullable | Default 
 -----------------+----------+-----------+----------+---------
- num_weeks       | integer  |           |          |
- happiness_level | new_name |           |          |
+ num_weeks       | integer  |           |          | 
+ happiness_level | new_name |           |          | 
 
 INSERT INTO holidays(num_weeks,happiness_level) VALUES (8, 'ecstatic');
 SELECT * FROM holidays ORDER BY num_weeks;
- num_weeks | happiness_level
+ num_weeks | happiness_level 
 -----------+-----------------
          4 | happy
          6 | very happy
@@ -63,12 +63,12 @@ DROP TYPE new_name CASCADE;
 NOTICE:  drop cascades to column happiness_level of table holidays
 \d holidays
                Table "public.holidays"
-  Column   |  Type   | Collation | Nullable | Default
+  Column   |  Type   | Collation | Nullable | Default 
 -----------+---------+-----------+----------+---------
- num_weeks | integer |           |          |
+ num_weeks | integer |           |          | 
 
 SELECT * FROM holidays ORDER BY num_weeks;
- num_weeks
+ num_weeks 
 -----------
          4
          6
@@ -84,17 +84,17 @@ CREATE TABLE holidays (
 );
 \d holidays
                    Table "public.holidays"
-     Column      |   Type    | Collation | Nullable | Default
+     Column      |   Type    | Collation | Nullable | Default 
 -----------------+-----------+-----------+----------+---------
- num_weeks       | integer   |           |          |
- happiness_level | happiness |           | not null |
+ num_weeks       | integer   |           |          | 
+ happiness_level | happiness |           | not null | 
 Indexes:
     "holidays_pkey" PRIMARY KEY, lsm (happiness_level HASH)
 
 INSERT INTO holidays(num_weeks,happiness_level) VALUES (4, 'happy');
 INSERT INTO holidays(num_weeks,happiness_level) VALUES (6, 'very happy');
 SELECT * FROM holidays ORDER BY num_weeks;
- num_weeks | happiness_level
+ num_weeks | happiness_level 
 -----------+-----------------
          4 | happy
          6 | very happy
@@ -103,25 +103,25 @@ SELECT * FROM holidays ORDER BY num_weeks;
 ALTER TYPE happiness RENAME TO new_name;
 \dT+ new_name
                                          List of data types
- Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description
+ Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description 
 --------+----------+---------------+------+------------+----------+-------------------+-------------
- public | new_name | new_name      | 4    | happy     +| yugabyte |                   |
-        |          |               |      | very happy |          |                   |
+ public | new_name | new_name      | 4    | happy     +| yugabyte |                   | 
+        |          |               |      | very happy |          |                   | 
 (1 row)
 
 ALTER TYPE new_name ADD VALUE 'ecstatic';
 \dT+ new_name
                                          List of data types
- Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description
+ Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description 
 --------+----------+---------------+------+------------+----------+-------------------+-------------
- public | new_name | new_name      | 4    | happy     +| yugabyte |                   |
-        |          |               |      | very happy+|          |                   |
-        |          |               |      | ecstatic   |          |                   |
+ public | new_name | new_name      | 4    | happy     +| yugabyte |                   | 
+        |          |               |      | very happy+|          |                   | 
+        |          |               |      | ecstatic   |          |                   | 
 (1 row)
 
 INSERT INTO holidays(num_weeks,happiness_level) VALUES (8, 'ecstatic');
 SELECT * FROM holidays ORDER BY num_weeks;
- num_weeks | happiness_level
+ num_weeks | happiness_level 
 -----------+-----------------
          4 | happy
          6 | very happy
@@ -141,12 +141,12 @@ ALTER TABLE holidays DROP CONSTRAINT holidays_pkey; -- fail
 ERROR:  constraint "holidays_pkey" for table "holidays" does not exist
 \d holidays
                Table "public.holidays"
-  Column   |  Type   | Collation | Nullable | Default
+  Column   |  Type   | Collation | Nullable | Default 
 -----------+---------+-----------+----------+---------
- num_weeks | integer |           |          |
+ num_weeks | integer |           |          | 
 
 SELECT * FROM holidays ORDER BY num_weeks;
- num_weeks
+ num_weeks 
 -----------
          4
          6
@@ -154,3 +154,26 @@ SELECT * FROM holidays ORDER BY num_weeks;
 (3 rows)
 
 DROP TABLE holidays;
+-- test ALTER TYPE ... SET SCHEMA
+CREATE SCHEMA s1;
+CREATE TYPE s1.test_type AS ENUM('bad', 'good');
+CREATE TABLE test_table (a s1.test_type);
+INSERT INTO test_table VALUES ('good');
+CREATE SCHEMA s2;
+ALTER TYPE s1.test_type SET SCHEMA s2;
+INSERT INTO test_table VALUES ('bad');
+SELECT * FROM test_table ORDER BY a;
+  a   
+------
+ bad
+ good
+(2 rows)
+
+DROP SCHEMA s1 CASCADE;
+SELECT * FROM test_table ORDER BY a;
+  a   
+------
+ bad
+ good
+(2 rows)
+

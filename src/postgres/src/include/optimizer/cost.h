@@ -46,9 +46,9 @@
 #define YB_DEFAULT_DOCDB_BLOCK_SIZE 32768
 
 /* LSM Lookup costs */
-#define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 50
-#define YB_DEFAULT_SEEK_COST_FACTOR 50
-#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 10
+#define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 5
+#define YB_DEFAULT_SEEK_COST_FACTOR 0.4
+#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 1
 
 /*
  * The value for the fast backward scan seek cost factor has been selected based on the smallest
@@ -59,14 +59,14 @@
 #define YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR (YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR / 3.0)
 
 /* DocDB row decode and process cost */
-#define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
+#define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 5
 
 /* DocDB storage filter cost */
-#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
+#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 3
 
 /* Network transfer cost */
-#define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
+#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 800.0
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per

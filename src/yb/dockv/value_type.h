@@ -179,6 +179,7 @@ namespace yb::dockv {
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
     ((kVectorId, 'V')) /* ASCII code 86 */ \
+    ((kDeleteVectorIds, 'W')) /* ASCII code 87 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \

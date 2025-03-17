@@ -377,15 +377,13 @@ class PgClient::Impl : public BigDataFetcher {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object,
+               const tserver::TServerSharedData& tserver_shared_data,
                std::optional<uint64_t> session_id) {
-    CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
-    const auto& tserver_shared_data_ = *tserver_shared_object;
-    HostPort host_port(tserver_shared_data_.endpoint());
+    HostPort host_port(tserver_shared_data.endpoint());
     if (FLAGS_use_node_hostname_for_local_tserver) {
-      host_port = HostPort(tserver_shared_data_.host().ToBuffer(),
-                           tserver_shared_data_.endpoint().port());
+      host_port = HostPort(tserver_shared_data.host().ToBuffer(),
+                           tserver_shared_data.endpoint().port());
       resolve_cache_timeout = MonoDelta::kMax;
     }
     LOG(INFO) << "Using TServer host_port: " << host_port;
@@ -404,7 +402,7 @@ class PgClient::Impl : public BigDataFetcher {
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
-    memcpy(ash_config_.top_level_node_id, tserver_shared_data_.tserver_uuid(), 16);
+    memcpy(ash_config_.top_level_node_id, tserver_shared_data.tserver_uuid(), 16);
 
     return Status::OK();
   }
@@ -570,7 +568,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgPollVectorIndexReadyResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->PollVectorIndexReady(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::PollVectorIndexReady,
+        req, resp, ash::PggateRPC::kPollVectorIndexReady));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.ready();
   }
@@ -999,10 +998,11 @@ class PgClient::Impl : public BigDataFetcher {
         req, resp, ash::PggateRPC::kListLiveTabletServers));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::TabletServersInfo result;
-    result.reserve(resp.servers().size());
+    result.tablet_servers.reserve(resp.servers().size());
     for (const auto& server : resp.servers()) {
-      result.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
+      result.tablet_servers.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
     }
+    result.universe_uuid = resp.universe_uuid();
     return result;
   }
 
@@ -1124,6 +1124,21 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_db_oid(db_oid);
     RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTserverCatalogVersionInfo,
         req, resp, ash::PggateRPC::kGetTserverCatalogVersionInfo));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
+  Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
+      uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
+    tserver::PgGetTserverCatalogMessageListsRequestPB req;
+    tserver::PgGetTserverCatalogMessageListsResponsePB resp;
+    req.set_db_oid(db_oid);
+    req.set_ysql_catalog_version(ysql_catalog_version);
+    req.set_num_catalog_versions(num_catalog_versions);
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTserverCatalogMessageLists,
+        req, resp, ash::PggateRPC::kGetTserverCatalogMessageLists));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1259,11 +1274,12 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range) {
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
+    req.set_active_pid(active_pid);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
     }
@@ -1283,6 +1299,17 @@ class PgClient::Impl : public BigDataFetcher {
     cdc::InitVirtualWALForCDCResponsePB resp;
     RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t* lag_metric) {
+    cdc::GetLagMetricsRequestPB req;
+    req.set_stream_id(stream_id);
+    cdc::GetLagMetricsResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->GetLagMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    *lag_metric = resp.lag_metric();
     return resp;
   }
 
@@ -1473,7 +1500,8 @@ class PgClient::Impl : public BigDataFetcher {
 };
 
 std::string DdlMode::ToString() const {
-  return YB_STRUCT_TO_STRING(has_docdb_schema_changes, silently_altered_db);
+  return YB_STRUCT_TO_STRING(
+      has_docdb_schema_changes, silently_altered_db, use_regular_transaction_block);
 }
 
 void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const {
@@ -1481,6 +1509,7 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
   if (silently_altered_db) {
     dest->mutable_silently_altered_db()->set_value(*silently_altered_db);
   }
+  dest->set_use_regular_transaction_block(use_regular_transaction_block);
 }
 
 PgClient::PgClient(const YbcPgAshConfig& ash_config,
@@ -1491,7 +1520,7 @@ PgClient::~PgClient() = default;
 
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
-    const tserver::TServerSharedObject& tserver_shared_object,
+    const tserver::TServerSharedData& tserver_shared_object,
     std::optional<uint64_t> session_id) {
   return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
 }
@@ -1680,6 +1709,11 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
 }
 
+Result<tserver::PgGetTserverCatalogMessageListsResponsePB> PgClient::GetTserverCatalogMessageLists(
+    uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
+  return impl_->GetTserverCatalogMessageLists(db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
 Status PgClient::EnumerateActiveTransactions(
     const ActiveTransactionCallback& callback, bool for_current_session_only) const {
   return impl_->EnumerateActiveTransactions(callback, for_current_session_only);
@@ -1733,8 +1767,13 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-    const YbcReplicationSlotHashRange* slot_hash_range) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
+    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range, active_pid);
+}
+
+Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
+    const std::string& stream_id, int64_t* lag_metric) {
+  return impl_->GetLagMetrics(stream_id, lag_metric);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(

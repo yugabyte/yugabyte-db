@@ -8,7 +8,7 @@ step c1: COMMIT;
 step donothing2: INSERT INTO ints(key, val) VALUES(1, 'donothing2'), (1, 'donothing3') ON CONFLICT DO NOTHING;
 step c2: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing1
 (1 row)
@@ -22,7 +22,7 @@ step c2: COMMIT;
 step donothing1: INSERT INTO ints(key, val) VALUES(1, 'donothing1') ON CONFLICT DO NOTHING;
 step c1: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing2
 (1 row)
@@ -38,7 +38,7 @@ step donothing2: <... completed>
 ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
 step c2: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing1
 (1 row)
@@ -54,7 +54,7 @@ step donothing1: <... completed>
 ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
 step c1: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing2
 (1 row)
@@ -68,7 +68,7 @@ step c1: COMMIT;
 step donothing2: INSERT INTO ints(key, val) VALUES(1, 'donothing2'), (1, 'donothing3') ON CONFLICT DO NOTHING;
 step c2: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing1
 (1 row)
@@ -82,7 +82,7 @@ step c2: COMMIT;
 step donothing1: INSERT INTO ints(key, val) VALUES(1, 'donothing1') ON CONFLICT DO NOTHING;
 step c1: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing2
 (1 row)
@@ -97,7 +97,7 @@ step c1: COMMIT;
 step donothing2: <... completed>
 step c2: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing1
 (1 row)
@@ -112,7 +112,8 @@ step c2: COMMIT;
 step donothing1: <... completed>
 step c1: COMMIT;
 step show: SELECT * FROM ints;
-key|val
+key|val       
 ---+----------
   1|donothing2
 (1 row)
+

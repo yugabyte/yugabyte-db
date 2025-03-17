@@ -1198,6 +1198,9 @@ yb_get_wait_lwlock_desc(BuiltinTrancheIds tranche_id)
 		case LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER:
 			desc = "A YSQL backend is waiting for YB query diagnostics circular buffer memory access.";
 			break;
+		case LWTRANCHE_YB_TERMINATED_QUERIES:
+			desc = "A YSQL backend is waiting for YB terminated queries buffer memory access.";
+			break;
 		case LWTRANCHE_LOCK_FASTPATH:
 		case LWTRANCHE_MULTIXACTMEMBER_BUFFER:
 		case LWTRANCHE_MULTIXACTOFFSET_BUFFER:

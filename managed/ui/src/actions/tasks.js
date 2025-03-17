@@ -26,6 +26,7 @@ export const HIDE_TASK_IN_DRAWER = 'HIDE_TASK_IN_DRAWER';
 
 export const SHOW_TASK_BANNER = 'SHOW_TASK_BANNER';
 export const HIDE_TASK_BANNER = 'HIDE_TASK_BANNER';
+export const HIDE_ALL_TASK_BANNERS = 'HIDE_ALL_TASK_BANNERS';
 
 export function fetchTaskProgress(taskUUID) {
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
@@ -143,5 +144,12 @@ export const hideTaskBanner = (taskUUID, universeUUID) => {
   return {
     type: HIDE_TASK_BANNER,
     payload: { taskUUID, universeUUID }
+  };
+};
+
+export const clearAllTaskBanners = (universeUUID) => {
+  return {
+    type: HIDE_ALL_TASK_BANNERS,
+    payload: { universeUUID }
   };
 };

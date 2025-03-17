@@ -1772,6 +1772,11 @@ public class NodeManager extends DevopsBase {
     commandArgs.add("--remote_tmp_dir");
     if (node == null) {
       Cluster cluster = universe.getCluster(nodeTaskParam.placementUuid);
+      if (cluster == null) {
+        // Cluster may not yet be added (frozen) to the universe e.g in RR cluster addition.
+        // Use the primary cluster to just get the temp directory in that case.
+        cluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
       commandArgs.add(
           GFlagsUtil.getCustomTmpDirectory(
               universe,

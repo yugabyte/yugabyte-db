@@ -277,6 +277,16 @@ const (
 	StopNode = "STOP"
 	// RemoveNode operation
 	RemoveNode = "REMOVE"
+	// DeleteNode operation
+	DeleteNode = "DELETE"
+	// ReplaceNode operation
+	ReplaceNode = "REPLACE"
+	// DecommissionNode operation
+	DecommissionNode = "DECOMMISSION"
+	// HardRebootNode operation
+	HardRebootNode = "HARD_REBOOT"
+	// StartMasterNode operation
+	StartMasterNode = "START_MASTER"
 	// ReprovisionNode operation
 	ReprovisionNode = "REPROVISION"
 	// ReleaseNode operation
@@ -453,6 +463,44 @@ const (
 	NoneServiceState = "NONE"
 )
 
+// AlertState type
+const (
+	// ActiveAlertState type
+	ActiveAlertState = "ACTIVE"
+	// AcknowledgedAlertState type
+	AcknowledgedAlertState = "ACKNOWLEDGED"
+	// SuspendedAlertState type
+	SuspendedAlertState = "SUSPENDED"
+	// ResolvedAlertState type
+	ResolvedAlertState = "RESOLVED"
+)
+
+// AlertSeverity type
+const (
+	// SevereAlertSeverity type
+	SevereAlertSeverity = "SEVERE"
+	// WarningAlertSeverity type
+	WarningAlertSeverity = "WARNING"
+)
+
+// AlertConfigurationTargetType
+const (
+	// UniverseAlertConfigurationTargetType type
+	UniverseAlertConfigurationTargetType = "UNIVERSE"
+	// PlatformAlertConfigurationTargetType type
+	PlatformAlertConfigurationTargetType = "PLATFORM"
+)
+
+// AlertConfigurationDestinationType
+const (
+	// NoDestinationAlertConfigurationDestinationType type
+	NoDestinationAlertConfigurationDestinationType = "NO_DESTINATION"
+	// DefaultDestinationAlertConfigurationDestinationType type
+	DefaultDestinationAlertConfigurationDestinationType = "DEFAULT_DESTINATION"
+	// SelectedDestinationAlertConfigurationDestinationType type
+	SelectedDestinationAlertConfigurationDestinationType = "SELECTED_DESTINATION"
+)
+
 // XClusterConfigType
 const (
 	// BasicXClusterConfigType type
@@ -461,6 +509,36 @@ const (
 	TxnXClusterConfigType = "Txn"
 	// DBXClusterConfigType type
 	DBXClusterConfigType = "Db"
+)
+
+// HttpAuthType
+const (
+	// NoAuthHttpAuthType type
+	NoAuthHttpAuthType = "NONE"
+	// BasicHttpAuthType type
+	BasicHttpAuthType = "BASIC"
+	// TokenHttpAuthType type
+	TokenHttpAuthType = "TOKEN"
+)
+
+// AlertChannelTypes
+const (
+	// EmailAlertChannelType type
+	EmailAlertChannelType = "Email"
+	// PagerDutyAlertChannelType type
+	PagerDutyAlertChannelType = "PagerDuty"
+	// SlackAlertChannelType type
+	SlackAlertChannelType = "Slack"
+	// WebhookAlertChannelType type
+	WebhookAlertChannelType = "WebHook"
+)
+
+// SortDirection
+const (
+	// DescSortDirection
+	DescSortDirection = "DESC"
+	// AscSortDirection
+	AscSortDirection = "ASC"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed

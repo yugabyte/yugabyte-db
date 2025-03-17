@@ -4,13 +4,13 @@ CREATE TABLE t2(b int);
 INSERT INTO t1 VALUES(generate_series(1,1000));
 INSERT INTO t2 VALUES(generate_series(1,5000));
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 SELECT * FROM t1 ORDER BY a ASC; -- YB: add ordering
-  a
+  a   
 ------
     1
     2
@@ -1015,7 +1015,7 @@ SELECT * FROM t1 ORDER BY a ASC; -- YB: add ordering
 (1000 rows)
 
 SELECT * FROM t2 ORDER BY b ASC; -- YB: add ordering
-  b
+  b   
 ------
     1
     2
@@ -6020,7 +6020,7 @@ SELECT * FROM t2 ORDER BY b ASC; -- YB: add ordering
 (5000 rows)
 
 SELECT * FROM t1 ORDER BY a ASC LIMIT 10; -- YB: add ordering
- a
+ a  
 ----
   1
   2
@@ -6035,7 +6035,7 @@ SELECT * FROM t1 ORDER BY a ASC LIMIT 10; -- YB: add ordering
 (10 rows)
 
 SELECt * FROM t2  WHERE b % 2 = 0 ORDER BY b ASC; -- YB: add ordering
-  b
+  b   
 ------
     2
     4
@@ -8540,7 +8540,7 @@ SELECt * FROM t2  WHERE b % 2 = 0 ORDER BY b ASC; -- YB: add ordering
 (2500 rows)
 
 SELECT query, rows FROM pg_stat_monitor ORDER BY query COLLATE "C"; -- YB: output differs because of YB ordering
-                      query                       | rows
+                      query                       | rows 
 --------------------------------------------------+------
  SELECT * FROM t1 ORDER BY a ASC                  | 1000
  SELECT * FROM t1 ORDER BY a ASC LIMIT 10         |   10
@@ -8550,9 +8550,9 @@ SELECT query, rows FROM pg_stat_monitor ORDER BY query COLLATE "C"; -- YB: outpu
 (5 rows)
 
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 DROP TABLE t1;

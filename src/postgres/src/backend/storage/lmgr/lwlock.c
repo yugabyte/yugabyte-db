@@ -191,6 +191,8 @@ static const char *const BuiltinTrancheNames[] = {
 	"YbQueryDiagnostics",
 	/* LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER: */
 	"YbQueryDiagnosticsCircularBuffer",
+	/* LWTRANCHE_YB_TERMINATED_QUERIES: */
+	"YbTerminatedQueries",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==

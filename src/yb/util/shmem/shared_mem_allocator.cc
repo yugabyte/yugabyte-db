@@ -94,6 +94,8 @@ class SharedMemoryBackingAllocator::Impl {
 
   Status InitChild(ReservedAddressSegment& address_segment);
 
+  Status CleanupPrepareState();
+
   Result<void*> Allocate(size_t size);
 
   void Deallocate(void* p, size_t size);
@@ -374,6 +376,11 @@ Status SharedMemoryBackingAllocator::Impl::InitChild(ReservedAddressSegment& add
   return Init(address_segment, nullptr /* shared_mem_segment */);
 }
 
+Status SharedMemoryBackingAllocator::Impl::CleanupPrepareState() {
+  DCHECK(owner_);
+  return shared_mem_segment_.CleanupPrepareState();
+}
+
 SharedMemoryBackingAllocator::Impl::~Impl() {
   if (!header_) {
     return;
@@ -442,6 +449,10 @@ Status SharedMemoryBackingAllocator::InitChild(
   impl_ = VERIFY_RESULT(address_segment.MakeAnonymous<Impl>(
       nullptr /* addr */, prefix, false /* owner */));
   return impl_->InitChild(address_segment);
+}
+
+Status SharedMemoryBackingAllocator::CleanupPrepareState() {
+  return impl_->CleanupPrepareState();
 }
 
 Result<void*> SharedMemoryBackingAllocator::Allocate(size_t size) {

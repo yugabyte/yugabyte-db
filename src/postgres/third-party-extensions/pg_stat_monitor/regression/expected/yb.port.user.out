@@ -8,9 +8,9 @@ GRANT ALL ON SCHEMA public TO u1;
 GRANT ALL ON SCHEMA public TO u2;
 SET ROLE su;
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 SET ROLE u1;
@@ -18,7 +18,7 @@ SELECT pg_stat_monitor_reset();
 ERROR:  permission denied for function pg_stat_monitor_reset
 CREATE TABLE t1 (a int);
 SELECT * FROM t1;
- a
+ a 
 ---
 (0 rows)
 
@@ -51,9 +51,9 @@ SELECT username, query FROM pg_stat_monitor WHERE username != 'postgres' ORDER B
 (12 rows)
 
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 DROP TABLE t1;

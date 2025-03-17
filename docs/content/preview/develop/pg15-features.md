@@ -143,7 +143,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 | --------| ----------- |
 
 | [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
-| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command. |
+| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command (coming v2.25.1). |
 
 | [Merge command](https://www.postgresql.org/docs/15/sql-merge.html)
 | INSERT, UPDATE or DELETE in one statement. |

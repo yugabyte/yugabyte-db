@@ -316,9 +316,14 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	/*
 	 * Required to allow the creation for the temp table since we directly
 	 * call make_new_heap instead of going through DefineRelation.
+	 * For postgres xid cleanup, mark the current transaction as running a
+	 * concurrent refresh.
 	 */
 	if (yb_in_place_refresh)
+	{
 		YBCDdlEnableForceCatalogModification();
+		YbSetTxnWithPgOps(YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY);
+	}
 
 	/*
 	 * Create the transient table that will receive the regenerated data. Lock
@@ -533,14 +538,6 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 						   myState->output_cid,
 						   myState->ti_options,
 						   myState->bistate);
-
-		/*
-		 * In this case when the transient relation is a temporary relation, heap_insert
-		 * will set a transaction id. However, we must clear this transaction id, since
-		 * REFRESH matview should not invoke any TxnWithPGRel code paths
-		 * (that are used for temp tables).
-		 */
-		YbClearCurrentTransactionId();
 	}
 
 	/* We know this is a newly created relation, so there are no indexes */

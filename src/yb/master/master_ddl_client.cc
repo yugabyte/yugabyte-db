@@ -68,4 +68,17 @@ Status MasterDDLClient::WaitForCreateNamespaceDone(const NamespaceId& id, MonoDe
       },
       timeout, Format("Timed out waiting for namespace $0 to be created", id));
 }
+
+Result<RefreshYsqlLeaseInfoPB> MasterDDLClient::RefreshYsqlLease(
+    const std::string& permanent_uuid, int64_t instance_seqno) {
+  RefreshYsqlLeaseRequestPB req;
+  req.mutable_instance()->set_permanent_uuid(permanent_uuid);
+  req.mutable_instance()->set_instance_seqno(instance_seqno);
+  RefreshYsqlLeaseResponsePB resp;
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(proxy_.RefreshYsqlLease(req, &resp, &rpc));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return resp.info();
+}
+
 }  // namespace yb::master

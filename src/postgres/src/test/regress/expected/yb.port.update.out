@@ -11,7 +11,7 @@ INSERT INTO upsert_test VALUES(1, 'Boo'), (2, 'Zoo');
 WITH aaa AS (SELECT 1 AS a, 'Foo' AS b) INSERT INTO upsert_test
   VALUES (1, 'Bar') ON CONFLICT(a)
   DO UPDATE SET (b, a) = (SELECT b, a FROM aaa) RETURNING *;
- a |  b
+ a |  b  
 ---+-----
  1 | Foo
 (1 row)
@@ -21,7 +21,7 @@ SET yb_insert_on_conflict_read_batch_size = 0; -- TODO(#25147)
 WITH aaa AS (SELECT 1 AS ctea, ' Foo' AS cteb) INSERT INTO upsert_test
   VALUES (1, 'Bar'), (2, 'Baz') ON CONFLICT(a)
   DO UPDATE SET (b, a) = (SELECT upsert_test.b||cteb, upsert_test.a FROM aaa) RETURNING *;
- a |    b
+ a |    b    
 ---+---------
  1 | Foo Foo
  2 | Zoo Foo
@@ -75,19 +75,19 @@ ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO 
 \set show_data 'select tableoid::regclass::text COLLATE "C" partname, * from range_parted ORDER BY 1, 2, 3, 4, 5, 6'
 :init_range_parted;
 :show_data;
-    partname    | a | b  |  c  | d  | e
+    partname    | a | b  |  c  | d  | e 
 ----------------+---+----+-----+----+---
- part_a_10_a_20 | a | 10 | 200 |  1 |
- part_a_1_a_10  | a |  1 |   1 |  1 |
- part_c_1_100   | b | 12 |  96 |  1 |
- part_c_1_100   | b | 13 |  97 |  2 |
- part_d_15_20   | b | 15 | 105 | 16 |
- part_d_15_20   | b | 17 | 105 | 19 |
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 12 |  96 |  1 | 
+ part_c_1_100   | b | 13 |  97 |  2 | 
+ part_d_15_20   | b | 15 | 105 | 16 | 
+ part_d_15_20   | b | 17 | 105 | 19 | 
 (6 rows)
 
 -- The order of subplans should be in bound order
 EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
-                      QUERY PLAN
+                      QUERY PLAN                       
 -------------------------------------------------------
  Update on range_parted
    Update on part_a_1_a_10 range_parted_1
@@ -132,7 +132,7 @@ UPDATE part_c_1_100 set c = c + 20 WHERE c = 98;
 -- ok, row movement
 WITH x AS (UPDATE part_b_10_b_20 set c = c + 20 returning c, b, a)
 SELECT * FROM x ORDER BY b;
-  c  | b  | a
+  c  | b  | a 
 -----+----+---
  116 | 12 | b
  117 | 13 | b
@@ -141,7 +141,7 @@ SELECT * FROM x ORDER BY b;
 (4 rows)
 
 :show_data;
-    partname    | a | b  |  c  | d | e
+    partname    | a | b  |  c  | d | e 
 ----------------+---+----+-----+---+---
  part_a_10_a_20 | a | 10 | 200 | 1 | 1
  part_a_1_a_10  | a |  1 |   1 | 1 | 1
@@ -158,7 +158,7 @@ DETAIL:  Failing row contains (2, 117, b, 7, 2).
 -- ok, row movement, with subset of rows moved into different partition.
 WITH x AS (UPDATE range_parted set b = b - 6 WHERE c > 116 returning a, b + c AS f)
 SELECT * FROM x ORDER BY a, f;
- a |  f
+ a |  f  
 ---+-----
  a | 204
  b | 124
@@ -167,7 +167,7 @@ SELECT * FROM x ORDER BY a, f;
 (4 rows)
 
 :show_data;
-   partname    | a | b  |  c  | d | e
+   partname    | a | b  |  c  | d | e 
 ---------------+---+----+-----+---+---
  part_a_1_a_10 | a |  1 |   1 | 1 | 1
  part_a_1_a_10 | a |  4 | 200 | 1 | 1
@@ -203,21 +203,21 @@ DROP VIEW upview;
 :init_range_parted;
 WITH x AS (UPDATE range_parted set c = 95 WHERE a = 'b' and b > 10 and c > 100 returning (range_parted), *)
 SELECT * FROM x ORDER BY b;
- range_parted  | a | b  | c  | d  | e
+ range_parted  | a | b  | c  | d  | e 
 ---------------+---+----+----+----+---
- (b,15,95,16,) | b | 15 | 95 | 16 |
- (b,17,95,19,) | b | 17 | 95 | 19 |
+ (b,15,95,16,) | b | 15 | 95 | 16 | 
+ (b,17,95,19,) | b | 17 | 95 | 19 | 
 (2 rows)
 
 :show_data;
-    partname    | a | b  |  c  | d  | e
+    partname    | a | b  |  c  | d  | e 
 ----------------+---+----+-----+----+---
- part_a_10_a_20 | a | 10 | 200 |  1 |
- part_a_1_a_10  | a |  1 |   1 |  1 |
- part_c_1_100   | b | 12 |  96 |  1 |
- part_c_1_100   | b | 13 |  97 |  2 |
- part_c_1_100   | b | 15 |  95 | 16 |
- part_c_1_100   | b | 17 |  95 | 19 |
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 12 |  96 |  1 | 
+ part_c_1_100   | b | 13 |  97 |  2 | 
+ part_c_1_100   | b | 15 |  95 | 16 | 
+ part_c_1_100   | b | 17 |  95 | 19 | 
 (6 rows)
 
 -- The following tests computing RETURNING when the source and the destination
@@ -236,7 +236,7 @@ ALTER TABLE range_parted ATTACH PARTITION part_c_1_c_20 FOR VALUES FROM ('c', 1)
 CREATE FUNCTION trigfunc () RETURNS TRIGGER LANGUAGE plpgsql as $$ BEGIN NEW.e := 'in trigfunc()'; RETURN NEW; END; $$;
 CREATE TRIGGER trig BEFORE INSERT ON part_c_1_c_20 FOR EACH ROW EXECUTE FUNCTION trigfunc();
 UPDATE range_parted r set a = 'c' FROM (VALUES ('a', 1), ('a', 10), ('b', 12)) s(x, y) WHERE s.x = r.a AND s.y = r.b RETURNING tableoid::regclass, *;
-   tableoid    | a | b  |  c  | d |       e       | x | y
+   tableoid    | a | b  |  c  | d |       e       | x | y  
 ---------------+---+----+-----+---+---------------+---+----
  part_c_1_c_20 | c |  1 |   1 | 1 | in trigfunc() | a |  1
  part_c_1_c_20 | c | 10 | 200 | 1 | in trigfunc() | a | 10
@@ -249,16 +249,16 @@ DROP FUNCTION trigfunc;
 CREATE FUNCTION trigfunc () RETURNS TRIGGER LANGUAGE plpgsql as $$ BEGIN RETURN NULL; END; $$;
 CREATE TRIGGER trig BEFORE INSERT ON part_c_1_c_20 FOR EACH ROW EXECUTE FUNCTION trigfunc();
 UPDATE range_parted r set a = 'c' FROM (VALUES ('a', 1), ('a', 10), ('b', 12)) s(x, y) WHERE s.x = r.a AND s.y = r.b RETURNING tableoid::regclass, *;
- tableoid | a | b | c | d | e | x | y
+ tableoid | a | b | c | d | e | x | y 
 ----------+---+---+---+---+---+---+---
 (0 rows)
 
 :show_data;
-   partname   | a | b  |  c  | d  | e
+   partname   | a | b  |  c  | d  | e 
 --------------+---+----+-----+----+---
- part_c_1_100 | b | 13 |  97 |  2 |
- part_d_15_20 | b | 15 | 105 | 16 |
- part_d_15_20 | b | 17 | 105 | 19 |
+ part_c_1_100 | b | 13 |  97 |  2 | 
+ part_d_15_20 | b | 15 | 105 | 16 | 
+ part_d_15_20 | b | 17 | 105 | 19 | 
 (3 rows)
 
 DROP TABLE part_c_1_c_20;
@@ -458,14 +458,14 @@ CREATE TRIGGER d15_insert_trig
 UPDATE range_parted set c = c - 50 WHERE c > 97;
 NOTICE:  trigger = parent_update_trig fired on table range_parted during UPDATE
 :show_data;
-    partname    | a | b  |  c  | d  | e
+    partname    | a | b  |  c  | d  | e 
 ----------------+---+----+-----+----+---
- part_a_10_a_20 | a | 10 | 150 |  1 |
- part_a_1_a_10  | a |  1 |   1 |  1 |
- part_c_1_100   | b | 12 |  96 |  1 |
- part_c_1_100   | b | 13 |  97 |  2 |
- part_c_1_100   | b | 15 |  55 | 16 |
- part_c_1_100   | b | 17 |  55 | 19 |
+ part_a_10_a_20 | a | 10 | 150 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 12 |  96 |  1 | 
+ part_c_1_100   | b | 13 |  97 |  2 | 
+ part_c_1_100   | b | 15 |  55 | 16 | 
+ part_c_1_100   | b | 17 |  55 | 19 | 
 (6 rows)
 
 DROP TRIGGER parent_delete_trig ON range_parted;
@@ -485,13 +485,13 @@ DROP TRIGGER d15_insert_trig ON part_d_15_20;
 create table part_def partition of range_parted default;
 \d+ part_def
                                        Table "public.part_def"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+-------------------+-----------+----------+---------+----------+--------------+-------------
- a      | text              |           |          |         | extended |              |
- b      | bigint            |           |          |         | plain    |              |
- c      | numeric           |           |          |         | main     |              |
- d      | integer           |           |          |         | plain    |              |
- e      | character varying |           |          |         | extended |              |
+ a      | text              |           |          |         | extended |              | 
+ b      | bigint            |           |          |         | plain    |              | 
+ c      | numeric           |           |          |         | main     |              | 
+ d      | integer           |           |          |         | plain    |              | 
+ e      | character varying |           |          |         | extended |              | 
 Partition of: range_parted DEFAULT
 Partition constraint: (NOT ((a IS NOT NULL) AND (b IS NOT NULL) AND (((a = 'a'::text) AND (b >= '1'::bigint) AND (b < '10'::bigint)) OR ((a = 'a'::text) AND (b >= '10'::bigint) AND (b < '20'::bigint)) OR ((a = 'b'::text) AND (b >= '1'::bigint) AND (b < '10'::bigint)) OR ((a = 'b'::text) AND (b >= '10'::bigint) AND (b < '20'::bigint)) OR ((a = 'b'::text) AND (b >= '20'::bigint) AND (b < '30'::bigint)))))
 
@@ -503,15 +503,15 @@ update part_def set a = 'a' where a = 'd';
 ERROR:  new row for relation "part_def" violates partition constraint
 DETAIL:  Failing row contains (a, 9, null, null, null).
 :show_data;
-    partname    | a | b  |  c  | d  | e
+    partname    | a | b  |  c  | d  | e 
 ----------------+---+----+-----+----+---
- part_a_10_a_20 | a | 10 | 200 |  1 |
- part_a_1_a_10  | a |  1 |   1 |  1 |
- part_c_1_100   | b | 12 |  96 |  1 |
- part_c_1_100   | b | 13 |  97 |  2 |
- part_d_15_20   | b | 15 | 105 | 16 |
- part_d_15_20   | b | 17 | 105 | 19 |
- part_def       | d |  9 |     |    |
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 12 |  96 |  1 | 
+ part_c_1_100   | b | 13 |  97 |  2 | 
+ part_d_15_20   | b | 15 | 105 | 16 | 
+ part_d_15_20   | b | 17 | 105 | 19 | 
+ part_def       | d |  9 |     |    | 
 (7 rows)
 
 -- Update row movement from non-default to default partition.
@@ -523,15 +523,15 @@ DETAIL:  Failing row contains (ad, 10, 200, 1, null).
 UPDATE range_parted set a = 'ad' WHERE a = 'a';
 UPDATE range_parted set a = 'bd' WHERE a = 'b';
 :show_data;
- partname | a  | b  |  c  | d  | e
+ partname | a  | b  |  c  | d  | e 
 ----------+----+----+-----+----+---
- part_def | ad |  1 |   1 |  1 |
- part_def | ad | 10 | 200 |  1 |
- part_def | bd | 12 |  96 |  1 |
- part_def | bd | 13 |  97 |  2 |
- part_def | bd | 15 | 105 | 16 |
- part_def | bd | 17 | 105 | 19 |
- part_def | d  |  9 |     |    |
+ part_def | ad |  1 |   1 |  1 | 
+ part_def | ad | 10 | 200 |  1 | 
+ part_def | bd | 12 |  96 |  1 | 
+ part_def | bd | 13 |  97 |  2 | 
+ part_def | bd | 15 | 105 | 16 | 
+ part_def | bd | 17 | 105 | 19 | 
+ part_def | d  |  9 |     |    | 
 (7 rows)
 
 -- Update row movement from default to non-default partitions.
@@ -539,15 +539,15 @@ UPDATE range_parted set a = 'bd' WHERE a = 'b';
 UPDATE range_parted set a = 'a' WHERE a = 'ad';
 UPDATE range_parted set a = 'b' WHERE a = 'bd';
 :show_data;
-    partname    | a | b  |  c  | d  | e
+    partname    | a | b  |  c  | d  | e 
 ----------------+---+----+-----+----+---
- part_a_10_a_20 | a | 10 | 200 |  1 |
- part_a_1_a_10  | a |  1 |   1 |  1 |
- part_c_1_100   | b | 12 |  96 |  1 |
- part_c_1_100   | b | 13 |  97 |  2 |
- part_d_15_20   | b | 15 | 105 | 16 |
- part_d_15_20   | b | 17 | 105 | 19 |
- part_def       | d |  9 |     |    |
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 12 |  96 |  1 | 
+ part_c_1_100   | b | 13 |  97 |  2 | 
+ part_d_15_20   | b | 15 | 105 | 16 | 
+ part_d_15_20   | b | 17 | 105 | 19 | 
+ part_def       | d |  9 |     |    | 
 (7 rows)
 
 -- Cleanup: range_parted no longer needed.
@@ -592,14 +592,14 @@ DETAIL:  Failing row contains (2, 2, 10).
 -- Test update-partition-key, where the unpruned partitions do not have their
 -- partition keys updated.
 SELECT tableoid::regclass::text, * FROM list_parted WHERE a = 2 ORDER BY 1;
-  tableoid  | a | b | c
+  tableoid  | a | b | c  
 ------------+---+---+----
  list_part1 | 2 | 5 | 50
 (1 row)
 
 UPDATE list_parted set b = c + a WHERE a = 2;
 SELECT tableoid::regclass::text, * FROM list_parted WHERE a = 2 ORDER BY 1;
-  tableoid  | a | b  | c
+  tableoid  | a | b  | c  
 ------------+---+----+----
  list_part1 | 2 | 52 | 50
 (1 row)
@@ -613,7 +613,7 @@ END $$ LANGUAGE plpgsql;
 CREATE TRIGGER parted_mod_b before update on sub_part1
    for each row execute procedure func_parted_mod_b();
 SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
-  tableoid  | a | b  | c
+  tableoid  | a | b  | c  
 ------------+---+----+----
  list_part1 | 2 | 52 | 50
  list_part1 | 3 |  6 | 60
@@ -625,7 +625,7 @@ SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
 -- partition-key update, because there is a trigger on sub_part1.
 UPDATE list_parted set c = 70 WHERE b  = 1;
 SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
-  tableoid  | a | b  | c
+  tableoid  | a | b  | c  
 ------------+---+----+----
  list_part1 | 2 | 52 | 50
  list_part1 | 3 |  6 | 60
@@ -646,7 +646,7 @@ CREATE TRIGGER trig_skip_delete before delete on sub_part2
 UPDATE list_parted set b = 1 WHERE c = 70;
 NOTICE:  Trigger: Got OLD row (2,70,1), but returning NULL
 SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
-  tableoid  | a | b  | c
+  tableoid  | a | b  | c  
 ------------+---+----+----
  list_part1 | 2 | 52 | 50
  list_part1 | 3 |  6 | 60
@@ -658,7 +658,7 @@ SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
 DROP TRIGGER trig_skip_delete ON sub_part2;
 UPDATE list_parted set b = 1 WHERE c = 70;
 SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
-  tableoid  | a | b  | c
+  tableoid  | a | b  | c  
 ------------+---+----+----
  list_part1 | 2 | 52 | 50
  list_part1 | 3 |  6 | 60
@@ -674,7 +674,7 @@ CREATE TABLE non_parted (id int);
 INSERT into non_parted VALUES (1), (1), (1), (2), (2), (2), (3), (3), (3);
 UPDATE list_parted t1 set a = 2 FROM non_parted t2 WHERE t1.a = t2.id and a = 1;
 SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
-  tableoid  | a | b  | c
+  tableoid  | a | b  | c  
 ------------+---+----+----
  list_part1 | 2 |  1 | 70
  list_part1 | 2 |  2 | 10
@@ -721,7 +721,7 @@ INSERT INTO parted VALUES (1, '1'), (2, '2'), (4, '4'), (6, '6'), (8, '8');
 -- Test whether single row optimization is invoked when
 -- only one partition is being updated.
 EXPLAIN UPDATE parted SET b='5' WHERE a = 1;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Update on parted  (cost=0.00..4.11 rows=0 width=0)
    Update on part_a_1_5 parted
@@ -732,7 +732,7 @@ UPDATE parted SET b='5' WHERE a = 1;
 -- Verify that single row optimization is not invoked when
 -- multiple partitions are being updated.
 EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
-                                      QUERY PLAN
+                                      QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Update on parted  (cost=0.00..215.00 rows=0 width=0)
    Update on part_a_1_5 parted_1
@@ -747,7 +747,7 @@ EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
 UPDATE parted SET b='6' WHERE a > 1;
 -- Verify that the updates happened successfully.
 SELECT * FROM parted ORDER BY a;
- a | b
+ a | b 
 ---+---
  1 | 5
  2 | 6

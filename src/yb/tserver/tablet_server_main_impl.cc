@@ -255,7 +255,7 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
-  server->SharedObject().SetPid(getpid());
+  server->SharedObject()->SetPid(getpid());
 
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());
@@ -265,8 +265,7 @@ int TabletServerMain(int argc, char** argv) {
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
         FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
-        server->GetSharedMemoryFd());
+        tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;

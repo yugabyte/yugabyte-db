@@ -148,7 +148,7 @@ func (a *AuthAPIClient) UploadReleaseRest(
 	var req *http.Request
 
 	req, err = http.NewRequest(
-		"POST",
+		http.MethodPost,
 		fmt.Sprintf("%s://%s/api/v1/customers/%s/ybdb_release/upload",
 			a.RestClient.Scheme, a.RestClient.Host, a.CustomerUUID),
 		bodyBuffer,

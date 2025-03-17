@@ -372,7 +372,7 @@ INSERT INTO feature_tab_dml(
 						col_double,
 						DATE_TRUNC('day', col_timestamp_tz) expr_date,
 						col_array_text[1];
- col_smallint | col_bigint | col_real | col_double |          expr_date           | col_array_text
+ col_smallint | col_bigint | col_real | col_double |          expr_date           | col_array_text 
 --------------+------------+----------+------------+------------------------------+----------------
            10 |          0 |        0 |            | Thu Oct 10 00:00:00 2019 PDT | zero
 (1 row)
@@ -382,7 +382,7 @@ INSERT INTO feature_tab_dml_identifier VALUES(0, 'zero');
 -- Use SELECT To Validate INSERT
 --
 SELECT * FROM feature_tab_dml ORDER BY col_smallint;
- col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 --------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
             1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.11 2019 | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
             2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
@@ -442,7 +442,7 @@ INSERT INTO feature_tab_dml_identifier VALUES(10, 'ten');
 -- Use SELECT To Validate INSERT ON CONFLICT
 --
 SELECT * FROM feature_tab_dml ORDER BY col_smallint;
- col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 --------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
             1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.11 2019 | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
             2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}

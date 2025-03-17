@@ -157,6 +157,8 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   Result<bool> CatalogVersionTableInPerdbMode();
+  Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
+      uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
@@ -393,7 +395,7 @@ class PgApiImpl {
 
   Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
-  Status CreateIndexSetHnswOptions(PgStatement *handle, int ef_construction, int m);
+  Status CreateIndexSetHnswOptions(PgStatement *handle, int m, int m0, int ef_construction);
 
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YbcPgTypeEntity **types, uint64_t *data);
@@ -595,6 +597,8 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const YbcPgExecParameters *exec_params,
                                YbcConstSliceVector ybctids);
 
+  Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
+
   Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
@@ -641,6 +645,7 @@ class PgApiImpl {
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   Status CommitPlainTransaction();
+  Status CommitPlainTransactionContainingDDL(PgOid ddl_db_oid, bool ddl_is_silent_modification);
   Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
@@ -649,6 +654,7 @@ class PgApiImpl {
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
   Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+  Status SetDdlStateInPlainTransaction();
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
@@ -704,7 +710,9 @@ class PgApiImpl {
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
-  void AddForeignKeyReferenceIntent(PgOid table_id, bool is_region_local, const Slice& ybctid);
+  void AddForeignKeyReferenceIntent(
+        PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options);
+  void NotifyDeferredTriggersProcessingStarted();
 
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
@@ -788,7 +796,7 @@ class PgApiImpl {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -797,6 +805,9 @@ class PgApiImpl {
 
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
       const std::string& stream_id);
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t *lag_metric);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
       const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
@@ -845,6 +856,8 @@ class PgApiImpl {
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
  private:
+  void ClearSessionState();
+
   class Interrupter;
 
   class TupleIdBuilder {
@@ -882,8 +895,8 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
 
-  // Local tablet-server shared memory segment handle.
-  tserver::TServerSharedObject tserver_shared_object_;
+  // Local tablet-server shared memory data.
+  tserver::TServerSharedData* tserver_shared_object_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 

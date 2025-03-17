@@ -86,6 +86,9 @@ INSERT INTO items (embedding) VALUES
 -- Wrong dimensionality, shouldn't work.
 SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 
+-- IndexOnlyScan on the ybhnsw index should not work.
+/*+IndexOnlyScan(items items_embedding_idx)*/ EXPLAIN (COSTS OFF) SELECT count(*) FROM items;
+
 DROP INDEX items_embedding_idx;
 
 -- Dummy implementation, should only provide Exact ANN within a tablet.
@@ -93,4 +96,14 @@ CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
 EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
 SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
 
+DROP TABLE items;
+
+-- Make sure we can't create an index with unspecified dimensions.
+CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
+DROP TABLE items;
+
+CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
 DROP TABLE items;

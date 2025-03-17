@@ -63,3 +63,15 @@ ALTER TABLE holidays DROP CONSTRAINT holidays_pkey; -- fail
 SELECT * FROM holidays ORDER BY num_weeks;
 
 DROP TABLE holidays;
+
+-- test ALTER TYPE ... SET SCHEMA
+CREATE SCHEMA s1;
+CREATE TYPE s1.test_type AS ENUM('bad', 'good');
+CREATE TABLE test_table (a s1.test_type);
+INSERT INTO test_table VALUES ('good');
+CREATE SCHEMA s2;
+ALTER TYPE s1.test_type SET SCHEMA s2;
+INSERT INTO test_table VALUES ('bad');
+SELECT * FROM test_table ORDER BY a;
+DROP SCHEMA s1 CASCADE;
+SELECT * FROM test_table ORDER BY a;

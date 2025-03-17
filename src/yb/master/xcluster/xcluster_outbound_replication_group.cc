@@ -574,6 +574,20 @@ Status XClusterOutboundReplicationGroup::Delete(
     const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch) {
   CloseAndWaitForAllTasksToAbort();
 
+  std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above;
+  if (AutomaticDDLMode()) {
+    auto namespace_ids = VERIFY_RESULT(GetNamespaces());
+    for (const auto& namespace_id : namespace_ids) {
+      if (helper_functions_.is_automatic_mode_switchover_func(namespace_id)) {
+        uint32_t oid_to_bump_above = VERIFY_RESULT(
+            helper_functions_.get_normal_oid_higher_than_any_used_normal_oid_func(namespace_id));
+        LOG(INFO) << "xCluster automatic mode switchover of namespace ID " << namespace_id
+                  << " detected; need to bump target OID above " << oid_to_bump_above;
+        source_namespace_id_to_oid_to_bump_above[namespace_id] = oid_to_bump_above;
+      }
+    }
+  }
+
   std::lock_guard mutex_lock(mutex_);
   auto l = VERIFY_RESULT(LockForWrite());
   auto& outbound_group_pb = l.mutable_data()->pb;
@@ -591,7 +605,7 @@ Status XClusterOutboundReplicationGroup::Delete(
 
     auto remote_client = VERIFY_RESULT(GetRemoteClient(target_master_addresses));
     RETURN_NOT_OK(remote_client->GetXClusterClient().DeleteUniverseReplication(
-        Id(), /*ignore_errors=*/true, target_uuid));
+        Id(), /*ignore_errors=*/true, target_uuid, source_namespace_id_to_oid_to_bump_above));
   }
 
   for (const auto& [namespace_id, _] : *outbound_group_pb.mutable_namespace_infos()) {

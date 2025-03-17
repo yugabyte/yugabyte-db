@@ -128,7 +128,7 @@ SELECT :'id' = :'default_result';
 CREATE DATABASE test_posix_db
 LOCALE "POSIX"
 TEMPLATE template0;
-\c test_posix_db 
+\c test_posix_db
 CREATE TABLE tab(id text);
 INSERT INTO tab VALUES ('aaa'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset

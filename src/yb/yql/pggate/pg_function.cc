@@ -42,6 +42,7 @@ using dockv::PgValue;
 using dockv::ReaderProjection;
 using util::GetValue;
 using util::SetColumnValue;
+using util::TrySetColumnValue;
 using util::SetColumnArrayValue;
 //--------------------------------------------------------------------------------------------------
 // PgFunctionParams
@@ -138,6 +139,14 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
   return Status::OK();
 }
 
+std::vector<std::string> LockModesToString(const yb::LockInfoPB& lock) {
+  std::vector<std::string> modes(lock.modes().size());
+  std::transform(lock.modes().begin(), lock.modes().end(), modes.begin(), [](const auto& mode) {
+    return LockMode_Name(static_cast<LockMode>(mode));
+  });
+  return modes;
+}
+
 //--------------------------------------------------------------------------------------------------
 // PgLockStatusRequestor
 //--------------------------------------------------------------------------------------------------
@@ -170,6 +179,32 @@ Result<PgTableRow> AddLock(
   if (is_advisory_lock_tablet) {
     RETURN_NOT_OK(SetColumnValue("database",
         static_cast<PgOid>(std::stoul(lock.hash_cols()[0])), schema, &row));
+
+    const auto& range_cols = lock.range_cols();
+    SCHECK_EQ(range_cols.size(), 3, IllegalState,
+        Format("Expected 3 values for classid, objid, and objsubid for advisory locks, "
+               "but received $0 values", range_cols.size()));
+    RETURN_NOT_OK(TrySetColumnValue(
+        "classid", static_cast<PgOid>(std::stoul(range_cols[0])), schema, &row));
+    RETURN_NOT_OK(TrySetColumnValue(
+        "objid", static_cast<PgOid>(std::stoul(range_cols[1])), schema, &row));
+    RETURN_NOT_OK(TrySetColumnValue(
+        "objsubid", static_cast<int32_t>(std::stoul(range_cols[2])), schema, &row));
+
+    const auto& modes = lock.modes();
+    if (modes.size() == 1 && modes[0] == STRONG_READ) {
+      RETURN_NOT_OK(SetColumnArrayValue(
+          "mode", std::vector<std::string>{"ShareLock"}, schema, &row));
+    } else if (modes.size() == 2 && modes[0] == STRONG_READ && modes[1] == STRONG_WRITE) {
+      RETURN_NOT_OK(SetColumnArrayValue(
+          "mode", std::vector<std::string>{"ExclusiveLock"}, schema, &row));
+    } else {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Expected modes for advisory lock to be either [STRONG_READ] or "
+          "[STRONG_READ, STRONG_WRITE], but received $0",
+          LockModesToString(lock));
+    }
   } else {
     RSTATUS_DCHECK(
         lock.has_pg_table_id() == parent_pg_table_id.empty(), IllegalState,
@@ -182,17 +217,14 @@ Result<PgTableRow> AddLock(
 
     PgOid relation_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     RETURN_NOT_OK(SetColumnValue("relation", relation_oid, schema, &row));
+
+    if (lock.modes().size() > 0) {
+      RETURN_NOT_OK(SetColumnArrayValue("mode", LockModesToString(lock), schema, &row));
+    }
   }
 
   // TODO: how to associate the pid?
   // RETURN_NOT_OK(SetColumnValue("pid", YBCGetPid(l.transaction_id()), schema, &row));
-
-  std::vector<std::string> modes(lock.modes().size());
-
-  std::transform(lock.modes().begin(), lock.modes().end(), modes.begin(), [](const auto& mode) {
-    return LockMode_Name(static_cast<LockMode>(mode));
-  });
-  if (modes.size() > 0) RETURN_NOT_OK(SetColumnArrayValue("mode", modes, schema, &row));
 
   RETURN_NOT_OK(SetColumnValue("granted", lock.has_wait_end_ht() ? true : false, schema, &row));
 

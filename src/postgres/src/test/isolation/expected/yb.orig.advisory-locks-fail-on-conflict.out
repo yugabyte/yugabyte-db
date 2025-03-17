@@ -7,7 +7,7 @@ step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
 step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
 pg_advisory_xact_lock
 ---------------------
-
+                     
 (1 row)
 
 step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
@@ -16,7 +16,7 @@ step s1_commit: COMMIT;
 step s2_xact_lock: <... completed>
 pg_advisory_xact_lock
 ---------------------
-
+                     
 (1 row)
 
 step s2_commit: COMMIT;
@@ -28,7 +28,7 @@ step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
 step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
 pg_advisory_xact_lock
 ---------------------
-
+                     
 (1 row)
 
 step s2_query_layer_retries_0: SET yb_max_query_layer_retries=0;
@@ -39,16 +39,16 @@ step s1_commit: COMMIT;
 step s2_commit: COMMIT;
 
 starting permutation: s1_begin_rc s1_xact_lock s2_query_layer_retries_0 s2_begin_rc s2_xact_lock s1_commit s2_commit
-step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;                                             
-step s1_xact_lock: SELECT pg_advisory_xact_lock(1);                                                 
-pg_advisory_xact_lock                                                                               
----------------------                                                                               
-                                                                                                    
-(1 row)                                                                                             
-                                                                                                    
-step s2_query_layer_retries_0: SET yb_max_query_layer_retries=0;                                    
-step s2_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;                                             
-step s2_xact_lock: SELECT pg_advisory_xact_lock(1);                                                 
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_xact_lock: SELECT pg_advisory_xact_lock(1);
+pg_advisory_xact_lock
+---------------------
+                     
+(1 row)
+
+step s2_query_layer_retries_0: SET yb_max_query_layer_retries=0;
+step s2_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s2_xact_lock: SELECT pg_advisory_xact_lock(1);
 ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
-step s1_commit: COMMIT;                                                                             
-step s2_commit: COMMIT; 
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;

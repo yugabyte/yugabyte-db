@@ -47,11 +47,11 @@ LINE 1: INSERT INTO arrtest (b[1:2]) VALUES(now());
                              ^
 HINT:  You will need to rewrite or cast the expression.
 SELECT * FROM arrtest;
-      a      |        b        |     c     |       d       |        e        |        f        |      g
+      a      |        b        |     c     |       d       |        e        |        f        |      g      
 -------------+-----------------+-----------+---------------+-----------------+-----------------+-------------
  {1,2,3,4,5} | {{{0,0},{1,2}}} | {}        | {}            | [0:1]={1.1,2.2} | {}              | {}
  {11,12,23}  | {{3,4},{4,5}}   | {foobar}  | {{elt1,elt2}} | {3.4,6.7}       | {"abc  ",abcde} | {abc,abcde}
- {}          | {3,4}           | {foo,bar} | {bar,foo}     |                 |                 |
+ {}          | {3,4}           | {foo,bar} | {bar,foo}     |                 |                 | 
 (3 rows)
 
 SELECT arrtest.a[1],
@@ -60,20 +60,20 @@ SELECT arrtest.a[1],
           arrtest.d[1][1],
           arrtest.e[0]
    FROM arrtest;
- a  | b |   c    |  d   |  e
+ a  | b |   c    |  d   |  e  
 ----+---+--------+------+-----
   1 | 0 |        |      | 1.1
- 11 |   | foobar | elt1 |
-    |   | foo    |      |
+ 11 |   | foobar | elt1 |    
+    |   | foo    |      |    
 (3 rows)
 
 SELECT a[1], b[1][1][1], c[1], d[1][1], e[0]
    FROM arrtest;
- a  | b |   c    |  d   |  e
+ a  | b |   c    |  d   |  e  
 ----+---+--------+------+-----
   1 | 0 |        |      | 1.1
- 11 |   | foobar | elt1 |
-    |   | foo    |      |
+ 11 |   | foobar | elt1 |    
+    |   | foo    |      |    
 (3 rows)
 
 SELECT a[1:3],
@@ -81,7 +81,7 @@ SELECT a[1:3],
           c[1:2],
           d[1:1][1:2]
    FROM arrtest;
-     a      |        b        |     c     |       d
+     a      |        b        |     c     |       d       
 ------------+-----------------+-----------+---------------
  {1,2,3}    | {{{0,0},{1,2}}} | {}        | {}
  {11,12,23} | {}              | {foobar}  | {{elt1,elt2}}
@@ -90,18 +90,18 @@ SELECT a[1:3],
 
 SELECT array_ndims(a) AS a,array_ndims(b) AS b,array_ndims(c) AS c
    FROM arrtest;
- a | b | c
+ a | b | c 
 ---+---+---
- 1 | 3 |
+ 1 | 3 |  
  1 | 2 | 1
    | 1 | 1
 (3 rows)
 
 SELECT array_dims(a) AS a,array_dims(b) AS b,array_dims(c) AS c
    FROM arrtest;
-   a   |        b        |   c
+   a   |        b        |   c   
 -------+-----------------+-------
- [1:5] | [1:1][1:2][1:2] |
+ [1:5] | [1:1][1:2][1:2] | 
  [1:3] | [1:2][1:2]      | [1:1]
        | [1:2]           | [1:2]
 (3 rows)
@@ -111,7 +111,7 @@ SELECT *
    FROM arrtest
    WHERE a[1] < 5 and
          c = '{"foobar"}'::_name;
- a | b | c | d | e | f | g
+ a | b | c | d | e | f | g 
 ---+---+---+---+---+---+---
 (0 rows)
 
@@ -126,7 +126,7 @@ UPDATE arrtest
   SET c[2:2] = '{"new_word"}'
   WHERE array_dims(c) is not null;
 SELECT a,b,c FROM arrtest;
-       a       |           b           |         c
+       a       |           b           |         c         
 ---------------+-----------------------+-------------------
  {16,25,3,4,5} | {{{113,142},{1,147}}} | {}
  {16,25,23}    | {{3,4},{4,5}}         | {foobar,new_word}
@@ -138,7 +138,7 @@ SELECT a[1:3],
           c[1:2],
           d[1:1][2:2]
    FROM arrtest;
-     a      |           b           |         c         |    d
+     a      |           b           |         c         |    d     
 ------------+-----------------------+-------------------+----------
  {16,25,3}  | {{{113,142},{1,147}}} | {}                | {}
  {16,25,23} | {}                    | {foobar,new_word} | {{elt2}}
@@ -148,7 +148,7 @@ SELECT a[1:3],
 SELECT b[1:1][2][2],
        d[1:1][2]
    FROM arrtest;
-           b           |       d
+           b           |       d       
 -----------------------+---------------
  {{{113,142},{1,147}}} | {}
  {}                    | {{elt1,elt2}}
@@ -157,7 +157,7 @@ SELECT b[1:1][2][2],
 
 INSERT INTO arrtest(a) VALUES('{1,null,3}');
 SELECT a FROM arrtest;
-       a
+       a       
 ---------------
  {16,25,3,4,5}
  {16,25,23}
@@ -167,7 +167,7 @@ SELECT a FROM arrtest;
 
 UPDATE arrtest SET a[4] = NULL WHERE a[2] IS NULL;
 SELECT a FROM arrtest WHERE a[2] IS NULL;
-        a
+        a        
 -----------------
  [4:4]={NULL}
  {1,NULL,3,NULL}
@@ -175,7 +175,7 @@ SELECT a FROM arrtest WHERE a[2] IS NULL;
 
 DELETE FROM arrtest WHERE a[2] IS NULL AND b IS NULL;
 SELECT a,b,c FROM arrtest;
-       a       |           b           |         c
+       a       |           b           |         c         
 ---------------+-----------------------+-------------------
  {16,25,3,4,5} | {{{113,142},{1,147}}} | {}
  {16,25,23}    | {{3,4},{4,5}}         | {foobar,new_word}
@@ -184,25 +184,25 @@ SELECT a,b,c FROM arrtest;
 
 -- test mixed slice/scalar subscripting
 select '{{1,2,3},{4,5,6},{7,8,9}}'::int[];
-           int4
+           int4            
 ---------------------------
  {{1,2,3},{4,5,6},{7,8,9}}
 (1 row)
 
 select ('{{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
-     int4
+     int4      
 ---------------
  {{1,2},{4,5}}
 (1 row)
 
 select '[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[];
-                 int4
+                 int4                 
 --------------------------------------
  [0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}
 (1 row)
 
 select ('[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
-     int4
+     int4      
 ---------------
  {{5,6},{8,9}}
 (1 row)
@@ -215,21 +215,21 @@ SELECT ('{}'::int[])[1][2][3][4][5][6][7];
 ERROR:  number of array dimensions (7) exceeds the maximum allowed (6)
 -- NULL index yields NULL when selecting
 SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL][1];
- int4
+ int4 
 ------
-
+     
 (1 row)
 
 SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL:1][1];
- int4
+ int4 
 ------
-
+ 
 (1 row)
 
 SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][1:NULL][1];
- int4
+ int4 
 ------
-
+ 
 (1 row)
 
 -- NULL index in assignment is an error
@@ -258,28 +258,28 @@ CREATE TEMP TABLE arrtest_s (
 INSERT INTO arrtest_s VALUES ('{1,2,3,4,5}', '{{1,2,3}, {4,5,6}, {7,8,9}}');
 INSERT INTO arrtest_s VALUES ('[0:4]={1,2,3,4,5}', '[0:2][0:2]={{1,2,3}, {4,5,6}, {7,8,9}}');
 SELECT * FROM arrtest_s;
-         a         |                  b
+         a         |                  b                   
 -------------------+--------------------------------------
  {1,2,3,4,5}       | {{1,2,3},{4,5,6},{7,8,9}}
  [0:4]={1,2,3,4,5} | [0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}
 (2 rows)
 
 SELECT a[:3], b[:2][:2] FROM arrtest_s;
-     a     |             b
+     a     |             b             
 -----------+---------------------------
  {1,2,3}   | {{1,2},{4,5}}
  {1,2,3,4} | {{1,2,3},{4,5,6},{7,8,9}}
 (2 rows)
 
 SELECT a[2:], b[2:][2:] FROM arrtest_s;
-     a     |       b
+     a     |       b       
 -----------+---------------
  {2,3,4,5} | {{5,6},{8,9}}
  {3,4,5}   | {{9}}
 (2 rows)
 
 SELECT a[:], b[:] FROM arrtest_s;
-      a      |             b
+      a      |             b             
 -------------+---------------------------
  {1,2,3,4,5} | {{1,2,3},{4,5,6},{7,8,9}}
  {1,2,3,4,5} | {{1,2,3},{4,5,6},{7,8,9}}
@@ -289,7 +289,7 @@ SELECT a[:], b[:] FROM arrtest_s;
 UPDATE arrtest_s SET a[:3] = '{11, 12, 13}', b[:2][:2] = '{{11,12}, {14,15}}'
   WHERE array_lower(a,1) = 1;
 SELECT * FROM arrtest_s;
-         a         |                  b
+         a         |                  b                   
 -------------------+--------------------------------------
  [0:4]={1,2,3,4,5} | [0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}
  {11,12,13,4,5}    | {{11,12,3},{14,15,6},{7,8,9}}
@@ -297,7 +297,7 @@ SELECT * FROM arrtest_s;
 
 UPDATE arrtest_s SET a[3:] = '{23, 24, 25}', b[2:][2:] = '{{25,26}, {28,29}}';
 SELECT * FROM arrtest_s;
-          a          |                   b
+          a          |                   b                   
 ---------------------+---------------------------------------
  [0:4]={1,2,3,23,24} | [0:2][0:2]={{1,2,3},{4,5,6},{7,8,25}}
  {11,12,23,24,25}    | {{11,12,3},{14,25,26},{7,28,29}}
@@ -305,7 +305,7 @@ SELECT * FROM arrtest_s;
 
 UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';
 SELECT * FROM arrtest_s;
-           a            |                   b
+           a            |                   b                   
 ------------------------+---------------------------------------
  [0:4]={11,12,13,14,15} | [0:2][0:2]={{1,2,3},{4,5,6},{7,8,25}}
  {11,12,13,14,15}       | {{11,12,3},{14,25,26},{7,28,29}}
@@ -335,27 +335,27 @@ SELECT f1[:] FROM POINT_TBL;
 ERROR:  slices of fixed-length arrays not implemented
 -- subscript assignments to fixed-width result in NULL if previous value is NULL
 UPDATE point_tbl SET f1[0] = 10 WHERE f1 IS NULL RETURNING *;
- f1
+ f1 
 ----
-
+ 
 (1 row)
 
 INSERT INTO point_tbl(f1[0]) VALUES(0) RETURNING *;
- f1
+ f1 
 ----
-
+ 
 (1 row)
 
 -- NULL assignments get ignored
 UPDATE point_tbl SET f1[0] = NULL WHERE f1::text = '(10,10)'::point::text RETURNING *;
-   f1
+   f1    
 ---------
  (10,10)
 (1 row)
 
 -- but non-NULL subscript assignments work
 UPDATE point_tbl SET f1[0] = -10, f1[1] = -10 WHERE f1::text = '(10,10)'::point::text RETURNING *;
-    f1
+    f1     
 -----------
  (-10,-10)
 (1 row)
@@ -372,91 +372,91 @@ RESET search_path; -- YB note: reset the changes from above.
 CREATE TEMP TABLE arrtest1 (i int[], t text[]);
 insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
 select * from arrtest1;
-      i       |          t
+      i       |          t          
 --------------+---------------------
  {1,2,NULL,4} | {one,two,NULL,four}
 (1 row)
 
 update arrtest1 set i[2] = 22, t[2] = 'twenty-two';
 select * from arrtest1;
-       i       |             t
+       i       |             t              
 ---------------+----------------------------
  {1,22,NULL,4} | {one,twenty-two,NULL,four}
 (1 row)
 
 update arrtest1 set i[5] = 5, t[5] = 'five';
 select * from arrtest1;
-        i        |                t
+        i        |                t                
 -----------------+---------------------------------
  {1,22,NULL,4,5} | {one,twenty-two,NULL,four,five}
 (1 row)
 
 update arrtest1 set i[8] = 8, t[8] = 'eight';
 select * from arrtest1;
-              i              |                        t
+              i              |                        t                        
 -----------------------------+-------------------------------------------------
  {1,22,NULL,4,5,NULL,NULL,8} | {one,twenty-two,NULL,four,five,NULL,NULL,eight}
 (1 row)
 
 update arrtest1 set i[0] = 0, t[0] = 'zero';
 select * from arrtest1;
-                  i                  |                             t
+                  i                  |                             t                              
 -------------------------------------+------------------------------------------------------------
  [0:8]={0,1,22,NULL,4,5,NULL,NULL,8} | [0:8]={zero,one,twenty-two,NULL,four,five,NULL,NULL,eight}
 (1 row)
 
 update arrtest1 set i[-3] = -3, t[-3] = 'minus-three';
 select * from arrtest1;
-                         i                         |                                         t
+                         i                         |                                         t                                         
 ---------------------------------------------------+-----------------------------------------------------------------------------------
  [-3:8]={-3,NULL,NULL,0,1,22,NULL,4,5,NULL,NULL,8} | [-3:8]={minus-three,NULL,NULL,zero,one,twenty-two,NULL,four,five,NULL,NULL,eight}
 (1 row)
 
 update arrtest1 set i[0:2] = array[10,11,12], t[0:2] = array['ten','eleven','twelve'];
 select * from arrtest1;
-                          i                          |                                        t
+                          i                          |                                        t                                        
 -----------------------------------------------------+---------------------------------------------------------------------------------
  [-3:8]={-3,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,8} | [-3:8]={minus-three,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,eight}
 (1 row)
 
 update arrtest1 set i[8:10] = array[18,null,20], t[8:10] = array['p18',null,'p20'];
 select * from arrtest1;
-                               i                               |                                            t
+                               i                               |                                            t                                            
 ---------------------------------------------------------------+-----------------------------------------------------------------------------------------
  [-3:10]={-3,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,18,NULL,20} | [-3:10]={minus-three,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,p18,NULL,p20}
 (1 row)
 
 update arrtest1 set i[11:12] = array[null,22], t[11:12] = array[null,'p22'];
 select * from arrtest1;
-                                   i                                   |                                                t
+                                   i                                   |                                                t                                                 
 -----------------------------------------------------------------------+--------------------------------------------------------------------------------------------------
  [-3:12]={-3,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,18,NULL,20,NULL,22} | [-3:12]={minus-three,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,p18,NULL,p20,NULL,p22}
 (1 row)
 
 update arrtest1 set i[15:16] = array[null,26], t[15:16] = array[null,'p26'];
 select * from arrtest1;
-                                            i                                            |                                                          t
+                                            i                                            |                                                          t                                                          
 -----------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------
  [-3:16]={-3,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,18,NULL,20,NULL,22,NULL,NULL,NULL,26} | [-3:16]={minus-three,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,p18,NULL,p20,NULL,p22,NULL,NULL,NULL,p26}
 (1 row)
 
 update arrtest1 set i[-5:-3] = array[-15,-14,-13], t[-5:-3] = array['m15','m14','m13'];
 select * from arrtest1;
-                                                i                                                 |                                                          t
+                                                i                                                 |                                                          t                                                          
 --------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------
  [-5:16]={-15,-14,-13,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,18,NULL,20,NULL,22,NULL,NULL,NULL,26} | [-5:16]={m15,m14,m13,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,p18,NULL,p20,NULL,p22,NULL,NULL,NULL,p26}
 (1 row)
 
 update arrtest1 set i[-7:-6] = array[-17,null], t[-7:-6] = array['m17',null];
 select * from arrtest1;
-                                                     i                                                     |                                                              t
+                                                     i                                                     |                                                              t                                                               
 -----------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------
  [-7:16]={-17,NULL,-15,-14,-13,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,18,NULL,20,NULL,22,NULL,NULL,NULL,26} | [-7:16]={m17,NULL,m15,m14,m13,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,p18,NULL,p20,NULL,p22,NULL,NULL,NULL,p26}
 (1 row)
 
 update arrtest1 set i[-12:-10] = array[-22,null,-20], t[-12:-10] = array['m22',null,'m20'];
 select * from arrtest1;
-                                                                 i                                                                 |                                                                          t
+                                                                 i                                                                 |                                                                          t                                                                           
 -----------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------
  [-12:16]={-22,NULL,-20,NULL,NULL,-17,NULL,-15,-14,-13,NULL,NULL,10,11,12,NULL,4,5,NULL,NULL,18,NULL,20,NULL,22,NULL,NULL,NULL,26} | [-12:16]={m22,NULL,m20,NULL,NULL,m17,NULL,m15,m14,m13,NULL,NULL,ten,eleven,twelve,NULL,four,five,NULL,NULL,p18,NULL,p20,NULL,p22,NULL,NULL,NULL,p26}
 (1 row)
@@ -464,14 +464,14 @@ select * from arrtest1;
 delete from arrtest1;
 insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
 select * from arrtest1;
-      i       |          t
+      i       |          t          
 --------------+---------------------
  {1,2,NULL,4} | {one,two,NULL,four}
 (1 row)
 
 update arrtest1 set i[0:5] = array[0,1,2,null,4,5], t[0:5] = array['z','p1','p2',null,'p4','p5'];
 select * from arrtest1;
-           i            |             t
+           i            |             t              
 ------------------------+----------------------------
  [0:5]={0,1,2,NULL,4,5} | [0:5]={z,p1,p2,NULL,p4,p5}
 (1 row)
@@ -513,81 +513,81 @@ insert into arrtest_i values(9,'cat2',30);
 SELECT t.f[1][3][1] AS "131", t.f[2][2][1] AS "221" FROM (
   SELECT ARRAY[[[111,112],[121,122],[131,132]],[[211,212],[221,122],[231,232]]] AS f
 ) AS t;
- 131 | 221
+ 131 | 221 
 -----+-----
  131 | 221
 (1 row)
 
 SELECT ARRAY[[[[[['hello'],['world']]]]]];
-           array
+           array           
 ---------------------------
  {{{{{{hello},{world}}}}}}
 (1 row)
 
 SELECT ARRAY[ARRAY['hello'],ARRAY['world']];
-       array
+       array       
 -------------------
  {{hello},{world}}
 (1 row)
 
 SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY";
-                     ARRAY
+                     ARRAY                     
 -----------------------------------------------
  {1.15,1.15,1.18,1.21,1.24,1.26,1.26,1.3,1.32}
 (1 row)
 
 -- with nulls
 SELECT '{1,null,3}'::int[];
-    int4
+    int4    
 ------------
  {1,NULL,3}
 (1 row)
 
 SELECT ARRAY[1,NULL,3];
-   array
+   array    
 ------------
  {1,NULL,3}
 (1 row)
 
 -- functions
 SELECT array_append(array[42], 6) AS "{42,6}";
- {42,6}
+ {42,6} 
 --------
  {42,6}
 (1 row)
 
 SELECT array_prepend(6, array[42]) AS "{6,42}";
- {6,42}
+ {6,42} 
 --------
  {6,42}
 (1 row)
 
 SELECT array_cat(ARRAY[1,2], ARRAY[3,4]) AS "{1,2,3,4}";
- {1,2,3,4}
+ {1,2,3,4} 
 -----------
  {1,2,3,4}
 (1 row)
 
 SELECT array_cat(ARRAY[1,2], ARRAY[[3,4],[5,6]]) AS "{{1,2},{3,4},{5,6}}";
- {{1,2},{3,4},{5,6}}
+ {{1,2},{3,4},{5,6}} 
 ---------------------
  {{1,2},{3,4},{5,6}}
 (1 row)
 
 SELECT array_cat(ARRAY[[3,4],[5,6]], ARRAY[1,2]) AS "{{3,4},{5,6},{1,2}}";
- {{3,4},{5,6},{1,2}}
+ {{3,4},{5,6},{1,2}} 
 ---------------------
  {{3,4},{5,6},{1,2}}
 (1 row)
 
 SELECT array_position(ARRAY[1,2,3,4,5], 4);
- array_position
+ array_position 
 ----------------
               4
 (1 row)
 
 SELECT array_position(ARRAY[5,3,4,2,1], 4);
- array_position
+ array_position 
 ----------------
               3
 (1 row)
@@ -595,49 +595,49 @@ SELECT array_position(ARRAY[5,3,4,2,1], 4);
 SELECT array_position(ARRAY[[1,2],[3,4]], 3);
 ERROR:  searching for elements in multidimensional arrays is not supported
 SELECT array_position(ARRAY['sun','mon','tue','wed','thu','fri','sat'], 'mon');
- array_position
+ array_position 
 ----------------
               2
 (1 row)
 
 SELECT array_position(ARRAY['sun','mon','tue','wed','thu','fri','sat'], 'sat');
- array_position
+ array_position 
 ----------------
               7
 (1 row)
 
 SELECT array_position(ARRAY['sun','mon','tue','wed','thu','fri','sat'], NULL);
- array_position
+ array_position 
 ----------------
-
+               
 (1 row)
 
 SELECT array_position(ARRAY['sun','mon','tue','wed','thu',NULL,'fri','sat'], NULL);
- array_position
+ array_position 
 ----------------
               6
 (1 row)
 
 SELECT array_position(ARRAY['sun','mon','tue','wed','thu',NULL,'fri','sat'], 'sat');
- array_position
+ array_position 
 ----------------
               8
 (1 row)
 
 SELECT array_positions(NULL, 10);
- array_positions
+ array_positions 
 -----------------
-
+ 
 (1 row)
 
 SELECT array_positions(NULL, NULL::int);
- array_positions
+ array_positions 
 -----------------
-
+ 
 (1 row)
 
 SELECT array_positions(ARRAY[1,2,3,4,5,6,1,2,3,4,5,6], 4);
- array_positions
+ array_positions 
 -----------------
  {4,10}
 (1 row)
@@ -645,13 +645,13 @@ SELECT array_positions(ARRAY[1,2,3,4,5,6,1,2,3,4,5,6], 4);
 SELECT array_positions(ARRAY[[1,2],[3,4]], 4);
 ERROR:  searching for elements in multidimensional arrays is not supported
 SELECT array_positions(ARRAY[1,2,3,4,5,6,1,2,3,4,5,6], NULL);
- array_positions
+ array_positions 
 -----------------
  {}
 (1 row)
 
 SELECT array_positions(ARRAY[1,2,3,NULL,5,6,1,2,3,NULL,5,6], NULL);
- array_positions
+ array_positions 
 -----------------
  {4,10}
 (1 row)
@@ -659,7 +659,7 @@ SELECT array_positions(ARRAY[1,2,3,NULL,5,6,1,2,3,NULL,5,6], NULL);
 SELECT array_length(array_positions(ARRAY(SELECT 'AAAAAAAAAAAAAAAAAAAAAAAAA'::text || i % 10
                                           FROM generate_series(1,100) g(i)),
                                   'AAAAAAAAAAAAAAAAAAAAAAAAA5'), 1);
- array_length
+ array_length 
 --------------
            10
 (1 row)
@@ -681,13 +681,13 @@ NOTICE:  2
 NOTICE:  4
 NOTICE:  7
 SELECT array_position('[2:4]={1,2,3}'::int[], 1);
- array_position
+ array_position 
 ----------------
               2
 (1 row)
 
 SELECT array_positions('[2:4]={1,2,3}'::int[], 1);
- array_positions
+ array_positions 
 -----------------
  {2}
 (1 row)
@@ -700,7 +700,7 @@ SELECT
     (ARRAY[(0, 0), (1, 1)]),
     (ARRAY[(1, 1)])
 ) AS f (ids);
- array_position | array_positions
+ array_position | array_positions 
 ----------------+-----------------
               2 | {2}
               1 | {1}
@@ -708,79 +708,79 @@ SELECT
 
 -- operators
 SELECT a FROM arrtest WHERE b = ARRAY[[[113,142],[1,147]]];
-       a
+       a       
 ---------------
  {16,25,3,4,5}
 (1 row)
 
 SELECT NOT ARRAY[1.1,1.2,1.3] = ARRAY[1.1,1.2,1.3] AS "FALSE";
- FALSE
+ FALSE 
 -------
  f
 (1 row)
 
 SELECT ARRAY[1,2] || 3 AS "{1,2,3}";
- {1,2,3}
+ {1,2,3} 
 ---------
  {1,2,3}
 (1 row)
 
 SELECT 0 || ARRAY[1,2] AS "{0,1,2}";
- {0,1,2}
+ {0,1,2} 
 ---------
  {0,1,2}
 (1 row)
 
 SELECT ARRAY[1,2] || ARRAY[3,4] AS "{1,2,3,4}";
- {1,2,3,4}
+ {1,2,3,4} 
 -----------
  {1,2,3,4}
 (1 row)
 
 SELECT ARRAY[[['hello','world']]] || ARRAY[[['happy','birthday']]] AS "ARRAY";
-                ARRAY
+                ARRAY                 
 --------------------------------------
  {{{hello,world}},{{happy,birthday}}}
 (1 row)
 
 SELECT ARRAY[[1,2],[3,4]] || ARRAY[5,6] AS "{{1,2},{3,4},{5,6}}";
- {{1,2},{3,4},{5,6}}
+ {{1,2},{3,4},{5,6}} 
 ---------------------
  {{1,2},{3,4},{5,6}}
 (1 row)
 
 SELECT ARRAY[0,0] || ARRAY[1,1] || ARRAY[2,2] AS "{0,0,1,1,2,2}";
- {0,0,1,1,2,2}
+ {0,0,1,1,2,2} 
 ---------------
  {0,0,1,1,2,2}
 (1 row)
 
 SELECT 0 || ARRAY[1,2] || 3 AS "{0,1,2,3}";
- {0,1,2,3}
+ {0,1,2,3} 
 -----------
  {0,1,2,3}
 (1 row)
 
 SELECT ARRAY[1.1] || ARRAY[2,3,4];
-  ?column?
+  ?column?   
 -------------
  {1.1,2,3,4}
 (1 row)
 
 SELECT array_agg(x) || array_agg(x) FROM (VALUES (ROW(1,2)), (ROW(3,4))) v(x);
-             ?column?
+             ?column?              
 -----------------------------------
  {"(1,2)","(3,4)","(1,2)","(3,4)"}
 (1 row)
 
 SELECT ROW(1,2) || array_agg(x) FROM (VALUES (ROW(3,4)), (ROW(5,6))) v(x);
-         ?column?
+         ?column?          
 ---------------------------
  {"(1,2)","(3,4)","(5,6)"}
 (1 row)
 
 SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
- seqno |                i                |                                                                 t
+ seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
      6 | {39,35,5,94,17,92,60,32}        | {AAAAAAAAAAAAAAA35875,AAAAAAAAAAAAAAAA23657}
     74 | {32}                            | {AAAAAAAAAAAAAAAA1729,AAAAAAAAAAAAA22860,AAAAAA99807,AAAAA17383,AAAAAAAAAAAAAAA67062,AAAAAAAAAAA15165,AAAAAAAAAAA50956}
@@ -791,7 +791,7 @@ SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
 (6 rows)
 
 SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
- seqno |                i                |                                                                 t
+ seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
      6 | {39,35,5,94,17,92,60,32}        | {AAAAAAAAAAAAAAA35875,AAAAAAAAAAAAAAAA23657}
     74 | {32}                            | {AAAAAAAAAAAAAAAA1729,AAAAAAAAAAAAA22860,AAAAAA99807,AAAAA17383,AAAAAAAAAAAAAAA67062,AAAAAAAAAAA15165,AAAAAAAAAAA50956}
@@ -802,7 +802,7 @@ SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
 (6 rows)
 
 SELECT * FROM array_op_test WHERE i @> '{17}' ORDER BY seqno;
- seqno |                i                |                                                                 t
+ seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
      6 | {39,35,5,94,17,92,60,32}        | {AAAAAAAAAAAAAAA35875,AAAAAAAAAAAAAAAA23657}
     12 | {17,99,18,52,91,72,0,43,96,23}  | {AAAAA33250,AAAAAAAAAAAAAAAAAAA85420,AAAAAAAAAAA33576}
@@ -815,7 +815,7 @@ SELECT * FROM array_op_test WHERE i @> '{17}' ORDER BY seqno;
 (8 rows)
 
 SELECT * FROM array_op_test WHERE i && '{17}' ORDER BY seqno;
- seqno |                i                |                                                                 t
+ seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
      6 | {39,35,5,94,17,92,60,32}        | {AAAAAAAAAAAAAAA35875,AAAAAAAAAAAAAAAA23657}
     12 | {17,99,18,52,91,72,0,43,96,23}  | {AAAAA33250,AAAAAAAAAAAAAAAAAAA85420,AAAAAAAAAAA33576}
@@ -828,7 +828,7 @@ SELECT * FROM array_op_test WHERE i && '{17}' ORDER BY seqno;
 (8 rows)
 
 SELECT * FROM array_op_test WHERE i @> '{32,17}' ORDER BY seqno;
- seqno |                i                |                                                                 t
+ seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
      6 | {39,35,5,94,17,92,60,32}        | {AAAAAAAAAAAAAAA35875,AAAAAAAAAAAAAAAA23657}
     77 | {97,15,32,17,55,59,18,37,50,39} | {AAAAAAAAAAAA67946,AAAAAA54032,AAAAAAAA81587,55847,AAAAAAAAAAAAAA28620,AAAAAAAAAAAAAAAAA43052,AAAAAA75463,AAAA49534,AAAAAAAA44066}
@@ -836,7 +836,7 @@ SELECT * FROM array_op_test WHERE i @> '{32,17}' ORDER BY seqno;
 (3 rows)
 
 SELECT * FROM array_op_test WHERE i && '{32,17}' ORDER BY seqno;
- seqno |                i                |                                                                 t
+ seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
      6 | {39,35,5,94,17,92,60,32}        | {AAAAAAAAAAAAAAA35875,AAAAAAAAAAAAAAAA23657}
     12 | {17,99,18,52,91,72,0,43,96,23}  | {AAAAA33250,AAAAAAAAAAAAAAAAAAA85420,AAAAAAAAAAA33576}
@@ -852,7 +852,7 @@ SELECT * FROM array_op_test WHERE i && '{32,17}' ORDER BY seqno;
 (11 rows)
 
 SELECT * FROM array_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
- seqno |       i       |                                                             t
+ seqno |       i       |                                                             t                                                              
 -------+---------------+----------------------------------------------------------------------------------------------------------------------------
     40 | {34}          | {AAAAAAAAAAAAAA10611,AAAAAAAAAAAAAAAAAAA1205,AAAAAAAAAAA50956,AAAAAAAAAAAAAAAA31334,AAAAA70466,AAAAAAAA81587,AAAAAAA74623}
     74 | {32}          | {AAAAAAAAAAAAAAAA1729,AAAAAAAAAAAAA22860,AAAAAA99807,AAAAA17383,AAAAAAAAAAAAAAA67062,AAAAAAAAAAA15165,AAAAAAAAAAA50956}
@@ -861,13 +861,13 @@ SELECT * FROM array_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
 (4 rows)
 
 SELECT * FROM array_op_test WHERE i = '{}' ORDER BY seqno;
- seqno | i  | t
+ seqno | i  | t  
 -------+----+----
    101 | {} | {}
 (1 row)
 
 SELECT * FROM array_op_test WHERE i @> '{}' ORDER BY seqno;
- seqno |                i                |                                                                                                       t
+ seqno |                i                |                                                                                                       t                                                                                                        
 -------+---------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
      1 | {92,75,71,52,64,83}             | {AAAAAAAA44066,AAAAAA1059,AAAAAAAAAAA176,AAAAAAA48038}
      2 | {3,6}                           | {AAAAAA98232,AAAAAAAA79710,AAAAAAAAAAAAAAAAA69675,AAAAAAAAAAAAAAAA55798,AAAAAAAAA12793}
@@ -974,40 +974,40 @@ SELECT * FROM array_op_test WHERE i @> '{}' ORDER BY seqno;
 (102 rows)
 
 SELECT * FROM array_op_test WHERE i && '{}' ORDER BY seqno;
- seqno | i | t
+ seqno | i | t 
 -------+---+---
 (0 rows)
 
 SELECT * FROM array_op_test WHERE i <@ '{}' ORDER BY seqno;
- seqno | i  | t
+ seqno | i  | t  
 -------+----+----
    101 | {} | {}
 (1 row)
 
 SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
- seqno |   i    |   t
+ seqno |   i    |   t    
 -------+--------+--------
    102 | {NULL} | {NULL}
 (1 row)
 
 SELECT * FROM array_op_test WHERE i @> '{NULL}' ORDER BY seqno;
- seqno | i | t
+ seqno | i | t 
 -------+---+---
 (0 rows)
 
 SELECT * FROM array_op_test WHERE i && '{NULL}' ORDER BY seqno;
- seqno | i | t
+ seqno | i | t 
 -------+---+---
 (0 rows)
 
 SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
- seqno | i  | t
+ seqno | i  | t  
 -------+----+----
    101 | {} | {}
 (1 row)
 
 SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
- seqno |           i           |                                                                     t
+ seqno |           i           |                                                                     t                                                                      
 -------+-----------------------+--------------------------------------------------------------------------------------------------------------------------------------------
     22 | {11,6,56,62,53,30}    | {AAAAAAAA72908}
     45 | {99,45}               | {AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}
@@ -1016,7 +1016,7 @@ SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
 (4 rows)
 
 SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
- seqno |           i           |                                                                     t
+ seqno |           i           |                                                                     t                                                                      
 -------+-----------------------+--------------------------------------------------------------------------------------------------------------------------------------------
     22 | {11,6,56,62,53,30}    | {AAAAAAAA72908}
     45 | {99,45}               | {AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}
@@ -1025,7 +1025,7 @@ SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
 (4 rows)
 
 SELECT * FROM array_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
- seqno |        i         |                                 t
+ seqno |        i         |                                 t                                  
 -------+------------------+--------------------------------------------------------------------
     15 | {17,14,16,63,67} | {AA6416,AAAAAAAAAA646,AAAAA95309}
     79 | {45}             | {AAAAAAAAAA646,AAAAAAAAAAAAAAAAAAA70415,AAAAAA43678,AAAAAAAA72908}
@@ -1033,7 +1033,7 @@ SELECT * FROM array_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
 (3 rows)
 
 SELECT * FROM array_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
- seqno |        i         |                                 t
+ seqno |        i         |                                 t                                  
 -------+------------------+--------------------------------------------------------------------
     15 | {17,14,16,63,67} | {AA6416,AAAAAAAAAA646,AAAAA95309}
     79 | {45}             | {AAAAAAAAAA646,AAAAAAAAAAAAAAAAAAA70415,AAAAAA43678,AAAAAAAA72908}
@@ -1041,13 +1041,13 @@ SELECT * FROM array_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
 (3 rows)
 
 SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
- seqno |  i   |                                 t
+ seqno |  i   |                                 t                                  
 -------+------+--------------------------------------------------------------------
     79 | {45} | {AAAAAAAAAA646,AAAAAAAAAAAAAAAAAAA70415,AAAAAA43678,AAAAAAAA72908}
 (1 row)
 
 SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
- seqno |           i           |                                                                     t
+ seqno |           i           |                                                                     t                                                                      
 -------+-----------------------+--------------------------------------------------------------------------------------------------------------------------------------------
     15 | {17,14,16,63,67}      | {AA6416,AAAAAAAAAA646,AAAAA95309}
     22 | {11,6,56,62,53,30}    | {AAAAAAAA72908}
@@ -1058,7 +1058,7 @@ SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY 
 (6 rows)
 
 SELECT * FROM array_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}' ORDER BY seqno;
- seqno |         i          |                                                     t
+ seqno |         i          |                                                     t                                                     
 -------+--------------------+-----------------------------------------------------------------------------------------------------------
     22 | {11,6,56,62,53,30} | {AAAAAAAA72908}
     45 | {99,45}            | {AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}
@@ -1066,13 +1066,13 @@ SELECT * FROM array_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,
 (3 rows)
 
 SELECT * FROM array_op_test WHERE t = '{}' ORDER BY seqno;
- seqno | i  | t
+ seqno | i  | t  
 -------+----+----
    101 | {} | {}
 (1 row)
 
 SELECT * FROM array_op_test WHERE t @> '{}' ORDER BY seqno;
- seqno |                i                |                                                                                                       t
+ seqno |                i                |                                                                                                       t                                                                                                        
 -------+---------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
      1 | {92,75,71,52,64,83}             | {AAAAAAAA44066,AAAAAA1059,AAAAAAAAAAA176,AAAAAAA48038}
      2 | {3,6}                           | {AAAAAA98232,AAAAAAAA79710,AAAAAAAAAAAAAAAAA69675,AAAAAAAAAAAAAAAA55798,AAAAAAAAA12793}
@@ -1179,106 +1179,106 @@ SELECT * FROM array_op_test WHERE t @> '{}' ORDER BY seqno;
 (102 rows)
 
 SELECT * FROM array_op_test WHERE t && '{}' ORDER BY seqno;
- seqno | i | t
+ seqno | i | t 
 -------+---+---
 (0 rows)
 
 SELECT * FROM array_op_test WHERE t <@ '{}' ORDER BY seqno;
- seqno | i  | t
+ seqno | i  | t  
 -------+----+----
    101 | {} | {}
 (1 row)
 
 -- array casts
 SELECT ARRAY[1,2,3]::text[]::int[]::float8[] AS "{1,2,3}";
- {1,2,3}
+ {1,2,3} 
 ---------
  {1,2,3}
 (1 row)
 
 SELECT pg_typeof(ARRAY[1,2,3]::text[]::int[]::float8[]) AS "double precision[]";
- double precision[]
+ double precision[] 
 --------------------
  double precision[]
 (1 row)
 
 SELECT ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[] AS "{{a,bc},{def,hijk}}";
- {{a,bc},{def,hijk}}
+ {{a,bc},{def,hijk}} 
 ---------------------
  {{a,bc},{def,hijk}}
 (1 row)
 
 SELECT pg_typeof(ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[]) AS "character varying[]";
- character varying[]
+ character varying[] 
 ---------------------
  character varying[]
 (1 row)
 
 SELECT CAST(ARRAY[[[[[['a','bb','ccc']]]]]] as text[]) as "{{{{{{a,bb,ccc}}}}}}";
- {{{{{{a,bb,ccc}}}}}}
+ {{{{{{a,bb,ccc}}}}}} 
 ----------------------
  {{{{{{a,bb,ccc}}}}}}
 (1 row)
 
 SELECT NULL::text[]::int[] AS "NULL";
- NULL
+ NULL 
 ------
-
+ 
 (1 row)
 
 -- scalar op any/all (array)
 select 33 = any ('{1,2,3}');
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 33 = any ('{1,2,33}');
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select 33 = all ('{1,2,33}');
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 33 >= all ('{1,2,33}');
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- boundary cases
 select null::int >= all ('{1,2,33}');
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select null::int >= all ('{}');
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select null::int >= any ('{}');
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- cross-datatype
 select 33.4 = any (array[1,2,3]);
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 33.4 > all (array[1,2,3]);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -1294,58 +1294,58 @@ LINE 1: select 33 * any (44);
                   ^
 -- nulls
 select 33 = any (null::int[]);
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select null::int = any ('{1,2,3}');
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select 33 = any ('{1,null,3}');
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select 33 = any ('{1,null,33}');
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select 33 = all (null::int[]);
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select null::int = all ('{1,2,3}');
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 select 33 = all ('{1,null,3}');
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 33 = all ('{33,null,33}');
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 -- nulls later in the bitmap
 SELECT -1 != ALL(ARRAY(SELECT NULLIF(g.i, 900) FROM generate_series(1,1000) g(i)));
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 -- test indexes on arrays
@@ -1362,14 +1362,14 @@ insert into arr_tbl values ('{1,2,10}');
 set enable_seqscan to off;
 set enable_bitmapscan to off;
 select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}';
-    f1
+    f1    
 ----------
  {1,2,10}
  {1,5,3}
 (2 rows)
 
 select * from arr_tbl where f1 >= '{1,2,3}' and f1 < '{1,5,3}';
-    f1
+    f1    
 ----------
  {1,2,3}
  {1,2,10}
@@ -1381,7 +1381,7 @@ insert into arr_pk_tbl values (1, '{1,2,3}');
 insert into arr_pk_tbl values (1, '{3,4,5}') on conflict (pk)
   do update set f1[1] = excluded.f1[1], f1[3] = excluded.f1[3]
   returning pk, f1;
- pk |   f1
+ pk |   f1    
 ----+---------
   1 | {3,2,5}
 (1 row)
@@ -1391,7 +1391,7 @@ insert into arr_pk_tbl(pk, f1[1:2]) values (1, '{6,7,8}') on conflict (pk)
     f1[2] = excluded.f1[2],
     f1[3] = excluded.f1[3]
   returning pk, f1;
- pk |     f1
+ pk |     f1     
 ----+------------
   1 | {6,7,NULL}
 (1 row)
@@ -1402,49 +1402,49 @@ reset enable_seqscan;
 reset enable_bitmapscan;
 -- test [not] (like|ilike) (any|all) (...)
 select 'foo' like any (array['%a', '%o']); -- t
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select 'foo' like any (array['%a', '%b']); -- f
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 'foo' like all (array['f%', '%o']); -- t
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select 'foo' like all (array['f%', '%b']); -- f
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 'foo' not like any (array['%a', '%b']); -- t
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select 'foo' not like all (array['%a', '%o']); -- f
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 select 'foo' ilike any (array['%A', '%O']); -- t
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select 'foo' ilike all (array['F%', '%O']); -- t
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
@@ -1491,31 +1491,31 @@ HINT:  Explicitly cast to the desired type, for example ARRAY[]::integer[].
 -- none of the above should be accepted
 -- all of the following should be accepted
 select '{}'::text[];
- text
+ text 
 ------
  {}
 (1 row)
 
 select '{{{1,2,3,4},{2,3,4,5}},{{3,4,5,6},{4,5,6,7}}}'::text[];
-                     text
+                     text                      
 -----------------------------------------------
  {{{1,2,3,4},{2,3,4,5}},{{3,4,5,6},{4,5,6,7}}}
 (1 row)
 
 select '{0 second  ,0 second}'::interval[];
-   interval
+   interval    
 ---------------
  {"@ 0","@ 0"}
 (1 row)
 
 select '{ { "," } , { 3 } }'::text[];
-    text
+    text     
 -------------
  {{","},{3}}
 (1 row)
 
 select '  {   {  "  0 second  "   ,  0 second  }   }'::text[];
-             text
+             text              
 -------------------------------
  {{"  0 second  ","0 second"}}
 (1 row)
@@ -1524,19 +1524,19 @@ select '{
            0 second,
            @ 1 hour @ 42 minutes @ 20 seconds
          }'::interval[];
-              interval
+              interval              
 ------------------------------------
  {"@ 0","@ 1 hour 42 mins 20 secs"}
 (1 row)
 
 select array[]::text[];
- array
+ array 
 -------
  {}
 (1 row)
 
 select '[0:1]={1.1,2.2}'::float8[];
-     float8
+     float8      
 -----------------
  [0:1]={1.1,2.2}
 (1 row)
@@ -1549,7 +1549,7 @@ INSERT INTO arraggtest (f1, f2, f3) VALUES
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{1,2,3}','{{grey,red},{grey,blue}}','{1.6}');
 SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
-    max    |   min   |           max            |           min            |   max   |  min
+    max    |   min   |           max            |           min            |   max   |  min  
 -----------+---------+--------------------------+--------------------------+---------+-------
  {1,2,3,4} | {1,2,3} | {{grey,red},{grey,blue}} | {{grey,red},{blue,blue}} | {1.6,0} | {1.6}
 (1 row)
@@ -1557,7 +1557,7 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{3,3,2,4,5,6}','{{white,yellow},{pink,orange}}','{2.1,3.3,1.8,1.7,1.6}');
 SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
-      max      |   min   |              max               |           min            |          max          |  min
+      max      |   min   |              max               |           min            |          max          |  min  
 ---------------+---------+--------------------------------+--------------------------+-----------------------+-------
  {3,3,2,4,5,6} | {1,2,3} | {{white,yellow},{pink,orange}} | {{grey,red},{blue,blue}} | {2.1,3.3,1.8,1.7,1.6} | {1.6}
 (1 row)
@@ -1565,7 +1565,7 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{2}','{{black,red},{green,orange}}','{1.6,2.2,2.6,0.4}');
 SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
-      max      |   min   |              max               |             min              |          max          |  min
+      max      |   min   |              max               |             min              |          max          |  min  
 ---------------+---------+--------------------------------+------------------------------+-----------------------+-------
  {3,3,2,4,5,6} | {1,2,3} | {{white,yellow},{pink,orange}} | {{black,red},{green,orange}} | {2.1,3.3,1.8,1.7,1.6} | {1.6}
 (1 row)
@@ -1573,7 +1573,7 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{4,2,6,7,8,1}','{{red},{black},{purple},{blue},{blue}}',NULL);
 SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
-      max      |   min   |              max               |             min              |          max          |  min
+      max      |   min   |              max               |             min              |          max          |  min  
 ---------------+---------+--------------------------------+------------------------------+-----------------------+-------
  {4,2,6,7,8,1} | {1,2,3} | {{white,yellow},{pink,orange}} | {{black,red},{green,orange}} | {2.1,3.3,1.8,1.7,1.6} | {1.6}
 (1 row)
@@ -1581,7 +1581,7 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{}','{{pink,white,blue,red,grey,orange}}','{2.1,1.87,1.4,2.2}');
 SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
-      max      | min |              max               |             min              |          max          |  min
+      max      | min |              max               |             min              |          max          |  min  
 ---------------+-----+--------------------------------+------------------------------+-----------------------+-------
  {4,2,6,7,8,1} | {}  | {{white,yellow},{pink,orange}} | {{black,red},{green,orange}} | {2.1,3.3,1.8,1.7,1.6} | {1.6}
 (1 row)
@@ -1595,13 +1595,13 @@ insert into comptable
 -- check that implicitly named array type _comptype isn't a problem
 create type _comptype as enum('fooey');
 select * from comptable;
-   c1    |          c2
+   c1    |          c2           
 ---------+-----------------------
  (1,foo) | {"(2,bar)","(3,baz)"}
 (1 row)
 
 select c2[2].f2 from comptable;
- f2
+ f2  
 -----
  baz
 (1 row)
@@ -1619,7 +1619,7 @@ select $1[s1][s2] from generate_subscripts($1,1) g1(s1),
                    generate_subscripts($1,2) g2(s2);
 $$ language sql immutable;
 select * from unnest1(array[1,2,3]);
- unnest1
+ unnest1 
 ---------
        1
        2
@@ -1627,7 +1627,7 @@ select * from unnest1(array[1,2,3]);
 (3 rows)
 
 select * from unnest2(array[[1,2,3],[4,5,6]]);
- unnest2
+ unnest2 
 ---------
        1
        2
@@ -1640,72 +1640,72 @@ select * from unnest2(array[[1,2,3],[4,5,6]]);
 drop function unnest1(anyarray);
 drop function unnest2(anyarray);
 select array_fill(null::integer, array[3,3],array[2,2]);
-                           array_fill
+                           array_fill                            
 -----------------------------------------------------------------
  [2:4][2:4]={{NULL,NULL,NULL},{NULL,NULL,NULL},{NULL,NULL,NULL}}
 (1 row)
 
 select array_fill(null::integer, array[3,3]);
-                      array_fill
+                      array_fill                      
 ------------------------------------------------------
  {{NULL,NULL,NULL},{NULL,NULL,NULL},{NULL,NULL,NULL}}
 (1 row)
 
 select array_fill(null::text, array[3,3],array[2,2]);
-                           array_fill
+                           array_fill                            
 -----------------------------------------------------------------
  [2:4][2:4]={{NULL,NULL,NULL},{NULL,NULL,NULL},{NULL,NULL,NULL}}
 (1 row)
 
 select array_fill(null::text, array[3,3]);
-                      array_fill
+                      array_fill                      
 ------------------------------------------------------
  {{NULL,NULL,NULL},{NULL,NULL,NULL},{NULL,NULL,NULL}}
 (1 row)
 
 select array_fill(7, array[3,3],array[2,2]);
-              array_fill
+              array_fill              
 --------------------------------------
  [2:4][2:4]={{7,7,7},{7,7,7},{7,7,7}}
 (1 row)
 
 select array_fill(7, array[3,3]);
-        array_fill
+        array_fill         
 ---------------------------
  {{7,7,7},{7,7,7},{7,7,7}}
 (1 row)
 
 select array_fill('juhu'::text, array[3,3],array[2,2]);
-                           array_fill
+                           array_fill                            
 -----------------------------------------------------------------
  [2:4][2:4]={{juhu,juhu,juhu},{juhu,juhu,juhu},{juhu,juhu,juhu}}
 (1 row)
 
 select array_fill('juhu'::text, array[3,3]);
-                      array_fill
+                      array_fill                      
 ------------------------------------------------------
  {{juhu,juhu,juhu},{juhu,juhu,juhu},{juhu,juhu,juhu}}
 (1 row)
 
 select a, a = '{}' as is_eq, array_dims(a)
   from (select array_fill(42, array[0]) as a) ss;
- a  | is_eq | array_dims
+ a  | is_eq | array_dims 
 ----+-------+------------
- {} | t     |
+ {} | t     | 
 (1 row)
 
 select a, a = '{}' as is_eq, array_dims(a)
   from (select array_fill(42, '{}') as a) ss;
- a  | is_eq | array_dims
+ a  | is_eq | array_dims 
 ----+-------+------------
- {} | t     |
+ {} | t     | 
 (1 row)
 
 select a, a = '{}' as is_eq, array_dims(a)
   from (select array_fill(42, '{}', '{}') as a) ss;
- a  | is_eq | array_dims
+ a  | is_eq | array_dims 
 ----+-------+------------
- {} | t     |
+ {} | t     | 
 (1 row)
 
 -- raise exception
@@ -1725,91 +1725,91 @@ select array_fill(1, array[[1,2],[3,4]]);
 ERROR:  wrong number of array subscripts
 DETAIL:  Dimension array must be one dimensional.
 select string_to_array('1|2|3', '|');
- string_to_array
+ string_to_array 
 -----------------
  {1,2,3}
 (1 row)
 
 select string_to_array('1|2|3|', '|');
- string_to_array
+ string_to_array 
 -----------------
  {1,2,3,""}
 (1 row)
 
 select string_to_array('1||2|3||', '||');
- string_to_array
+ string_to_array 
 -----------------
  {1,2|3,""}
 (1 row)
 
 select string_to_array('1|2|3', '');
- string_to_array
+ string_to_array 
 -----------------
  {1|2|3}
 (1 row)
 
 select string_to_array('', '|');
- string_to_array
+ string_to_array 
 -----------------
  {}
 (1 row)
 
 select string_to_array('1|2|3', NULL);
- string_to_array
+ string_to_array 
 -----------------
  {1,|,2,|,3}
 (1 row)
 
 select string_to_array(NULL, '|') IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select string_to_array('abc', '');
- string_to_array
+ string_to_array 
 -----------------
  {abc}
 (1 row)
 
 select string_to_array('abc', '', 'abc');
- string_to_array
+ string_to_array 
 -----------------
  {NULL}
 (1 row)
 
 select string_to_array('abc', ',');
- string_to_array
+ string_to_array 
 -----------------
  {abc}
 (1 row)
 
 select string_to_array('abc', ',', 'abc');
- string_to_array
+ string_to_array 
 -----------------
  {NULL}
 (1 row)
 
 select string_to_array('1,2,3,4,,6', ',');
- string_to_array
+ string_to_array 
 -----------------
  {1,2,3,4,"",6}
 (1 row)
 
 select string_to_array('1,2,3,4,,6', ',', '');
- string_to_array
+ string_to_array  
 ------------------
  {1,2,3,4,NULL,6}
 (1 row)
 
 select string_to_array('1,2,3,4,*,6', ',', '*');
- string_to_array
+ string_to_array  
 ------------------
  {1,2,3,4,NULL,6}
 (1 row)
 
 select v, v is null as "is null" from string_to_table('1|2|3', '|') g(v);
- v | is null
+ v | is null 
 ---+---------
  1 | f
  2 | f
@@ -1817,7 +1817,7 @@ select v, v is null as "is null" from string_to_table('1|2|3', '|') g(v);
 (3 rows)
 
 select v, v is null as "is null" from string_to_table('1|2|3|', '|') g(v);
- v | is null
+ v | is null 
 ---+---------
  1 | f
  2 | f
@@ -1826,7 +1826,7 @@ select v, v is null as "is null" from string_to_table('1|2|3|', '|') g(v);
 (4 rows)
 
 select v, v is null as "is null" from string_to_table('1||2|3||', '||') g(v);
-  v  | is null
+  v  | is null 
 -----+---------
  1   | f
  2|3 | f
@@ -1834,18 +1834,18 @@ select v, v is null as "is null" from string_to_table('1||2|3||', '||') g(v);
 (3 rows)
 
 select v, v is null as "is null" from string_to_table('1|2|3', '') g(v);
-   v   | is null
+   v   | is null 
 -------+---------
  1|2|3 | f
 (1 row)
 
 select v, v is null as "is null" from string_to_table('', '|') g(v);
- v | is null
+ v | is null 
 ---+---------
 (0 rows)
 
 select v, v is null as "is null" from string_to_table('1|2|3', NULL) g(v);
- v | is null
+ v | is null 
 ---+---------
  1 | f
  | | f
@@ -1855,36 +1855,36 @@ select v, v is null as "is null" from string_to_table('1|2|3', NULL) g(v);
 (5 rows)
 
 select v, v is null as "is null" from string_to_table(NULL, '|') g(v);
- v | is null
+ v | is null 
 ---+---------
 (0 rows)
 
 select v, v is null as "is null" from string_to_table('abc', '') g(v);
-  v  | is null
+  v  | is null 
 -----+---------
  abc | f
 (1 row)
 
 select v, v is null as "is null" from string_to_table('abc', '', 'abc') g(v);
- v | is null
+ v | is null 
 ---+---------
    | t
 (1 row)
 
 select v, v is null as "is null" from string_to_table('abc', ',') g(v);
-  v  | is null
+  v  | is null 
 -----+---------
  abc | f
 (1 row)
 
 select v, v is null as "is null" from string_to_table('abc', ',', 'abc') g(v);
- v | is null
+ v | is null 
 ---+---------
    | t
 (1 row)
 
 select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',') g(v);
- v | is null
+ v | is null 
 ---+---------
  1 | f
  2 | f
@@ -1895,7 +1895,7 @@ select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',') g(v);
 (6 rows)
 
 select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',', '') g(v);
- v | is null
+ v | is null 
 ---+---------
  1 | f
  2 | f
@@ -1906,7 +1906,7 @@ select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',', '') g(v
 (6 rows)
 
 select v, v is null as "is null" from string_to_table('1,2,3,4,*,6', ',', '*') g(v);
- v | is null
+ v | is null 
 ---+---------
  1 | f
  2 | f
@@ -1917,155 +1917,155 @@ select v, v is null as "is null" from string_to_table('1,2,3,4,*,6', ',', '*') g
 (6 rows)
 
 select array_to_string(NULL::int4[], ',') IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select array_to_string('{}'::int4[], ',');
- array_to_string
+ array_to_string 
 -----------------
-
+ 
 (1 row)
 
 select array_to_string(array[1,2,3,4,NULL,6], ',');
- array_to_string
+ array_to_string 
 -----------------
  1,2,3,4,6
 (1 row)
 
 select array_to_string(array[1,2,3,4,NULL,6], ',', '*');
- array_to_string
+ array_to_string 
 -----------------
  1,2,3,4,*,6
 (1 row)
 
 select array_to_string(array[1,2,3,4,NULL,6], NULL);
- array_to_string
+ array_to_string 
 -----------------
-
+ 
 (1 row)
 
 select array_to_string(array[1,2,3,4,NULL,6], ',', NULL);
- array_to_string
+ array_to_string 
 -----------------
  1,2,3,4,6
 (1 row)
 
 select array_to_string(string_to_array('1|2|3', '|'), '|');
- array_to_string
+ array_to_string 
 -----------------
  1|2|3
 (1 row)
 
 select array_length(array[1,2,3], 1);
- array_length
+ array_length 
 --------------
             3
 (1 row)
 
 select array_length(array[[1,2,3], [4,5,6]], 0);
- array_length
+ array_length 
 --------------
-
+             
 (1 row)
 
 select array_length(array[[1,2,3], [4,5,6]], 1);
- array_length
+ array_length 
 --------------
             2
 (1 row)
 
 select array_length(array[[1,2,3], [4,5,6]], 2);
- array_length
+ array_length 
 --------------
             3
 (1 row)
 
 select array_length(array[[1,2,3], [4,5,6]], 3);
- array_length
+ array_length 
 --------------
-
+             
 (1 row)
 
 select cardinality(NULL::int[]);
- cardinality
+ cardinality 
 -------------
-
+            
 (1 row)
 
 select cardinality('{}'::int[]);
- cardinality
+ cardinality 
 -------------
            0
 (1 row)
 
 select cardinality(array[1,2,3]);
- cardinality
+ cardinality 
 -------------
            3
 (1 row)
 
 select cardinality('[2:4]={5,6,7}'::int[]);
- cardinality
+ cardinality 
 -------------
            3
 (1 row)
 
 select cardinality('{{1,2}}'::int[]);
- cardinality
+ cardinality 
 -------------
            2
 (1 row)
 
 select cardinality('{{1,2},{3,4},{5,6}}'::int[]);
- cardinality
+ cardinality 
 -------------
            6
 (1 row)
 
 select cardinality('{{{1,9},{5,6}},{{2,3},{3,4}}}'::int[]);
- cardinality
+ cardinality 
 -------------
            8
 (1 row)
 
 -- array_agg(anynonarray)
 select array_agg(unique1) from (select unique1 from tenk1 where unique1 < 15 order by unique1) ss;
-              array_agg
+              array_agg               
 --------------------------------------
  {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14}
 (1 row)
 
 select array_agg(ten) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
-            array_agg
+            array_agg            
 ---------------------------------
  {0,1,2,3,4,5,6,7,8,9,0,1,2,3,4}
 (1 row)
 
 select array_agg(nullif(ten, 4)) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
-               array_agg
+               array_agg               
 ---------------------------------------
  {0,1,2,3,NULL,5,6,7,8,9,0,1,2,3,NULL}
 (1 row)
 
 select array_agg(unique1) from tenk1 where unique1 < -15;
- array_agg
+ array_agg 
 -----------
-
+ 
 (1 row)
 
 -- array_agg(anyarray)
 select array_agg(ar)
   from (values ('{1,2}'::int[]), ('{3,4}'::int[])) v(ar);
-   array_agg
+   array_agg   
 ---------------
  {{1,2},{3,4}}
 (1 row)
 
 select array_agg(distinct ar order by ar desc)
   from (select array[i / 2] from generate_series(1,10) a(i)) b(ar);
-         array_agg
+         array_agg         
 ---------------------------
  {{5},{4},{3},{2},{1},{0}}
 (1 row)
@@ -2073,25 +2073,25 @@ select array_agg(distinct ar order by ar desc)
 select array_agg(ar)
   from (select array_agg(array[i, i+1, i-1])
         from generate_series(1,2) a(i)) b(ar);
-      array_agg
+      array_agg      
 ---------------------
  {{{1,2,0},{2,3,1}}}
 (1 row)
 
 select array_agg(array[i+1.2, i+1.3, i+1.4]) from generate_series(1,3) g(i);
-                  array_agg
+                  array_agg                  
 ---------------------------------------------
  {{2.2,2.3,2.4},{3.2,3.3,3.4},{4.2,4.3,4.4}}
 (1 row)
 
 select array_agg(array['Hello', i::text]) from generate_series(9,11) g(i);
-             array_agg
+             array_agg             
 -----------------------------------
  {{Hello,9},{Hello,10},{Hello,11}}
 (1 row)
 
 select array_agg(array[i, nullif(i, 3), i+1]) from generate_series(1,4) g(i);
-              array_agg
+              array_agg               
 --------------------------------------
  {{1,1,2},{2,2,3},{3,NULL,4},{4,4,5}}
 (1 row)
@@ -2105,7 +2105,7 @@ select array_agg(ar)
   from (values ('{1,2}'::int[]), ('{3}'::int[])) v(ar);
 ERROR:  cannot accumulate arrays of different dimensionality
 select unnest(array[1,2,3]);
- unnest
+ unnest 
 --------
       1
       2
@@ -2113,7 +2113,7 @@ select unnest(array[1,2,3]);
 (3 rows)
 
 select * from unnest(array[1,2,3]);
- unnest
+ unnest 
 --------
       1
       2
@@ -2121,7 +2121,7 @@ select * from unnest(array[1,2,3]);
 (3 rows)
 
 select unnest(array[1,2,3,4.5]::float8[]);
- unnest
+ unnest 
 --------
       1
       2
@@ -2130,7 +2130,7 @@ select unnest(array[1,2,3,4.5]::float8[]);
 (4 rows)
 
 select unnest(array[1,2,3,4.5]::numeric[]);
- unnest
+ unnest 
 --------
       1
       2
@@ -2139,68 +2139,68 @@ select unnest(array[1,2,3,4.5]::numeric[]);
 (4 rows)
 
 select unnest(array[1,2,3,null,4,null,null,5,6]);
- unnest
+ unnest 
 --------
       1
       2
       3
-
+       
       4
-
-
+       
+       
       5
       6
 (9 rows)
 
 select unnest(array[1,2,3,null,4,null,null,5,6]::text[]);
- unnest
+ unnest 
 --------
  1
  2
  3
-
+ 
  4
-
-
+ 
+ 
  5
  6
 (9 rows)
 
 select abs(unnest(array[1,2,null,-3]));
- abs
+ abs 
 -----
    1
    2
-
+    
    3
 (4 rows)
 
 select array_remove(array[1,2,2,3], 2);
- array_remove
+ array_remove 
 --------------
  {1,3}
 (1 row)
 
 select array_remove(array[1,2,2,3], 5);
- array_remove
+ array_remove 
 --------------
  {1,2,2,3}
 (1 row)
 
 select array_remove(array[1,NULL,NULL,3], NULL);
- array_remove
+ array_remove 
 --------------
  {1,3}
 (1 row)
 
 select array_remove(array['A','CC','D','C','RR'], 'RR');
- array_remove
+ array_remove 
 --------------
  {A,CC,D,C}
 (1 row)
 
 select array_remove(array[1.0, 2.1, 3.3], 1);
- array_remove
+ array_remove 
 --------------
  {2.1,3.3}
 (1 row)
@@ -2208,56 +2208,56 @@ select array_remove(array[1.0, 2.1, 3.3], 1);
 select array_remove('{{1,2,2},{1,4,3}}', 2); -- not allowed
 ERROR:  removing elements from multidimensional arrays is not supported
 select array_remove(array['X','X','X'], 'X') = '{}';
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 select array_replace(array[1,2,5,4],5,3);
- array_replace
+ array_replace 
 ---------------
  {1,2,3,4}
 (1 row)
 
 select array_replace(array[1,2,5,4],5,NULL);
- array_replace
+ array_replace 
 ---------------
  {1,2,NULL,4}
 (1 row)
 
 select array_replace(array[1,2,NULL,4,NULL],NULL,5);
- array_replace
+ array_replace 
 ---------------
  {1,2,5,4,5}
 (1 row)
 
 select array_replace(array['A','B','DD','B'],'B','CC');
- array_replace
+ array_replace 
 ---------------
  {A,CC,DD,CC}
 (1 row)
 
 select array_replace(array[1,NULL,3],NULL,NULL);
- array_replace
+ array_replace 
 ---------------
  {1,NULL,3}
 (1 row)
 
 select array_replace(array['AB',NULL,'CDE'],NULL,'12');
- array_replace
+ array_replace 
 ---------------
  {AB,12,CDE}
 (1 row)
 
 -- array(select array-value ...)
 select array(select array[i,i/2] from generate_series(1,5) i);
-              array
+              array              
 ---------------------------------
  {{1,0},{2,1},{3,1},{4,2},{5,2}}
 (1 row)
 
 select array(select array['Hello', i::text] from generate_series(9,11) i);
-               array
+               array               
 -----------------------------------
  {{Hello,9},{Hello,10},{Hello,11}}
 (1 row)
@@ -2325,7 +2325,7 @@ FROM (VALUES
   (10),
   (10.0000000000001)
 ) v(op);
-        op        | wb_n1 | wb_n2 | wb_n3 | wb_f1 | wb_f2 | wb_f3
+        op        | wb_n1 | wb_n2 | wb_n3 | wb_f1 | wb_f2 | wb_f3 
 ------------------+-------+-------+-------+-------+-------+-------
              -5.2 |     0 |     0 |     1 |     0 |     0 |     1
     -0.0000000001 |     0 |     0 |     2 |     0 |     0 |     2
@@ -2358,7 +2358,7 @@ FROM (VALUES
   (77::float8),
   ('NaN'::float8)
 ) v(op);
-  op  | wb
+  op  | wb 
 ------+----
  -5.2 |  0
     4 |  2
@@ -2371,7 +2371,7 @@ SELECT
     op,
     width_bucket(op, ARRAY[1, 3, 5, 10]) AS wb_1
 FROM generate_series(0,11) as op;
- op | wb_1
+ op | wb_1 
 ----+------
   0 |    0
   1 |    1
@@ -2389,20 +2389,20 @@ FROM generate_series(0,11) as op;
 
 SELECT width_bucket(now(),
                     array['yesterday', 'today', 'tomorrow']::timestamptz[]);
- width_bucket
+ width_bucket 
 --------------
             2
 (1 row)
 
 -- corner cases
 SELECT width_bucket(5, ARRAY[3]);
- width_bucket
+ width_bucket 
 --------------
             1
 (1 row)
 
 SELECT width_bucket(5, '{}');
- width_bucket
+ width_bucket 
 --------------
             0
 (1 row)
@@ -2425,7 +2425,7 @@ FROM
         ('[10:16]={1,2,3,4,5,6,7}'),
         ('[-15:-10]={1,2,3,4,5,6}'),
         ('{{1,10},{2,20},{3,30},{4,40}}')) v(arr);
-              arr              |   trim_array
+              arr              |   trim_array    
 -------------------------------+-----------------
  {1,2,3,4,5,6}                 | {1,2,3,4}
  {1,2}                         | {}

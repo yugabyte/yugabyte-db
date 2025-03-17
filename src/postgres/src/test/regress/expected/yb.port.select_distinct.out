@@ -5,7 +5,7 @@
 -- awk '{print $3;}' onek.data | sort -n | uniq
 --
 SELECT DISTINCT two FROM onek ORDER BY 1;
- two
+ two 
 -----
    0
    1
@@ -15,7 +15,7 @@ SELECT DISTINCT two FROM onek ORDER BY 1;
 -- awk '{print $5;}' onek.data | sort -n | uniq
 --
 SELECT DISTINCT ten FROM onek ORDER BY 1;
- ten
+ ten 
 -----
    0
    1
@@ -33,7 +33,7 @@ SELECT DISTINCT ten FROM onek ORDER BY 1;
 -- awk '{print $16;}' onek.data | sort -d | uniq
 --
 SELECT DISTINCT string4 FROM onek ORDER BY 1;
- string4
+ string4 
 ---------
  AAAAxx
  HHHHxx
@@ -48,7 +48,7 @@ SELECT DISTINCT string4 FROM onek ORDER BY 1;
 SELECT DISTINCT two, string4, ten
    FROM onek
    ORDER BY two using <, string4 using <, ten using <;
- two | string4 | ten
+ two | string4 | ten 
 -----+---------+-----
    0 | AAAAxx  |   0
    0 | AAAAxx  |   2
@@ -101,7 +101,7 @@ SELECT DISTINCT two, string4, ten
 -- TODO(#1129): add missing rows 23, 60 when inheritance is supported.
 --
 SELECT DISTINCT p.age FROM person* p ORDER BY age using >;
- age
+ age 
 -----
   98
   88
@@ -129,7 +129,7 @@ SELECT DISTINCT p.age FROM person* p ORDER BY age using >;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT count(*) FROM
   (SELECT DISTINCT two, four, two FROM tenk1) ss;
-                       QUERY PLAN
+                       QUERY PLAN                       
 --------------------------------------------------------
  Aggregate
    Output: count(*)
@@ -142,7 +142,7 @@ SELECT count(*) FROM
 
 SELECT count(*) FROM
   (SELECT DISTINCT two, four, two FROM tenk1) ss;
- count
+ count 
 -------
      4
 (1 row)
@@ -158,7 +158,7 @@ INSERT INTO DISTTABLE VALUES(3);
 INSERT INTO DISTTABLE VALUES(NULL);
 -- basic cases
 SELECT f1, f1 IS DISTINCT FROM 2 as "not 2" FROM disttable;
- f1 | not 2
+ f1 | not 2 
 ----+-------
   1 | t
   2 | f
@@ -167,7 +167,7 @@ SELECT f1, f1 IS DISTINCT FROM 2 as "not 2" FROM disttable;
 (4 rows)
 
 SELECT f1, f1 IS DISTINCT FROM NULL as "not null" FROM disttable;
- f1 | not null
+ f1 | not null 
 ----+----------
   1 | t
   2 | t
@@ -176,7 +176,7 @@ SELECT f1, f1 IS DISTINCT FROM NULL as "not null" FROM disttable;
 (4 rows)
 
 SELECT f1, f1 IS DISTINCT FROM f1 as "false" FROM disttable;
- f1 | false
+ f1 | false 
 ----+-------
   1 | f
   2 | f
@@ -185,7 +185,7 @@ SELECT f1, f1 IS DISTINCT FROM f1 as "false" FROM disttable;
 (4 rows)
 
 SELECT f1, f1 IS DISTINCT FROM f1+1 as "not null" FROM disttable;
- f1 | not null
+ f1 | not null 
 ----+----------
   1 | t
   2 | t
@@ -195,50 +195,51 @@ SELECT f1, f1 IS DISTINCT FROM f1+1 as "not null" FROM disttable;
 
 -- check that optimizer constant-folds it properly
 SELECT 1 IS DISTINCT FROM 2 as "yes";
- yes
+ yes 
 -----
  t
 (1 row)
 
 SELECT 2 IS DISTINCT FROM 2 as "no";
- no
+ no 
 ----
  f
 (1 row)
 
 SELECT 2 IS DISTINCT FROM null as "yes";
- yes
+ yes 
 -----
  t
 (1 row)
 
 SELECT null IS DISTINCT FROM null as "no";
- no
+ no 
 ----
  f
 (1 row)
 
 -- negated form
 SELECT 1 IS NOT DISTINCT FROM 2 as "no";
- no
+ no 
 ----
  f
 (1 row)
 
 SELECT 2 IS NOT DISTINCT FROM 2 as "yes";
- yes
+ yes 
 -----
  t
 (1 row)
 
 SELECT 2 IS NOT DISTINCT FROM null as "no";
- no
+ no 
 ----
  f
 (1 row)
 
 SELECT null IS NOT DISTINCT FROM null as "yes";
- yes
+ yes 
 -----
  t
 (1 row)
+

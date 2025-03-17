@@ -117,10 +117,9 @@ export default class DiskUsagePanel extends Component {
               {space.used && (
                 <>
                   <span className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}>
-                    {(isKubernetes && useK8CustomResources) ||
-                      (isDedicatedNodes && (
-                        <span className={'metric-left-subtitle__label'}>{NodeType.TServer}</span>
-                      ))}
+                    {((isKubernetes && useK8CustomResources) || isDedicatedNodes) && (
+                      <span className={'metric-left-subtitle__label'}>{NodeType.TServer}</span>
+                    )}
                     {(value * 100).toFixed(1)}%
                   </span>
                 </>

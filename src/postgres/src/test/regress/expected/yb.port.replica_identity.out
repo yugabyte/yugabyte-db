@@ -10,20 +10,20 @@ CREATE TABLE test_replica_identity (
 CREATE INDEX test_replica_identity_keyab ON test_replica_identity (keya, keyb);
 -- default is 'c' (CHANGE) for user created tables
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
- relreplident
+ relreplident 
 --------------
  c
 (1 row)
 
 -- but 'none' for system tables
 SELECT relreplident FROM pg_class WHERE oid = 'pg_class'::regclass;
- relreplident
+ relreplident 
 --------------
  n
 (1 row)
 
 SELECT relreplident FROM pg_class WHERE oid = 'pg_constraint'::regclass;
- relreplident
+ relreplident 
 --------------
  n
 (1 row)
@@ -37,7 +37,7 @@ LINE 1: ...LTER TABLE test_replica_identity REPLICA IDENTITY USING INDE...
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- YB Note: Since REPLICA IDENTITY mode INDEX is not supported yet, this will be 'c' (CHANGE)
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
- relreplident
+ relreplident 
 --------------
  c
 (1 row)
@@ -47,32 +47,32 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
 ----
 ALTER TABLE test_replica_identity REPLICA IDENTITY DEFAULT;
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
- relreplident
+ relreplident 
 --------------
  d
 (1 row)
 
 SELECT count(*) FROM pg_index WHERE indrelid = 'test_replica_identity'::regclass AND indisreplident;
- count
+ count 
 -------
      0
 (1 row)
 
 ALTER TABLE test_replica_identity REPLICA IDENTITY FULL;
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
- relreplident
+ relreplident 
 --------------
  f
 (1 row)
 
 \d+ test_replica_identity
                                                 Table "public.test_replica_identity"
- Column |  Type   | Collation | Nullable |                      Default                      | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable |                      Default                      | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------------------------------------------------+----------+--------------+-------------
- id     | integer |           | not null | nextval('test_replica_identity_id_seq'::regclass) | plain    |              |
- keya   | text    |           | not null |                                                   | extended |              |
- keyb   | text    |           | not null |                                                   | extended |              |
- nonkey | text    |           |          |                                                   | extended |              |
+ id     | integer |           | not null | nextval('test_replica_identity_id_seq'::regclass) | plain    |              | 
+ keya   | text    |           | not null |                                                   | extended |              | 
+ keyb   | text    |           | not null |                                                   | extended |              | 
+ nonkey | text    |           |          |                                                   | extended |              | 
 Indexes:
     "test_replica_identity_pkey" PRIMARY KEY, lsm (id HASH)
     "test_replica_identity_keyab" lsm (keya HASH, keyb ASC)
@@ -81,7 +81,7 @@ Replica Identity: FULL
 
 ALTER TABLE test_replica_identity REPLICA IDENTITY NOTHING;
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
- relreplident
+ relreplident 
 --------------
  n
 (1 row)

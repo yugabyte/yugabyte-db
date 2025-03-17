@@ -458,6 +458,8 @@ create schema alter2;
 
 create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
 
+create type alter1.ctype as (f1 int, f2 text);
+
 create text search parser alter1.prs(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
 create text search configuration alter1.cfg(parser = alter1.prs);
 
@@ -465,6 +467,8 @@ alter table alter1.t1 set schema alter1; -- no-op, same schema
 alter table alter1.t1 set schema alter2;
 alter text search parser alter1.prs set schema alter2;
 alter text search configuration alter1.cfg set schema alter2;
+alter type alter1.ctype set schema alter1; -- no-op, same schema
+alter type alter1.ctype set schema alter2;
 
 -- clean up
 drop schema alter2 cascade;

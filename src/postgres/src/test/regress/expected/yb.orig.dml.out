@@ -7,7 +7,7 @@
 -- get constant-folded and is evaluated in its own Sub Plan.
 CREATE TABLE GH_22967 (k INT4 PRIMARY KEY);
 EXPLAIN (COSTS OFF) INSERT INTO GH_22967 VALUES ((EXISTS(SELECT 1) in (SELECT true))::INT4), (-10);
-           QUERY PLAN
+           QUERY PLAN            
 ---------------------------------
  Insert on gh_22967
    InitPlan 1 (returns $0)
@@ -60,7 +60,7 @@ INSERT INTO orders_cascade (order_date, amount, customer_id) VALUES
 ('2023-10-02', 450.50, 2);
 DELETE FROM customers WHERE customer_id = 2;
 SELECT * FROM orders_cascade;
- order_id | order_date | amount | customer_id
+ order_id | order_date | amount | customer_id 
 ----------+------------+--------+-------------
         1 | 10-01-2023 | 250.00 |           1
 (1 row)

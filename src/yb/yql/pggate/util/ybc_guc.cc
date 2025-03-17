@@ -37,6 +37,8 @@ bool yb_pushdown_is_not_null = true;
 
 bool yb_enable_pg_locks = true;
 
+bool yb_pg_locks_integrate_advisory_locks = true;
+
 bool yb_run_with_explain_analyze = false;
 
 bool yb_enable_add_column_missing_default = true;
@@ -106,3 +108,7 @@ int yb_major_version_upgrade_compatibility = 0;
 // Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
 // progress.
 bool yb_upgrade_to_pg15_completed = true;
+
+bool yb_disable_auto_analyze = false;
+
+bool yb_extension_upgrade = false;

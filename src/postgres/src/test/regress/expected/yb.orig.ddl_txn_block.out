@@ -1,0 +1,150 @@
+CREATE TABLE test1 (id int PRIMARY KEY);
+-- Test rollback of DDL+DML transaction block.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test2 (id int);
+INSERT INTO test1 VALUES (2);
+ROLLBACK;
+-- No rows in test1.
+SELECT * FROM test1;
+ id 
+----
+(0 rows)
+
+-- test2 does not exist.
+SELECT * FROM test2;
+ERROR:  relation "test2" does not exist
+LINE 1: SELECT * FROM test2;
+                      ^
+-- Test commit of DDL+DML transaction block.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test2 (id int);
+INSERT INTO test1 VALUES (2);
+COMMIT;
+SELECT * FROM test1;
+ id 
+----
+  2
+(1 row)
+
+SELECT * FROM test2;
+ id 
+----
+(0 rows)
+
+-- Test rollback of a block with multiple DDLs
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test3 (id int);
+CREATE TABLE test4 (id int);
+ALTER TABLE test1 ADD COLUMN value text;
+INSERT INTO test1 VALUES (3, 'text');
+ROLLBACK;
+SELECT * FROM test3;
+ERROR:  relation "test3" does not exist
+LINE 1: SELECT * FROM test3;
+                      ^
+SELECT * FROM test4;
+ERROR:  relation "test4" does not exist
+LINE 1: SELECT * FROM test4;
+                      ^
+-- TODO(#23825): The following select will retry after encountering a version
+-- mismatch error, and it will result in double output for now. This is a known
+-- issue.
+SELECT * FROM test1;
+ id 
+----
+(0 rows)
+
+ id 
+----
+  2
+(1 row)
+
+-- Test commit of a block with multiple DDLs
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test3 (id int);
+CREATE TABLE test4 (id int);
+ALTER TABLE test1 ADD COLUMN value text;
+INSERT INTO test1 VALUES (3, 'text');
+COMMIT;
+SELECT * FROM test3;
+ id 
+----
+(0 rows)
+
+SELECT * FROM test4;
+ id 
+----
+(0 rows)
+
+SELECT * FROM test1;
+ id | value 
+----+-------
+  2 | 
+  3 | text
+(2 rows)
+
+-- Same test as above but the first statement is a DML
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test1 VALUES (5, 'text');
+CREATE TABLE test5 (id int);
+CREATE TABLE test6 (id int);
+ALTER TABLE test1 ADD COLUMN value1 text;
+INSERT INTO test1 VALUES (4, 'text', 'text2');
+ROLLBACK;
+SELECT * FROM test5;
+ERROR:  relation "test5" does not exist
+LINE 1: SELECT * FROM test5;
+                      ^
+SELECT * FROM test6;
+ERROR:  relation "test6" does not exist
+LINE 1: SELECT * FROM test6;
+                      ^
+-- TODO(#23825): The following select will retry after encountering a version
+-- mismatch error, and it will result in double output for now. This is a known
+-- issue.
+SELECT * FROM test1;
+ id | value 
+----+-------
+(0 rows)
+
+ id | value 
+----+-------
+  2 | 
+  3 | text
+(2 rows)
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test1 VALUES (5, 'text');
+CREATE TABLE test5 (id int);
+CREATE TABLE test6 (id int);
+ALTER TABLE test1 ADD COLUMN value1 text;
+INSERT INTO test1 VALUES (4, 'text', 'text2');
+COMMIT;
+SELECT * FROM test5;
+ id 
+----
+(0 rows)
+
+SELECT * FROM test6;
+ id 
+----
+(0 rows)
+
+SELECT * FROM test1;
+ id | value | value1 
+----+-------+--------
+  5 | text  | 
+  4 | text  | text2
+  2 |       | 
+  3 | text  | 
+(4 rows)
+
+CREATE INDEX ON test1(value);
+SELECT value FROM test1 WHERE value='text';
+ value 
+-------
+ text
+ text
+ text
+(3 rows)
+

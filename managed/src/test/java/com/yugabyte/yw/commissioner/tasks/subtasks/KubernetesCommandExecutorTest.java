@@ -59,6 +59,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
@@ -1401,7 +1402,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   private void testPodInfoMultiAZBase(boolean setNamespace) {
-    Region r1 = Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
+    Optional<Region> optional =
+        defaultProvider.getAllRegions().stream()
+            .filter(r -> r.getCode().equals("region-1"))
+            .findFirst();
+    Region r1 =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);

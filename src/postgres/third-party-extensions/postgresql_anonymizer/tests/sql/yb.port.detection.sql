@@ -54,6 +54,6 @@ ROLLBACK;
 */ -- YB
 
 DROP EXTENSION anon CASCADE; -- YB: workaround for lack of transactional DDL
-DROP TABLE customer CASCADE; -- YB: workaround for lack of transactional DDL 
-DROP TABLE vendor CASCADE; -- YB: workaround for lack of transactional DDL 
-DROP TABLE vendeur CASCADE; -- YB: workaround for lack of transactional DDL 
+DROP TABLE customer CASCADE; -- YB: workaround for lack of transactional DDL
+DROP TABLE vendor CASCADE; -- YB: workaround for lack of transactional DDL
+DROP TABLE vendeur CASCADE; -- YB: workaround for lack of transactional DDL

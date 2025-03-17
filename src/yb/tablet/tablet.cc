@@ -66,6 +66,7 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
@@ -77,7 +78,6 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/dockv/value_type.h"
 
@@ -1999,7 +1999,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
         table_info->schema().table_properties().is_ysql_catalog_table(),
         &subtransaction_metadata));
 
-    docdb::VectorIndexPtr vector_index;
+    docdb::DocVectorIndexPtr vector_index;
     TableId index_table_id;
     if (pgsql_read_request.has_index_request()) {
       index_table_id = pgsql_read_request.index_request().table_id();
@@ -2362,7 +2362,7 @@ Status Tablet::RemoveIntentsImpl(
 
 Status Tablet::RemoveAdvisoryLock(
       const TransactionId& transaction_id, const Slice& key,
-      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) {
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler& handler) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Transaction " << transaction_id
       << " is going to release lock "<< key.ToDebugString()
       << " with type " << yb::ToString(intent_types);
@@ -2390,7 +2390,7 @@ Status Tablet::RemoveAdvisoryLock(
   return Status::OK();
 }
 
-Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWriteHandler* handler) {
+Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWriteHandler& handler) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -2710,6 +2710,7 @@ Status Tablet::AddMultipleTables(
 }
 
 Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
+  RETURN_NOT_OK(vector_indexes_->Remove(table_id));
   metadata_->RemoveTable(table_id, op_id);
   RETURN_NOT_OK(metadata_->Flush());
   return Status::OK();
@@ -4548,8 +4549,7 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
       std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
-    std::function<void()> on_compaction_completion) {
+Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
   if (!admin_triggered_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
   }
@@ -4560,19 +4560,24 @@ Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return admin_full_compaction_task_pool_token_->SubmitFunc([this, on_compaction_completion]() {
-    TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
-    on_compaction_completion();
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
+    // TODO(vector_index): since full vector index compaction is not optimizaed and may take a
+    // significat amount of time, let's trigger it separately from regular manual compaction.
+    // This logic should be revised later.
+    if (options.vector_index_ids) {
+      TriggerVectorIndexCompactionSync(*options.vector_index_ids);
+    } else {
+      TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
+    }
+    if (options.compaction_completion_callback) {
+      options.compaction_completion_callback();
+    }
   });
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeeded() {
-  return TriggerAdminFullCompactionIfNeededHelper();
-}
-
-Status Tablet::TriggerAdminFullCompactionWithCallbackIfNeeded(
-    std::function<void()> on_compaction_completion) {
-  return TriggerAdminFullCompactionIfNeededHelper(on_compaction_completion);
+void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
+  tablet::VectorIndexList{ vector_indexes().Collect(vector_index_ids) }.Compact();
 }
 
 void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {

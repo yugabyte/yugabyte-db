@@ -64,10 +64,13 @@ class VectorIndexWriterIf {
   virtual Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
 
-  // Returns the number of reserved vectors
-  virtual size_t MaxVectors() const = 0;
+  // Returns current number of vectors.
+  virtual size_t Size() const = 0;
 
-  virtual Status Insert(VectorId vertex_id, const Vector& vector) = 0;
+  // Returns the number of reserved vectors
+  virtual size_t Capacity() const = 0;
+
+  virtual Status Insert(VectorId vector_id, const Vector& vector) = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

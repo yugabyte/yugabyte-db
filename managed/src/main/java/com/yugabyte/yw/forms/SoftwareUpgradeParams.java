@@ -10,21 +10,30 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = SoftwareUpgradeParams.Converter.class)
+@Slf4j
 public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
   public String ybSoftwareVersion = null;
@@ -141,15 +150,55 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     boolean isYsqlMajorVersionUpgrade =
         gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, ybSoftwareVersion);
 
-    if (isYsqlMajorVersionUpgrade
-        && currentIntent.enableYSQL
-        && Util.compareYBVersions(
-                currentVersion, "2024.2.1.0-b1", "2.25.0.0-b1", true /* suppressFormatError */)
-            < 0) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "YSQL major version upgrade is only supported from 2024.2.1.0-b1. Please upgrade to a"
-              + " version >= 2024.2.1.0-b1 before proceeding with the upgrade.");
+    if (isYsqlMajorVersionUpgrade && currentIntent.enableYSQL) {
+      if (Util.compareYBVersions(
+              currentVersion, "2024.2.1.0-b1", "2.25.0.0-b1", true /* suppressFormatError */)
+          < 0) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "YSQL major version upgrade is only supported from 2024.2.1.0-b1. Please upgrade to a"
+                + " version >= 2024.2.1.0-b1 before proceeding with the upgrade.");
+      }
+
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+          if (node.isMaster) {
+            validateYSQLHBAConfEntriesForYSQLMajorUpgrade(
+                universe, cluster, node, ServerType.MASTER);
+          }
+          if (node.isTserver) {
+            validateYSQLHBAConfEntriesForYSQLMajorUpgrade(
+                universe, cluster, node, ServerType.TSERVER);
+          }
+        }
+      }
+    }
+  }
+
+  private void validateYSQLHBAConfEntriesForYSQLMajorUpgrade(
+      Universe universe, Cluster cluster, NodeDetails node, ServerType serverType) {
+    Map<String, String> gflag =
+        GFlagsUtil.getGFlagsForNode(
+            node, serverType, cluster, universe.getUniverseDetails().clusters);
+    if (gflag.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+      String hbaConfValue = gflag.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+      if (StringUtils.isEmpty(hbaConfValue)) {
+        return;
+      }
+      String regex = "clientcert\\s*=\\s*(\\d+)";
+      Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+      Matcher matcher = pattern.matcher(hbaConfValue);
+      if (matcher.find()) {
+        String value = matcher.group(1);
+        if (value.equals("1")) {
+          throw new PlatformServiceException(
+              Status.BAD_REQUEST,
+              "YSQL major version upgrade is not supported when clientcert=1 is present in the"
+                  + " ysql_hba_conf_csv. Please update the clientcert=1 entry with equivalent PG-15"
+                  + " value with before proceeding with the upgrade. Update the value to"
+                  + " clientcert=verify-ca or clientcert=verify-full before proceeding.");
+        }
+      }
     }
   }
 

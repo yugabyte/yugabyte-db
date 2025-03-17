@@ -308,6 +308,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
         return Status::OK();
       },
+      .get_normal_oid_higher_than_any_used_normal_oid_func =
+          [](NamespaceId namespace_id) -> Result<uint32_t> { return 100'000; },
       .get_namespace_func =
           std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
@@ -336,6 +338,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
             }
             return table_designators;
           },
+      .is_automatic_mode_switchover_func = [](NamespaceId) { return false; },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();

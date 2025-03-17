@@ -63,7 +63,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
+  Status SetDdlStateInPlainTransaction();
   Status CommitPlainTransaction();
+  Status CommitPlainTransactionContainingDDL(uint32_t ddl_db_oid, bool ddl_is_silent_altering);
   Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
@@ -82,6 +84,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
   bool IsDdlMode() const { return ddl_state_.has_value(); }
+  bool IsDdlModeWithRegularTransactionBlock() const {
+    return ddl_state_.has_value() && ddl_state_->use_regular_transaction_block;
+  }
+  bool IsDdlModeWithSeparateTransaction() const {
+    return ddl_state_.has_value() && !ddl_state_->use_regular_transaction_block;
+  }
   std::optional<bool> GetDdlForceCatalogModification() const {
     return ddl_state_ ? std::optional(ddl_state_->force_catalog_modification) : std::nullopt;
   }
@@ -110,9 +118,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
+    bool use_regular_transaction_block = false;
 
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(has_docdb_schema_changes, force_catalog_modification);
+      return YB_STRUCT_TO_STRING(
+          has_docdb_schema_changes, force_catalog_modification, use_regular_transaction_block);
     }
   };
 
@@ -155,7 +165,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::string TxnStateDebugStr() const;
 
-  Status FinishPlainTransaction(Commit commit);
+  DdlMode GetDdlModeFromDdlState(
+    const std::optional<DdlState> ddl_state, const std::optional<DdlCommitInfo>& ddl_commit_info);
+
+  Status FinishPlainTransaction(Commit commit, const std::optional<DdlCommitInfo>& ddl_commit_info);
 
   void IncTxnSerialNo();
 

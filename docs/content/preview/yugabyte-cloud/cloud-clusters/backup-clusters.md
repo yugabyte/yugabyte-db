@@ -11,6 +11,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/backup-restore/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/back-up-restore-universes/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Aeon can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 
 {{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Aeon" >}}

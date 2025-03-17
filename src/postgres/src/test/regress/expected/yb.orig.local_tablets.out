@@ -9,8 +9,9 @@ SELECT
 FROM yb_local_tablets
 WHERE table_name = 'test_table'
 ORDER BY partition_key_start NULLS FIRST;
- table_name | namespace_name | table_type | ysql_schema_name | partition_key_start | partition_key_end
+ table_name | namespace_name | table_type | ysql_schema_name | partition_key_start | partition_key_end 
 ------------+----------------+------------+------------------+---------------------+-------------------
  test_table | yugabyte       | YSQL       | public           |                     | \x8000
- test_table | yugabyte       | YSQL       | public           | \x8000              |
+ test_table | yugabyte       | YSQL       | public           | \x8000              | 
 (2 rows)
+

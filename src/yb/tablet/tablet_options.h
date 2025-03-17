@@ -64,7 +64,10 @@ struct TabletOptions {
 };
 
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
-using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*()>;
+
+YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kInsert)(kBackfill));
+
+using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*(VectorIndexThreadPoolType)>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;

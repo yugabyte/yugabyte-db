@@ -27,7 +27,7 @@ set enable_bitmapscan to true;
 create index on ab (b ASC);
 explain (analyze, costs off, summary off, timing off)
 /*+ bitmapscan(ab) */ select * from ab where (ab.a = 1 AND ab.b = 1);
-                            QUERY PLAN
+                            QUERY PLAN                             
 -------------------------------------------------------------------
  YB Bitmap Table Scan on ab_a1_b1 ab (actual rows=1 loops=1)
    Storage Filter: (a = 1)
@@ -38,7 +38,7 @@ explain (analyze, costs off, summary off, timing off)
 -- all ab_a(1|2)_b(1|2) partitions
 explain (analyze, costs off, summary off, timing off)
 /*+ bitmapscan(ab) */ select * from ab where (ab.a = 1 AND ab.b = 1) OR (ab.a = 2 AND ab.b = 2);
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Append (actual rows=2 loops=1)
    ->  YB Bitmap Table Scan on ab_a1_b1 ab_1 (actual rows=1 loops=1)
@@ -74,7 +74,7 @@ explain (analyze, costs off, summary off, timing off)
 -- all ab_a1_* and ab_*_b1 tables
 explain (analyze, costs off, summary off, timing off)
 /*+ bitmapscan(ab) */ select * from ab where (ab.a = 1 OR ab.b = 1);
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Append (actual rows=5 loops=1)
    ->  YB Bitmap Table Scan on ab_a1_b1 ab_1 (actual rows=1 loops=1)

@@ -283,7 +283,7 @@ extern void RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel,
 									 Relation pk_rel);
 extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 										  TupleTableSlot *new_slot,
-										  EState *estate);
+										  EState *estate, bool is_deferred);
 
 /* result values for RI_FKey_trigger_type: */
 #define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */

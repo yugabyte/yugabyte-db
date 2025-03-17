@@ -1155,71 +1155,71 @@ insert into PSlot values ('PS.first.d6', 'PF1_1', '', 'WS.106.3b');
 update PSlot set backlink = 'WS.001.1a' where slotname = 'PS.base.a1';
 update PSlot set backlink = 'WS.001.1b' where slotname = 'PS.base.a3';
 select * from WSlot where roomno = '001' order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      | PS.base.a3
- WS.001.2a            | 001      |                      |
- WS.001.2b            | 001      |                      |
- WS.001.3a            | 001      |                      |
- WS.001.3b            | 001      |                      |
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      | PS.base.a3          
+ WS.001.2a            | 001      |                      |                     
+ WS.001.2b            | 001      |                      |                     
+ WS.001.3a            | 001      |                      |                     
+ WS.001.3b            | 001      |                      |                     
 (6 rows)
 
 select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      |
- PS.base.a3           | PF0_1  |                      | WS.001.1b
- PS.base.a4           | PF0_1  |                      |
- PS.base.a5           | PF0_1  |                      |
- PS.base.a6           | PF0_1  |                      |
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      |                     
+ PS.base.a3           | PF0_1  |                      | WS.001.1b           
+ PS.base.a4           | PF0_1  |                      |                     
+ PS.base.a5           | PF0_1  |                      |                     
+ PS.base.a6           | PF0_1  |                      |                     
 (6 rows)
 
 update PSlot set backlink = 'WS.001.2a' where slotname = 'PS.base.a3';
 select * from WSlot where roomno = '001' order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      |
- WS.001.2a            | 001      |                      | PS.base.a3
- WS.001.2b            | 001      |                      |
- WS.001.3a            | 001      |                      |
- WS.001.3b            | 001      |                      |
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      |                     
+ WS.001.2a            | 001      |                      | PS.base.a3          
+ WS.001.2b            | 001      |                      |                     
+ WS.001.3a            | 001      |                      |                     
+ WS.001.3b            | 001      |                      |                     
 (6 rows)
 
 select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      |
- PS.base.a3           | PF0_1  |                      | WS.001.2a
- PS.base.a4           | PF0_1  |                      |
- PS.base.a5           | PF0_1  |                      |
- PS.base.a6           | PF0_1  |                      |
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      |                     
+ PS.base.a3           | PF0_1  |                      | WS.001.2a           
+ PS.base.a4           | PF0_1  |                      |                     
+ PS.base.a5           | PF0_1  |                      |                     
+ PS.base.a6           | PF0_1  |                      |                     
 (6 rows)
 
 update PSlot set backlink = 'WS.001.1b' where slotname = 'PS.base.a2';
 select * from WSlot where roomno = '001' order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      | PS.base.a2
- WS.001.2a            | 001      |                      | PS.base.a3
- WS.001.2b            | 001      |                      |
- WS.001.3a            | 001      |                      |
- WS.001.3b            | 001      |                      |
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      | PS.base.a2          
+ WS.001.2a            | 001      |                      | PS.base.a3          
+ WS.001.2b            | 001      |                      |                     
+ WS.001.3a            | 001      |                      |                     
+ WS.001.3b            | 001      |                      |                     
 (6 rows)
 
 select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      | WS.001.1b
- PS.base.a3           | PF0_1  |                      | WS.001.2a
- PS.base.a4           | PF0_1  |                      |
- PS.base.a5           | PF0_1  |                      |
- PS.base.a6           | PF0_1  |                      |
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      | WS.001.1b           
+ PS.base.a3           | PF0_1  |                      | WS.001.2a           
+ PS.base.a4           | PF0_1  |                      |                     
+ PS.base.a5           | PF0_1  |                      |                     
+ PS.base.a6           | PF0_1  |                      |                     
 (6 rows)
 
 --
@@ -1230,71 +1230,71 @@ select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
 update WSlot set backlink = 'PS.base.a4' where slotname = 'WS.001.2b';
 update WSlot set backlink = 'PS.base.a6' where slotname = 'WS.001.3a';
 select * from WSlot where roomno = '001' order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      | PS.base.a2
- WS.001.2a            | 001      |                      | PS.base.a3
- WS.001.2b            | 001      |                      | PS.base.a4
- WS.001.3a            | 001      |                      | PS.base.a6
- WS.001.3b            | 001      |                      |
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      | PS.base.a2          
+ WS.001.2a            | 001      |                      | PS.base.a3          
+ WS.001.2b            | 001      |                      | PS.base.a4          
+ WS.001.3a            | 001      |                      | PS.base.a6          
+ WS.001.3b            | 001      |                      |                     
 (6 rows)
 
 select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      | WS.001.1b
- PS.base.a3           | PF0_1  |                      | WS.001.2a
- PS.base.a4           | PF0_1  |                      | WS.001.2b
- PS.base.a5           | PF0_1  |                      |
- PS.base.a6           | PF0_1  |                      | WS.001.3a
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      | WS.001.1b           
+ PS.base.a3           | PF0_1  |                      | WS.001.2a           
+ PS.base.a4           | PF0_1  |                      | WS.001.2b           
+ PS.base.a5           | PF0_1  |                      |                     
+ PS.base.a6           | PF0_1  |                      | WS.001.3a           
 (6 rows)
 
 update WSlot set backlink = 'PS.base.a6' where slotname = 'WS.001.3b';
 select * from WSlot where roomno = '001' order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      | PS.base.a2
- WS.001.2a            | 001      |                      | PS.base.a3
- WS.001.2b            | 001      |                      | PS.base.a4
- WS.001.3a            | 001      |                      |
- WS.001.3b            | 001      |                      | PS.base.a6
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      | PS.base.a2          
+ WS.001.2a            | 001      |                      | PS.base.a3          
+ WS.001.2b            | 001      |                      | PS.base.a4          
+ WS.001.3a            | 001      |                      |                     
+ WS.001.3b            | 001      |                      | PS.base.a6          
 (6 rows)
 
 select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      | WS.001.1b
- PS.base.a3           | PF0_1  |                      | WS.001.2a
- PS.base.a4           | PF0_1  |                      | WS.001.2b
- PS.base.a5           | PF0_1  |                      |
- PS.base.a6           | PF0_1  |                      | WS.001.3b
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      | WS.001.1b           
+ PS.base.a3           | PF0_1  |                      | WS.001.2a           
+ PS.base.a4           | PF0_1  |                      | WS.001.2b           
+ PS.base.a5           | PF0_1  |                      |                     
+ PS.base.a6           | PF0_1  |                      | WS.001.3b           
 (6 rows)
 
 update WSlot set backlink = 'PS.base.a5' where slotname = 'WS.001.3a';
 select * from WSlot where roomno = '001' order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      | PS.base.a2
- WS.001.2a            | 001      |                      | PS.base.a3
- WS.001.2b            | 001      |                      | PS.base.a4
- WS.001.3a            | 001      |                      | PS.base.a5
- WS.001.3b            | 001      |                      | PS.base.a6
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      | PS.base.a2          
+ WS.001.2a            | 001      |                      | PS.base.a3          
+ WS.001.2b            | 001      |                      | PS.base.a4          
+ WS.001.3a            | 001      |                      | PS.base.a5          
+ WS.001.3b            | 001      |                      | PS.base.a6          
 (6 rows)
 
 select * from PSlot where slotname ~ 'PS.base.a' order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      | WS.001.1b
- PS.base.a3           | PF0_1  |                      | WS.001.2a
- PS.base.a4           | PF0_1  |                      | WS.001.2b
- PS.base.a5           | PF0_1  |                      | WS.001.3a
- PS.base.a6           | PF0_1  |                      | WS.001.3b
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      | WS.001.1b           
+ PS.base.a3           | PF0_1  |                      | WS.001.2a           
+ PS.base.a4           | PF0_1  |                      | WS.001.2b           
+ PS.base.a5           | PF0_1  |                      | WS.001.3a           
+ PS.base.a6           | PF0_1  |                      | WS.001.3b           
 (6 rows)
 
 insert into PField values ('PF1_2', 'Phonelines first floor');
@@ -1315,121 +1315,121 @@ insert into PSlot values ('PS.first.tb6', 'PF1_2', '', '');
 --
 update PField set name = 'PF0_2' where name = 'PF0_X';
 select * from PSlot order by slotname;
-       slotname       | pfname |       slotlink       |       backlink
+       slotname       | pfname |       slotlink       |       backlink       
 ----------------------+--------+----------------------+----------------------
- PS.base.a1           | PF0_1  |                      | WS.001.1a
- PS.base.a2           | PF0_1  |                      | WS.001.1b
- PS.base.a3           | PF0_1  |                      | WS.001.2a
- PS.base.a4           | PF0_1  |                      | WS.001.2b
- PS.base.a5           | PF0_1  |                      | WS.001.3a
- PS.base.a6           | PF0_1  |                      | WS.001.3b
- PS.base.b1           | PF0_1  |                      | WS.002.1a
- PS.base.b2           | PF0_1  |                      | WS.002.1b
- PS.base.b3           | PF0_1  |                      | WS.002.2a
- PS.base.b4           | PF0_1  |                      | WS.002.2b
- PS.base.b5           | PF0_1  |                      | WS.002.3a
- PS.base.b6           | PF0_1  |                      | WS.002.3b
- PS.base.c1           | PF0_1  |                      | WS.003.1a
- PS.base.c2           | PF0_1  |                      | WS.003.1b
- PS.base.c3           | PF0_1  |                      | WS.003.2a
- PS.base.c4           | PF0_1  |                      | WS.003.2b
- PS.base.c5           | PF0_1  |                      | WS.003.3a
- PS.base.c6           | PF0_1  |                      | WS.003.3b
- PS.base.ta1          | PF0_2  |                      |
- PS.base.ta2          | PF0_2  |                      |
- PS.base.ta3          | PF0_2  |                      |
- PS.base.ta4          | PF0_2  |                      |
- PS.base.ta5          | PF0_2  |                      |
- PS.base.ta6          | PF0_2  |                      |
- PS.base.tb1          | PF0_2  |                      |
- PS.base.tb2          | PF0_2  |                      |
- PS.base.tb3          | PF0_2  |                      |
- PS.base.tb4          | PF0_2  |                      |
- PS.base.tb5          | PF0_2  |                      |
- PS.base.tb6          | PF0_2  |                      |
- PS.first.a1          | PF1_1  |                      | WS.101.1a
- PS.first.a2          | PF1_1  |                      | WS.101.1b
- PS.first.a3          | PF1_1  |                      | WS.101.2a
- PS.first.a4          | PF1_1  |                      | WS.101.2b
- PS.first.a5          | PF1_1  |                      | WS.101.3a
- PS.first.a6          | PF1_1  |                      | WS.101.3b
- PS.first.b1          | PF1_1  |                      | WS.102.1a
- PS.first.b2          | PF1_1  |                      | WS.102.1b
- PS.first.b3          | PF1_1  |                      | WS.102.2a
- PS.first.b4          | PF1_1  |                      | WS.102.2b
- PS.first.b5          | PF1_1  |                      | WS.102.3a
- PS.first.b6          | PF1_1  |                      | WS.102.3b
- PS.first.c1          | PF1_1  |                      | WS.105.1a
- PS.first.c2          | PF1_1  |                      | WS.105.1b
- PS.first.c3          | PF1_1  |                      | WS.105.2a
- PS.first.c4          | PF1_1  |                      | WS.105.2b
- PS.first.c5          | PF1_1  |                      | WS.105.3a
- PS.first.c6          | PF1_1  |                      | WS.105.3b
- PS.first.d1          | PF1_1  |                      | WS.106.1a
- PS.first.d2          | PF1_1  |                      | WS.106.1b
- PS.first.d3          | PF1_1  |                      | WS.106.2a
- PS.first.d4          | PF1_1  |                      | WS.106.2b
- PS.first.d5          | PF1_1  |                      | WS.106.3a
- PS.first.d6          | PF1_1  |                      | WS.106.3b
- PS.first.ta1         | PF1_2  |                      |
- PS.first.ta2         | PF1_2  |                      |
- PS.first.ta3         | PF1_2  |                      |
- PS.first.ta4         | PF1_2  |                      |
- PS.first.ta5         | PF1_2  |                      |
- PS.first.ta6         | PF1_2  |                      |
- PS.first.tb1         | PF1_2  |                      |
- PS.first.tb2         | PF1_2  |                      |
- PS.first.tb3         | PF1_2  |                      |
- PS.first.tb4         | PF1_2  |                      |
- PS.first.tb5         | PF1_2  |                      |
- PS.first.tb6         | PF1_2  |                      |
+ PS.base.a1           | PF0_1  |                      | WS.001.1a           
+ PS.base.a2           | PF0_1  |                      | WS.001.1b           
+ PS.base.a3           | PF0_1  |                      | WS.001.2a           
+ PS.base.a4           | PF0_1  |                      | WS.001.2b           
+ PS.base.a5           | PF0_1  |                      | WS.001.3a           
+ PS.base.a6           | PF0_1  |                      | WS.001.3b           
+ PS.base.b1           | PF0_1  |                      | WS.002.1a           
+ PS.base.b2           | PF0_1  |                      | WS.002.1b           
+ PS.base.b3           | PF0_1  |                      | WS.002.2a           
+ PS.base.b4           | PF0_1  |                      | WS.002.2b           
+ PS.base.b5           | PF0_1  |                      | WS.002.3a           
+ PS.base.b6           | PF0_1  |                      | WS.002.3b           
+ PS.base.c1           | PF0_1  |                      | WS.003.1a           
+ PS.base.c2           | PF0_1  |                      | WS.003.1b           
+ PS.base.c3           | PF0_1  |                      | WS.003.2a           
+ PS.base.c4           | PF0_1  |                      | WS.003.2b           
+ PS.base.c5           | PF0_1  |                      | WS.003.3a           
+ PS.base.c6           | PF0_1  |                      | WS.003.3b           
+ PS.base.ta1          | PF0_2  |                      |                     
+ PS.base.ta2          | PF0_2  |                      |                     
+ PS.base.ta3          | PF0_2  |                      |                     
+ PS.base.ta4          | PF0_2  |                      |                     
+ PS.base.ta5          | PF0_2  |                      |                     
+ PS.base.ta6          | PF0_2  |                      |                     
+ PS.base.tb1          | PF0_2  |                      |                     
+ PS.base.tb2          | PF0_2  |                      |                     
+ PS.base.tb3          | PF0_2  |                      |                     
+ PS.base.tb4          | PF0_2  |                      |                     
+ PS.base.tb5          | PF0_2  |                      |                     
+ PS.base.tb6          | PF0_2  |                      |                     
+ PS.first.a1          | PF1_1  |                      | WS.101.1a           
+ PS.first.a2          | PF1_1  |                      | WS.101.1b           
+ PS.first.a3          | PF1_1  |                      | WS.101.2a           
+ PS.first.a4          | PF1_1  |                      | WS.101.2b           
+ PS.first.a5          | PF1_1  |                      | WS.101.3a           
+ PS.first.a6          | PF1_1  |                      | WS.101.3b           
+ PS.first.b1          | PF1_1  |                      | WS.102.1a           
+ PS.first.b2          | PF1_1  |                      | WS.102.1b           
+ PS.first.b3          | PF1_1  |                      | WS.102.2a           
+ PS.first.b4          | PF1_1  |                      | WS.102.2b           
+ PS.first.b5          | PF1_1  |                      | WS.102.3a           
+ PS.first.b6          | PF1_1  |                      | WS.102.3b           
+ PS.first.c1          | PF1_1  |                      | WS.105.1a           
+ PS.first.c2          | PF1_1  |                      | WS.105.1b           
+ PS.first.c3          | PF1_1  |                      | WS.105.2a           
+ PS.first.c4          | PF1_1  |                      | WS.105.2b           
+ PS.first.c5          | PF1_1  |                      | WS.105.3a           
+ PS.first.c6          | PF1_1  |                      | WS.105.3b           
+ PS.first.d1          | PF1_1  |                      | WS.106.1a           
+ PS.first.d2          | PF1_1  |                      | WS.106.1b           
+ PS.first.d3          | PF1_1  |                      | WS.106.2a           
+ PS.first.d4          | PF1_1  |                      | WS.106.2b           
+ PS.first.d5          | PF1_1  |                      | WS.106.3a           
+ PS.first.d6          | PF1_1  |                      | WS.106.3b           
+ PS.first.ta1         | PF1_2  |                      |                     
+ PS.first.ta2         | PF1_2  |                      |                     
+ PS.first.ta3         | PF1_2  |                      |                     
+ PS.first.ta4         | PF1_2  |                      |                     
+ PS.first.ta5         | PF1_2  |                      |                     
+ PS.first.ta6         | PF1_2  |                      |                     
+ PS.first.tb1         | PF1_2  |                      |                     
+ PS.first.tb2         | PF1_2  |                      |                     
+ PS.first.tb3         | PF1_2  |                      |                     
+ PS.first.tb4         | PF1_2  |                      |                     
+ PS.first.tb5         | PF1_2  |                      |                     
+ PS.first.tb6         | PF1_2  |                      |                     
 (66 rows)
 
 select * from WSlot order by slotname;
-       slotname       |  roomno  |       slotlink       |       backlink
+       slotname       |  roomno  |       slotlink       |       backlink       
 ----------------------+----------+----------------------+----------------------
- WS.001.1a            | 001      |                      | PS.base.a1
- WS.001.1b            | 001      |                      | PS.base.a2
- WS.001.2a            | 001      |                      | PS.base.a3
- WS.001.2b            | 001      |                      | PS.base.a4
- WS.001.3a            | 001      |                      | PS.base.a5
- WS.001.3b            | 001      |                      | PS.base.a6
- WS.002.1a            | 002      |                      | PS.base.b1
- WS.002.1b            | 002      |                      | PS.base.b2
- WS.002.2a            | 002      |                      | PS.base.b3
- WS.002.2b            | 002      |                      | PS.base.b4
- WS.002.3a            | 002      |                      | PS.base.b5
- WS.002.3b            | 002      |                      | PS.base.b6
- WS.003.1a            | 003      |                      | PS.base.c1
- WS.003.1b            | 003      |                      | PS.base.c2
- WS.003.2a            | 003      |                      | PS.base.c3
- WS.003.2b            | 003      |                      | PS.base.c4
- WS.003.3a            | 003      |                      | PS.base.c5
- WS.003.3b            | 003      |                      | PS.base.c6
- WS.101.1a            | 101      |                      | PS.first.a1
- WS.101.1b            | 101      |                      | PS.first.a2
- WS.101.2a            | 101      |                      | PS.first.a3
- WS.101.2b            | 101      |                      | PS.first.a4
- WS.101.3a            | 101      |                      | PS.first.a5
- WS.101.3b            | 101      |                      | PS.first.a6
- WS.102.1a            | 102      |                      | PS.first.b1
- WS.102.1b            | 102      |                      | PS.first.b2
- WS.102.2a            | 102      |                      | PS.first.b3
- WS.102.2b            | 102      |                      | PS.first.b4
- WS.102.3a            | 102      |                      | PS.first.b5
- WS.102.3b            | 102      |                      | PS.first.b6
- WS.105.1a            | 105      |                      | PS.first.c1
- WS.105.1b            | 105      |                      | PS.first.c2
- WS.105.2a            | 105      |                      | PS.first.c3
- WS.105.2b            | 105      |                      | PS.first.c4
- WS.105.3a            | 105      |                      | PS.first.c5
- WS.105.3b            | 105      |                      | PS.first.c6
- WS.106.1a            | 106      |                      | PS.first.d1
- WS.106.1b            | 106      |                      | PS.first.d2
- WS.106.2a            | 106      |                      | PS.first.d3
- WS.106.2b            | 106      |                      | PS.first.d4
- WS.106.3a            | 106      |                      | PS.first.d5
- WS.106.3b            | 106      |                      | PS.first.d6
+ WS.001.1a            | 001      |                      | PS.base.a1          
+ WS.001.1b            | 001      |                      | PS.base.a2          
+ WS.001.2a            | 001      |                      | PS.base.a3          
+ WS.001.2b            | 001      |                      | PS.base.a4          
+ WS.001.3a            | 001      |                      | PS.base.a5          
+ WS.001.3b            | 001      |                      | PS.base.a6          
+ WS.002.1a            | 002      |                      | PS.base.b1          
+ WS.002.1b            | 002      |                      | PS.base.b2          
+ WS.002.2a            | 002      |                      | PS.base.b3          
+ WS.002.2b            | 002      |                      | PS.base.b4          
+ WS.002.3a            | 002      |                      | PS.base.b5          
+ WS.002.3b            | 002      |                      | PS.base.b6          
+ WS.003.1a            | 003      |                      | PS.base.c1          
+ WS.003.1b            | 003      |                      | PS.base.c2          
+ WS.003.2a            | 003      |                      | PS.base.c3          
+ WS.003.2b            | 003      |                      | PS.base.c4          
+ WS.003.3a            | 003      |                      | PS.base.c5          
+ WS.003.3b            | 003      |                      | PS.base.c6          
+ WS.101.1a            | 101      |                      | PS.first.a1         
+ WS.101.1b            | 101      |                      | PS.first.a2         
+ WS.101.2a            | 101      |                      | PS.first.a3         
+ WS.101.2b            | 101      |                      | PS.first.a4         
+ WS.101.3a            | 101      |                      | PS.first.a5         
+ WS.101.3b            | 101      |                      | PS.first.a6         
+ WS.102.1a            | 102      |                      | PS.first.b1         
+ WS.102.1b            | 102      |                      | PS.first.b2         
+ WS.102.2a            | 102      |                      | PS.first.b3         
+ WS.102.2b            | 102      |                      | PS.first.b4         
+ WS.102.3a            | 102      |                      | PS.first.b5         
+ WS.102.3b            | 102      |                      | PS.first.b6         
+ WS.105.1a            | 105      |                      | PS.first.c1         
+ WS.105.1b            | 105      |                      | PS.first.c2         
+ WS.105.2a            | 105      |                      | PS.first.c3         
+ WS.105.2b            | 105      |                      | PS.first.c4         
+ WS.105.3a            | 105      |                      | PS.first.c5         
+ WS.105.3b            | 105      |                      | PS.first.c6         
+ WS.106.1a            | 106      |                      | PS.first.d1         
+ WS.106.1b            | 106      |                      | PS.first.d2         
+ WS.106.2a            | 106      |                      | PS.first.d3         
+ WS.106.2b            | 106      |                      | PS.first.d4         
+ WS.106.3a            | 106      |                      | PS.first.d5         
+ WS.106.3b            | 106      |                      | PS.first.d6         
 (42 rows)
 
 --
@@ -1482,7 +1482,7 @@ update PSlot set slotlink = 'HS.base.hub1.1' where slotname = 'PS.base.b2';
 -- Now we take a look at the patchfield
 --
 select * from PField_v1 where pfname = 'PF0_1' order by slotname;
- pfname |       slotname       |                         backside                         |                     patch
+ pfname |       slotname       |                         backside                         |                     patch                     
 --------+----------------------+----------------------------------------------------------+-----------------------------------------------
  PF0_1  | PS.base.a1           | WS.001.1a in room 001 -> Phone PH.hc001 (Hicom standard) | PS.base.ta1 -> Phone line -0 (Central call)
  PF0_1  | PS.base.a2           | WS.001.1b in room 001 -> -                               | -
@@ -1505,7 +1505,7 @@ select * from PField_v1 where pfname = 'PF0_1' order by slotname;
 (18 rows)
 
 select * from PField_v1 where pfname = 'PF0_2' order by slotname;
- pfname |       slotname       |            backside            |                                 patch
+ pfname |       slotname       |            backside            |                                 patch                                  
 --------+----------------------+--------------------------------+------------------------------------------------------------------------
  PF0_2  | PS.base.ta1          | Phone line -0 (Central call)   | PS.base.a1 -> WS.001.1a in room 001 -> Phone PH.hc001 (Hicom standard)
  PF0_2  | PS.base.ta2          | Phone line -501 (Fax entrance) | PS.base.a3 -> WS.001.2a in room 001 -> Phone PH.fax001 (Canon fax)
@@ -1574,7 +1574,7 @@ BEGIN
     RETURN rslt;
 END;' LANGUAGE plpgsql;
 SELECT recursion_test(4,3);
- recursion_test
+ recursion_test 
 ----------------
  4,3,2,1,3
 (1 row)
@@ -1619,14 +1619,14 @@ create function test_found()
   return true;
   end;' language plpgsql;
 select test_found();
- test_found
+ test_found 
 ------------
  t
 (1 row)
 
 -- YB note: add ordering.
 select * from found_test_tbl order by ((a % 98) + 0.5 * (a / 100));
-  a
+  a  
 -----
    2
  100
@@ -1650,7 +1650,7 @@ BEGIN
 END;' language plpgsql;
 -- YB note: add ordering.
 select * from test_table_func_rec() order by ((a % 98) + 0.5 * (a / 100));
-  a
+  a  
 -----
    2
  100
@@ -1671,7 +1671,7 @@ BEGIN
 END;' language plpgsql;
 -- YB note: add ordering.
 select * from test_table_func_row() order by ((a % 98) + 0.5 * (a / 100));
-  a
+  a  
 -----
    2
  100
@@ -1691,7 +1691,7 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 select * from test_ret_set_scalar(1,10);
- test_ret_set_scalar
+ test_ret_set_scalar 
 ---------------------
                    2
                    3
@@ -1721,14 +1721,14 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int);
- a | b  | c
+ a | b  | c  
 ---+----+----
  5 | 10 | 15
  5 | 10 | 15
 (2 rows)
 
 SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text);
- a  | b |  c
+ a  | b |  c  
 ----+---+-----
  50 | 5 | xxx
  50 | 5 | xxx
@@ -1747,13 +1747,13 @@ BEGIN
 	END IF;
 END;' language plpgsql;
 SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int);
- a | b  | c
+ a | b  | c  
 ---+----+----
  5 | 10 | 15
 (1 row)
 
 SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text);
- a  | b |  c
+ a  | b |  c  
 ----+---+-----
  50 | 5 | xxx
 (1 row)
@@ -1766,7 +1766,7 @@ begin
   return x + 1;
 end$$ language plpgsql;
 select f1(42) as int, f1(4.5) as num;
- int | num
+ int | num 
 -----+-----
   43 | 5.5
 (1 row)
@@ -1784,7 +1784,7 @@ begin
   return array[x + 1, x + 2];
 end$$ language plpgsql;
 select f1(42) as int, f1(4.5) as num;
-   int   |    num
+   int   |    num    
 ---------+-----------
  {43,44} | {5.5,6.5}
 (1 row)
@@ -1795,7 +1795,7 @@ begin
   return x[1];
 end$$ language plpgsql;
 select f1(array[2,4]) as int, f1(array[4.5, 7.7]) as num;
- int | num
+ int | num 
 -----+-----
    2 | 4.5
 (1 row)
@@ -1808,7 +1808,7 @@ begin
   return x;
 end$$ language plpgsql;
 select f1(array[2,4]) as int, f1(array[4.5, 7.7]) as num;
-  int  |    num
+  int  |    num    
 -------+-----------
  {2,4} | {4.5,7.7}
 (1 row)
@@ -1829,7 +1829,7 @@ begin
   return array[lower(x), upper(x)];
 end$$ language plpgsql;
 select f1(int4range(42, 49)) as int, f1(float8range(4.5, 7.8)) as num;
-   int   |    num
+   int   |    num    
 ---------+-----------
  {42,49} | {4.5,7.8}
 (1 row)
@@ -1840,7 +1840,7 @@ begin
   return array[x, y];
 end$$ language plpgsql;
 select f1(2, 4) as int, f1(2, 4.5) as num;
-  int  |   num
+  int  |   num   
 -------+---------
  {2,4} | {2,4.5}
 (1 row)
@@ -1851,7 +1851,7 @@ begin
   return array[lower(x), upper(x), y, z];
 end$$ language plpgsql;
 select f1(int4range(42, 49), 11, 2::smallint) as int, f1(float8range(4.5, 7.8), 7.8, 11::real) as num;
-     int      |       num
+     int      |       num        
 --------------+------------------
  {42,49,11,2} | {4.5,7.8,7.8,11}
 (1 row)
@@ -1874,7 +1874,7 @@ begin
   return x;
 end$$ language plpgsql;
 select f1(int4range(42, 49), array[11]) as int, f1(float8range(4.5, 7.8), array[7]) as num;
-   int   |    num
+   int   |    num    
 ---------+-----------
  [42,49) | [4.5,7.8)
 (1 row)
@@ -1890,21 +1890,21 @@ begin
 end$$ language plpgsql;
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, array[1, 2], 42, 34.5);
-    x     | pg_typeof |     y     | pg_typeof
+    x     | pg_typeof |     y     | pg_typeof 
 ----------+-----------+-----------+-----------
  {11,1,2} | integer[] | {42,34.5} | numeric[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, array[1, 2], point(1,2), point(3,4));
-    x     | pg_typeof |         y         | pg_typeof
+    x     | pg_typeof |         y         | pg_typeof 
 ----------+-----------+-------------------+-----------
  {11,1,2} | integer[] | {"(1,2)","(3,4)"} | point[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, '{1,2}', point(1,2), '(3,4)');
-    x     | pg_typeof |         y         | pg_typeof
+    x     | pg_typeof |         y         | pg_typeof 
 ----------+-----------+-------------------+-----------
  {11,1,2} | integer[] | {"(1,2)","(3,4)"} | point[]
 (1 row)
@@ -1935,13 +1935,13 @@ begin
   return;
 end$$ language plpgsql;
 select f1(42);
- f1
+ f1 
 ----
  43
 (1 row)
 
 select * from f1(42);
- j
+ j  
 ----
  43
 (1 row)
@@ -1951,13 +1951,13 @@ begin
   i := i+1;
 end$$ language plpgsql;
 select f1(42);
- f1
+ f1 
 ----
  43
 (1 row)
 
 select * from f1(42);
- i
+ i  
 ----
  43
 (1 row)
@@ -1972,7 +1972,7 @@ begin
   return;
 end$$ language plpgsql;
 select * from f1(42);
- j
+ j  
 ----
  43
  44
@@ -1986,13 +1986,13 @@ begin
   k := 'foo';
 end$$ language plpgsql;
 select f1(42);
-    f1
+    f1    
 ----------
  (43,foo)
 (1 row)
 
 select * from f1(42);
- j  |  k
+ j  |  k  
 ----+-----
  43 | foo
 (1 row)
@@ -2008,7 +2008,7 @@ begin
   return next;
 end$$ language plpgsql;
 select * from f1(42);
- j  |  k
+ j  |  k   
 ----+------
  43 | foo
  44 | foot
@@ -2022,13 +2022,13 @@ begin
   return;
 end$$ language plpgsql;
 select * from duplic(42);
- j  |    k
+ j  |    k    
 ----+---------
  42 | {42,42}
 (1 row)
 
 select * from duplic('foo'::text);
-  j  |     k
+  j  |     k     
 -----+-----------
  foo | {foo,foo}
 (1 row)
@@ -2041,13 +2041,13 @@ begin
   return;
 end$$ language plpgsql;
 select * from duplic(int4range(42,49));
- j  |    k
+ j  |    k    
 ----+---------
  42 | {42,49}
 (1 row)
 
 select * from duplic(textrange('aaa', 'bbb'));
-  j  |     k
+  j  |     k     
 -----+-----------
  aaa | {aaa,bbb}
 (1 row)
@@ -2090,14 +2090,14 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 SELECT perform_test_func();
- perform_test_func
+ perform_test_func 
 -------------------
-
+ 
 (1 row)
 
 -- YB note: add ordering.
 SELECT * FROM perform_test ORDER BY a;
-  a  |  b
+  a  |  b  
 -----+-----
    5 |  15
  100 | 100
@@ -2140,7 +2140,7 @@ select trap_zero_divide(50);
 NOTICE:  should see this
 NOTICE:  should see this only if 50 <> 0
 NOTICE:  should see this only if 50 fits in smallint
- trap_zero_divide
+ trap_zero_divide 
 ------------------
                 2
 (1 row)
@@ -2148,7 +2148,7 @@ NOTICE:  should see this only if 50 fits in smallint
 select trap_zero_divide(0);
 NOTICE:  should see this
 NOTICE:  caught division_by_zero
- trap_zero_divide
+ trap_zero_divide 
 ------------------
                -1
 (1 row)
@@ -2157,7 +2157,7 @@ select trap_zero_divide(100000);
 NOTICE:  should see this
 NOTICE:  should see this only if 100000 <> 0
 NOTICE:  caught numeric_value_out_of_range
- trap_zero_divide
+ trap_zero_divide 
 ------------------
                -2
 (1 row)
@@ -2189,28 +2189,28 @@ begin
 	return x;
 end$$ language plpgsql;
 select trap_matching_test(50);
- trap_matching_test
+ trap_matching_test 
 --------------------
                   2
 (1 row)
 
 select trap_matching_test(0);
 NOTICE:  caught data_exception
- trap_matching_test
+ trap_matching_test 
 --------------------
                  -1
 (1 row)
 
 select trap_matching_test(100000);
 NOTICE:  caught data_exception
- trap_matching_test
+ trap_matching_test 
 --------------------
                  -1
 (1 row)
 
 select trap_matching_test(1);
 NOTICE:  caught numeric_value_out_of_range or cardinality_violation
- trap_matching_test
+ trap_matching_test 
 --------------------
                  -2
 (1 row)
@@ -2235,7 +2235,7 @@ end$$ language plpgsql;
 -- TODO:(dmitry) Uncomment when issue #1541 will be resolved
 -- select subxact_rollback_semantics();
 select * from foo order by f1;
- f1
+ f1 
 ----
 (0 rows)
 
@@ -2282,7 +2282,7 @@ select test_variable_storage();
 NOTICE:  should see this
 NOTICE:  should see this only if -100 <> 0
 NOTICE:  should see this only if -100 fits in smallint
- test_variable_storage
+ test_variable_storage 
 -----------------------
  123456789012
 (1 row)
@@ -2320,14 +2320,14 @@ begin
 	return 1;
 end$$ language plpgsql;
 select trap_foreign_key(1);
- trap_foreign_key
+ trap_foreign_key 
 ------------------
                 1
 (1 row)
 
 select trap_foreign_key(2);	-- detects FK violation
 NOTICE:  caught foreign_key_violation
- trap_foreign_key
+ trap_foreign_key 
 ------------------
                 0
 (1 row)
@@ -2335,7 +2335,7 @@ NOTICE:  caught foreign_key_violation
 begin;
   set constraints all deferred;
   select trap_foreign_key(2);	-- should not detect FK violation
- trap_foreign_key
+ trap_foreign_key 
 ------------------
                 1
 (1 row)
@@ -2347,7 +2347,7 @@ DETAIL:  Key (f1)=(2) is not present in table "master".
   rollback to x;
   select trap_foreign_key_2();  -- detects FK violation
 NOTICE:  caught foreign_key_violation
- trap_foreign_key_2
+ trap_foreign_key_2 
 --------------------
                   0
 (1 row)
@@ -2370,13 +2370,13 @@ begin
 end$$ language plpgsql stable;
 insert into users values('user1');
 select sp_id_user('user1');
- sp_id_user
+ sp_id_user 
 ------------
           1
 (1 row)
 
 select sp_id_user('userx');
- sp_id_user
+ sp_id_user 
 ------------
           0
 (1 row)
@@ -2396,31 +2396,31 @@ begin
   RETURN my_id_user;
 end$$ language plpgsql;
 select sp_add_user('user1');
- sp_add_user
+ sp_add_user 
 -------------
           -1
 (1 row)
 
 select sp_add_user('user2');
- sp_add_user
+ sp_add_user 
 -------------
            2
 (1 row)
 
 select sp_add_user('user2');
- sp_add_user
+ sp_add_user 
 -------------
           -1
 (1 row)
 
 select sp_add_user('user3');
- sp_add_user
+ sp_add_user 
 -------------
            3
 (1 row)
 
 select sp_add_user('user3');
- sp_add_user
+ sp_add_user 
 -------------
           -1
 (1 row)
@@ -2451,7 +2451,7 @@ begin
 end
 $$ language plpgsql;
 select use_refcursor(return_unnamed_refcursor());
- use_refcursor
+ use_refcursor 
 ---------------
              5
 (1 row)
@@ -2470,25 +2470,25 @@ end
 $$ language plpgsql;
 begin;
 select refcursor_test1('test1');
- refcursor_test1
+ refcursor_test1 
 -----------------
  test1
 (1 row)
 
 fetch next in test1;
- a
+ a 
 ---
  5
 (1 row)
 
 select refcursor_test1('test2');
- refcursor_test1
+ refcursor_test1 
 -----------------
  test2
 (1 row)
 
 fetch all from test2;
-  a
+  a  
 -----
    5
   50
@@ -2516,7 +2516,7 @@ end
 $$ language plpgsql;
 select refcursor_test2(20000, 20000) as "Should be false",
        refcursor_test2(20, 20) as "Should be true";
- Should be false | Should be true
+ Should be false | Should be true 
 -----------------+----------------
  f               | t
 (1 row)
@@ -2543,7 +2543,7 @@ begin
 end
 $$ language plpgsql;
 select constant_refcursor();
- constant_refcursor
+ constant_refcursor 
 --------------------
  my_cursor_name
 (1 row)
@@ -2568,7 +2568,7 @@ end
 $$ language plpgsql;
 select namedparmcursor_test1(20000, 20000) as "Should be false",
        namedparmcursor_test1(20, 20) as "Should be true";
- Should be false | Should be true
+ Should be false | Should be true 
 -----------------+----------------
  f               | t
 (1 row)
@@ -2590,7 +2590,7 @@ begin
 end
 $$ language plpgsql;
 select namedparmcursor_test2(20, 20);
- namedparmcursor_test2
+ namedparmcursor_test2 
 -----------------------
  t
 (1 row)
@@ -2672,7 +2672,7 @@ begin
   return n;
 end $$ language plpgsql;
 select namedparmcursor_test8();
- namedparmcursor_test8
+ namedparmcursor_test8 
 -----------------------
                      0
 (1 row)
@@ -2691,7 +2691,7 @@ begin
   return n;
 end $$ language plpgsql;
 select namedparmcursor_test9(6);
- namedparmcursor_test9
+ namedparmcursor_test9 
 -----------------------
                      1
 (1 row)
@@ -2723,7 +2723,7 @@ end;
 $$ language plpgsql;
 select raise_test3(1);
 NOTICE:  This message has no parameters (despite having % signs in it)!
- raise_test3
+ raise_test3 
 -------------
            1
 (1 row)
@@ -2752,9 +2752,9 @@ $$ LANGUAGE plpgsql;
 SELECT reraise_test();
 NOTICE:  exception syntax_error thrown in inner block, reraising
 NOTICE:  RIGHT - exception syntax_error caught in inner block
- reraise_test
+ reraise_test 
 --------------
-
+ 
 (1 row)
 
 --
@@ -2805,9 +2805,9 @@ begin
     perform 2+2;
 end;$$ language plpgsql;
 select void_return_expr();
- void_return_expr
+ void_return_expr 
 ------------------
-
+ 
 (1 row)
 
 -- but ordinary functions are not
@@ -2848,7 +2848,7 @@ select execute_into_test('eifoo');
 NOTICE:  10 1
 NOTICE:  10 15
 NOTICE:  10 15 20
- execute_into_test
+ execute_into_test 
 -------------------
  (1,2)
 (1 row)
@@ -2909,9 +2909,9 @@ NOTICE:  caught exception P0001 user exception
 NOTICE:  P0001 user exception
 NOTICE:  caught exception 22012 division by zero
 NOTICE:  P0001 user exception
- excpt_test3
+ excpt_test3 
 -------------
-
+ 
 (1 row)
 
 create function excpt_test4() returns text as $$
@@ -2920,7 +2920,7 @@ begin
 	exception when others then return sqlerrm; end;
 end; $$ language plpgsql;
 select excpt_test4();
-   excpt_test4
+   excpt_test4    
 ------------------
  division by zero
 (1 row)
@@ -2941,9 +2941,9 @@ begin
 end;$$ language plpgsql;
 select raise_exprs();
 NOTICE:  {10,20,30}; 20; xyz; xyzabc; (10,aaa,,30); <NULL>
- raise_exprs
+ raise_exprs 
 -------------
-
+ 
 (1 row)
 
 drop function raise_exprs();
@@ -2960,7 +2960,7 @@ begin
   return x = y;
 end$$ language plpgsql;
 select multi_datum_use(42);
- multi_datum_use
+ multi_datum_use 
 -----------------
  t
 (1 row)
@@ -2981,9 +2981,9 @@ begin
 end$$ language plpgsql;
 select stricttest();
 NOTICE:  x.f1 = 5, x.f2 = 6
- stricttest
+ stricttest 
 ------------
-
+ 
 (1 row)
 
 create or replace function stricttest() returns void as $$
@@ -3006,9 +3006,9 @@ begin
 end$$ language plpgsql;
 select stricttest();
 NOTICE:  x.f1 = 5, x.f2 = 6
- stricttest
+ stricttest 
 ------------
-
+ 
 (1 row)
 
 create or replace function stricttest() returns void as $$
@@ -3020,14 +3020,14 @@ begin
 end$$ language plpgsql;
 select stricttest();
 NOTICE:  x.f1 = 7, x.f2 = 8
- stricttest
+ stricttest 
 ------------
-
+ 
 (1 row)
 
 -- YB note: add ordering.
 select * from foo order by f1;
- f1 | f2
+ f1 | f2 
 ----+----
   1 |  2
   3 |  4
@@ -3046,9 +3046,9 @@ begin
 end$$ language plpgsql;
 select stricttest();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest
+ stricttest 
 ------------
-
+ 
 (1 row)
 
 create or replace function stricttest() returns void as $$
@@ -3081,9 +3081,9 @@ begin
 end$$ language plpgsql;
 select stricttest();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest
+ stricttest 
 ------------
-
+ 
 (1 row)
 
 create or replace function stricttest() returns void as $$
@@ -3252,13 +3252,13 @@ WARNING:  variable "out1" shadows a previously defined variable
 LINE 5: out1 int;
         ^
 select shadowtest(1);
- shadowtest
+ shadowtest 
 ------------
 (0 rows)
 
 set plpgsql.extra_warnings to 'shadowed_variables';
 select shadowtest(1);
- shadowtest
+ shadowtest 
 ------------
 (0 rows)
 
@@ -3277,7 +3277,7 @@ WARNING:  variable "out1" shadows a previously defined variable
 LINE 5: out1 int;
         ^
 select shadowtest(1);
- shadowtest
+ shadowtest 
 ------------
 (0 rows)
 
@@ -3346,7 +3346,7 @@ create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plpgsql;
 select shadowtest(1);
- shadowtest
+ shadowtest 
 ------------
  t
 (1 row)
@@ -3469,7 +3469,7 @@ end;
 $$ language plpgsql;
 -- YB note: add ordering.
 select * from sc_test() ORDER BY (sign(sc_test) - abs(sc_test));
-   sc_test
+   sc_test   
 -------------
  -2147483647
   2147483647
@@ -3512,7 +3512,7 @@ end;
 $$ language plpgsql;
 -- YB note: add ordering.
 select * from sc_test() ORDER BY (sign(sc_test) - abs(sc_test));
-   sc_test
+   sc_test   
 -------------
  -2147483647
   2147483647
@@ -3537,7 +3537,7 @@ begin
 end;
 $$ language plpgsql;
 select * from sc_test();
-   sc_test
+   sc_test   
 -------------
  -2147483647
      -123456
@@ -3586,9 +3586,9 @@ NOTICE:  param1 = 2
 NOTICE:  pl_qual_names.param1 = 42
 NOTICE:  outerblock.param1 = 1
 NOTICE:  innerblock.param1 = 2
- pl_qual_names
+ pl_qual_names 
 ---------------
-
+ 
 (1 row)
 
 drop function pl_qual_names(int);
@@ -3603,7 +3603,7 @@ begin
 end;
 $$ language plpgsql;
 select * from ret_query1();
- column1 | column2
+ column1 | column2 
 ---------+---------
       -1 |      -2
        1 |       0
@@ -3628,7 +3628,7 @@ begin
 end;
 $$ language plpgsql;
 select * from ret_query2(8);
-                x                 | y  | z
+                x                 | y  | z 
 ----------------------------------+----+---
  a8d2ec85eaf98407310b72eb73dda247 | -8 | f
  596a3d04481816330f07e4f97510c28f | -6 | f
@@ -3659,7 +3659,7 @@ NOTICE:  3
 NOTICE:  4
 NOTICE:  5
 NOTICE:  6
- exc_using
+ exc_using 
 -----------
         26
 (1 row)
@@ -3687,9 +3687,9 @@ NOTICE:  3
 NOTICE:  4
 NOTICE:  5
 NOTICE:  6
- exc_using
+ exc_using 
 -----------
-
+ 
 (1 row)
 
 drop function exc_using(int);
@@ -3747,9 +3747,9 @@ NOTICE:  41
 NOTICE:  42
 NOTICE:  43
 NOTICE:  after loop, c2 = <NULL>
- forc01
+ forc01 
 --------
-
+ 
 (1 row)
 
 -- try updating the cursor's current row
@@ -3792,7 +3792,7 @@ begin
 end;
 $$ language plpgsql;
 select * from return_dquery();
- return_dquery
+ return_dquery 
 ---------------
             10
             20
@@ -3813,7 +3813,7 @@ begin
 end;
 $$ language plpgsql;
 select * from returnqueryf();
- a  | b  | c  | d
+ a  | b  | c  | d  
 ----+----+----+----
  10 | 20 | 30 | 40
  50 | 60 | 70 | 80
@@ -3823,7 +3823,7 @@ select * from returnqueryf();
 
 alter table tabwithcols drop column b;
 select * from returnqueryf();
- a  | c  | d
+ a  | c  | d  
 ----+----+----
  10 | 30 | 40
  50 | 70 | 80
@@ -3833,7 +3833,7 @@ select * from returnqueryf();
 
 alter table tabwithcols drop column d;
 select * from returnqueryf();
- a  | c
+ a  | c  
 ----+----
  10 | 30
  50 | 70
@@ -3843,12 +3843,12 @@ select * from returnqueryf();
 
 alter table tabwithcols add column d int;
 select * from returnqueryf();
- a  | c  | d
+ a  | c  | d 
 ----+----+---
- 10 | 30 |
- 50 | 70 |
- 10 | 30 |
- 50 | 70 |
+ 10 | 30 |  
+ 50 | 70 |  
+ 10 | 30 |  
+ 50 | 70 |  
 (4 rows)
 
 drop function returnqueryf();
@@ -3867,7 +3867,7 @@ begin
 end;
 $$ language plpgsql;
 select compos();
-  compos
+  compos   
 -----------
  (1,hello)
 (1 row)
@@ -3882,7 +3882,7 @@ begin
 end;
 $$ language plpgsql;
 select compos();
-  compos
+  compos   
 -----------
  (1,hello)
 (1 row)
@@ -3894,7 +3894,7 @@ begin
 end;
 $$ language plpgsql;
 select compos();
-  compos
+  compos   
 -----------
  (1,hello)
 (1 row)
@@ -3916,7 +3916,7 @@ begin
 end;
 $$ language plpgsql;
 select compos();
-  compos
+  compos   
 -----------
  (1,hello)
 (1 row)
@@ -3932,7 +3932,7 @@ begin
 end;
 $$ language plpgsql;
 select composrec();
- composrec
+ composrec 
 -----------
  (1,hello)
 (1 row)
@@ -3944,7 +3944,7 @@ begin
 end;
 $$ language plpgsql;
 select composrec();
- composrec
+ composrec 
 -----------
  (1,hello)
 (1 row)
@@ -3962,12 +3962,12 @@ begin
 end;
 $$ language plpgsql;
 select * from compos();
- x |    y
+ x |    y    
 ---+---------
  1 | hello
  1 | hello
  1 | hello
-   |
+   | 
  2 | goodbye
 (5 rows)
 
@@ -4185,9 +4185,9 @@ end;
 $$ language plpgsql;
 select stacked_diagnostics_test();
 NOTICE:  sqlstate: 22012, message: division by zero, context: [PL/pgSQL function zero_divide() line 4 at RETURN <- SQL statement "SELECT zero_divide()" <- PL/pgSQL function stacked_diagnostics_test() line 6 at PERFORM]
- stacked_diagnostics_test
+ stacked_diagnostics_test 
 --------------------------
-
+ 
 (1 row)
 
 create or replace function stacked_diagnostics_test() returns void as $$
@@ -4206,9 +4206,9 @@ end;
 $$ language plpgsql;
 select stacked_diagnostics_test();
 NOTICE:  message: custom exception, detail: some detail of custom exception, hint: some hint related to custom exception
- stacked_diagnostics_test
+ stacked_diagnostics_test 
 --------------------------
-
+ 
 (1 row)
 
 -- fail, cannot use stacked diagnostics statement outside handler
@@ -4273,9 +4273,9 @@ end;
 $$ language plpgsql;
 select stacked_diagnostics_test();
 NOTICE:  column >>some column name<<, constraint >>some constraint name<<, type >>some datatype name<<, table >>some table name<<, schema >>some schema name<<
- stacked_diagnostics_test
+ stacked_diagnostics_test 
 --------------------------
-
+ 
 (1 row)
 
 drop function stacked_diagnostics_test();
@@ -4293,27 +4293,27 @@ NOTICE:  2
 NOTICE:  3
 NOTICE:  4
 NOTICE:  5
- vari
+ vari 
 ------
-
+ 
 (1 row)
 
 select vari(3,4,5);
 NOTICE:  3
 NOTICE:  4
 NOTICE:  5
- vari
+ vari 
 ------
-
+ 
 (1 row)
 
 select vari(variadic array[5,6,7]);
 NOTICE:  5
 NOTICE:  6
 NOTICE:  7
- vari
+ vari 
 ------
-
+ 
 (1 row)
 
 drop function vari(int[]);
@@ -4329,25 +4329,25 @@ begin
 end;
 $$ language plpgsql immutable strict;
 select pleast(10,1,2,3,-16);
- pleast
+ pleast 
 --------
     -16
 (1 row)
 
 select pleast(10.2,2.2,-1.1);
- pleast
+ pleast 
 --------
    -1.1
 (1 row)
 
 select pleast(10.2,10, -20);
- pleast
+ pleast 
 --------
     -20
 (1 row)
 
 select pleast(10,20, -1.0);
- pleast
+ pleast 
 --------
    -1.0
 (1 row)
@@ -4362,7 +4362,7 @@ end;
 $$ language plpgsql immutable strict;
 select pleast(10);
 NOTICE:  non-variadic function called
- pleast
+ pleast 
 --------
      10
 (1 row)
@@ -4376,7 +4376,7 @@ begin
 end;
 $$ language plpgsql immutable strict;
 select * from tftest(10);
- a  | b
+ a  | b  
 ----+----
  10 | 11
  10 | 12
@@ -4394,7 +4394,7 @@ begin
 end;
 $$ language plpgsql immutable strict;
 select * from tftest(10);
-  a  |  b
+  a  |  b  
 -----+-----
   10 |  11
  100 | 101
@@ -4424,7 +4424,7 @@ NOTICE:  t 2
 NOTICE:  f 0
 NOTICE:  t 2
 NOTICE:  f 0
- rttest
+ rttest 
 --------
      10
      20
@@ -4484,13 +4484,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 SELECT * FROM leaker_1(false);
- leaker_1
+ leaker_1 
 ----------
         1
 (1 row)
 
 SELECT * FROM leaker_1(true);
- leaker_1
+ leaker_1 
 ----------
         0
 (1 row)
@@ -4514,7 +4514,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 SELECT nonsimple_expr_test();
-   nonsimple_expr_test
+   nonsimple_expr_test   
 -------------------------
  {{foo,fool},{baz,quux}}
 (1 row)
@@ -4534,7 +4534,7 @@ begin
 end;
 $$ LANGUAGE plpgsql;
 SELECT nonsimple_expr_test();
- nonsimple_expr_test
+ nonsimple_expr_test 
 ---------------------
                    1
 (1 row)
@@ -4559,7 +4559,7 @@ $$ language plpgsql;
 create function sql_recurse(float8) returns float8 as
 $$ select recurse($1) limit 1; $$ language sql;
 select recurse(10);
- recurse
+ recurse 
 ---------
        0
 (1 row)
@@ -4579,7 +4579,7 @@ CONTEXT:  SQL function "error1" statement 1
 PL/pgSQL function error2(text) line 3 at RETURN
 ROLLBACK TO a;
 select error2('public.stuffs');
- error2
+ error2 
 --------
  stuffs
 (1 row)
@@ -4597,33 +4597,33 @@ begin
   return $1;
 end$$ language plpgsql;
 select cast_invoker(20150717);
- cast_invoker
+ cast_invoker 
 --------------
  07-17-2015
 (1 row)
 
 select cast_invoker(20150718);  -- second call crashed in pre-release 9.5
- cast_invoker
+ cast_invoker 
 --------------
  07-18-2015
 (1 row)
 
 begin;
 select cast_invoker(20150717);
- cast_invoker
+ cast_invoker 
 --------------
  07-17-2015
 (1 row)
 
 select cast_invoker(20150718);
- cast_invoker
+ cast_invoker 
 --------------
  07-18-2015
 (1 row)
 
 savepoint s1;
 select cast_invoker(20150718);
- cast_invoker
+ cast_invoker 
 --------------
  07-18-2015
 (1 row)
@@ -4634,13 +4634,13 @@ CONTEXT:  SQL function "sql_to_date" statement 1
 PL/pgSQL function cast_invoker(integer) while casting return value to function's return type
 rollback to savepoint s1;
 select cast_invoker(20150719);
- cast_invoker
+ cast_invoker 
 --------------
  07-19-2015
 (1 row)
 
 select cast_invoker(20150720);
- cast_invoker
+ cast_invoker 
 --------------
  07-20-2015
 (1 row)
@@ -4698,7 +4698,7 @@ LINE 1: 'foo\\bar\041baz'
         ^
 HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
 QUERY:  'foo\\bar\041baz'
-   strtest
+   strtest   
 -------------
  foo\bar!baz
 (1 row)
@@ -4711,7 +4711,7 @@ end
 $$ language plpgsql;
 select strtest();
 NOTICE:  foo\bar!baz
-   strtest
+   strtest   
 -------------
  foo\bar!baz
 (1 row)
@@ -4725,7 +4725,7 @@ end
 $$ language plpgsql;
 select strtest();
 NOTICE:  foo\\bar\041baz\
-     strtest
+     strtest      
 ------------------
  foo\\bar\041baz\
 (1 row)
@@ -4738,7 +4738,7 @@ end
 $$ language plpgsql;
 select strtest();
 NOTICE:  foo\bar!baz
-   strtest
+   strtest   
 -------------
  foo\bar!baz
 (1 row)
@@ -4884,7 +4884,7 @@ begin
 end;
 $$ language plpgsql;
 select * from conflict_test();
- q1 |        q2
+ q1 |        q2         
 ----+-------------------
  42 |               456
  42 |  4567890123456789
@@ -4904,7 +4904,7 @@ begin
 end;
 $$ language plpgsql;
 select * from conflict_test();
-        q1        |        q2
+        q1        |        q2         
 ------------------+-------------------
               123 |               456
               123 |  4567890123456789
@@ -4924,7 +4924,7 @@ begin
 end
 $$ language plpgsql;
 select unreserved_test();
- unreserved_test
+ unreserved_test 
 -----------------
               42
 (1 row)
@@ -4938,7 +4938,7 @@ begin
 end
 $$ language plpgsql;
 select unreserved_test();
- unreserved_test
+ unreserved_test 
 -----------------
               43
 (1 row)
@@ -4953,13 +4953,13 @@ begin
 end
 $$ language plpgsql;
 select unreserved_test();
- unreserved_test
+ unreserved_test 
 -----------------
               42
 (1 row)
 
 select obj_description('unreserved_test()'::regprocedure, 'pg_proc');
- obj_description
+ obj_description 
 -----------------
  this is a test
 (1 row)
@@ -4983,9 +4983,9 @@ NOTICE:  1
 NOTICE:  2
 NOTICE:  3
 NOTICE:  4
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 select foreach_test(ARRAY[[1,2],[3,4]]);
@@ -4993,9 +4993,9 @@ NOTICE:  1
 NOTICE:  2
 NOTICE:  3
 NOTICE:  4
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 create or replace function foreach_test(anyarray)
@@ -5027,17 +5027,17 @@ begin
 $$ language plpgsql;
 select foreach_test(ARRAY[1,2,3,4]);
 NOTICE:  {1,2,3,4}
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 select foreach_test(ARRAY[[1,2],[3,4]]);
 NOTICE:  {1,2}
 NOTICE:  {3,4}
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 -- higher level of slicing
@@ -5058,17 +5058,17 @@ CONTEXT:  PL/pgSQL function foreach_test(anyarray) line 4 at FOREACH over array
 -- ok
 select foreach_test(ARRAY[[1,2],[3,4]]);
 NOTICE:  {{1,2},{3,4}}
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 select foreach_test(ARRAY[[[1,2]],[[3,4]]]);
 NOTICE:  {{1,2}}
 NOTICE:  {{3,4}}
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 create type xy_tuple AS (x int, y int);
@@ -5087,9 +5087,9 @@ select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 NOTICE:  (10,20)
 NOTICE:  (40,69)
 NOTICE:  (35,78)
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 select foreach_test(ARRAY[[(10,20),(40,69)],[(35,78),(88,76)]]::xy_tuple[]);
@@ -5097,9 +5097,9 @@ NOTICE:  (10,20)
 NOTICE:  (40,69)
 NOTICE:  (35,78)
 NOTICE:  (88,76)
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 create or replace function foreach_test(anyarray)
@@ -5116,9 +5116,9 @@ select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 NOTICE:  x = 10, y = 20
 NOTICE:  x = 40, y = 69
 NOTICE:  x = 35, y = 78
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 select foreach_test(ARRAY[[(10,20),(40,69)],[(35,78),(88,76)]]::xy_tuple[]);
@@ -5126,9 +5126,9 @@ NOTICE:  x = 10, y = 20
 NOTICE:  x = 40, y = 69
 NOTICE:  x = 35, y = 78
 NOTICE:  x = 88, y = 76
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 -- slicing over array of composite types
@@ -5144,17 +5144,17 @@ begin
 $$ language plpgsql;
 select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 NOTICE:  {"(10,20)","(40,69)","(35,78)"}
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 select foreach_test(ARRAY[[(10,20),(40,69)],[(35,78),(88,76)]]::xy_tuple[]);
 NOTICE:  {"(10,20)","(40,69)"}
 NOTICE:  {"(35,78)","(88,76)"}
- foreach_test
+ foreach_test 
 --------------
-
+ 
 (1 row)
 
 drop function foreach_test(anyarray);
@@ -5172,13 +5172,13 @@ begin
   return r.ar;
 end$$;
 select arrayassign1();
-   arrayassign1
+   arrayassign1    
 -------------------
  {foo,replace,baz}
 (1 row)
 
 select arrayassign1(); -- try again to exercise internal caching
-   arrayassign1
+   arrayassign1    
 -------------------
  {foo,replace,baz}
 (1 row)
@@ -5186,7 +5186,7 @@ select arrayassign1(); -- try again to exercise internal caching
 create domain orderedarray as int[2]
   constraint sorted check (value[1] < value[2]);
 select '{1,2}'::orderedarray;
- orderedarray
+ orderedarray 
 --------------
  {1,2}
 (1 row)
@@ -5202,13 +5202,13 @@ begin
   return res;
 end$$;
 select testoa(1,2,3);
- testoa
+ testoa 
 --------
  {1,3}
 (1 row)
 
 select testoa(1,2,3); -- try again to exercise internal caching
- testoa
+ testoa 
 --------
  {1,3}
 (1 row)
@@ -5234,7 +5234,7 @@ language plpgsql as $$
   begin return $1[1]; end;
 $$ stable;
 select consumes_rw_array(returns_rw_array(42));
- consumes_rw_array
+ consumes_rw_array 
 -------------------
                 42
 (1 row)
@@ -5244,7 +5244,7 @@ explain (verbose, costs off)
 select i, a from
   (select returns_rw_array(1) as a offset 0) ss,
   lateral consumes_rw_array(a) i;
-                           QUERY PLAN
+                           QUERY PLAN                            
 -----------------------------------------------------------------
  Nested Loop
    Output: i.i, (returns_rw_array(1))
@@ -5258,14 +5258,14 @@ select i, a from
 select i, a from
   (select returns_rw_array(1) as a offset 0) ss,
   lateral consumes_rw_array(a) i;
- i |   a
+ i |   a   
 ---+-------
  1 | {1,1}
 (1 row)
 
 explain (verbose, costs off)
 select consumes_rw_array(a), a from returns_rw_array(1) a;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Function Scan on public.returns_rw_array a
    Output: consumes_rw_array(a), a
@@ -5273,7 +5273,7 @@ select consumes_rw_array(a), a from returns_rw_array(1) a;
 (3 rows)
 
 select consumes_rw_array(a), a from returns_rw_array(1) a;
- consumes_rw_array |   a
+ consumes_rw_array |   a   
 -------------------+-------
                  1 | {1,1}
 (1 row)
@@ -5281,7 +5281,7 @@ select consumes_rw_array(a), a from returns_rw_array(1) a;
 explain (verbose, costs off)
 select consumes_rw_array(a), a from
   (values (returns_rw_array(1)), (returns_rw_array(2))) v(a);
-                             QUERY PLAN
+                             QUERY PLAN                              
 ---------------------------------------------------------------------
  Values Scan on "*VALUES*"
    Output: consumes_rw_array("*VALUES*".column1), "*VALUES*".column1
@@ -5289,7 +5289,7 @@ select consumes_rw_array(a), a from
 
 select consumes_rw_array(a), a from
   (values (returns_rw_array(1)), (returns_rw_array(2))) v(a);
- consumes_rw_array |   a
+ consumes_rw_array |   a   
 -------------------+-------
                  1 | {1,1}
                  2 | {2,2}
@@ -5352,7 +5352,7 @@ PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
- outer_outer_func
+ outer_outer_func 
 ------------------
                20
 (1 row)
@@ -5370,7 +5370,7 @@ PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
- outer_outer_func
+ outer_outer_func 
 ------------------
                40
 (1 row)
@@ -5434,7 +5434,7 @@ PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
- outer_outer_func
+ outer_outer_func 
 ------------------
                20
 (1 row)
@@ -5452,7 +5452,7 @@ PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
- outer_outer_func
+ outer_outer_func 
 ------------------
                40
 (1 row)
@@ -5787,7 +5787,7 @@ DELETE FROM transition_table_level1
 DELETE FROM transition_table_level1
   WHERE level1_no BETWEEN 100000000 AND 100000010;
 SELECT count(*) FROM transition_table_level1;
- count
+ count 
 -------
    199
 (1 row)
@@ -5795,7 +5795,7 @@ SELECT count(*) FROM transition_table_level1;
 DELETE FROM transition_table_level2
   WHERE level2_no BETWEEN 211 AND 220;
 SELECT count(*) FROM transition_table_level2;
- count
+ count 
 -------
   9985
 (1 row)
@@ -5898,7 +5898,7 @@ BEGIN
 END; $$ LANGUAGE plpgsql;
 NOTICE:  type reference partitioned_table.a%TYPE converted to integer
 SELECT * FROM get_from_partitioned_table(1) AS t;
- a |   b
+ a |   b   
 ---+-------
  1 | Row 1
 (1 row)
@@ -5917,7 +5917,7 @@ BEGIN
 END; $$ LANGUAGE plpgsql;
 NOTICE:  type reference partitioned_table.a%TYPE converted to integer
 SELECT * FROM list_partitioned_table() AS t;
- t
+ t 
 ---
  1
  2

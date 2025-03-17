@@ -303,7 +303,7 @@ INSERT INTO table_create_org VALUES(
 CREATE TABLE table_create_ctas_nodata AS SELECT * FROM table_create_org WITH NO DATA;
 --
 SELECT * FROM table_create_ctas_nodata;
- col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text | col_bytea | col_timestamp | col_timestamp_tz | col_bool | col_array_int | col_array_text
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text | col_bytea | col_timestamp | col_timestamp_tz | col_bool | col_array_int | col_array_text 
 --------------+-------------+------------+----------+------------+----------+-------------+----------+-----------+---------------+------------------+----------+---------------+----------------
 (0 rows)
 
@@ -317,7 +317,7 @@ CREATE TABLE table_create_ctas2_nodata
 					WITH NO DATA;
 --
 SELECT * FROM table_create_ctas2_nodata;
- id | name | private_data | information
+ id | name | private_data | information 
 ----+------+--------------+-------------
 (0 rows)
 
@@ -325,7 +325,7 @@ SELECT * FROM table_create_ctas2_nodata;
 CREATE TABLE table_create_ctas AS SELECT * FROM table_create_org;
 --
 SELECT * FROM table_create_ctas ORDER BY col_smallint;
- col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text    
 --------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
             1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
             2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
@@ -357,7 +357,7 @@ CREATE TABLE table_create_ctas2
 					WHERE col_smallint < 11;
 --
 SELECT * FROM table_create_ctas2 ORDER BY id;
- id | name  | private_data |     information
+ id | name  | private_data |     information     
 ----+-------+--------------+---------------------
   1 | one   | {1,1,1}      | {one,one,one}
   2 | two   | {2,2,2}      | {two,two,two}
@@ -536,13 +536,13 @@ CREATE TABLE ordered_asc(
 INSERT INTO ordered_asc VALUES
     (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30);
 EXPLAIN (COSTS OFF) SELECT * FROM ordered_asc ORDER BY k ASC;
-                    QUERY PLAN
+                    QUERY PLAN                    
 --------------------------------------------------
  Index Scan using ordered_asc_pkey on ordered_asc
 (1 row)
 
 SELECT * FROM ordered_asc ORDER BY k ASC;
- k
+ k  
 ----
   5
   6
@@ -559,13 +559,13 @@ SELECT * FROM ordered_asc ORDER BY k ASC;
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM ordered_asc ORDER BY k DESC;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan Backward using ordered_asc_pkey on ordered_asc
 (1 row)
 
 SELECT * FROM ordered_asc ORDER BY k DESC;
- k
+ k  
 ----
  46
  36
@@ -582,14 +582,14 @@ SELECT * FROM ordered_asc ORDER BY k DESC;
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT k FROM ordered_asc WHERE k > 10 and k < 40 ORDER BY k DESC;
-                        QUERY PLAN
+                        QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan Backward using ordered_asc_pkey on ordered_asc
    Index Cond: ((k > 10) AND (k < 40))
 (2 rows)
 
 SELECT k FROM ordered_asc WHERE k > 10 and k < 40 ORDER BY k DESC;
- k
+ k  
 ----
  36
  35
@@ -608,13 +608,13 @@ CREATE TABLE ordered_desc(
 INSERT INTO ordered_desc VALUES
     (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30);
 EXPLAIN (COSTS OFF) SELECT * FROM ordered_desc ORDER BY k ASC;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan Backward using ordered_desc_pkey on ordered_desc
 (1 row)
 
 SELECT * FROM ordered_desc ORDER BY k ASC;
- k
+ k  
 ----
   5
   6
@@ -631,13 +631,13 @@ SELECT * FROM ordered_desc ORDER BY k ASC;
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM ordered_desc ORDER BY k DESC;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Index Scan using ordered_desc_pkey on ordered_desc
 (1 row)
 
 SELECT * FROM ordered_desc ORDER BY k DESC;
- k
+ k  
 ----
  46
  36
@@ -654,14 +654,14 @@ SELECT * FROM ordered_desc ORDER BY k DESC;
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT k FROM ordered_desc WHERE k > 10 and k < 40 ORDER BY k ASC;
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan Backward using ordered_desc_pkey on ordered_desc
    Index Cond: ((k > 10) AND (k < 40))
 (2 rows)
 
 SELECT k FROM ordered_desc WHERE k > 10 and k < 40 ORDER BY k ASC;
- k
+ k  
 ----
  15
  16
@@ -689,7 +689,7 @@ create table with_invalid_table_oid (a int) with (table_oid = 'test');
 ERROR:  invalid value for OID option "table_oid"
 create table with_table_oid (a int) with (table_oid = 4294967295);
 select relname, oid from pg_class where relname = 'with_table_oid';
-    relname     |    oid
+    relname     |    oid     
 ----------------+------------
  with_table_oid | 4294967295
 (1 row)
@@ -701,7 +701,7 @@ ERROR:  table OID 4294967295 is in use
 begin;
 create temp table with_table_oid_temp (a int) with (table_oid = 1234568) on commit drop;
 select relname, oid from pg_class where relname = 'with_table_oid_temp';
-       relname       |   oid
+       relname       |   oid   
 ---------------------+---------
  with_table_oid_temp | 1234568
 (1 row)
@@ -715,7 +715,7 @@ ERROR:  table OID 1234568 is in use
 create table with_table_oid_2 (a int) with (table_oid = 1234568);
 ERROR:  table OID 1234568 is in use
 select relname, oid from pg_class where relname = 'with_table_oid_2';
- relname | oid
+ relname | oid 
 ---------+-----
 (0 rows)
 
@@ -737,13 +737,13 @@ DISCARD TEMP;
 create temporary table temp_tab(a int);
 create temporary view temp_view as select * from temp_tab;
 select count(*) from pg_class where relname = 'temp_tab';
- count
+ count 
 -------
      1
 (1 row)
 
 select count(*) from pg_class where relname = 'temp_view';
- count
+ count 
 -------
      1
 (1 row)
@@ -751,19 +751,19 @@ select count(*) from pg_class where relname = 'temp_view';
 \c yugabyte
 -- Wait some time for the last session to finish dropping temp table/view automatically.
 select pg_sleep(5);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 select count(*) from pg_class where relname = 'temp_tab';
- count
+ count 
 -------
      0
 (1 row)
 
 select count(*) from pg_class where relname = 'temp_view';
- count
+ count 
 -------
      0
 (1 row)
@@ -774,7 +774,7 @@ BEGIN
   EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
 END$$;
 SELECT * FROM tbl_as_1;
- ?column?
+ ?column? 
 ----------
         1
 (1 row)
@@ -798,7 +798,7 @@ BEGIN
 	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
 END$$;
 DROP TABLE wide_table;
--- Test CREATE TABLE PARTITION OF with CONSTRAINT .. PRIMARY KEY 
+-- Test CREATE TABLE PARTITION OF with CONSTRAINT .. PRIMARY KEY
 CREATE TABLE t (
     id uuid NOT NULL,
     geo_partition character varying NOT NULL
@@ -817,7 +817,7 @@ CREATE TEMP TABLE default_compression_table (
 );
 INSERT INTO default_compression_table VALUES (repeat('a', 10000));
 SELECT pg_column_compression(a) FROM default_compression_table;
- pg_column_compression
+ pg_column_compression 
 -----------------------
  lz4
 (1 row)
@@ -825,7 +825,7 @@ SELECT pg_column_compression(a) FROM default_compression_table;
 -- Test specifying lz4 compression when pglz is the default
 SET default_toast_compression = 'pglz';
 SHOW default_toast_compression;
- default_toast_compression
+ default_toast_compression 
 ---------------------------
  pglz
 (1 row)
@@ -835,13 +835,14 @@ CREATE TEMP TABLE lz4_table (
 );
 INSERT INTO lz4_table VALUES (repeat('a', 10000));
 SELECT pg_column_compression(a) FROM lz4_table;
- pg_column_compression
+ pg_column_compression 
 -----------------------
  lz4
 (1 row)
 
 SHOW default_toast_compression;
- default_toast_compression
+ default_toast_compression 
 ---------------------------
  pglz
 (1 row)
+

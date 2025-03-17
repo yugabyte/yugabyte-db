@@ -155,7 +155,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.3.9",
+  "org.postgresql" % "postgresql" % "42.5.6",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -166,6 +166,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
+  "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
@@ -180,7 +181,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
-  "net.minidev" % "json-smart" % "2.5.0",
+  "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -223,8 +224,8 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
   "com.google.protobuf" % "protobuf-java-util" % "3.20.3",
-  "io.kamon" %% "kamon-bundle" % "2.5.9",
-  "io.kamon" %% "kamon-prometheus" % "2.5.9",
+  "io.kamon" %% "kamon-bundle" % "2.7.5",
+  "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.7",
@@ -929,9 +930,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.99-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.101-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

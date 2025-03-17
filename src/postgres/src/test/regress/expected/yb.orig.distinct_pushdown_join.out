@@ -9,7 +9,7 @@ SET yb_explain_hide_non_deterministic_fields = true;
 -- Start with CROSS/INNER/LEFT/RIGHT/FULL joins.
 -- CROSS JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
    ->  Unique (actual rows=2 loops=1)
@@ -22,7 +22,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
 (8 rows)
 
 SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
- r1 | r1
+ r1 | r1 
 ----+----
   1 |  1
   1 | 10
@@ -32,7 +32,7 @@ SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
 
 -- INNER JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
    Merge Cond: (t1.r1 = t2.r1)
@@ -46,7 +46,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (9 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
- r1
+ r1 
 ----
   1
  10
@@ -54,7 +54,7 @@ SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
 
 -- In the Distinct Index Scan of t2, there are 7 rows, not 6, because the tablet split ends up with 1, 1 represented in two tablets.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Merge Join (actual rows=3 loops=1)
@@ -70,14 +70,14 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (11 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
- r1
+ r1 
 ----
   1
 (1 row)
 
 -- LEFT JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Merge Left Join (actual rows=4 loops=1)
@@ -93,7 +93,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (11 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
- r1
+ r1 
 ----
   1
  10
@@ -101,7 +101,7 @@ SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
 
 -- RIGHT JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
    Group Key: t1.r1
@@ -117,15 +117,15 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (11 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
- r1
+ r1 
 ----
-
+   
   1
 (2 rows)
 
 -- FULL JOIN
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  HashAggregate (actual rows=4 loops=1)
    Group Key: t1.r1, t2.r2
@@ -141,10 +141,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
 (11 rows)
 
 SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
- r1 | r2
+ r1 | r2 
 ----+----
     |  2
- 10 |
+ 10 |   
   1 |  1
     |  0
 (4 rows)
@@ -152,7 +152,7 @@ SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
 -- Now, let's test various join predicate types.
 -- Range predicates.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Nested Loop (actual rows=2 loops=1)
@@ -167,13 +167,13 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (10 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
- r1
+ r1 
 ----
   1
 (1 row)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Nested Loop (actual rows=4 loops=1)
@@ -187,7 +187,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1 FROM
 (9 rows)
 
 SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
- r1
+ r1 
 ----
   1
  10
@@ -195,7 +195,7 @@ SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
 
 -- "DISTINCT" Semijoin. These queries could be optimized by extending our distinctness analysis.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
-                                        QUERY PLAN
+                                        QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
    Group Key: t.r1
@@ -212,7 +212,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
 (12 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
- r1
+ r1 
 ----
  10
   1
@@ -220,7 +220,7 @@ SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
 
 -- Join clauses have volatile functions. Do not use a Distinct Index Scan in this case.
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 + RANDOM() < t2.r1 + RANDOM();
-                                               QUERY PLAN
+                                               QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  Unique
    ->  Nested Loop
@@ -231,7 +231,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOI
 (6 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 + RANDOM() < t2.r1 + RANDOM();
- r1
+ r1 
 ----
   1
  10
@@ -239,7 +239,7 @@ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 + RANDOM() < t2.r1 + RANDOM()
 
 -- Targets have volatile functions. Do not use a Distinct Index Scan in this case.
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FROM t t1 JOIN t t2 USING (r1);
-                     QUERY PLAN
+                     QUERY PLAN                      
 -----------------------------------------------------
  HashAggregate
    Group Key: ((t1.r1)::double precision * random())
@@ -252,7 +252,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 
 -- Join methods - Merge/Hash/Nestloop.
 /*+MergeJoin(t1 t2)*/ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
    Merge Cond: (t1.r1 = t2.r1)
@@ -266,14 +266,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 (9 rows)
 
 /*+MergeJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
- r1
+ r1 
 ----
   1
  10
 (2 rows)
 
 /*+HashJoin(t1 t2)*/ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Hash Join (actual rows=2 loops=1)
    Hash Cond: (t1.r1 = t2.r1)
@@ -288,14 +288,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 (10 rows)
 
 /*+HashJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
- r1
+ r1 
 ----
   1
  10
 (2 rows)
 
 /*+Nestloop(t1 t2)*/ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=2 loops=1)
    Join Filter: (t1.r1 = t2.r1)
@@ -310,7 +310,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 (10 rows)
 
 /*+Nestloop(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
- r1
+ r1 
 ----
   1
  10
@@ -320,7 +320,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 -- Pushdown distinct only into the relation which has no volatile clause.
 -- Require additional distinctification on top when distinct is pushed down to only one of the relations.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
-                                         QUERY PLAN
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  HashAggregate (actual rows=1 loops=1)
    Group Key: t1.r1
@@ -335,13 +335,13 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (10 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
- r1
+ r1 
 ----
   1
 (1 row)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
-                                                  QUERY PLAN
+                                                  QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Merge Join (actual rows=1000 loops=1)
@@ -361,7 +361,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
 (15 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
- r1
+ r1 
 ----
   1
 (1 row)
@@ -370,7 +370,7 @@ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE 
 -- In vanilla postgres, the order of the target list matters, i.e. SELECT DISTINCT t1.r1, t2.r1 does not generate the same plan as SELECT DISTINCT t2.r1, t1.r1.
 -- Original order.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
    Merge Cond: (t1.r1 = t2.r1)
@@ -384,7 +384,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
 (9 rows)
 
 SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
- r1 | r1
+ r1 | r1 
 ----+----
   1 |  1
  10 | 10
@@ -392,7 +392,7 @@ SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
 
 -- Permuted order.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
    Merge Cond: (t1.r1 = t2.r1)
@@ -406,7 +406,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1, t1.
 (9 rows)
 
 SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
- r1 | r1
+ r1 | r1 
 ----+----
   1 |  1
  10 | 10
@@ -414,7 +414,7 @@ SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
 
 -- Original order.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
    Merge Cond: (t2.r1 = t1.r1)
@@ -428,7 +428,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
 (9 rows)
 
 SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
- r1 | r1 | r2
+ r1 | r1 | r2 
 ----+----+----
   1 |  1 |  0
   1 |  1 |  1
@@ -440,7 +440,7 @@ SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
 
 -- Permuted order.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
    Merge Cond: (t1.r1 = t2.r1)
@@ -454,7 +454,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r2, t1.
 (9 rows)
 
 SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
- r2 | r1 | r1
+ r2 | r1 | r1 
 ----+----+----
   0 |  1 |  1
   1 |  1 |  1
@@ -467,7 +467,7 @@ SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
 -- t1.r2 = t2.r2 and t2.r2 = 2 => t1.r2 = 2.
 -- Moreover, constants are excluded from the prefix, so r2 is not in either distinct index scan prefix.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
-                                     QUERY PLAN
+                                     QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
    ->  Unique (actual rows=1 loops=1)
@@ -482,14 +482,14 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r2 FROM
 (10 rows)
 
 SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
- r2
+ r2 
 ----
   2
 (1 row)
 
 -- Check constants for distinctness as well.
 /*+ Seqscan(t1) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
-                                        QUERY PLAN
+                                        QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Nested Loop (actual rows=1000 loops=1)
@@ -503,7 +503,7 @@ SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
 (9 rows)
 
 /*+ Seqscan(t1) */ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
- r1
+ r1 
 ----
   1
 (1 row)
@@ -514,7 +514,7 @@ INSERT INTO th (SELECT 1, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Try self join on the hash partitioned table.
 /*+ MergeJoin(t1 t2) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
    Merge Cond: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
@@ -531,7 +531,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (12 rows)
 
 /*+ MergeJoin(t1 t2) */ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
- h1 | h2
+ h1 | h2 
 ----+----
   1 |  0
   1 |  1
@@ -542,7 +542,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (6 rows)
 
 /*+ HashJoin(t1 t2) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Hash Join (actual rows=6 loops=1)
    Hash Cond: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
@@ -555,7 +555,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (8 rows)
 
 /*+ HashJoin(t1 t2) */ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
- h1 | h2
+ h1 | h2 
 ----+----
   1 |  0
  10 |  1
@@ -566,7 +566,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (6 rows)
 
 /*+ Nestloop(t1 t2) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
-                                   QUERY PLAN
+                                   QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Nested Loop (actual rows=6 loops=1)
    Join Filter: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
@@ -579,7 +579,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (8 rows)
 
 /*+ Nestloop(t1 t2) */ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
- h1 | h2
+ h1 | h2 
 ----+----
   1 |  0
  10 |  1
@@ -591,7 +591,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 
 -- Try join across hash and range partitioned tables.
 /*+ MergeJoin(th t) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
    Merge Cond: ((t.r1 = th.h1) AND (t.r2 = th.h2))
@@ -606,7 +606,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (10 rows)
 
 /*+ MergeJoin(th t) */ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
- h1 | h2
+ h1 | h2 
 ----+----
   1 |  0
   1 |  1
@@ -617,7 +617,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (6 rows)
 
 /*+ HashJoin(th t) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Hash Join (actual rows=6 loops=1)
    Hash Cond: ((t.r1 = th.h1) AND (t.r2 = th.h2))
@@ -631,7 +631,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (9 rows)
 
 /*+ HashJoin(th t) */ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
- h1 | h2
+ h1 | h2 
 ----+----
   1 |  0
   1 |  1
@@ -642,7 +642,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (6 rows)
 
 /*+ Nestloop(th t) */ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
-                                 QUERY PLAN
+                                 QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Nested Loop (actual rows=6 loops=1)
    Join Filter: ((th.h1 = t.r1) AND (th.h2 = t.r2))
@@ -656,7 +656,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 (9 rows)
 
 /*+ Nestloop(th t) */ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
- h1 | h2
+ h1 | h2 
 ----+----
   1 |  0
   1 |  1
@@ -670,7 +670,7 @@ DROP TABLE th;
 -- Secondary index only scan.
 CREATE INDEX irv ON t(v, r1);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t1 JOIN t t2 USING (v);
-                                    QUERY PLAN
+                                    QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Hash Join (actual rows=334 loops=1)
    Hash Cond: (t1.v = t2.v)
@@ -697,7 +697,7 @@ ANALYZE t2;
 /*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
-                                         QUERY PLAN
+                                         QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=2 loops=1)
@@ -713,7 +713,7 @@ SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk
 
 /*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
 SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
- pk
+ pk 
 ----
   3
   4
@@ -726,7 +726,7 @@ CREATE TABLE t (k1 INT, k2 INT, PRIMARY KEY(k1 ASC, k2 ASC));
 -- Protect against memory corruption bug when not using ANALYZE.
 SELECT DISTINCT a1.k1 FROM t a1 RIGHT OUTER JOIN t a2 RIGHT OUTER JOIN t a3
 USING (k1) USING (k1) WHERE a2.k1 = 5 AND a3.k1 = 5 GROUP BY a1.k1 ORDER BY a1.k1;
- k1
+ k1 
 ----
 (0 rows)
 
@@ -734,14 +734,14 @@ INSERT INTO t (SELECT i%10, i FROM GENERATE_SERIES(1, 10000) AS i);
 ANALYZE t;
 -- Protect against memory corruption bug when using ANALYZE.
 SELECT DISTINCT a1.k1 FROM t a1 RIGHT OUTER JOIN t a2 USING (k1) WHERE a2.k1 = 5 GROUP BY a1.k1 ORDER BY a1.k1;
- k1
+ k1 
 ----
   5
 (1 row)
 
 -- Grouping Sets with distinct.
 SELECT DISTINCT t.k1 FROM t GROUP BY GROUPING SETS ((k1), (k1)) ORDER BY k1;
- k1
+ k1 
 ----
   0
   1
@@ -759,7 +759,7 @@ DROP TABLE t;
 CREATE TABLE th (h1 INT, r1 INT, PRIMARY KEY(h1 HASH, r1 ASC));
 -- Protect against memory corruption bug when using hash partitioned table.
 SELECT DISTINCT a1.h1 FROM th a1, th a2, th a3 where a1.h1 < a2.h1 and a2.h1 = a3.h1 and a2.h1 = 5 AND a3.h1 = 5 GROUP BY a1.h1;
- h1
+ h1 
 ----
 (0 rows)
 

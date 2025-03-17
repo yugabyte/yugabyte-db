@@ -139,10 +139,22 @@ Status DocPgAddVarRef(size_t column_idx,
 
 Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
-                        DocPgVarRef *ret_type) {
+                        DocPgVarRef *ret_type,
+                        const std::optional<int> version) {
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
-  VLOG(1) << "Deserialize " << expr_cstring;
-  PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
+  VLOG(1) << "Deserialize expr with version " << version.value_or(YbgGetPgVersion())
+          << ": " << expr_cstring;
+
+  switch (version.value_or(YbgGetPgVersion())) {
+    case 15:
+    case 11:
+      // TODO(#24730): Allow for PG11 or PG15 serializations here, once we're able to handle them.
+      PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
+      break;
+    default:
+      return STATUS_FORMAT(InternalError, "Unsupported expression version: $0", version);
+  }
+
   if (ret_type != nullptr) {
     int32_t typid;
     int32_t typmod;

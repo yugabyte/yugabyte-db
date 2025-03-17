@@ -17,17 +17,17 @@ ERROR:  cannot create colocated table with split option
 CREATE TABLE tab_nonkey (a INT);
 \d tab_nonkey
              Table "public.tab_nonkey"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
+ a      | integer |           |          | 
 Colocation: true
 
 CREATE TABLE tab_key (a INT PRIMARY KEY);
 \d tab_key
               Table "public.tab_key"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
+ a      | integer |           | not null | 
 Indexes:
     "tab_key_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
 Colocation: true
@@ -52,7 +52,7 @@ INSERT INTO tab_nonkey_noco (a) VALUES (0), (1), (2), (3);
 INSERT INTO tab_range_range (a, b) VALUES (0, 0), (0, 1), (1, 0), (1, 1);
 INSERT INTO tab_range_colo (a) VALUES (0), (1), (2), (3);
 SELECT * FROM tab_range;
- a
+ a 
 ---
  0
  1
@@ -60,7 +60,7 @@ SELECT * FROM tab_range;
 (3 rows)
 
 SELECT * FROM tab_range WHERE a = 2;
- a
+ a 
 ---
  2
 (1 row)
@@ -70,14 +70,14 @@ ERROR:  column "n" does not exist
 LINE 1: SELECT * FROM tab_range WHERE n = '0';
                                       ^
 SELECT * FROM tab_range_nonkey;
- a | b
+ a | b 
 ---+---
  0 | 0
  1 | 1
 (2 rows)
 
 SELECT * FROM tab_nonkey_noco ORDER BY a ASC;
- a
+ a 
 ---
  0
  1
@@ -86,7 +86,7 @@ SELECT * FROM tab_nonkey_noco ORDER BY a ASC;
 (4 rows)
 
 SELECT * FROM tab_range_range;
- a | b
+ a | b 
 ---+---
  0 | 1
  0 | 0
@@ -95,7 +95,7 @@ SELECT * FROM tab_range_range;
 (4 rows)
 
 SELECT * FROM tab_range_colo;
- a
+ a 
 ---
  0
  1
@@ -106,7 +106,7 @@ SELECT * FROM tab_range_colo;
 BEGIN;
 INSERT INTO tab_range_colo VALUES (4);
 SELECT * FROM tab_range_colo;
- a
+ a 
 ---
  0
  1
@@ -120,7 +120,7 @@ BEGIN;
 INSERT INTO tab_range_colo VALUES (5);
 COMMIT;
 SELECT * FROM tab_range_colo;
- a
+ a 
 ---
  0
  1
@@ -137,10 +137,10 @@ CREATE TABLE tab_range_nonkey2 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range ON tab_range_nonkey2 (a);
 \d tab_range_nonkey2
          Table "public.tab_range_nonkey2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           | not null |
- b      | integer |           |          |
+ a      | integer |           | not null | 
+ b      | integer |           |          | 
 Indexes:
     "tab_range_nonkey2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
     "idx_range" lsm (a ASC), colocation: true
@@ -148,21 +148,21 @@ Colocation: true
 
 INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a = 1;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using tab_range_nonkey2_pkey on tab_range_nonkey2
    Index Cond: (a = 1)
 (2 rows)
 
 SELECT * FROM tab_range_nonkey2 WHERE a = 1;
- a | b
+ a | b 
 ---+---
  1 | 1
 (1 row)
 
 UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
- a | b
+ a | b 
 ---+---
  0 | 0
  1 | 1
@@ -174,7 +174,7 @@ SELECT * FROM tab_range_nonkey2;
 
 DELETE FROM tab_range_nonkey2 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
- a | b
+ a | b 
 ---+---
  0 | 0
  1 | 1
@@ -195,21 +195,21 @@ CREATE TABLE tab_range_nonkey_noco (a INT, b INT, PRIMARY KEY (a ASC)) WITH (col
 CREATE INDEX idx_range2 ON tab_range_nonkey_noco (a);
 INSERT INTO tab_range_nonkey_noco (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
    Index Cond: (a = 1)
 (2 rows)
 
 SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
- a | b
+ a | b 
 ---+---
  1 | 1
 (1 row)
 
 UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
- a | b
+ a | b 
 ---+---
  0 | 0
  1 | 1
@@ -221,7 +221,7 @@ SELECT * FROM tab_range_nonkey_noco;
 
 DELETE FROM tab_range_nonkey_noco WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
- a | b
+ a | b 
 ---+---
  0 | 0
  1 | 1
@@ -253,12 +253,12 @@ CREATE UNIQUE INDEX unique_idx_hash3 on tbl (r1 HASH, r2 ASC);
 ERROR:  cannot colocate hash partitioned index
 \d tbl
                 Table "public.tbl"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- r1     | integer |           | not null |
- r2     | integer |           | not null |
- v1     | integer |           |          |
- v2     | integer |           |          |
+ r1     | integer |           | not null | 
+ r2     | integer |           | not null | 
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
 Indexes:
     "tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC), colocation: true
 Colocation: true
@@ -269,12 +269,12 @@ CREATE TABLE tbl2 (r1 int PRIMARY KEY, r2 int, v1 int, v2 int, UNIQUE(v1));
 ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
 \d tbl2
                 Table "public.tbl2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- r1     | integer |           | not null |
- r2     | integer |           |          |
- v1     | integer |           |          |
- v2     | integer |           |          |
+ r1     | integer |           | not null | 
+ r2     | integer |           |          | 
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
 Indexes:
     "tbl2_pkey" PRIMARY KEY, lsm (r1 ASC), colocation: true
     "tbl2_v1_key" UNIQUE CONSTRAINT, lsm (v1 ASC), colocation: true
@@ -287,7 +287,7 @@ CREATE TABLE tab_nonkey2 (a INT) WITH (colocation = true);
 CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 \dt
                  List of relations
- Schema |          Name          | Type  |  Owner
+ Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
  public | tab_nonkey             | table | yugabyte
@@ -308,7 +308,7 @@ CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 
 \di
                                 List of relations
- Schema |            Name             | Type  |  Owner   |         Table
+ Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range                   | index | yugabyte | tab_range_nonkey2
  public | idx_range2                  | index | yugabyte | tab_range_nonkey_noco
@@ -334,13 +334,13 @@ CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 -- truncate colocated table with default index
 TRUNCATE TABLE tab_range;
 SELECT * FROM tab_range;
- a
+ a 
 ---
 (0 rows)
 
 INSERT INTO tab_range VALUES (4);
 SELECT * FROM tab_range;
- a
+ a 
 ---
  4
 (1 row)
@@ -348,7 +348,7 @@ SELECT * FROM tab_range;
 INSERT INTO tab_range VALUES (1);
 INSERT INTO tab_range VALUES (2), (5);
 SELECT * FROM tab_range;
- a
+ a 
 ---
  1
  2
@@ -359,13 +359,13 @@ SELECT * FROM tab_range;
 DELETE FROM tab_range WHERE a = 2;
 TRUNCATE TABLE tab_range;
 SELECT * FROM tab_range;
- a
+ a 
 ---
 (0 rows)
 
 INSERT INTO tab_range VALUES (2);
 SELECT * FROM tab_range;
- a
+ a 
 ---
  2
 (1 row)
@@ -374,34 +374,34 @@ TRUNCATE TABLE tab_range;
 -- truncate non-colocated table without index
 TRUNCATE TABLE tab_nonkey_noco;
 SELECT * FROM tab_nonkey_noco;
- a
+ a 
 ---
 (0 rows)
 
 -- truncate colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey2;
 SELECT * FROM tab_range_nonkey2;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 -- truncate non-colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey_noco2;
 SELECT * FROM tab_range_nonkey_noco2;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
 -- insert and truncate colocated table with explicit index
 INSERT INTO tab_nonkey2 VALUES (1), (2), (3);
 EXPLAIN (COSTS OFF) SELECT a FROM tab_nonkey2 ORDER BY a;
-                   QUERY PLAN
+                   QUERY PLAN                    
 -------------------------------------------------
  Index Only Scan using idx_range6 on tab_nonkey2
 (1 row)
 
 SELECT a FROM tab_nonkey2 ORDER BY a;
- a
+ a 
 ---
  1
  2
@@ -410,13 +410,13 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 
 TRUNCATE TABLE tab_nonkey2;
 SELECT a FROM tab_nonkey2 ORDER BY a;
- a
+ a 
 ---
 (0 rows)
 
 INSERT INTO tab_nonkey2 VALUES (2), (4);
 SELECT a FROM tab_nonkey2 ORDER BY a;
- a
+ a 
 ---
  2
  4
@@ -424,7 +424,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 
 \dt
                  List of relations
- Schema |          Name          | Type  |  Owner
+ Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
  public | tab_nonkey             | table | yugabyte
@@ -445,7 +445,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 
 \di
                                 List of relations
- Schema |            Name             | Type  |  Owner   |         Table
+ Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range                   | index | yugabyte | tab_range_nonkey2
  public | idx_range2                  | index | yugabyte | tab_range_nonkey_noco
@@ -471,7 +471,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 INSERT INTO tab_range (a) VALUES (0), (1), (2);
 INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1);
 SELECT * FROM tab_range;
- a
+ a 
 ---
  0
  1
@@ -479,7 +479,7 @@ SELECT * FROM tab_range;
 (3 rows)
 
 SELECT * FROM tab_range_nonkey2;
- a | b
+ a | b 
 ---+---
  0 | 0
  1 | 1
@@ -489,15 +489,15 @@ SELECT * FROM tab_range_nonkey2;
 ALTER TABLE tab_range ADD COLUMN x INT;
 ALTER TABLE tab_range_nonkey2 DROP COLUMN b;
 SELECT * FROM tab_range;
- a | x
+ a | x 
 ---+---
- 0 |
- 1 |
- 2 |
+ 0 |  
+ 1 |  
+ 2 |  
 (3 rows)
 
 SELECT * FROM tab_range_nonkey2;
- a
+ a 
 ---
  0
  1
@@ -505,7 +505,7 @@ SELECT * FROM tab_range_nonkey2;
 
 ALTER TABLE tab_range_nonkey2 RENAME TO tab_range_nonkey2_renamed;
 SELECT * FROM tab_range_nonkey2_renamed;
- a
+ a 
 ---
  0
  1
@@ -544,7 +544,7 @@ LINE 1: SELECT * FROM tab_range_nonkey_noco2;
 -- drop index on non-colocated table
 DROP INDEX idx_range2;
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
-                              QUERY PLAN
+                              QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
    Index Cond: (a = 1)
@@ -553,7 +553,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 -- drop index on colocated table
 DROP INDEX idx_range5;
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
-                          QUERY PLAN
+                          QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using tab_range_nonkey5_pkey on tab_range_nonkey5
    Index Cond: (a = 1)
@@ -561,7 +561,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 
 \dt
                  List of relations
- Schema |          Name          | Type  |  Owner
+ Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
  public | tab_nonkey             | table | yugabyte
@@ -578,7 +578,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 
 \di
                                 List of relations
- Schema |            Name             | Type  |  Owner   |         Table
+ Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
  public | idx_range6                  | index | yugabyte | tab_nonkey2
@@ -613,7 +613,7 @@ CREATE TABLE partitioned_table (
 PARTITION BY HASH (k1)
 WITH (colocation_id='123456');
 SELECT * FROM yb_table_properties('partitioned_table'::regclass::oid);
- num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id 
 -------------+----------------------+--------------+----------------+---------------
            1 |                    0 | t            |                |        123456
 (1 row)
@@ -622,7 +622,7 @@ CREATE TABLE table_partition PARTITION OF partitioned_table
 FOR VALUES WITH (modulus 2, remainder 0)
 WITH (colocation_id='234567');
 SELECT * FROM yb_table_properties('table_partition'::regclass::oid);
- num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id 
 -------------+----------------------+--------------+----------------+---------------
            1 |                    0 | t            |                |        234567
 (1 row)
@@ -664,20 +664,20 @@ CREATE TABLE tbl_colocation (k INT, v INT) WITH (colocation = true);
 -- Check colocated table footer
 \d tbl_colocation
            Table "public.tbl_colocation"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- k      | integer |           |          |
- v      | integer |           |          |
+ k      | integer |           |          | 
+ v      | integer |           |          | 
 Colocation: true
 
 -- Create and describe a table opt out of colocation
 CREATE TABLE tbl_no_colocation (k INT, v INT) WITH (colocation = false);
 \d tbl_no_colocation
          Table "public.tbl_no_colocation"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- k      | integer |           |          |
- v      | integer |           |          |
+ k      | integer |           |          | 
+ v      | integer |           |          | 
 
 -- Test table rewrite operations with legacy colocation.
 -- Suppress NOTICE messages during table rewrite operations.
@@ -790,3 +790,4 @@ SELECT count(*) FROM pg_database WHERE datname = 'colocation_test';
 -------
      0
 (1 row)
+

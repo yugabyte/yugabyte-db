@@ -2,7 +2,7 @@
 create table ybctid_test_hash(k int primary key, v text);
 insert into ybctid_test_hash values (1, 'one'), (2, 'two'), (3, 'three'), (4, 'four');
 select ybctid, * from ybctid_test_hash;
-         ybctid         | k |   v
+         ybctid         | k |   v   
 ------------------------+---+-------
  \x47121048800000012121 | 1 | one
  \x479eaf48800000042121 | 4 | four
@@ -11,13 +11,13 @@ select ybctid, * from ybctid_test_hash;
 (4 rows)
 
 select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121';
- k |  v
+ k |  v  
 ---+-----
  1 | one
 (1 row)
 
 select ybctid, k, v from ybctid_test_hash order by ybctid;
-         ybctid         | k |   v
+         ybctid         | k |   v   
 ------------------------+---+-------
  \x47121048800000012121 | 1 | one
  \x479eaf48800000042121 | 4 | four
@@ -28,14 +28,14 @@ select ybctid, k, v from ybctid_test_hash order by ybctid;
 create index on ybctid_test_hash(v);
 explain (costs off)
 select ybctid, * from ybctid_test_hash where v = 'one';
-                         QUERY PLAN
+                         QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using ybctid_test_hash_v_idx on ybctid_test_hash
    Index Cond: (v = 'one'::text)
 (2 rows)
 
 select ybctid, * from ybctid_test_hash where v = 'one';
-         ybctid         | k |  v
+         ybctid         | k |  v  
 ------------------------+---+-----
  \x47121048800000012121 | 1 | one
 (1 row)
@@ -45,7 +45,7 @@ drop table ybctid_test_hash;
 create table ybctid_test_range(k int, v text, primary key(k asc));
 insert into ybctid_test_range values (1, 'one'), (2, 'two'), (3, 'three'), (4, 'four');
 select ybctid, * from ybctid_test_range;
-     ybctid     | k |   v
+     ybctid     | k |   v   
 ----------------+---+-------
  \x488000000121 | 1 | one
  \x488000000221 | 2 | two
@@ -54,13 +54,13 @@ select ybctid, * from ybctid_test_range;
 (4 rows)
 
 select k, v from ybctid_test_range where ybctid = '\x488000000221';
- k |  v
+ k |  v  
 ---+-----
  2 | two
 (1 row)
 
 select ybctid, k, v from ybctid_test_range order by ybctid;
-     ybctid     | k |   v
+     ybctid     | k |   v   
 ----------------+---+-------
  \x488000000121 | 1 | one
  \x488000000221 | 2 | two
@@ -71,14 +71,14 @@ select ybctid, k, v from ybctid_test_range order by ybctid;
 create index on ybctid_test_range(v asc);
 explain (costs off)
 select ybctid, * from ybctid_test_range where v = 'one';
-                          QUERY PLAN
+                          QUERY PLAN                           
 ---------------------------------------------------------------
  Index Scan using ybctid_test_range_v_idx on ybctid_test_range
    Index Cond: (v = 'one'::text)
 (2 rows)
 
 select ybctid, * from ybctid_test_range where v = 'one';
-     ybctid     | k |  v
+     ybctid     | k |  v  
 ----------------+---+-----
  \x488000000121 | 1 | one
 (1 row)
@@ -90,7 +90,7 @@ create table ybctid_test_hash_range(k1 int, k2 int, k3 text, v text,
 insert into ybctid_test_hash_range values (1, 4, 'one', 'four'), (2, 3, 'two', 'three'),
                                           (3, 2, 'three', 'two'), (4, 1, 'four', 'one');
 select ybctid, * from ybctid_test_hash_range;
-                      ybctid                      | k1 | k2 |  k3   |   v
+                      ybctid                      | k1 | k2 |  k3   |   v   
 --------------------------------------------------+----+----+-------+-------
  \x4707b64880000003488000000221537468726565000021 |  3 |  2 | three | two
  \x47801748800000024880000003215374776f000021     |  2 |  3 | two   | three
@@ -100,13 +100,13 @@ select ybctid, * from ybctid_test_hash_range;
 
 select k1, k2, k3, v from ybctid_test_hash_range
   where ybctid = '\x4707b64880000003488000000221537468726565000021';
- k1 | k2 |  k3   |  v
+ k1 | k2 |  k3   |  v  
 ----+----+-------+-----
   3 |  2 | three | two
 (1 row)
 
 select ybctid, k1, k2, k3, v from ybctid_test_hash_range order by ybctid;
-                      ybctid                      | k1 | k2 |  k3   |   v
+                      ybctid                      | k1 | k2 |  k3   |   v   
 --------------------------------------------------+----+----+-------+-------
  \x4707b64880000003488000000221537468726565000021 |  3 |  2 | three | two
  \x47801748800000024880000003215374776f000021     |  2 |  3 | two   | three
@@ -117,14 +117,14 @@ select ybctid, k1, k2, k3, v from ybctid_test_hash_range order by ybctid;
 create index on ybctid_test_hash_range(v desc);
 explain (costs off)
 select ybctid, * from ybctid_test_hash_range where v = 'one';
-                               QUERY PLAN
+                               QUERY PLAN                                
 -------------------------------------------------------------------------
  Index Scan using ybctid_test_hash_range_v_idx on ybctid_test_hash_range
    Index Cond: (v = 'one'::text)
 (2 rows)
 
 select ybctid, * from ybctid_test_hash_range where v = 'one';
-                     ybctid                     | k1 | k2 |  k3  |  v
+                     ybctid                     | k1 | k2 |  k3  |  v  
 ------------------------------------------------+----+----+------+-----
  \x478343488000000448800000012153666f7572000021 |  4 |  1 | four | one
 (1 row)
@@ -144,7 +144,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 select * from rows_by_ybctid();
- kp |  vp
+ kp |  vp   
 ----+-------
   1 | one
   2 | two
@@ -161,7 +161,7 @@ create database codb colocation = true;
 create table ybctid_test_with_pk(k int, v text, primary key(k asc)) with (colocation=true);
 insert into ybctid_test_with_pk values (1, 'one'), (2, 'two'), (3, 'three'), (4, 'four');
 select ybctid, * from ybctid_test_with_pk;
-     ybctid     | k |   v
+     ybctid     | k |   v   
 ----------------+---+-------
  \x488000000121 | 1 | one
  \x488000000221 | 2 | two
@@ -170,13 +170,13 @@ select ybctid, * from ybctid_test_with_pk;
 (4 rows)
 
 select k, v from ybctid_test_with_pk where ybctid = '\x488000000121';
- k |  v
+ k |  v  
 ---+-----
  1 | one
 (1 row)
 
 select ybctid, k, v from ybctid_test_with_pk order by ybctid;
-     ybctid     | k |   v
+     ybctid     | k |   v   
 ----------------+---+-------
  \x488000000121 | 1 | one
  \x488000000221 | 2 | two
@@ -199,7 +199,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 select * from rows_by_ybctid();
- kp |  vp
+ kp |  vp   
 ----+-------
   1 | one
   2 | two

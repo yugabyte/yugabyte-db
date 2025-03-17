@@ -976,7 +976,7 @@ CREATE INDEX sro_cluster_idx ON sro_tab ((sro_ifun(a) + sro_ifun(0)));
 CLUSTER sro_tab USING sro_cluster_idx;
 DROP INDEX sro_cluster_idx;
 -- BRIN index
-CREATE INDEX sro_brin ON sro_tab USING brin ((sro_ifun(a) + sro_ifun(0))); 
+CREATE INDEX sro_brin ON sro_tab USING brin ((sro_ifun(a) + sro_ifun(0)));
 -- YB: port further queries when above works
 -- Check with a partitioned table
 CREATE TABLE sro_ptab (a int) PARTITION BY RANGE (a);

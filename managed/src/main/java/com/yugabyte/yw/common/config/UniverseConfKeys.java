@@ -47,6 +47,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Integer> nodeCheckTimeoutDdlSec =
+      new ConfKeyInfo<>(
+          "yb.health.nodeCheckTimeoutDdlSec",
+          ScopeType.UNIVERSE,
+          "Node Checkout Time for DDL check",
+          "The timeout (in seconds) for node check operation as part of universe health check in"
+              + " case DDL atomicity check is performed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_check_enabled",
@@ -1505,5 +1515,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow users to disable DB APIs",
           "Allow users to disable DB APIs",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockboundCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clockbound synchronization check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> clockboundCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.timeout",
+          ScopeType.UNIVERSE,
+          "Clockbound synchronization check timeout",
+          "Clockbound synchronization check timeout",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

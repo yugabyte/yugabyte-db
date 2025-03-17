@@ -9,10 +9,13 @@ import { Box, Typography } from '@material-ui/core';
 import { YBModal, YBCheckboxField, YBInputField, YBLabel } from '../../../../components';
 import { api } from '../../../../utils/api';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
+import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure
+  fetchCustomerTasksFailure,
+  showTaskInDrawer,
+  clearAllTaskBanners
 } from '../../../../../actions/tasks';
 import { createErrorMessage, transitToUniverse } from '../../universe-form/utils/helpers';
 import { Universe } from '../../universe-form/utils/dto';
@@ -40,6 +43,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
   const { universeDetails, universeUUID } = universeData;
   const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '');
   const dispatch = useDispatch();
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const formMethods = useForm<DBRollbackFormFields>({
     defaultValues: {
       rollingUpgrade: true,
@@ -57,7 +61,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
       return api.rollbackUpgrade(universeUUID, values);
     },
     {
-      onSuccess: () => {
+      onSuccess: (resp) => {
         toast.success('Rollback form submitted successfully', TOAST_OPTIONS);
         dispatch(fetchCustomerTasks() as any).then((response: any) => {
           if (!response.error) {
@@ -72,7 +76,13 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
             dispatch(fetchUniverseInfoResponse(response.payload));
           });
         }, 2000);
-        transitToUniverse(universeUUID);
+        if (isNewTaskUIEnabled) {
+          dispatch(clearAllTaskBanners(universeUUID));
+          dispatch(showTaskInDrawer(resp.taskUUID));
+        }
+        else {
+          transitToUniverse(universeUUID);
+        }
         onClose();
       },
       onError: (error) => {

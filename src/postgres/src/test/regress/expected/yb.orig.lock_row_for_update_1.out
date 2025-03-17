@@ -42,7 +42,7 @@ INSERT INTO yb_row_locking VALUES(1,1,1,1);
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 UPDATE yb_row_locking SET v1 = 2 WHERE hk = 1 AND rk = 1;
 SELECT * FROM get_lock_status();
- locktype |    relation    |            mode            | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
+ locktype |    relation    |            mode            | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked 
 ----------+----------------+----------------------------+---------+-------------+-----------+------------+--------+---------------+----------------------
  relation | yb_row_locking | {WEAK_READ,WEAK_WRITE}     | t       | f           |           |            |        | f             | t
  keyrange | yb_row_locking | {WEAK_READ,WEAK_WRITE}     | t       | f           | {1}       |            |        | f             | t
@@ -55,7 +55,7 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 UPDATE yb_row_locking SET v1 = 3 WHERE hk = 1 AND rk = 1;
 SELECT * FROM get_lock_status();
- locktype |    relation    |            mode            | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
+ locktype |    relation    |            mode            | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked 
 ----------+----------------+----------------------------+---------+-------------+-----------+------------+--------+---------------+----------------------
  relation | yb_row_locking | {WEAK_READ,WEAK_WRITE}     | t       | f           |           |            |        | f             | t
  keyrange | yb_row_locking | {WEAK_READ,WEAK_WRITE}     | t       | f           | {1}       |            |        | f             | t
@@ -68,7 +68,7 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 UPDATE yb_row_locking SET v1 = 4 WHERE hk = 1 AND rk = 1;
 SELECT * FROM get_lock_status();
- locktype |    relation    |          mode          | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
+ locktype |    relation    |          mode          | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked 
 ----------+----------------+------------------------+---------+-------------+-----------+------------+--------+---------------+----------------------
  relation | yb_row_locking | {WEAK_READ,WEAK_WRITE} | t       | f           |           |            |        | f             | t
  keyrange | yb_row_locking | {WEAK_READ,WEAK_WRITE} | t       | f           | {1}       |            |        | f             | t
@@ -83,7 +83,7 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 UPDATE yb_row_locking SET v1 = 2 WHERE hk = 2 AND rk = 2;
 SELECT * FROM get_lock_status(); -- no locks
- locktype | relation | mode | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
+ locktype | relation | mode | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked 
 ----------+----------+------+---------+-------------+-----------+------------+--------+---------------+----------------------
 (0 rows)
 
@@ -91,7 +91,7 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 UPDATE yb_row_locking SET v1 = 3 WHERE hk = 2 AND rk = 2;
 SELECT * FROM get_lock_status(); -- no locks
- locktype | relation | mode | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
+ locktype | relation | mode | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked 
 ----------+----------+------+---------+-------------+-----------+------------+--------+---------------+----------------------
 (0 rows)
 
@@ -101,7 +101,7 @@ COMMIT;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 UPDATE yb_row_locking SET v1 = 4 WHERE hk = 2 AND rk = 2;
 SELECT * FROM get_lock_status(); -- lock
- locktype |    relation    |     mode      | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
+ locktype |    relation    |     mode      | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked 
 ----------+----------------+---------------+---------+-------------+-----------+------------+--------+---------------+----------------------
  relation | yb_row_locking | {WEAK_READ}   | t       | f           |           |            |        | f             | t
  keyrange | yb_row_locking | {WEAK_READ}   | t       | f           | {2}       |            |        | f             | t

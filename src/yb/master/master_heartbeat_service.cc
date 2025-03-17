@@ -233,11 +233,11 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   Status ValidateTServerUniverseOrRespond(
       const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
 
-  Result<HeartbeatResult> UpdateAndReturnTSDescriptorOrRespond(
+  Result<TSDescriptorPtr> UpdateAndReturnTSDescriptorOrRespond(
       const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  Result<HeartbeatResult> RegisterTServerOrRespond(
+  Result<TSDescriptorPtr> RegisterTServerOrRespond(
       const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
       rpc::RpcContext* rpc);
 
@@ -423,17 +423,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   if (!desc_result.ok()) {
     return;
   }
-  TSDescriptorPtr ts_desc;
-  ts_desc = std::move(desc_result->desc);
-  if (desc_result->lease_update) {
-    *resp->mutable_op_lease_update() = desc_result->lease_update->ToPB();
-    if (desc_result->lease_update->new_lease) {
-      *resp->mutable_op_lease_update()->mutable_ddl_lock_entries() =
-          server_->catalog_manager_impl()->object_lock_info_manager()->ExportObjectLockInfo();
-      server_->catalog_manager_impl()->object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
-          ts_desc->id(), desc_result->lease_update->lease_epoch);
-    }
-  }
+  TSDescriptorPtr& ts_desc = *desc_result;
 
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
@@ -500,6 +490,14 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   }
 
   PopulatePgCatalogVersionInfo(*req, *resp);
+
+  auto cluster_config = server_->catalog_manager()->GetClusterConfig();
+  if (cluster_config) {
+    resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+  } else {
+    LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+                 << cluster_config.status().ToUserMessage();
+  }
 
   uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
   resp->set_transaction_tables_version(transaction_tables_version);
@@ -1501,7 +1499,7 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   return Status::OK();
 }
 
-Result<HeartbeatResult>
+Result<TSDescriptorPtr>
 MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
     rpc::RpcContext* rpc) {
@@ -1525,9 +1523,9 @@ MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
       req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
     LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
-    return std::move(*desc_result);
+    return desc_result;
   }
-  auto status = std::move(desc_result.status());
+  auto& status = desc_result.status();
   if (status.IsAlreadyPresent()) {
     // AlreadyPresent indicates a host port collision. This tserver shouldn't be heartbeating
     // anymore, but in any case ask it to re-register to preserve existing semantics.
@@ -1538,46 +1536,45 @@ MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     resp->set_needs_reregister(true);
     resp->set_needs_full_tablet_report(true);
     rpc->RespondSuccess();
-    return status;
+    return desc_result;
   }
   LOG(WARNING) << Format(
       "Failed to register tablet server { $0 } as $1; Status was: $2",
       req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), status);
   rpc->RespondFailure(status);
-  return status;
+  return desc_result;
 }
 
-Result<HeartbeatResult> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorOrRespond(
+Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorOrRespond(
     const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
     rpc::RpcContext* rpc) {
   if (req.has_registration()) {
     return RegisterTServerOrRespond(epoch, req, resp, rpc);
   }
-
   auto desc_result = server_->ts_manager()->LookupAndUpdateTSFromHeartbeat(req, epoch);
   if (desc_result.ok()) {
-    return std::move(*desc_result);
+    return desc_result;
   }
-  auto status = std::move(desc_result.status());
   // todo(zdrudi): be more precise about the error code here.
-  if (status.IsNotFound()) {
+  if (desc_result.status().IsNotFound()) {
     LOG(INFO) << Format(
         "Failed to lookup tablet server { $0 } as $1; Asking this server to re-register. Status "
         "from ts lookup: $2",
-        req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), status);
+        req.common().ts_instance().ShortDebugString(), rpc->requestor_string(),
+        desc_result.status());
     resp->set_needs_reregister(true);
     resp->set_needs_full_tablet_report(true);
     rpc->RespondSuccess();
-    return status;
+    return desc_result;
   }
   // Under some circumstances TS lookups from a heartbeat may trigger sys catalog writes which can
   // fail. Distinguish these failures from lookup failures using a different log message and failing
   // the rpc.
   LOG(WARNING) << Format(
       "Failed to lookup tablet server { $0 } as $1; Status was: $2",
-      req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), status);
-  rpc->RespondFailure(status);
-  return status;
+      req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), desc_result.status());
+  rpc->RespondFailure(desc_result.status());
+  return desc_result;
 }
 
 } // namespace

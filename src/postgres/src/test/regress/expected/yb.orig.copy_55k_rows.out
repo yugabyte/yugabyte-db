@@ -8,13 +8,14 @@ COPY airports FROM :'filename' CSV HEADER;
 -- Workaround: Sleeping 2 minutes for docdb to complete its background tasks (issue #4855).
 -- Don't sleep more than 60 seconds each to avoid any RPC issues.
 SELECT pg_sleep(60);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
 
 SELECT pg_sleep(60);
- pg_sleep
+ pg_sleep 
 ----------
-
+ 
 (1 row)
+

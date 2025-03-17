@@ -4201,9 +4201,9 @@
   proname => 'yb_servers', proretset => 't', provolatile => 'v',
   prorettype => 'record',
   proargtypes => '',
-  proallargtypes => '{text,int8,int8,text,text,text,text,text,text}',
-  proargmodes => '{o,o,o,o,o,o,o,o,o}',
-  proargnames => '{host,port,num_connections,node_type,cloud,region,zone,public_ip,uuid}',
+  proallargtypes => '{text,int8,int8,text,text,text,text,text,text,text}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{host,port,num_connections,node_type,cloud,region,zone,public_ip,uuid,universe_uuid}',
   prosrc => 'yb_servers' },
 
 { oid => '2627',
@@ -5368,10 +5368,6 @@
   proargmodes => '{i,o,o,o,o,o,o}',
   proargnames => '{db_oid,db_oid,backend_pid,query_text,termination_reason,query_start,query_end}',
   prosrc => 'yb_pg_stat_get_queries'},
-# YB_TODO(neil) talk to Fizaa about her changes for "pg_stat_get_progress_info".
-# commit ced7c32846e4adbe2a93ca20fc64fd648bec8851
-# Author: Fizaa Luthra <fizaaluthra@gmail.com>
-# Date:   Fri Jan 27 12:14:34 2023 -0500
 { oid => '3318',
   descr => 'statistics: information about progress of backends running maintenance command',
   proname => 'pg_stat_get_progress_info', prorows => '100', proretset => 't',
@@ -6176,9 +6172,9 @@
 { oid => '8062', descr => 'view yugabyte lock information',
   proname => 'yb_lock_status', prorows => '1000', proretset => 't', proisstrict => 'f', provolatile => 'v',
   prorettype => 'record', proargtypes => 'oid uuid',
-  proallargtypes => '{oid,uuid,text,oid,oid,int4,_text,bool,bool,timestamptz,timestamptz,text,text,uuid,int4,text,bool,_text,_text,int2,int4,bool,_uuid}',
-  proargmodes => '{i,i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-  proargnames => '{relation,transaction_id,locktype,database,relation,pid,mode,granted,fastpath,waitstart,waitend,node,tablet_id,transaction_id,subtransaction_id,status_tablet_id,is_explicit,hash_cols,range_cols,attnum,column_id,multiple_rows_locked,blocked_by}',
+  proallargtypes => '{oid,uuid,text,oid,oid,int4,_text,bool,bool,timestamptz,timestamptz,text,text,uuid,int4,text,bool,_text,_text,int2,int4,bool,_uuid,oid,oid,int2}',
+  proargmodes => '{i,i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{relation,transaction_id,locktype,database,relation,pid,mode,granted,fastpath,waitstart,waitend,node,tablet_id,transaction_id,subtransaction_id,status_tablet_id,is_explicit,hash_cols,range_cols,attnum,column_id,multiple_rows_locked,blocked_by,classid,objid,objsubid}',
   prosrc => 'yb_lock_status'},
 { oid => '2561',
   descr => 'get array of PIDs of sessions blocking specified backend PID from acquiring a heavyweight lock',
@@ -7715,9 +7711,6 @@
 { oid => '2404', descr => 'I/O',
   proname => 'int2recv', prorettype => 'int2', proargtypes => 'internal',
   prosrc => 'int2recv' },
-# YB_TODO(sergei@yugabyte) Review changes for "PG_PROC_INT2SEND_OID"
-# - PG13 doesn't allow having "oid_symbol" for proc.
-# - Please define your symbol elsewhere.
 { oid => '2405', descr => 'I/O',
   proname => 'int2send', prorettype => 'bytea', proargtypes => 'int2',
   prosrc => 'int2send' },
@@ -11860,10 +11853,6 @@
   proname => 'brin_minmax_multi_summary_send', provolatile => 's',
   prorettype => 'bytea', proargtypes => 'pg_brin_minmax_multi_summary',
   prosrc => 'brin_minmax_multi_summary_send' },
-
-# YB_TODO(tanuj@yugabyte) Review changes for YB_HASH_CODE_OID.
-# - PG13 doesn't allow having "oid_symbol" for proc.
-# - Its definition is currently defined in "yb_scan.h".
 { oid => '8020', descr => 'function to compute internal hash code of given values',
   proname => 'yb_hash_code', provariadic => 'any', proisstrict => 'f',
   prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
@@ -12052,7 +12041,7 @@
 { oid => '8067',
   descr => 'Reset the statistics collected by the ANALYZE command.',
   proname => 'yb_reset_analyze_statistics', prolang => 'sql', provolatile => 'v',
-  prorettype => 'void', proargtypes => 'oid', prosrc => 'see yb_system_views.sql' },
+  prorettype => 'void', proargtypes => 'oid', prosrc => 'see yb_system_functions.sql' },
 
 { oid => '8068',
   descr => 'enables query diagnostics',
@@ -12172,4 +12161,42 @@
   proargnames => '{pid}',
   prosrc => 'yb_log_catcache_stats'},
 
+{ oid => '8090', descr => 'returns whether the index is logically consistent with its base relation',
+  proname => 'yb_index_check', provolatile => 's',
+  prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'yb_index_check' },
 ]
+
+# Statistics Import
+{ oid => '8091',
+  descr => 'restore statistics on relation',
+  proname => 'pg_restore_relation_stats', provolatile => 'v', proisstrict => 'f',
+  provariadic => 'any',
+  proparallel => 'u', prorettype => 'bool',
+  proargtypes => 'any',
+  proargnames => '{kwargs}',
+  proargmodes => '{v}',
+  prosrc => 'pg_restore_relation_stats' },
+{ oid => '8092',
+  descr => 'clear statistics on relation',
+  proname => 'pg_clear_relation_stats', provolatile => 'v', proisstrict => 'f',
+  proparallel => 'u', prorettype => 'void',
+  proargtypes => 'regclass',
+  proargnames => '{relation}',
+  prosrc => 'pg_clear_relation_stats' },
+{ oid => '8093',
+  descr => 'restore statistics on attribute',
+  proname => 'pg_restore_attribute_stats', provolatile => 'v', proisstrict => 'f',
+  provariadic => 'any',
+  proparallel => 'u', prorettype => 'bool',
+  proargtypes => 'any',
+  proargnames => '{kwargs}',
+  proargmodes => '{v}',
+  prosrc => 'pg_restore_attribute_stats' },
+{ oid => '8094',
+  descr => 'clear statistics on attribute',
+  proname => 'pg_clear_attribute_stats', provolatile => 'v', proisstrict => 'f',
+  proparallel => 'u', prorettype => 'void',
+  proargtypes => 'regclass name bool',
+  proargnames => '{relation,attname,inherited}',
+  prosrc => 'pg_clear_attribute_stats' },

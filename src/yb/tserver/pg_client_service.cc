@@ -51,6 +51,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -124,6 +125,9 @@ DEFINE_test_flag(uint64, delay_before_get_locks_status_ms, 0,
                  "tablet locations and before invoking GetLockStatus RPC. Currently the flag is "
                  "being used to test pg_locks behavior when split happens after fetching involved "
                  "tablet(s) locations.");
+
+DEFINE_RUNTIME_uint32(ysql_oid_cache_prefetch_size, 256,
+    "How many new OIDs the YSQL OID allocator should prefetch at a time from YB-Master.");
 
 DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
                  "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
@@ -517,10 +521,15 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
+    uint64_t lease_epoch;
+    {
+      std::lock_guard lock(mutex_);
+      lease_epoch = lease_epoch_;
+    }
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_,
-        client(), session_context_, session_id, messenger_.scheduler());
+        client(), session_context_, session_id, lease_epoch, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
@@ -712,10 +721,6 @@ class PgClientServiceImpl::Impl {
     auto namespace_id = GetPgsqlNamespaceId(db_oid);
     bool use_secondary_space =
         ShouldUseSecondarySpace(session_context_.xcluster_context, namespace_id);
-    // Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
-    // Given there are multiple Postgres nodes, each node should prefetch
-    // in smaller chunks.
-    constexpr int32_t kYbOidPrefetch = 256;
     std::lock_guard lock(mutex_);
     auto& oid_chunk = reserved_oids_map_[db_oid];
     if (oid_chunk.allocated_from_secondary_space != use_secondary_space) {
@@ -724,19 +729,27 @@ class PgClientServiceImpl::Impl {
       oid_chunk.next_oid =
           use_secondary_space ? kPgFirstSecondarySpaceObjectId : kPgFirstNormalObjectId;
       oid_chunk.allocated_from_secondary_space = use_secondary_space;
+      oid_chunk.oid_cache_invalidations_count = 0;
     }
-    if (oid_chunk.oid_count == 0) {
+    uint32_t highest_received_invalidations_count =
+        tablet_server_.get_oid_cache_invalidations_count();
+    while (oid_chunk.oid_count == 0 ||
+           oid_chunk.oid_cache_invalidations_count < highest_received_invalidations_count) {
+      // We don't have any valid OIDs left so fetch more.
       const uint32_t next_oid =
           oid_chunk.next_oid + static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
-      uint32_t begin_oid, end_oid;
+      uint32_t begin_oid, end_oid, oid_cache_invalidations_count;
       RETURN_NOT_OK(client().ReservePgsqlOids(
-          namespace_id, next_oid, kYbOidPrefetch, &begin_oid, &end_oid, use_secondary_space));
+          namespace_id, next_oid, FLAGS_ysql_oid_cache_prefetch_size, &begin_oid, &end_oid,
+          use_secondary_space, &oid_cache_invalidations_count));
       oid_chunk.next_oid = begin_oid;
       oid_chunk.oid_count = end_oid - begin_oid;
+      oid_chunk.oid_cache_invalidations_count = oid_cache_invalidations_count;
       VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
-              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid;
+              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid
+              << ", invalidation count: " << oid_cache_invalidations_count;
     }
-    uint32 new_oid = oid_chunk.next_oid;
+    uint32_t new_oid = oid_chunk.next_oid;
     oid_chunk.next_oid++;
     oid_chunk.oid_count--;
     resp->set_new_oid(new_oid);
@@ -1204,10 +1217,11 @@ class PgClientServiceImpl::Impl {
   Status ListLiveTabletServers(
       const PgListLiveTabletServersRequestPB& req, PgListLiveTabletServersResponsePB* resp,
       rpc::RpcContext* context) {
-    auto tablet_servers = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
-    for (const auto& server : tablet_servers) {
+    auto tablet_servers_info = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
+    for (const auto& server : tablet_servers_info.tablet_servers) {
       server.ToPB(resp->mutable_servers()->Add());
     }
+    resp->set_universe_uuid(VERIFY_RESULT(tablet_server_.GetUniverseUuid()));
     return Status::OK();
   }
 
@@ -1224,6 +1238,7 @@ class PgClientServiceImpl::Impl {
         stream_to_metadata;
     // stream id -> last_pub_refresh_time
     std::unordered_map<xrepl::StreamId, uint64_t> stream_to_last_pub_refresh_time;
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_active_pid;
 
     if (!streams.empty()) {
       Status iteration_status;
@@ -1234,7 +1249,8 @@ class PgClientServiceImpl::Impl {
               .IncludeRestartLSN()
               .IncludeXmin()
               .IncludeRecordIdCommitTime()
-              .IncludeLastPubRefreshTime(),
+              .IncludeLastPubRefreshTime()
+              .IncludeActivePid(),
           &iteration_status));
 
       int cdc_state_table_result_count = 0;
@@ -1264,6 +1280,7 @@ class PgClientServiceImpl::Impl {
               std::make_pair(*entry.confirmed_flush_lsn, *entry.restart_lsn),
               std::make_pair(*entry.xmin, *entry.record_id_commit_time));
           stream_to_last_pub_refresh_time[stream_id] = *entry.last_pub_refresh_time;
+          stream_to_active_pid[stream_id] = entry.active_pid.has_value() ? *entry.active_pid : 0;
           continue;
         }
 
@@ -1311,6 +1328,7 @@ class PgClientServiceImpl::Impl {
         replication_slot->set_xmin(slot_metadata.second.first);
         replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
         replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+        replication_slot->set_active_pid(stream_to_active_pid[*stream_id]);
       } else {
         // TODO(#21780): This should never happen, so make this a DCHECK. We can do that after every
         // unit test that uses replication slots is updated to consistent snapshot stream.
@@ -1361,9 +1379,10 @@ class PgClientServiceImpl::Impl {
     uint32_t xmin = 0;
     uint64_t record_id_commit_time_ht;
     uint64_t last_pub_refresh_time = 0;
+    uint64_t active_pid = 0;
     RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
         stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht, &last_pub_refresh_time));
+        &record_id_commit_time_ht, &last_pub_refresh_time, &active_pid));
     resp->mutable_replication_slot_info()->set_replication_slot_status(
         (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
@@ -1380,13 +1399,14 @@ class PgClientServiceImpl::Impl {
     slot_info->set_xmin(xmin);
     slot_info->set_record_id_commit_time_ht(record_id_commit_time_ht);
     slot_info->set_last_pub_refresh_time(last_pub_refresh_time);
+    slot_info->set_active_pid(active_pid);
     return Status::OK();
   }
 
   Status GetReplicationSlotInfoFromCDCState(
       const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
       uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
-      uint64_t* last_pub_refresh_time) {
+      uint64_t* last_pub_refresh_time, uint64_t* active_pid) {
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
@@ -1396,7 +1416,8 @@ class PgClientServiceImpl::Impl {
             .IncludeRestartLSN()
             .IncludeXmin()
             .IncludeRecordIdCommitTime()
-            .IncludeLastPubRefreshTime(),
+            .IncludeLastPubRefreshTime()
+            .IncludeActivePid(),
         &iteration_status));
 
     // Find the latest active time for the stream across all tablets.
@@ -1422,6 +1443,7 @@ class PgClientServiceImpl::Impl {
         *DCHECK_NOTNULL(xmin) = *entry.xmin;
         *DCHECK_NOTNULL(record_id_commit_time_ht) = *entry.record_id_commit_time;
         *DCHECK_NOTNULL(last_pub_refresh_time) = *entry.last_pub_refresh_time;
+        *DCHECK_NOTNULL(active_pid) = entry.active_pid.has_value() ? *entry.active_pid : 0;
         continue;
       }
 
@@ -1690,6 +1712,23 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetTserverCatalogMessageLists(
+      const PgGetTserverCatalogMessageListsRequestPB& req,
+      PgGetTserverCatalogMessageListsResponsePB* resp,
+      rpc::RpcContext* context) {
+    GetTserverCatalogMessageListsRequestPB request;
+    GetTserverCatalogMessageListsResponsePB response;
+    const auto db_oid = req.db_oid();
+    const auto ysql_catalog_version = req.ysql_catalog_version();
+    const auto num_catalog_versions = req.num_catalog_versions();
+    request.set_db_oid(db_oid);
+    request.set_ysql_catalog_version(ysql_catalog_version);
+    request.set_num_catalog_versions(num_catalog_versions);
+    RETURN_NOT_OK(tablet_server_.GetTserverCatalogMessageLists(request, &response));
+    resp->mutable_entries()->Swap(response.mutable_entries());
+    return Status::OK();
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {
@@ -1719,7 +1758,7 @@ class PgClientServiceImpl::Impl {
     table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
   }
 
-  void ProcessLeaseUpdate(const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
     if (!GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
       return;
     }
@@ -1727,8 +1766,11 @@ class PgClientServiceImpl::Impl {
     {
       std::lock_guard lock(mutex_);
       last_lease_refresh_time_ = time;
-      if (lease_update.new_lease()) {
-        lease_epoch_ = lease_update.lease_epoch();
+      if (lease_refresh_info.new_lease()) {
+        LOG(INFO) << Format(
+            "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
+            lease_refresh_info.lease_epoch());
+        lease_epoch_ = lease_refresh_info.lease_epoch();
         sessions.assign(sessions_.begin(), sessions_.end());
         sessions_.clear();
       }
@@ -2138,9 +2180,8 @@ class PgClientServiceImpl::Impl {
       stopping_sessions_.erase(
           std::remove_if(stopping_sessions_.begin(), stopping_sessions_.end(), filter),
           stopping_sessions_.end());
-      if (expired_sessions.empty() && ready_sessions.empty()) {
+      if (expired_sessions.empty()) {
         ScheduleCheckExpiredSessions(now);
-        return;
       }
     }
     for (const auto& session : ready_sessions) {
@@ -2220,6 +2261,7 @@ class PgClientServiceImpl::Impl {
     uint32_t next_oid = kPgFirstNormalObjectId;
     uint32_t oid_count = 0;
     bool allocated_from_secondary_space = false;
+    uint32_t oid_cache_invalidations_count = 0;
   };
   // Domain here is db_oid of namespace we are allocating OIDs for.
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
@@ -2315,9 +2357,9 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
-void PgClientServiceImpl::ProcessLeaseUpdate(
-    const master::ClientOperationLeaseUpdatePB& lease_update, MonoTime time) {
-  impl_->ProcessLeaseUpdate(lease_update, time);
+void PgClientServiceImpl::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB&
+                                             lease_refresh_info, MonoTime time) {
+  impl_->ProcessLeaseUpdate(lease_refresh_info, time);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }

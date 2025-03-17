@@ -1,9 +1,9 @@
 CREATE EXTENSION pg_stat_monitor;
 SET pg_stat_monitor.pgsm_track='all';
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS
@@ -18,7 +18,7 @@ BEGIN
 END;
 $$ language plpgsql;
 SELECT add2(1,2);
- add2
+ add2 
 ------
     3
 (1 row)
@@ -43,9 +43,9 @@ SELECT query, top_query FROM pg_stat_monitor ORDER BY query COLLATE "C";
 (5 rows)
 
 SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset
+ pg_stat_monitor_reset 
 -----------------------
-
+ 
 (1 row)
 
 DROP EXTENSION pg_stat_monitor;

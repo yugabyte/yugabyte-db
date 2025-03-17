@@ -162,10 +162,11 @@ class MiniCluster : public MiniClusterBase {
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  Status AddTabletServer(const tserver::TabletServerOptions& extra_opts);
+  Status AddTabletServer(
+      const tserver::TabletServerOptions& extra_opts, bool wait_for_registration = true);
 
   // Same as above, but get options from flags.
-  Status AddTabletServer();
+  Status AddTabletServer(bool wait_for_registration = true);
 
   // Start YB Controller servers for all the existing TSs.
   Status StartYbControllerServers();
@@ -258,6 +259,9 @@ class MiniCluster : public MiniClusterBase {
   // within kRegistrationWaitTimeSeconds.
   Result<std::vector<std::shared_ptr<master::TSDescriptor>>> WaitForTabletServerCount(
       size_t count, bool live_only = false);
+
+  // Waits for the tablet server to heartbeat successfully to the master leader.
+  Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.

@@ -17,15 +17,17 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/colocated_util.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -489,6 +491,44 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
 }
 
+TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(p_conn.Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Cause the target to fail the DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  const auto alter_query = "ALTER TABLE test_table_1 RENAME TO test_table_2;";
+  ASSERT_OK(p_conn.Execute(alter_query));
+
+  // Replication should not continue. Wait till we see replication errors.
+  ASSERT_OK(
+      StringWaiterLogSink("DDL replication is paused due to repeated failures").WaitFor(kTimeout));
+
+  // Stop failing DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+
+  // Replication should not resume until we recreate the ddl_queue poller.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+
+  // Resume replication by pausing and unpausing, this will recreate the pollers.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+  SleepFor(MonoDelta::FromSeconds(1));
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // Replication should resume and rows should replicate.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
 TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
   // Test that when there are multiple tables with the same name, we are able to correctly link the
   // target tables to the correct source tables.
@@ -826,6 +866,8 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
 
   // Allow DDLs through but fail them at the end of execution.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  // Bump up the number of retries to ensure that we don't hit the limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kNewTableName));
@@ -1157,6 +1199,110 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
   ASSERT_EQ(a_result, b_result);
 }
 
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
+  // To understand this test, it helps to picture the result of A->B replication before we do a
+  // switchover.  The following is an example of the OID spaces of A and B for one database after A
+  // has allocated three OIDs we don't care about preserving (the Ns) and one OID we do care about
+  // preserving (P).  The [OID ptr]'s indicate where the next OID would be allocated in each space
+  // modulo we skip OIDs already in use in that space on that universe.
+  //
+  // In particular, the next normal space OID that will be allocated on B is the one marked (*),
+  // which conflicts with an OID already in use in cluster A.  While not a problem while B is a
+  // target (targets only allocate in the secondary space), this will be a problem if we switch the
+  // replication direction so B is now the source.
+  //
+  // Accordingly, xCluster is designed to bump up B's normal space [OID ptr] to after A's normal
+  // space [OID ptr] as part of doing switchover; this test attempts to verify that that
+  // successfully avoids the OID conflict problem described above.
+  //
+  //           A:                  B:
+  //  Normal:
+  //           N                [OID ptr] (*)
+  //           N
+  //           P                   P
+  //           N
+  //         [OID ptr]
+  //
+  //  Secondary:
+  //         [OID ptr]             N
+  //                               N
+  //                               N
+  //                            [OID ptr]
+
+  // Limit how many OIDs we cache at a time so cache flushing doesn't consume too many OIDs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_oid_cache_prefetch_size) = 1;
+
+  ASSERT_OK(SetUpClusters());
+  // Set up replication from A to B.
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Log information about OID reservations; search logs for (case insensitive) "reserve".
+  google::SetVLOGLevel("catalog_manager*", 2);
+  google::SetVLOGLevel("pg_client_service*", 2);
+
+  // Use up a lot of pg_class OIDs in the normal OIDs space on A; we are using views here because
+  // those are faster to create than tables when using xCluster.  These will be allocated on B in
+  // the secondary space because it is a target.  We create several times more than the number of
+  // OIDs cached to ensure cache flushing alone doesn't pass this test.
+  uint32_t highest_normal_oid_used = 0;
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE my_table (f INT)"));
+    for (uint32_t i = 0; i < FLAGS_ysql_oid_cache_prefetch_size * 10; i++) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE VIEW my_view_$0 AS SELECT f FROM my_table", i));
+    }
+    // As a simplification here, we are ignoring OIDs of kinds other than pg_class.
+    highest_normal_oid_used = ASSERT_RESULT(
+        conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_class ORDER BY oid DESC LIMIT 1"));
+    LOG(INFO) << "Highest normal OID in use in universe A: " << highest_normal_oid_used;
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Perform switchover from A->B to B->A.
+  LOG(INFO) << "===== Beginning switchover: checkpoint B";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CheckpointReplicationGroup(
+      kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  LOG(INFO) << "===== Switchover: set up replication from B to A";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(CreateReplicationFromCheckpoint(
+      cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+  LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  ASSERT_OK(DeleteOutboundReplicationGroup());
+  LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+  LOG(INFO) << "===== Switchover done";
+
+  // Attempt to allocate pg_class OIDs on B in the normal space that we will want to preserve and
+  // thus use the same OIDs on A.
+  //
+  // This will fail if the normal space OID counter on B was not bumped above the highest OID
+  // already used in the normal space on A.  (Otherwise, the OID that B picks may already be in use
+  // on A.)
+  //
+  // Note that the OID cache flush from switching OID allocation spaces itself will bump the OID
+  // counter by the size of the OID cache; we require more bumping than that to make sure this test
+  // is not passed just by the flushing.
+  {
+    auto conn = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    for (int i = 0; i < 20; i++) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE my_sequence_$0", i));
+    }
+
+    uint32_t my_sequence_0_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+        "SELECT oid FROM pg_class WHERE pg_class.relname = 'my_sequence_0'"));
+    LOG(INFO) << "my_sequence_0's OID: " << my_sequence_0_oid;
+    ASSERT_GT(my_sequence_0_oid, highest_normal_oid_used);
+  }
+
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
  public:
   void SetUp() override {
@@ -1169,6 +1315,9 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
         ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
     consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
         ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+
+    auto consumer_namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+    consumer_database_oid_ = ASSERT_RESULT(GetPgsqlDatabaseOid(consumer_namespace_id));
   }
 
   Status PerformStep(size_t step) {
@@ -1197,7 +1346,28 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
     return Status::OK();
   }
 
+  Result<uint64_t> GetConsumerCatalogVersion() {
+    return consumer_conn_->FetchRow<pgwrapper::PGUint64>(Format(
+        "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = $0",
+        consumer_database_oid_));
+  }
+
+  Status WaitForCatalogVersionToPropagate() {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto current_version = VERIFY_RESULT(GetConsumerCatalogVersion());
+          if (current_version < last_consumer_catalog_version_) {
+            return false;
+          }
+          last_consumer_catalog_version_ = current_version;
+          return true;
+        },
+        kRpcTimeout * 1s, "Wait for new catalog version to propagate"));
+    return Status::OK();
+  }
+
   Status VerifyTargetData(bool is_paused) {
+    RETURN_NOT_OK(WaitForCatalogVersionToPropagate());
     if (!is_paused) {
       // Tables should have the same schema and data.
       for (const auto& query :
@@ -1242,6 +1412,8 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
 
   Status RunTest(size_t step_to_pause_on) {
     bool is_paused = false;
+    last_consumer_catalog_version_ = VERIFY_RESULT(GetConsumerCatalogVersion());
+
     for (size_t step = 0; step <= kNumSteps; ++step) {
       RETURN_NOT_OK(PerformStep(step));
       RETURN_NOT_OK(WaitForDDLReplication(is_paused));
@@ -1287,6 +1459,9 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
 
   std::string paused_expected_data_output_;
   std::string paused_expected_schema_output_;
+
+  uint32_t consumer_database_oid_;
+  uint64_t last_consumer_catalog_version_ = 0;
 };
 
 TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {

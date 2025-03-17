@@ -522,10 +522,10 @@ class YBClient {
 
   // For Postgres: reserve oids for a Postgres database.
   // use_secondary_space is used by xCluster when a database is a target.
-  Status ReservePgsqlOids(const std::string& namespace_id,
-                          uint32_t next_oid, uint32_t count,
-                          uint32_t* begin_oid, uint32_t* end_oid,
-                          bool use_secondary_space);
+  Status ReservePgsqlOids(
+      const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
+      uint32_t* end_oid, bool use_secondary_space,
+      uint32_t* oid_cache_invalidations_count = nullptr);
 
   Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
@@ -693,6 +693,13 @@ class YBClient {
   Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
+  void AcquireObjectLocksGlobalAsync(
+      const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      MonoDelta rpc_timeout);
+  void ReleaseObjectLocksGlobalAsync(
+      const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      MonoDelta rpc_timeout);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(
@@ -1074,9 +1081,6 @@ class YBClient {
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
   void RequestAbortAllRpcs();
-
-  Status AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req);
-  Status ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req);
 
  private:
   class Data;

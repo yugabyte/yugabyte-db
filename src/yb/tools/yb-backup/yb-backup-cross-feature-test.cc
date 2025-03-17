@@ -3386,5 +3386,69 @@ TEST_F(
         (6 rows)
       )#"));
 }
+
+class YBBackupTestAutoAnalyze : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_enable_auto_analyze_service=true");
+
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_service=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_table_mutation_counter=true");
+    options->extra_tserver_flags.push_back("--ysql_node_level_mutation_reporting_interval_ms=10");
+    options->extra_tserver_flags.push_back("--ysql_cluster_level_mutation_persist_interval_ms=10");
+  }
+};
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestAutoAnalyzeEnabledDuringRestore),
+    YBBackupTestAutoAnalyze) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "pg_auto_analyze_service=5"));
+  const int num_tables = 20;
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", i)));
+    ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", i), 3));
+  }
+
+  // Set auto analyze threshold to a small number to make auto analyze service
+  // run ANALYZEs aggressively.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_threshold", "1"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_scale_factor", "0.1"));
+  SleepFor(3s * kTimeMultiplier);
+
+  // Verify that the auto analyze service is running.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT reltuples FROM pg_class WHERE relname = 'tbl_0'",
+      R"#(
+         reltuples
+        -----------
+                 3
+        (1 row)
+      )#"
+  ));
+
+  // Backup and restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.db2", "restore"}));
+
+  // Verify that the auto analyze service is still enabled and works correctly after restore.
+  SetDbName("db2");
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", num_tables)));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", num_tables), 3));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", num_tables),
+      R"#(
+         reltuples
+        -----------
+                 3
+        (1 row)
+      )#"
+  ));
+}
+
 }  // namespace tools
 }  // namespace yb

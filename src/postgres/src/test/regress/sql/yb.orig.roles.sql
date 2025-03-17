@@ -35,7 +35,7 @@ SET SESSION AUTHORIZATION regress_priv_user1;
 CREATE FOREIGN DATA WRAPPER useless;
 ALTER FOREIGN DATA WRAPPER useless NO VALIDATOR;
 ALTER FOREIGN DATA WRAPPER useless OWNER TO regress_priv_user2; -- should fail
-GRANT yb_fdw TO regress_priv_user2; 
+GRANT yb_fdw TO regress_priv_user2;
 ALTER FOREIGN DATA WRAPPER useless OWNER TO regress_priv_user2;
 CREATE SERVER s1 FOREIGN DATA WRAPPER useless; -- should fail, since the owner changed
 SET SESSION AUTHORIZATION regress_priv_user2;

@@ -875,7 +875,7 @@ public class AlertController extends AuthenticatedController {
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change.",
       value = "List alert destinations",
-      response = AlertDefinition.class,
+      response = AlertDestination.class,
       responseContainer = "List")
   @AuthzPath({
     @RequiredPermissionOnResource(

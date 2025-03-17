@@ -31,7 +31,7 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   @Inject
   protected RollbackUpgrade(
       BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
-    super(baseTaskDependencies);
+    super(baseTaskDependencies, softwareUpgradeHelper);
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
@@ -118,6 +118,13 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           // Download software to nodes which does not have either master or tserver with new
           // version.
           createDownloadTasks(toOrderedSet(nodes.asPair()), oldVersion);
+
+          if (ysqlMajorVersionUpgrade) {
+            // Set ysql_yb_major_version_upgrade_compatibility to `11` for tservers during ysql
+            // upgrade rollback.
+            createGFlagsUpgradeTaskForYSQLMajorUpgrade(
+                universe, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
+          }
 
           if (nodes.tserversList.size() > 0) {
             createTServerUpgradeFlowTasks(

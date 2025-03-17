@@ -807,7 +807,7 @@ ERROR:  index method "spgist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 explain (costs off)
 select count(*) from test_range_elem where int4range(i,i+10) <@ int4range(10,30);
-                             QUERY PLAN
+                             QUERY PLAN                             
 --------------------------------------------------------------------
  Aggregate
    ->  Index Only Scan using test_range_elem_idx on test_range_elem

@@ -33,6 +33,8 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 
+#include "yb/util/concurrent_value.h"
+
 namespace yb {
 
 class MemTracker;
@@ -50,7 +52,6 @@ namespace tserver {
 class PgYCQLStatementStatsRequestPB;
 class PgYCQLStatementStatsResponsePB;
 
-using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
 
 class TabletServerIf : public LocalTabletServer {
@@ -64,6 +65,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
 
+  virtual uint32_t get_oid_cache_invalidations_count() const = 0;
+
   virtual void get_ysql_catalog_version(uint64_t* current_version,
                                         uint64_t* last_breaking_version) const = 0;
   virtual void get_ysql_db_catalog_version(uint32_t db_oid,
@@ -74,13 +77,17 @@ class TabletServerIf : public LocalTabletServer {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
 
+  virtual Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
   virtual client::TransactionPool& TransactionPool() = 0;
 
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
 
-  virtual tserver::TServerSharedData& SharedObject() = 0;
+  virtual ConcurrentPointerReference<TServerSharedData> SharedObject() = 0;
 
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
@@ -130,6 +137,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual bool SkipCatalogVersionChecks() { return false; }
 
   virtual const std::string& permanent_uuid() const = 0;
+
+  virtual Result<std::string> GetUniverseUuid() const = 0;
 };
 
 } // namespace tserver

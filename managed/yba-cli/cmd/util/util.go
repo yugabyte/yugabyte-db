@@ -514,3 +514,11 @@ func MustGetFlagBool(cmd *cobra.Command, name string) bool {
 	}
 	return value
 }
+
+// MissingKeyFromStringDeclaration for complex structures in flags
+func MissingKeyFromStringDeclaration(key, flag string) {
+	logrus.Fatalln(
+		formatter.Colorize(
+			fmt.Sprintf("%s not specified in %s.\n", key, flag),
+			formatter.RedColor))
+}

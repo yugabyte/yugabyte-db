@@ -23,7 +23,6 @@ import string
 import glob
 import tarfile
 import ipaddress
-import psutil
 from datetime import datetime, timedelta
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -328,7 +327,8 @@ EXAMPLE = {
                         "Deprecated. Please use 'upgrade finalize_new_version' command.\n\n",
     'xcluster' : "# Checkpoint a new xcluster replication:\n" +
                   "yugabyted xcluster create_checkpoint --replication_id=<replication_id> " +
-                  "--databases=<comma_separated_databases_to_be_added_to_replication>\n\n" +
+                  "--databases=<comma_separated_databases_to_be_added_to_replication> " +
+                  "[--automatic_mode]\n\n" +
                   "# Set-up xcluster replication:\n" +
                   "yugabyted xcluster set_up --replication_id=<replication_id> " +
                   "--target_address=<IP_of_any_target_node>\n\n" +
@@ -352,7 +352,8 @@ EXAMPLE = {
                   "--target_address=<IP_of_any_target_node>\n\n",
     "xcluster_create_checkpoint" : "# Checkpoint a new xcluster replication:\n" +
                   "yugabyted xcluster create_checkpoint --replication_id=<replication_id> " +
-                  "--databases=<comma_separated_databases_to_be_added_to_replication>\n\n",
+                  "--databases=<comma_separated_databases_to_be_added_to_replication> " +
+                  "[--automatic_mode]\n\n",
     "xcluster_add_to_checkpoint" : "# Add databases to checkpoint:\n" +
                   "yugabyted xcluster add_to_checkpoint --replication_id=<replication_id> " +
                   "--databases=<comma_separated_databases_to_be_added_to_replication>\n\n",
@@ -1722,9 +1723,10 @@ class ControlScript(object):
 
         replication_id = self.configs.temp_data.get("xcluster_replication_id")
         databases = self.configs.temp_data.get("xcluster_databases")
+        automatic_mode = self.configs.temp_data.get("xcluster_automatic_mode")
 
         out, err, ret_code = YBAdminProxy.create_checkpoint_xcluster(master_addrs, replication_id,
-                                                              databases)
+                                                              databases, automatic_mode)
         is_bootstrap_required = False
 
         if ret_code:
@@ -2978,6 +2980,11 @@ class ControlScript(object):
         prereqs_failed_flag = False
         prereqs_warn_flag = False
 
+        if os.path.exists("/.dockerenv"):
+            Output.log("Running in a Docker container. Skipping pre-requisite checks.")
+            return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
+                    True, True)
+
         if not self.linux_transparent_hugepage_check():
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
@@ -2994,7 +3001,7 @@ class ControlScript(object):
             if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
                 prereqs_failed.add('clockbound_fail')
                 prereqs_failed_flag = True
-            elif using_time_sync_service():
+            elif chrony_check and using_time_sync_service():
                 prereqs_warn.add('clockbound')
                 prereqs_warn_flag = True
         else:
@@ -3892,21 +3899,13 @@ class ControlScript(object):
     # find the cmdline for a given pid
     def get_cmdline_from_pid(self, pid):
         try:
-            process = psutil.Process(pid)
-            details = {
-                'pid': process.pid,
-                'name': process.name(),
-                'cmdline': process.cmdline(),
-            }
-            Output.log("Process details for pid {}: {}".format(pid, details), logging.DEBUG)
-            return details.get("cmdline")
-        except psutil.NoSuchProcess:
-            Output.log(f"No process with PID {pid} found.", logging.ERROR)
-        except psutil.AccessDenied:
-            Output.log(f"Permission denied to access process with PID {pid}.", logging.ERROR)
+            with open(f"/proc/{pid}/cmdline", 'r') as f:
+                cmdline = f.read().split('\0')[:-1]
+            return cmdline
+        except FileNotFoundError:
+            return None
         except Exception as e:
-            Output.log(f"An error occurred: {e}", logging.ERROR)
-        return None
+            return None
 
     # Returns value of flag_name in flags.
     # Returns None is none exists.
@@ -7160,6 +7159,7 @@ class ControlScript(object):
 
             self.configs.temp_data["xcluster_replication_id"] = args.replication_id
             self.configs.temp_data["xcluster_databases"] = args.databases
+            self.configs.temp_data["xcluster_automatic_mode"] = args.automatic_mode
 
         if args.parser == "add_to_checkpoint":
             required_flags = ["replication_id", "databases"]
@@ -8548,6 +8548,10 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--databases", help="Name of database to be replicated.",
                 metavar="")
+            cur_parser.add_argument(
+                "--automatic_mode",
+                help="Setup xCluster in Automatic mode.",
+                action="store_true")
 
         # Flags for sub-command: create_checkpoint
         for cmd in ("xcluster_add_to_checkpoint",):
@@ -9893,9 +9897,12 @@ class YBAdminProxy(object):
         return (ret_code == 0)
 
     @staticmethod
-    def create_checkpoint_xcluster(master_addrs, replication_id, databases, timeout=10):
+    def create_checkpoint_xcluster(master_addrs, replication_id, databases,
+                                   automatic_mode, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
                                        "create_xcluster_checkpoint", replication_id, databases]
+        if automatic_mode:
+            cmd += ["automatic_ddl_mode"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (out, err, ret_code)
 

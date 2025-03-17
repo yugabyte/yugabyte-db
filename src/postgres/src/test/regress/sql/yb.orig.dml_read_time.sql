@@ -30,7 +30,7 @@ END;
 SELECT * FROM read_time_test3 ORDER BY i;
 --
 -- DELETE and INSERT the same table in one transaction.
--- 
+--
 CREATE TABLE read_time_test4(i INT PRIMARY KEY, j INT);
 INSERT INTO read_time_test4 VALUES (1), (2), (3), (4);
 BEGIN;

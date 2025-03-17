@@ -896,11 +896,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     // Sync id and status for each stream.
     if (xClusterConfig.getType() != ConfigType.Db) {
-      Map<String, CdcConsumer.StreamEntryPB> replicationStreams =
-          replicationGroup.getStreamMapMap();
       Map<String, String> streamMap =
-          replicationStreams.entrySet().stream()
-              .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
+          getSourceTableIdToStreamIdMapFromReplicationGroup(replicationGroup);
       for (String tableId : tableIds) {
         Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
         if (tableConfig.isEmpty()) {
@@ -3255,6 +3252,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public static Map<String, String> getSourceTableIdToStreamIdMapFromReplicationGroup(
+      CdcConsumer.ProducerEntryPB replicationGroup) {
+    Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
+    return replicationStreams.entrySet().stream()
+        .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
   }
 
   // DR methods.

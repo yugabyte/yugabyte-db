@@ -87,7 +87,7 @@ const mapDispatchToProps = (dispatch) => {
     updateCustomerDetails: (values) => {
       dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
-          toast.error('Configuration failed to update');
+          toast.error(createErrorMessage(response.payload));
           dispatch(updateProfileFailure(response.payload));
         } else {
           toast.success('Configuration updated successfully');

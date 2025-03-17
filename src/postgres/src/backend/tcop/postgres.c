@@ -210,6 +210,9 @@ static bool yb_need_cache_refresh = false;
 /* whether or not we are executing a multi-statement query received via simple query protocol */
 static bool yb_is_multi_statement_query = false;
 
+static long YbNumCatalogCacheRefreshes = 0;
+static long YbNumCatalogCacheDeltaRefreshes = 0;
+
 /*
  * String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
@@ -4254,6 +4257,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 static void
 YBRefreshCache()
 {
+	YbNumCatalogCacheRefreshes++;
 	Assert(OidIsValid(MyDatabaseId));
 
 	/*
@@ -4647,7 +4651,8 @@ YBCheckSharedCatalogCacheVersion()
 		return;
 
 	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
-	const bool	need_global_cache_refresh = (YbGetCatalogCacheVersion() <
+	const uint64_t local_catalog_version = YbGetCatalogCacheVersion();
+	const bool	need_global_cache_refresh = (local_catalog_version <
 											 shared_catalog_version);
 
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
@@ -4660,7 +4665,40 @@ YBCheckSharedCatalogCacheVersion()
 	}
 	if (need_global_cache_refresh)
 	{
+		const uint32_t num_catalog_versions =
+			shared_catalog_version - local_catalog_version;
+		YbcCatalogMessageLists message_lists = {0};
+		const bool enable_inval_messages =
+			YBIsDBCatalogVersionMode() &&
+			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages;
+		if (enable_inval_messages)
+		{
+			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
+															local_catalog_version,
+															num_catalog_versions,
+															&message_lists));
+			elog(DEBUG1, "message_lists: num_lists: %u (%" PRIu64 ", %u)",
+				 message_lists.num_lists, local_catalog_version,
+				 num_catalog_versions);
+		}
 		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
+		if (message_lists.num_lists > 0 && YbApplyInvalidationMessages(&message_lists))
+		{
+			YbNumCatalogCacheDeltaRefreshes++;
+			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+				 message_lists.num_lists,
+				 local_catalog_version, shared_catalog_version);
+			YbUpdateCatalogCacheVersion(shared_catalog_version);
+			/* TODO(myang): only invalidate affected entries in the pggate cache? */
+			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			return;
+		}
+
+		ereport(enable_inval_messages ? LOG : DEBUG1,
+				(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
+						message_lists.num_lists, local_catalog_version,
+						shared_catalog_version, num_catalog_versions)));
 		YBRefreshCache();
 	}
 }
@@ -7084,4 +7122,16 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	}
 
 	return queryStr;
+}
+
+long
+YbGetCatCacheRefreshes()
+{
+	return YbNumCatalogCacheRefreshes;
+}
+
+long
+YbGetCatCacheDeltaRefreshes()
+{
+	return YbNumCatalogCacheDeltaRefreshes;
 }

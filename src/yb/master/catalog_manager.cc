@@ -1160,7 +1160,7 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
 
   int64 table_size = 0;
   int32 num_missing_tablets = 0;
-  if (!table_info->IsColocatedUserTable()) {
+  if (!table_info->IsSecondaryTable()) {
     // Colocated user tables do not have size info
 
     // Set missing tablets if test flag is set
@@ -3505,6 +3505,9 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
   VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
   bool use_secondary_space = req->use_secondary_space();
 
+  auto cluster_config = VERIFY_RESULT(GetClusterConfig());
+  uint32 oid_cache_invalidations_count = cluster_config.oid_cache_invalidations_count();
+
   // Lookup namespace
   scoped_refptr<NamespaceInfo> ns;
   {
@@ -3551,6 +3554,7 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
 
   resp->set_begin_oid(begin_oid);
   resp->set_end_oid(end_oid);
+  resp->set_oid_cache_invalidations_count(oid_cache_invalidations_count);
   if (use_secondary_space) {
     l.mutable_data()->pb.set_next_secondary_pg_oid(end_oid);
   } else {
@@ -3588,7 +3592,7 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
 }
 
 Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
-                                          const std::vector<scoped_refptr<TableInfo>>& tables,
+                                          const std::vector<TableInfoPtr>& tables,
                                           const LeaderEpoch& epoch) {
   if (tables.empty()) {
     return Status::OK();
@@ -5811,6 +5815,22 @@ Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
+                                        RefreshYsqlLeaseResponsePB* resp,
+                                        rpc::RpcContext* rpc,
+                                        const LeaderEpoch& epoch) {
+  auto lease_update =
+      VERIFY_RESULT(master_->ts_manager()->RefreshYsqlLease(epoch, req->instance()));
+  *resp->mutable_info() = lease_update.ToPB();
+  if (resp->info().new_lease()) {
+    *resp->mutable_info()->mutable_ddl_lock_entries() =
+        object_lock_info_manager()->ExportObjectLockInfo();
+    object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
+        req->instance().permanent_uuid(), resp->info().lease_epoch());
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::TruncateTable(const TableId& table_id,
                                      TruncateTableResponsePB* resp,
                                      rpc::RpcContext* rpc,
@@ -5833,7 +5853,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
-  RSTATUS_DCHECK(!table->IsColocatedUserTable(),
+  RSTATUS_DCHECK(!table->IsSecondaryTable(),
                  InternalError,
                  Format("Cannot truncate colocated table $0 on master", table->name()));
 
@@ -6637,37 +6657,43 @@ Status CatalogManager::DeleteTableInternal(
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
         *table.table_info_with_write_lock, table.delete_retainer, epoch));
-    auto colocated_tablet = table.table_info_with_write_lock->GetColocatedUserTablet();
-    if (colocated_tablet) {
-      // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
-      // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+    // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+    // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+    // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
+    // it is possible that the tablet is already removed from table by a racing thread and
+    // in that case colocated_tablet will be nullptr.
+    if (table.table_info_with_write_lock->IsSecondaryTable()) {
       RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
-      // Send a RemoveTableFromTablet() request to each
-      // colocated parent tablet replica in the table.
-      if (!table.delete_retainer.IsHideOnly()) {
-        LOG(INFO) << "Notifying tablet with id " << colocated_tablet->tablet_id()
-                  << " to remove this colocated table " << table.table_info_with_write_lock->name()
-                  << " from its metadata.";
-        auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
-            epoch);
-        table.table_info_with_write_lock->AddTask(call);
-        WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-      } else {
-        // Set the snapshot schedules that prevented the table from getting deleted.
-        const auto retained_by_snapshot_schedules =
-            table.delete_retainer.RetainedBySnapshotSchedules();
-        if (!retained_by_snapshot_schedules.empty()) {
-          auto tablet_lock = colocated_tablet->LockForWrite();
+      for (const auto& colocated_tablet :
+               VERIFY_RESULT(table.table_info_with_write_lock->GetTabletsIncludeInactive())) {
+        // Send a RemoveTableFromTablet() request to each
+        // colocated parent tablet replica in the table.
+        if (!table.delete_retainer.IsHideOnly()) {
+          LOG(INFO)
+              << "Notifying tablet with id " << colocated_tablet->tablet_id()
+              << " to remove this colocated table " << table.table_info_with_write_lock->name()
+              << " from its metadata.";
+          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+              master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
+              epoch);
+          table.table_info_with_write_lock->AddTask(call);
+          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+        } else {
+          // Set the snapshot schedules that prevented the table from getting deleted.
+          const auto retained_by_snapshot_schedules =
+              table.delete_retainer.RetainedBySnapshotSchedules();
+          if (!retained_by_snapshot_schedules.empty()) {
+            auto tablet_lock = colocated_tablet->LockForWrite();
 
-          *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-              retained_by_snapshot_schedules;
+            *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+                retained_by_snapshot_schedules;
 
-          // Upsert to sys catalog and commit to memory.
-          RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
-          tablet_lock.Commit();
+            // Upsert to sys catalog and commit to memory.
+            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
+            tablet_lock.Commit();
+          }
+          CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
         }
-        CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
       }
     }
   }
@@ -6962,7 +6988,7 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  return all_tablets_done || table->is_system() || table->IsColocatedUserTable();
+  return all_tablets_done || table->is_system() || table->IsSecondaryTable();
 }
 
 std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
@@ -7113,7 +7139,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     resp->set_done(true);
   } else {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
-              << ((!table->IsColocatedUserTable()) ? ": deleting tablets" : "");
+              << ((!table->IsSecondaryTable()) ? ": deleting tablets" : "");
 
     auto descs = master_->ts_manager()->GetAllDescriptors();
     for (auto& ts_desc : descs) {
@@ -7841,7 +7867,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   resp->set_colocated(table->colocated());
 
-  if (table->IsColocatedUserTable()) {
+  if (table->IsSecondaryTable()) {
     // Set the tablegroup_id for colocated user tables only after Colocation is GA.
     if (IsTablegroupParentTableId(table->LockForRead()->pb.parent_table_id())) {
       resp->set_tablegroup_id(
@@ -8466,7 +8492,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             << ": " << req->DebugString();
 
   scoped_refptr<NamespaceInfo> ns;
-  std::vector<scoped_refptr<TableInfo>> pgsql_tables;
+  std::vector<TableInfoPtr> pgsql_tables;
   TransactionMetadata txn;
   const auto db_type = GetDatabaseType(*req);
   NamespaceInfo::WriteLock ns_l;
@@ -8603,9 +8629,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             if (IsPriorVersionYsqlCatalogTable(table_id)) {
               continue;
             }
-            // Since indexes have dependencies on the base tables, put the tables in the front.
-            const bool is_table = table->indexed_table_id().empty();
-            pgsql_tables.insert(is_table ? pgsql_tables.begin() : pgsql_tables.end(), table);
+            pgsql_tables.push_back(table);
           }
         }
 
@@ -8706,6 +8730,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     }
   }
 
+  std::sort(pgsql_tables.begin(), pgsql_tables.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->id() < rhs->id();
+  });
+
   if (db_type == YQL_DATABASE_PGSQL) {
     LOG(INFO) << "Keyspace create enqueued for later processing: " << ns->ToString();
     RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(std::bind(
@@ -8736,9 +8764,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 }
 
 void CatalogManager::ProcessPendingNamespace(
-    NamespaceId id,
-    std::vector<scoped_refptr<TableInfo>> template_tables,
-    TransactionMetadata txn, const LeaderEpoch& epoch) {
+    const NamespaceId& id,
+    const std::vector<TableInfoPtr>& template_tables,
+    const TransactionMetadata& txn,
+    const LeaderEpoch& epoch) {
   LOG(INFO) << "ProcessPendingNamespace started for " << id;
 
   // Ensure that we are the leader and our view of the term does not change while handling DDL
@@ -9991,6 +10020,20 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::InvalidateTserverOidCaches() {
+  auto cluster_config = ClusterConfig();
+  SCHECK_NOTNULL(cluster_config);
+  auto l = cluster_config->LockForWrite();
+  uint32 oid_cache_invalidations_count = l.data().pb.oid_cache_invalidations_count() + 1;
+  LOG_WITH_PREFIX(INFO) << "Invalidating OID caches; oid_cache_invalidations_count is now "
+                        << oid_cache_invalidations_count;
+  l.mutable_data()->pb.set_oid_cache_invalidations_count(oid_cache_invalidations_count);
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config_.get()));
+  l.Commit();
+  return Status::OK();
+}
+
 Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
   return ysql_manager_->IncrementYsqlCatalogVersion(GetLeaderEpochInternal());
 }
@@ -10093,7 +10136,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
       versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
     LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
     catalog_version_table_in_perdb_mode_ = true;
-    master_->shared_object().SetCatalogVersionTableInPerdbMode(true);
+    master_->shared_object()->SetCatalogVersionTableInPerdbMode(true);
   }
   return Status::OK();
 }
@@ -10574,7 +10617,7 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
     return STATUS(InvalidArgument, "It is not allowed to delete the system table tablet");
   }
   // Do not delete the tablet of a colocated table.
-  if (table.IsColocatedUserTable()) {
+  if (table.IsSecondaryTable()) {
     return STATUS(InvalidArgument, "It is not allowed to delete tablets of the colocated tables.");
   }
   return Status::OK();
@@ -12374,7 +12417,7 @@ Status CatalogManager::CollectTable(
   std::vector<std::string> indexes;
   {
     auto lock = table_description.table_info->LockForRead();
-    if (lock->started_hiding()) {
+    if (!flags.Test(CollectFlag::kIncludeHiddenTables) && lock->started_hiding()) {
       VLOG_WITH_PREFIX_AND_FUNC(4)
           << "Rejected hidden table: " << AsString(table_description.table_info);
       return Status::OK();
@@ -12743,7 +12786,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     {
       auto l = info->LockForRead();
       if (info->is_system() ||
-          info->IsColocatedUserTable() ||
+          info->IsSecondaryTable() ||
           l->started_deleting()) {
         continue;
       }
@@ -13292,6 +13335,47 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
   // xCluster and CDCSDK do not retain dropped tables.
 
   return retainer;
+}
+
+void CatalogManager::MarkTabletAsHiddenPostReload(TabletId tablet_id, const LeaderEpoch& epoch) {
+  auto tablet = GetTabletInfo(tablet_id);
+  if (!tablet.ok()) {
+    WARN_NOT_OK(tablet.status(), Format("Tablet: $0 not found", tablet_id));
+    return;
+  }
+  auto table = GetTableInfo((*tablet)->table()->id());
+  if (!table) {
+    LOG(WARNING) << Format("Table: $0 not found", (*tablet)->table()->id());
+    return;
+  }
+  auto schedules_to_tables_map =
+      master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(
+          SysRowEntryType::TABLE, IncludeHiddenTables::kTrue);
+  if (!schedules_to_tables_map.ok()) {
+    WARN_NOT_OK(
+        schedules_to_tables_map.status(), Format(
+                                              "Error creating Snapshot Schedules To ObjectIds Map "
+                                              "for post reload Hide task of tablet: $0",
+                                              tablet_id));
+    return;
+  }
+  const auto delete_retainer = GetDeleteRetainerInfoForTableDrop(*table, *schedules_to_tables_map);
+  if (!delete_retainer.ok()) {
+    WARN_NOT_OK(
+        delete_retainer.status(),
+        Format("Unable to get the delete retainer for tablet: $0", tablet_id));
+    return;
+  }
+  auto l = (*tablet)->LockForWrite();
+  // Each tablet will have a different hide_hybrid_time. However, all of them will be earlier
+  // than the time we set the hide_hybrid_time of the table.
+  MarkTabletAsHidden(l.mutable_data()->pb, Clock()->Now(), *delete_retainer);
+  WARN_NOT_OK(
+      sys_catalog_->Upsert(epoch, *tablet),
+      Format("Failed to upsert tablet info with id: $0 into sys catalog.", tablet_id));
+  l.Commit();
+  LockGuard lock(mutex_);
+  hidden_tablets_.push_back(*tablet);
 }
 
 void CatalogManager::MarkTabletAsHidden(

@@ -573,8 +573,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
 
   bool IsXClusterDDLReplicationTable() const {
-    return IsXClusterDDLReplicationDDLQueueTable() ||
-           IsXClusterDDLReplicationReplicatedDDLsTable();
+    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
   }
 
   Result<uint32_t> GetPgTableOid(const std::string& id) const;
@@ -679,6 +678,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;
+  bool is_vector_index() const;
 
   void set_is_system() { is_system_ = true; }
   bool is_system() const { return is_system_; }
@@ -771,9 +771,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   Result<TabletInfos> GetTabletsIncludeInactive() const;
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
-  // Get the tablet of the table. The table must satisfy IsColocatedUserTable.
-  TabletInfoPtr GetColocatedUserTablet() const;
-
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
   std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
@@ -831,7 +828,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
-  bool IsColocatedUserTable() const;
+
+  // A table is a primary table if it appears in the table_id field of every tablet which hosts it.
+  // Examples of primary tables are:
+  //   non-colocated, user tables
+  //   the parent table of a colocated database
+  // Secondary tables are non-primary tables which are not on the master tablet.
+  // Examples of secondary tables are:
+  //   colocated user tables
+  //   vector indices
+  bool IsSecondaryTable() const;
   bool IsSequencesSystemTable() const;
   bool IsSequencesSystemTable(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;

@@ -55,6 +55,7 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/dockv/reader_projection.h"
@@ -1807,6 +1808,148 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   context.RespondSuccess();
 }
 
+namespace {
+
+class TabletsFlusherBase {
+ public:
+  explicit TabletsFlusherBase(
+      const TabletServiceAdminImpl& service,
+      const TSTabletManager::TabletPtrs& tablets,
+      FlushTabletsResponsePB& resp)
+    : service_(service), tablets_(tablets), resp_(resp)
+  {}
+
+  virtual ~TabletsFlusherBase() = default;
+
+  Status Run();
+
+  auto LogPrefix() const {
+    return service_.LogPrefix();
+  }
+
+ private:
+  virtual Status Flush(const tablet::TabletPtr& tablet) = 0;
+  virtual Status WaitForFlush(const tablet::TabletPtr& tablet) = 0;
+
+  const TabletServiceAdminImpl& service_;
+  const TSTabletManager::TabletPtrs& tablets_;
+  FlushTabletsResponsePB& resp_;
+};
+
+Status TabletsFlusherBase::Run() {
+  for (const auto& tablet : tablets_) {
+    resp_.set_failed_tablet_id(tablet->tablet_id());
+    RETURN_NOT_OK(Flush(tablet));
+
+    // Refer to https://github.com/yugabyte/yugabyte-db/issues/16116.
+    if (!FLAGS_TEST_skip_force_superblock_flush) {
+      RETURN_NOT_OK(tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue));
+    }
+    resp_.clear_failed_tablet_id();
+  }
+
+  // Wait for end of all flush operations.
+  for (const auto& tablet : tablets_) {
+    resp_.set_failed_tablet_id(tablet->tablet_id());
+    RETURN_NOT_OK(WaitForFlush(tablet));
+    resp_.clear_failed_tablet_id();
+  }
+
+  return Status::OK();
+}
+
+inline tablet::FlushFlags CreateFlushFlags(const FlushTabletsRequestPB& req) {
+  return req.regular_only() ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
+}
+
+class TabletsFlusher final : public TabletsFlusherBase {
+ public:
+  explicit TabletsFlusher(
+    const TabletServiceAdminImpl& service,
+      const TSTabletManager::TabletPtrs& tablets,
+      const FlushTabletsRequestPB& req,
+      FlushTabletsResponsePB& resp)
+      : TabletsFlusherBase(service, tablets, resp),
+        flush_flags_(CreateFlushFlags(req)) {
+    VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << to_underlying(flush_flags_);
+  }
+
+ private:
+  Status Flush(const tablet::TabletPtr& tablet) override {
+    return tablet->Flush(tablet::FlushMode::kAsync, flush_flags_);
+  }
+
+  Status WaitForFlush(const tablet::TabletPtr& tablet) override {
+    return tablet->WaitForFlush();
+  }
+
+  const tablet::FlushFlags flush_flags_;
+};
+
+inline auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
+  return req.all_vector_indexes() ?
+      TableIds{} : TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
+}
+
+class VectorIndexFlusher : public TabletsFlusherBase {
+ public:
+  explicit VectorIndexFlusher(
+      const TabletServiceAdminImpl& service,
+      const TSTabletManager::TabletPtrs& tablets,
+      const FlushTabletsRequestPB& req,
+      FlushTabletsResponsePB& resp)
+      : TabletsFlusherBase(service, tablets, resp),
+        vector_index_ids_(CopyVectorIndexIds(req)) {
+    VLOG_WITH_PREFIX(1) << "VectorIndexFlusher: vector index ids: "
+                        << (vector_index_ids_.size() ? AsString(vector_index_ids_) : "all");
+  }
+
+ private:
+  Status Flush(const tablet::TabletPtr& tablet) override {
+    auto [it, inserted] = tablet_vector_indexes_.try_emplace(
+      tablet->tablet_id(),
+      tablet->vector_indexes().Collect(vector_index_ids_)
+    );
+
+    if (!inserted) {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Flush of vector indexes is already running for tablet " << tablet->tablet_id();
+      return Status::OK();
+    }
+
+    it->second.Flush();
+    return Status::OK();
+  }
+
+  Status WaitForFlush(const tablet::TabletPtr& tablet) override {
+    auto it = tablet_vector_indexes_.find(tablet->tablet_id());
+    if (it == tablet_vector_indexes_.end()) {
+      LOG_WITH_PREFIX(DFATAL) << "Vector indexes are not found for tablet " << tablet->tablet_id();
+      return Status::OK();
+    }
+
+    return it->second.WaitForFlush();
+  }
+
+  std::vector<TableId> vector_index_ids_;
+  std::unordered_map<TabletId, tablet::VectorIndexList> tablet_vector_indexes_;
+};
+
+bool HasVectorIndex(const FlushTabletsRequestPB& req) {
+  return req.all_vector_indexes() || req.vector_index_ids_size();
+}
+
+Status TriggerFlush(
+    const TabletServiceAdminImpl& service,
+    const TSTabletManager::TabletPtrs& tablets,
+    const FlushTabletsRequestPB& req,
+    FlushTabletsResponsePB& resp) {
+  return HasVectorIndex(req) ? VectorIndexFlusher{ service, tablets, req, resp }.Run()
+                             : TabletsFlusher{ service, tablets, req, resp }.Run();
+}
+
+} // namespace
+
 void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
                                           FlushTabletsResponsePB* resp,
                                           rpc::RpcContext context) {
@@ -1845,33 +1988,22 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   }
   switch (req->operation()) {
     case FlushTabletsRequestPB::FLUSH: {
-      auto flush_flags = req->regular_only() ? tablet::FlushFlags::kRegular
-                                             : tablet::FlushFlags::kAllDbs;
-      VLOG_WITH_PREFIX(1) << "flush_flags: " << to_underlying(flush_flags);
-      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-        resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            tablet->Flush(tablet::FlushMode::kAsync, flush_flags), resp, &context);
-        if (!FLAGS_TEST_skip_force_superblock_flush) {
-          RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-              tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue), resp, &context);
-        }
-        resp->clear_failed_tablet_id();
-      }
-
-      // Wait for end of all flush operations.
-      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-        resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
-        resp->clear_failed_tablet_id();
-      }
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+        TriggerFlush(*this, tablet_ptrs, *req, *resp),
+        resp, &context);
       break;
     }
-    case FlushTabletsRequestPB::COMPACT:
+    case FlushTabletsRequestPB::COMPACT: {
+      AdminCompactionOptions options { /* should_wait = */ true };
+      if (HasVectorIndex(*req)) {
+        options.vector_index_ids = std::make_shared<TableIds>(
+            req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
+      }
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),
+          server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, options),
           resp, &context);
       break;
+    }
     case FlushTabletsRequestPB::LOG_GC:
       for (const auto& tablet : tablet_peers) {
         resp->set_failed_tablet_id(tablet->tablet_id());
@@ -3082,19 +3214,23 @@ void TabletServiceImpl::GetSplitKey(
   });
 }
 
-void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
-                                      GetSharedDataResponsePB* resp,
-                                      rpc::RpcContext context) {
-  auto& data = server_->SharedObject();
-  resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
-  context.RespondSuccess();
-}
-
 void TabletServiceImpl::GetTserverCatalogVersionInfo(
     const GetTserverCatalogVersionInfoRequestPB* req,
     GetTserverCatalogVersionInfoResponsePB* resp,
     rpc::RpcContext context) {
   auto status = server_->get_ysql_db_oid_to_cat_version_info_map(*req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::GetTserverCatalogMessageLists(
+    const GetTserverCatalogMessageListsRequestPB* req,
+    GetTserverCatalogMessageListsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = server_->GetTserverCatalogMessageLists(*req, resp);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;

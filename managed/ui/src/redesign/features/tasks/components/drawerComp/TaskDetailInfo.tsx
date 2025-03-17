@@ -87,7 +87,7 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const taskInfo: TaskInfo[] = [
     {
       label: t('type'),
-      value: `${startCase(currentTask.type)} ${currentTask.target}`
+      value: `${currentTask.typeName} ${currentTask.target}`
     },
     {
       label: t('target'),

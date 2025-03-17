@@ -369,6 +369,16 @@ public class XClusterConfig extends Model {
     return tableConfig.get();
   }
 
+  public XClusterNamespaceConfig getNamespaceById(String namespaceId) {
+    return maybeGetNamespaceById(namespaceId)
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException(
+                    String.format(
+                        "Namespace with id (%s) does not belong to the xClusterConfig %s",
+                        namespaceId, this)));
+  }
+
   public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
     Map<String, XClusterTableConfig> tableConfigMap =
         this.getTableDetails().stream()
@@ -713,11 +723,29 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void updateBackupForNamespaces(Set<String> namespaceIds, Backup backup) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setBackup(backup));
+    update();
+  }
+
+  @Transactional
   public void updateRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
     this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setRestore(restore));
+    update();
+  }
+
+  @Transactional
+  public void updateRestoreForNamespaces(Set<String> namespaceIds, Restore restore) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setRestore(restore));
     update();
   }
 

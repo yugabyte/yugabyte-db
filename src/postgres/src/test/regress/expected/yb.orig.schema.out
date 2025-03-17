@@ -10,13 +10,13 @@ CREATE TABLE S2.TBL (a2 text PRIMARY KEY);
 INSERT INTO S1.TBL VALUES (1);
 INSERT INTO S2.TBL VALUES ('a');
 SELECT * FROM S1.TBL;
- a1
+ a1 
 ----
   1
 (1 row)
 
 SELECT * FROM S2.TBL;
- a2
+ a2 
 ----
  a
 (1 row)
@@ -24,7 +24,7 @@ SELECT * FROM S2.TBL;
 -- Drop one table and verify the other still exists.
 DROP TABLE S1.TBL;
 SELECT * FROM S2.TBL;
- a2
+ a2 
 ----
  a
 (1 row)
@@ -35,17 +35,17 @@ CREATE TABLE S1.TBL2 (a1 int PRIMARY KEY, a2 int);
 CREATE INDEX IDX2 ON S1.TBL2(a2);
 INSERT INTO S1.TBL2 VALUES (2, 2);
 SELECT * FROM S1.TBL2;
- a1 | a2
+ a1 | a2 
 ----+----
   2 |  2
 (1 row)
 
 \d S1.TBL2;
                   Table "s1.tbl2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a1     | integer |           | not null |
- a2     | integer |           |          |
+ a1     | integer |           | not null | 
+ a2     | integer |           |          | 
 Indexes:
     "tbl2_pkey" PRIMARY KEY, lsm (a1 HASH)
     "idx2" lsm (a2 HASH)
@@ -56,24 +56,24 @@ ERROR:  relation "s1.tbl2" does not exist
 LINE 1: SELECT * FROM S1.TBL2;
                       ^
 SELECT * FROM S2.TBL2;
- a1 | a2
+ a1 | a2 
 ----+----
   2 |  2
 (1 row)
 
 \d S2.TBL2;
                   Table "s2.tbl2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a1     | integer |           | not null |
- a2     | integer |           |          |
+ a1     | integer |           | not null | 
+ a2     | integer |           |          | 
 Indexes:
     "tbl2_pkey" PRIMARY KEY, lsm (a1 HASH)
     "idx2" lsm (a2 HASH)
 
 \d S2.IDX2;
            Index "s2.idx2"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  a2     | integer | yes  | a2
 lsm, for table "s2.tbl2"
@@ -95,10 +95,10 @@ CREATE INDEX P_TBL_K_IDX on S1.P_TBL(k);
 ALTER TABLE S1.P_TBL SET SCHEMA S2;
 \d+ S2.P_TBL
                                Partitioned table "s2.p_tbl"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- k      | integer |           | not null |         | plain    |              |
- value  | text    |           |          |         | extended |              |
+ k      | integer |           | not null |         | plain    |              | 
+ value  | text    |           |          |         | extended |              | 
 Partition key: RANGE (k)
 Indexes:
     "p_tbl_pkey" PRIMARY KEY, lsm (k HASH)
@@ -115,14 +115,14 @@ DROP TABLE TMP_TBL;
 -- Test ALTER SEQUENCE [IF EXISTS].. SET SCHEMA..
 CREATE SEQUENCE S1.TEST_SEQ;
 SELECT nextval('S1.TEST_SEQ');
- nextval
+ nextval 
 ---------
        1
 (1 row)
 
 \d S1.TEST_SEQ;
                             Sequence "s1.test_seq"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
 
@@ -131,7 +131,7 @@ from pg_class as c
      inner join pg_namespace as n on c.relnamespace = n.oid
      inner join pg_roles as r on c.relowner = r.oid
 where c.relname ~ 'test_seq';
-   name   | schema |  owner
+   name   | schema |  owner   
 ----------+--------+----------
  test_seq | s1     | yugabyte
 (1 row)
@@ -142,7 +142,7 @@ ERROR:  relation "s1.test_seq" does not exist
 LINE 1: SELECT nextval('S1.TEST_SEQ');
                        ^
 SELECT nextval('S2.TEST_SEQ');
- nextval
+ nextval 
 ---------
        2
 (1 row)
@@ -150,7 +150,7 @@ SELECT nextval('S2.TEST_SEQ');
 \d S1.TEST_SEQ;
 \d S2.TEST_SEQ;
                             Sequence "s2.test_seq"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
 
@@ -162,7 +162,7 @@ from pg_class as c
      inner join pg_namespace as n on c.relnamespace = n.oid
      inner join pg_roles as r on c.relowner = r.oid
 where c.relname ~ 'test_seq';
-   name   | schema |  owner
+   name   | schema |  owner   
 ----------+--------+----------
  test_seq | s2     | postgres
 (1 row)
@@ -186,7 +186,7 @@ DROP SCHEMA test_ns_schema_other_new;
 -- verify that the objects were dropped
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_other_new');
- count
+ count 
 -------
      0
 (1 row)
@@ -198,7 +198,8 @@ DROP SCHEMA test_ns_schema_yb_db_admin_new;
 -- verify that the objects were dropped
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_yb_db_admin_new');
- count
+ count 
 -------
      0
 (1 row)
+

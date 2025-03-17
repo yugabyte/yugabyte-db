@@ -68,13 +68,13 @@ class DummyANN final : public VectorANN<Vector> {
 
   ~DummyANN() override {}
 
-  bool Add(VectorId vertex_id, Vector&& vector, Slice val) override {
-    if (vectors_.count(vertex_id)) {
+  bool Add(VectorId vector_id, Vector&& vector, Slice val) override {
+    if (vectors_.count(vector_id)) {
       return false;
     }
 
     auto val_dup = arena_.DupSlice(val);
-    vectors_.emplace(vertex_id, std::make_tuple(std::move(vector), val_dup));
+    vectors_.emplace(vector_id, std::make_tuple(std::move(vector), val_dup));
     return true;
   }
 
@@ -89,10 +89,10 @@ class DummyANN final : public VectorANN<Vector> {
 
     auto dist_fn = GetDistanceFunction<Vector, DistanceResult>(DistanceKind::kL2Squared);
     auto modified_dist = [this, &lower_bound, &is_lb_inclusive, dist_fn](
-        VectorId vertex_id, const Vector& other_vector) -> float {
-      auto it = vectors_.find(vertex_id);
+        VectorId vector_id, const Vector& other_vector) -> float {
+      auto it = vectors_.find(vector_id);
       if (it == vectors_.end()) {
-        DCHECK(false) << "It is expected the vector " << vertex_id.ToString() << " exists";
+        DCHECK(false) << "It is expected the vector " << vector_id.ToString() << " exists";
         return std::numeric_limits<float>::infinity();
       }
       auto dist = dist_fn(std::get<Vector>(it->second), other_vector);
@@ -104,7 +104,7 @@ class DummyANN final : public VectorANN<Vector> {
       return dist;
     };
 
-    // TODO(vector-index): maybe replace vector_ with std::ranges::views::keys or boost multi_index
+    // TODO(vector_index): maybe replace vector_ with std::ranges::views::keys or boost multi_index
     // or implement an iterator object over map to iterate keys only.
     std::vector<VectorId> vertex_ids;
     vertex_ids.reserve(vectors_.size());

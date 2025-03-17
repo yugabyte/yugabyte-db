@@ -303,7 +303,7 @@ SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
-                      QUERY PLAN
+                      QUERY PLAN                      
 ------------------------------------------------------
  Limit
    Output: c_bigint, c_text
@@ -313,13 +313,13 @@ SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
 (5 rows)
 
 SELECT c_bigint, c_text FROM T WHERE c_text = 'hello' LIMIT 1;
- c_bigint | c_text
+ c_bigint | c_text 
 ----------+--------
        -1 | hello
 (1 row)
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE) SELECT c_bigint, c_text FROM T WHERE c_text = 'hello' LIMIT 1;
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Limit
    Output: c_bigint, c_text
@@ -400,7 +400,7 @@ SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
-                         QUERY PLAN
+                         QUERY PLAN                         
 ------------------------------------------------------------
  Limit
    Output: pk, c_bigint, c_text
@@ -432,7 +432,7 @@ WITH deleted AS (DELETE FROM T WHERE pk BETWEEN 10 AND 20 RETURNING *)
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 DELETE FROM T WHERE pk BETWEEN 10 AND 20 RETURNING *;
-                       QUERY PLAN
+                       QUERY PLAN                        
 ---------------------------------------------------------
  Delete on fast_default.t
    Output: pk, c_bigint, c_text
@@ -826,3 +826,4 @@ table has_fast_default;
 ----+----
   1 | 42
 (1 row)
+

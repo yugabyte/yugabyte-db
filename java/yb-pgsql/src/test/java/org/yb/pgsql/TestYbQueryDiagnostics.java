@@ -335,6 +335,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     private void waitForBundleCompletion(String queryId, Statement statement) throws Exception {
         waitForBundleCompletion(queryId, statement, 0);
     }
+
     /*
      * Waits for the bundle to complete by checking the yb_query_diagnostics_status view.
      */

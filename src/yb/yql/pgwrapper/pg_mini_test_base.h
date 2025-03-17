@@ -81,6 +81,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   Result<TableId> GetTableIDFromTableName(const std::string& table_name);
 
   Result<master::CatalogManagerIf*> catalog_manager() const;
+  Result<master::CatalogManager*> catalog_manager_impl() const;
 
   void FlushAndCompactTablets();
 

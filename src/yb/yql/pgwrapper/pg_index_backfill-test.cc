@@ -2669,11 +2669,18 @@ struct VectorIndexWriter {
   }
 
   void Verify(PGConn& conn) {
+    int num_bad_results = 0;
     for (int i = 2; i < counter.load(); ++i) {
       auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
           "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));
-      ASSERT_EQ(rows, Format("$0; $1; $2", i, i - 1, i + 1));
+      auto expected = Format("$0; $1; $2", i, i - 1, i + 1);
+      if (rows != expected) {
+        LOG(INFO) << "Bad result: " << rows << " vs " << expected;
+        ++num_bad_results;
+      }
     }
+    // Expect recall 98% or better.
+    ASSERT_LE(num_bad_results, counter.load() / 50);
   }
 };
 
@@ -2710,6 +2717,10 @@ TEST_F(PgIndexBackfillTest, VectorIndex) {
   LOG(INFO) << "Max time without inserts: " << writer.max_time_without_inserts;
   ASSERT_LT(writer.max_time_without_inserts, 1s * kBackfillSleepSec);
   SCOPED_TRACE(Format("Total rows: $0", writer.counter.load()));
+
+  // VerifyVectorIndexes does not take intents into account, so could produce false failure.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     tserver::VerifyVectorIndexesRequestPB req;
     tserver::VerifyVectorIndexesResponsePB resp;

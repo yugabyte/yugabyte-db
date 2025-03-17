@@ -76,8 +76,8 @@ The following subcomponents are used:
 ## github.com/cpuguy83/go-md2man/v2/md2man
 
 * Name: github.com/cpuguy83/go-md2man/v2/md2man
-* Version: v2.0.3
-* License: [MIT](https://github.com/cpuguy83/go-md2man/blob/v2.0.3/LICENSE.md)
+* Version: v2.0.6
+* License: [MIT](https://github.com/cpuguy83/go-md2man/blob/v2.0.6/LICENSE.md)
 
 
 ## github.com/fatih/color
@@ -230,8 +230,8 @@ The following subcomponents are used:
 ## github.com/spf13/cobra
 
 * Name: github.com/spf13/cobra
-* Version: v1.8.0
-* License: [Apache-2.0](https://github.com/spf13/cobra/blob/v1.8.0/LICENSE.txt)
+* Version: v1.9.1
+* License: [Apache-2.0](https://github.com/spf13/cobra/blob/v1.9.1/LICENSE.txt)
 
 
 ## github.com/spf13/jwalterweatherman
@@ -244,8 +244,8 @@ The following subcomponents are used:
 ## github.com/spf13/pflag
 
 * Name: github.com/spf13/pflag
-* Version: v1.0.5
-* License: [BSD-3-Clause](https://github.com/spf13/pflag/blob/v1.0.5/LICENSE)
+* Version: v1.0.6
+* License: [BSD-3-Clause](https://github.com/spf13/pflag/blob/v1.0.6/LICENSE)
 
 
 ## github.com/spf13/viper

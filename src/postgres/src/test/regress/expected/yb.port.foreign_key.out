@@ -26,7 +26,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "fkt
 DETAIL:  Key (ftest1)=(100) is not present in table "pktable".
 -- Check FKTABLE
 SELECT * FROM FKTABLE ORDER BY ftest1;
- ftest1 | ftest2
+ ftest1 | ftest2 
 --------+--------
       1 |      2
       2 |      3
@@ -38,7 +38,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1;
 DELETE FROM PKTABLE WHERE ptest1=1;
 -- Check FKTABLE for removal of matched row
 SELECT * FROM FKTABLE ORDER BY ftest1;
- ftest1 | ftest2
+ ftest1 | ftest2 
 --------+--------
       2 |      3
       3 |      4
@@ -49,7 +49,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1;
 UPDATE PKTABLE SET ptest1=1 WHERE ptest1=2;
 -- Check FKTABLE for update of matched row
 SELECT * FROM FKTABLE ORDER BY ftest1;
- ftest1 | ftest2
+ ftest1 | ftest2 
 --------+--------
       1 |      3
       3 |      4
@@ -97,7 +97,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "con
 DETAIL:  MATCH FULL does not allow mixing of null and nonnull key values.
 -- Check FKTABLE
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
       1 |      2 |      4
       1 |      3 |      5
@@ -110,7 +110,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE WHERE ptest1=1 and ptest2=2;
 -- Check that values of matched row are set to null.
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
       1 |      3 |      5
       2 |      4 |      8
@@ -123,7 +123,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE WHERE ptest1=5 and ptest2=10;
 -- Check FKTABLE (should be no change)
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
       1 |      3 |      5
       2 |      4 |      8
@@ -136,7 +136,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 UPDATE PKTABLE SET ptest1=1 WHERE ptest1=2;
 -- Check FKTABLE for update of matched row
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
       1 |      3 |      5
       3 |      6 |     12
@@ -155,7 +155,7 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
- ptest1 | ptest2 | ptest3
+ ptest1 | ptest2 | ptest3  
 --------+--------+---------
       1 |      3 | Test1-2
       1 |      4 | Test2
@@ -164,7 +164,7 @@ SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
 (4 rows)
 
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
       1 |      3 |      5
       3 |      6 |     12
@@ -212,7 +212,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "con
 DETAIL:  MATCH FULL does not allow mixing of null and nonnull key values.
 -- Check FKTABLE
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
       1 |      2 |      4
       1 |      3 |      5
@@ -225,7 +225,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
 DELETE FROM PKTABLE WHERE ptest1=1 and ptest2=2;
 -- Check FKTABLE to check for removal
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
      -1 |     -2 |      4
       1 |      3 |      5
@@ -238,7 +238,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
 DELETE FROM PKTABLE WHERE ptest1=5 and ptest2=10;
 -- Check FKTABLE (should be no change)
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
      -1 |     -2 |      4
       1 |      3 |      5
@@ -251,7 +251,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
 UPDATE PKTABLE SET ptest1=1 WHERE ptest1=2;
 -- Check FKTABLE for update of matched row
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3
+ ftest1 | ftest2 | ftest3 
 --------+--------+--------
      -1 |     -2 |      4
      -1 |     -2 |      8
@@ -293,7 +293,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "fkt
 DETAIL:  Key (ftest1)=(100) is not present in table "pktable".
 -- Check FKTABLE
 SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
- ftest1 | ftest2
+ ftest1 | ftest2 
 --------+--------
       1 |      2
       2 |      3
@@ -303,7 +303,7 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2;
 
 -- Check PKTABLE
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
- ptest1 | ptest2
+ ptest1 | ptest2 
 --------+--------
       1 | Test1
       2 | Test2
@@ -320,7 +320,7 @@ DETAIL:  Key (ptest1)=(1) is still referenced from table "fktable".
 DELETE FROM PKTABLE WHERE ptest1=5;
 -- Check PKTABLE for deletes
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
- ptest1 | ptest2
+ ptest1 | ptest2 
 --------+--------
       1 | Test1
       2 | Test2
@@ -336,7 +336,7 @@ DETAIL:  Key (ptest1)=(2) is still referenced from table "fktable".
 UPDATE PKTABLE SET ptest1=0 WHERE ptest1=4;
 -- Check PKTABLE for updates
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
- ptest1 | ptest2
+ ptest1 | ptest2 
 --------+--------
       0 | Test4
       1 | Test1
@@ -368,7 +368,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "con
 DETAIL:  Key (ftest1, ftest2, ftest3)=(1, 2, 7) is not present in table "pktable".
 -- Show FKTABLE
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       1 |      2 |      3 |      1
       2 |        |      3 |      3
@@ -391,7 +391,7 @@ DETAIL:  Key (ptest1, ptest2, ptest3)=(1, 2, 3) is still referenced from table "
 DELETE FROM PKTABLE where ptest1=2;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      2 |      3 | test1
       1 |      3 |      3 | test2
@@ -399,7 +399,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (3 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       1 |      2 |      3 |      1
       2 |        |      3 |      3
@@ -432,7 +432,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "con
 DETAIL:  Key (ftest1, ftest2, ftest3)=(1, 2, 7) is not present in table "pktable".
 -- Show FKTABLE
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       1 |      2 |      3 |      1
       2 |        |      3 |      3
@@ -447,7 +447,7 @@ UPDATE PKTABLE set ptest2=5 where ptest2=2;
 UPDATE PKTABLE set ptest1=1 WHERE ptest2=3;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      3 |      3 | test2
       1 |      3 |      4 | test3
@@ -456,7 +456,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (4 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       1 |      5 |      3 |      1
       2 |        |      3 |      3
@@ -469,7 +469,7 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE where ptest1=1 and ptest2=5 and ptest3=3;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      3 |      3 | test2
       1 |      3 |      4 | test3
@@ -477,7 +477,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (3 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       2 |        |      3 |      3
         |      2 |      3 |      2
@@ -489,14 +489,14 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE where ptest1=2;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      3 |      3 | test2
       1 |      3 |      4 | test3
 (2 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       2 |        |      3 |      3
         |      2 |      3 |      2
@@ -529,7 +529,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "con
 DETAIL:  Key (ftest1, ftest2, ftest3)=(1, 2, 7) is not present in table "pktable".
 -- Show FKTABLE
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       1 |      2 |      3 |      1
       2 |      3 |      4 |      1
@@ -545,7 +545,7 @@ UPDATE PKTABLE set ptest2=5 where ptest2=2;
 UPDATE PKTABLE set ptest2=2 WHERE ptest2=3 and ptest1=1;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      2 |      3 | test2
       1 |      5 |      3 | test1
@@ -554,7 +554,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (4 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       2 |      3 |      4 |      1
       2 |        |      3 |      3
@@ -568,7 +568,7 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE where ptest1=2 and ptest2=3 and ptest3=4;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      2 |      3 | test2
       1 |      5 |      3 | test1
@@ -576,7 +576,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (3 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       0 |        |        |      1
       2 |        |      3 |      3
@@ -590,14 +590,14 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE where ptest2=5;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       1 |      2 |      3 | test2
       2 |      4 |      5 | test4
 (2 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       0 |        |        |      1
       2 |        |      3 |      3
@@ -634,7 +634,7 @@ ERROR:  insert or update on table "fktable" violates foreign key constraint "con
 DETAIL:  Key (ftest1, ftest2, ftest3)=(1, 2, 7) is not present in table "pktable".
 -- Show FKTABLE
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       1 |      2 |      3 |      1
       2 |      3 |      4 |      1
@@ -656,7 +656,7 @@ UPDATE PKTABLE set ptest2=10 where ptest2=4;
 UPDATE PKTABLE set ptest2=2 WHERE ptest2=3 and ptest1=1;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       0 |     -1 |     -2 | test1
       1 |      2 |      3 | test2
@@ -666,7 +666,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (5 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       0 |     -1 |     -2 |      1
       0 |     -1 |     -2 |      1
@@ -681,7 +681,7 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE where ptest1=2 and ptest2=3 and ptest3=4;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       0 |     -1 |     -2 | test1
       1 |      2 |      3 | test2
@@ -690,7 +690,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (4 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       0 |     -1 |     -2 |      1
       0 |     -1 |     -2 |      1
@@ -705,7 +705,7 @@ SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
 DELETE FROM PKTABLE where ptest2=-1 and ptest3=5;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
- ptest1 | ptest2 | ptest3 | ptest4
+ ptest1 | ptest2 | ptest3 | ptest4 
 --------+--------+--------+--------
       0 |     -1 |     -2 | test1
       1 |      2 |      3 | test2
@@ -713,7 +713,7 @@ SELECT * from PKTABLE ORDER BY ptest1, ptest2, ptest3;
 (3 rows)
 
 SELECT * from FKTABLE ORDER BY ftest1, ftest2, ftest3;
- ftest1 | ftest2 | ftest3 | ftest4
+ ftest1 | ftest2 | ftest3 | ftest4 
 --------+--------+--------+--------
       0 |     -1 |     -2 |      1
       0 |     -1 |     -2 |      1
@@ -732,13 +732,13 @@ ERROR:  column "ftest2" referenced in foreign key constraint does not exist
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
 ERROR:  column "ptest2" referenced in foreign key constraint does not exist
 SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
- count
+ count 
 -------
      0
 (1 row)
 
 SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
- count
+ count 
 -------
      0
 (1 row)
@@ -753,7 +753,7 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
 CREATE TABLE FKTABLE_FAIL1 (ftest1 int REFERENCES pktable(ptest1));
 ERROR:  there is no unique constraint matching given keys for referenced table "pktable"
 SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
- count
+ count 
 -------
      0
 (1 row)
@@ -1083,12 +1083,12 @@ COMMIT;
 ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
 DETAIL:  Key (fk)=(300) is not present in table "pktable".
 SELECT * FROM pktable;
- id | other
+ id | other 
 ----+-------
 (0 rows)
 
 SELECT * FROM fktable;
- id | fk
+ id | fk 
 ----+----
 (0 rows)
 
@@ -1271,49 +1271,49 @@ INSERT INTO tasks VALUES (1,1,NULL,NULL);
 INSERT INTO tasks VALUES (2,2,2,NULL);
 INSERT INTO tasks VALUES (3,3,3,3);
 SELECT * FROM tasks;
- id | owner | worker | checked_by
+ id | owner | worker | checked_by 
 ----+-------+--------+------------
-  1 |     1 |        |
-  2 |     2 |      2 |
+  1 |     1 |        |           
+  2 |     2 |      2 |           
   3 |     3 |      3 |          3
 (3 rows)
 
 UPDATE users SET id = 4 WHERE id = 3;
 SELECT * FROM tasks;
- id | owner | worker | checked_by
+ id | owner | worker | checked_by 
 ----+-------+--------+------------
-  1 |     1 |        |
-  2 |     2 |      2 |
+  1 |     1 |        |           
+  2 |     2 |      2 |           
   3 |     4 |      4 |          4
 (3 rows)
 
 DELETE FROM users WHERE id = 4;
 SELECT * FROM tasks;
- id | owner | worker | checked_by
+ id | owner | worker | checked_by 
 ----+-------+--------+------------
-  1 |     1 |        |
-  2 |     2 |      2 |
-  3 |       |        |
+  1 |     1 |        |           
+  2 |     2 |      2 |           
+  3 |       |        |           
 (3 rows)
 
 -- could fail with only 2 changes to make, if row was already updated
 BEGIN;
 UPDATE tasks set id=id WHERE id=2;
 SELECT * FROM tasks;
- id | owner | worker | checked_by
+ id | owner | worker | checked_by 
 ----+-------+--------+------------
-  1 |     1 |        |
-  3 |       |        |
-  2 |     2 |      2 |
+  1 |     1 |        |           
+  3 |       |        |           
+  2 |     2 |      2 |           
 (3 rows)
 
 DELETE FROM users WHERE id = 2;
 SELECT * FROM tasks;
- id | owner | worker | checked_by
+ id | owner | worker | checked_by 
 ----+-------+--------+------------
-  1 |     1 |        |
-  3 |       |        |
-  2 |       |        |
+  1 |     1 |        |           
+  3 |       |        |           
+  2 |       |        |           
 (3 rows)
 
 COMMIT;
@@ -1333,7 +1333,7 @@ values
 begin;
     update selfref set a = 123 where a = 0;
     select a, b from selfref;
-  a  |  b
+  a  |  b  
 -----+-----
    1 |   1
  123 | 123
@@ -1341,7 +1341,7 @@ begin;
 
     update selfref set a = 456 where a = 123;
     select a, b from selfref;
-  a  |  b
+  a  |  b  
 -----+-----
    1 |   1
  456 | 456
@@ -1357,14 +1357,14 @@ create temp table defc (f1 int default 0
 insert into defp values (0), (1), (2);
 insert into defc values (2);
 select * from defc;
- f1
+ f1 
 ----
   2
 (1 row)
 
 delete from defp where f1 = 2;
 select * from defc;
- f1
+ f1 
 ----
   0
 (1 row)
@@ -1375,7 +1375,7 @@ DETAIL:  Key (f1)=(0) is still referenced from table "defc".
 alter table defc alter column f1 set default 1;
 delete from defp where f1 = 0;
 select * from defc;
- f1
+ f1 
 ----
   1
 (1 row)
@@ -1414,7 +1414,7 @@ create temp table t1 (a integer primary key, b text);
 create temp table t2 (a integer primary key, b integer references t1);
 create rule r1 as on delete to t1 do delete from t2 where t2.b = old.a;
 explain (costs off) delete from t1 where a = 1;
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Delete on t2
    ->  Nested Loop
@@ -1422,7 +1422,7 @@ explain (costs off) delete from t1 where a = 1;
                Index Cond: (a = 1)
          ->  Seq Scan on t2
                Filter: (b = 1)
-
+ 
  Delete on t1
    ->  Index Scan using t1_pkey on t1
          Index Cond: (a = 1)
@@ -1639,32 +1639,32 @@ INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
 -- ON UPDATE SET NULL
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
-      tableoid       |  a   | b
+      tableoid       |  a   | b 
 ---------------------+------+---
- fk_partitioned_fk_3 | 2502 |
- fk_partitioned_fk_1 |      |
+ fk_partitioned_fk_3 | 2502 |  
+ fk_partitioned_fk_1 |      |  
 (2 rows)
 
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
-      tableoid       |  a   | b
+      tableoid       |  a   | b 
 ---------------------+------+---
- fk_partitioned_fk_3 | 2502 |
- fk_partitioned_fk_1 |      |
- fk_partitioned_fk_1 |      |
+ fk_partitioned_fk_3 | 2502 |  
+ fk_partitioned_fk_1 |      |  
+ fk_partitioned_fk_1 |      |  
 (3 rows)
 
 -- ON DELETE SET NULL
 INSERT INTO fk_partitioned_fk VALUES (2503, 2503);
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
- count
+ count 
 -------
      2
 (1 row)
 
 DELETE FROM fk_notpartitioned_pk;
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
- count
+ count 
 -------
      3
 (1 row)
@@ -1685,7 +1685,7 @@ DETAIL:  Key (a, b)=(2501, 142857) is not present in table "fk_notpartitioned_pk
 INSERT INTO fk_notpartitioned_pk VALUES (2501, 142857);
 UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-  a   |   b
+  a   |   b    
 ------+--------
  2501 | 142857
 (1 row)
@@ -1697,14 +1697,14 @@ ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   ON DELETE CASCADE ON UPDATE CASCADE;
 UPDATE fk_notpartitioned_pk SET a = 2502 WHERE a = 2501;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-  a   |   b
+  a   |   b    
 ------+--------
  2502 | 142857
 (1 row)
 
 -- Now you see it ...
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
-  a   |   b
+  a   |   b    
 ------+--------
  2502 | 142857
 (1 row)
@@ -1712,7 +1712,7 @@ SELECT * FROM fk_partitioned_fk WHERE b = 142857;
 DELETE FROM fk_notpartitioned_pk WHERE b = 142857;
 -- now you don't.
 SELECT * FROM fk_partitioned_fk WHERE a = 142857;
- a | b
+ a | b 
 ---+---
 (0 rows)
 
@@ -1737,10 +1737,10 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES IN
 -- should have only one constraint
 \d fk_partitioned_fk_2
         Table "public.fk_partitioned_fk_2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- b      | integer |           |          |
- a      | integer |           |          |
+ b      | integer |           |          | 
+ a      | integer |           |          | 
 Partition of: fk_partitioned_fk FOR VALUES IN (1500, 1502)
 Foreign-key constraints:
     TABLE "fk_partitioned_fk" CONSTRAINT "fk_partitioned_fk_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1756,10 +1756,10 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_4 FOR VALUES IN
 -- should only have one constraint
 \d fk_partitioned_fk_4
   Partitioned table "public.fk_partitioned_fk_4"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: fk_partitioned_fk FOR VALUES IN (3500, 3502)
 Partition key: RANGE (b, a)
 Foreign-key constraints:
@@ -1768,10 +1768,10 @@ Number of partitions: 2 (Use \d+ to list them.)
 
 \d fk_partitioned_fk_4_1
        Table "public.fk_partitioned_fk_4_1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: fk_partitioned_fk_4 FOR VALUES FROM (1, 1) TO (100, 100)
 Foreign-key constraints:
     TABLE "fk_partitioned_fk" CONSTRAINT "fk_partitioned_fk_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1779,10 +1779,10 @@ Foreign-key constraints:
 -- this one has an FK with mismatched properties
 \d fk_partitioned_fk_4_2
        Table "public.fk_partitioned_fk_4_2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: fk_partitioned_fk_4 FOR VALUES FROM (100, 100) TO (1000, 1000)
 Foreign-key constraints:
     "fk_partitioned_fk_4_2_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE SET NULL
@@ -1801,10 +1801,10 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_5 FOR VALUES IN
 -- so it gets a new one
 \d fk_partitioned_fk_5
   Partitioned table "public.fk_partitioned_fk_5"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: fk_partitioned_fk FOR VALUES IN (4500)
 Partition key: RANGE (a)
 Foreign-key constraints:
@@ -1819,10 +1819,10 @@ ALTER TABLE fk_partitioned_fk_5 DETACH PARTITION fk_partitioned_fk_5_1;
 ALTER TABLE fk_partitioned_fk_5 ATTACH PARTITION fk_partitioned_fk_5_1 FOR VALUES FROM (0) TO (10);
 \d fk_partitioned_fk_5_1
        Table "public.fk_partitioned_fk_5_1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
 Partition of: fk_partitioned_fk_5 FOR VALUES FROM (0) TO (10)
 Foreign-key constraints:
     "fk_partitioned_fk_5_1_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b)

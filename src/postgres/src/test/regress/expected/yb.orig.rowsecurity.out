@@ -20,7 +20,7 @@ SELECT * from foo ORDER BY a;
  1
 (2 rows)
 
-UPDATE foo SET a = 5 WHERE a = 0;  
+UPDATE foo SET a = 5 WHERE a = 0;
 SELECT * from foo ORDER BY a;
  a 
 ---

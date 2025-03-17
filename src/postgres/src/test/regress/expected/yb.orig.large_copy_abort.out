@@ -11,7 +11,7 @@ ERROR:  missing data for column "type"
 CONTEXT:  COPY airports, line 10001: "THIS_IS_AN_INVALID_ROW"
 -- table should be empty
 SELECT COUNT(*) FROM airports;
- count
+ count 
 -------
      0
 (1 row)
@@ -28,7 +28,7 @@ COPY airports FROM :'filename' CSV HEADER;
 ERROR:  duplicate key value violates unique constraint "airports_pkey"
 -- table should just have one row
 SELECT COUNT(*) FROM airports;
- count
+ count 
 -------
      1
 (1 row)

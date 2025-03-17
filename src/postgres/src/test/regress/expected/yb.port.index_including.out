@@ -14,7 +14,7 @@ CREATE INDEX ON tbl_include_reg (c1, c2) INCLUDE (c1, c3);
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
-                                                   pg_get_indexdef
+                                                   pg_get_indexdef                                                   
 ---------------------------------------------------------------------------------------------------------------------
  CREATE INDEX tbl_include_reg_c1_c2_c11_c3_idx ON public.tbl_include_reg USING lsm (c1 ASC, c2 ASC) INCLUDE (c1, c3)
  CREATE INDEX tbl_include_reg_idx ON public.tbl_include_reg USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
@@ -22,7 +22,7 @@ WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
 
 \d tbl_include_reg_idx
   Index "public.tbl_include_reg_idx"
- Column |  Type   | Key? | Definition
+ Column |  Type   | Key? | Definition 
 --------+---------+------+------------
  c1     | integer | yes  | c1
  c2     | integer | yes  | c2
@@ -40,7 +40,7 @@ ALTER TABLE tbl_include_unique1 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
-                                                          pg_get_indexdef
+                                                          pg_get_indexdef                                                          
 -----------------------------------------------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_include_unique1_c1_c2_c3_c4_key ON public.tbl_include_unique1 USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
  CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON public.tbl_include_unique1 USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
@@ -64,7 +64,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
-                                               pg_get_indexdef
+                                               pg_get_indexdef                                                
 --------------------------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_include_pk_pkey ON public.tbl_include_pk USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
@@ -80,7 +80,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_box'::regclass ORDER BY c.relname;
-                                                   pg_get_indexdef
+                                                   pg_get_indexdef                                                    
 ----------------------------------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_include_box_idx_unique ON public.tbl_include_box USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
@@ -99,13 +99,13 @@ ERROR:  duplicate key value violates unique constraint "tbl_include_box_pk"
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				CONSTRAINT covering UNIQUE(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
- indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
+ indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass  
 ------------+----------+-------------+-------------+--------------+---------+-----------
  covering   |        4 |           2 | t           | f            | 1 2 3 4 | 9942 9942
 (1 row)
 
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
-       pg_get_constraintdef       | conname  | conkey
+       pg_get_constraintdef       | conname  | conkey 
 ----------------------------------+----------+--------
  UNIQUE (c1, c2) INCLUDE (c3, c4) | covering | {1,2}
 (1 row)
@@ -117,13 +117,13 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				CONSTRAINT covering PRIMARY KEY(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
- indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
+ indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass  
 ------------+----------+-------------+-------------+--------------+---------+-----------
  covering   |        4 |           2 | t           | t            | 1 2 3 4 | 9942 9942
 (1 row)
 
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
-         pg_get_constraintdef          | conname  | conkey
+         pg_get_constraintdef          | conname  | conkey 
 ---------------------------------------+----------+--------
  PRIMARY KEY (c1, c2) INCLUDE (c3, c4) | covering | {1,2}
 (1 row)
@@ -137,7 +137,7 @@ DETAIL:  Failing row contains (1, null, 3, (4,4),(4,4)).
 INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,300) AS x;
 explain (costs off)
 select * from tbl where (c1,c2,c3) < (2,5,1); -- YB: output differs from upstream PG likely because, in YB, pk index = table
-                 QUERY PLAN
+                 QUERY PLAN                 
 --------------------------------------------
  Index Scan using covering on tbl
    Index Cond: (ROW(c1, c2) <= ROW(2, 5))
@@ -145,17 +145,17 @@ select * from tbl where (c1,c2,c3) < (2,5,1); -- YB: output differs from upstrea
 (3 rows)
 
 select * from tbl where (c1,c2,c3) < (2,5,1);
- c1 | c2 | c3 | c4
+ c1 | c2 | c3 | c4 
 ----+----+----+----
-  1 |  2 |    |
-  2 |  4 |    |
+  1 |  2 |    | 
+  2 |  4 |    | 
 (2 rows)
 
 -- row comparison that compares high key at page boundary
 SET enable_seqscan = off;
 explain (costs off)
 select * from tbl where (c1,c2,c3) < (262,1,1) limit 1; -- YB: output differs from upstream PG likely because, in YB, pk index = table
-                     QUERY PLAN
+                     QUERY PLAN                     
 ----------------------------------------------------
  Limit
    ->  Index Scan using covering on tbl
@@ -174,13 +174,13 @@ RESET enable_seqscan;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				UNIQUE(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
-     indexrelid      | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
+     indexrelid      | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass  
 ---------------------+----------+-------------+-------------+--------------+---------+-----------
  tbl_c1_c2_c3_c4_key |        4 |           2 | t           | f            | 1 2 3 4 | 9942 9942
 (1 row)
 
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
-       pg_get_constraintdef       |       conname       | conkey
+       pg_get_constraintdef       |       conname       | conkey 
 ----------------------------------+---------------------+--------
  UNIQUE (c1, c2) INCLUDE (c3, c4) | tbl_c1_c2_c3_c4_key | {1,2}
 (1 row)
@@ -192,13 +192,13 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				PRIMARY KEY(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
- indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
+ indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass  
 ------------+----------+-------------+-------------+--------------+---------+-----------
  tbl_pkey   |        4 |           2 | t           | t            | 1 2 3 4 | 9942 9942
 (1 row)
 
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
-         pg_get_constraintdef          | conname  | conkey
+         pg_get_constraintdef          | conname  | conkey 
 ---------------------------------------+----------+--------
  PRIMARY KEY (c1, c2) INCLUDE (c3, c4) | tbl_pkey | {1,2}
 (1 row)
@@ -233,14 +233,14 @@ CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
 CREATE UNIQUE INDEX tbl_idx ON tbl using btree(c1, c2, c3, c4);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                       indexdef
+                                       indexdef                                       
 --------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 ASC, c2 ASC, c3 ASC, c4 ASC)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
@@ -254,14 +254,14 @@ CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box);
 CREATE UNIQUE INDEX tbl_idx ON tbl using btree(c1, c2) INCLUDE(c3,c4);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                       indexdef
+                                       indexdef                                        
 ---------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
@@ -273,20 +273,20 @@ DROP TABLE tbl;
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                             indexdef
+                                             indexdef                                              
 ---------------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
 ALTER TABLE tbl DROP COLUMN c1;
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
@@ -312,7 +312,7 @@ CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,1000) AS x;
 CREATE UNIQUE INDEX CONCURRENTLY on tbl (c1, c2) INCLUDE (c3, c4);
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                             indexdef
+                                             indexdef                                              
 ---------------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_idx ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
  CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
@@ -324,27 +324,27 @@ DROP TABLE tbl;
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                             indexdef
+                                             indexdef                                              
 ---------------------------------------------------------------------------------------------------
  CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
 REINDEX INDEX tbl_c1_c2_c3_c4_key;
 ERROR:  relation "tbl_c1_c2_c3_c4_key" does not exist
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
 ALTER TABLE tbl DROP COLUMN c1;
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
- indexdef
+ indexdef 
 ----------
 (0 rows)
 
@@ -403,14 +403,13 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d tbl
                 Table "public.tbl"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | bigint  |           |          |
- c2     | integer |           |          |
- c3     | bigint  |           |          |
- c4     | box     |           |          |
+ c1     | bigint  |           |          | 
+ c2     | integer |           |          | 
+ c3     | bigint  |           |          | 
+ c4     | box     |           |          | 
 Indexes:
     "tbl_c1_c2_c3_c4_key" UNIQUE CONSTRAINT, lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 
 DROP TABLE tbl;
-

@@ -12,6 +12,7 @@ package com.yugabyte.yw.forms.filters;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.filters.AlertFilter;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
@@ -22,12 +23,25 @@ import org.apache.commons.lang3.StringUtils;
 @Data
 @NoArgsConstructor
 public class AlertApiFilter {
+  @ApiModelProperty(value = "The uuids of the alerts.")
   private Set<UUID> uuids;
+
+  @ApiModelProperty(value = "The uuid of the alert configuration.")
   private UUID configurationUuid;
+
+  @ApiModelProperty(value = "The severity of the alerts.")
   private Set<AlertConfiguration.Severity> severities;
+
+  @ApiModelProperty(value = "Alert Configuration Target Types")
   private Set<AlertConfiguration.TargetType> configurationTypes;
+
+  @ApiModelProperty(value = "The state of the alerts.")
   private Set<Alert.State> states;
+
+  @ApiModelProperty(value = "The source name of the alerts.")
   private String sourceName;
+
+  @ApiModelProperty(value = "The source uuids of the alerts.")
   private Set<UUID> sourceUUIDs;
 
   public AlertFilter toFilter() {

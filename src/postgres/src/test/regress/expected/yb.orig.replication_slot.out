@@ -6,25 +6,25 @@ CREATE ROLE regress_replicationslot_replication_user WITH REPLICATION;
 CREATE ROLE regress_replicationslot_dummy;
 SET SESSION AUTHORIZATION 'regress_replicationslot_user';
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
- slot_name | lsn
+ slot_name | lsn 
 -----------+-----
  testslot1 | 0/2
 (1 row)
 
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
- slot_name | lsn
+ slot_name | lsn 
 -----------+-----
  testslot2 | 0/2
 (1 row)
 
 SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test_decoding', false);
-       slot_name        | lsn
+       slot_name        | lsn 
 ------------------------+-----
  testslot_test_decoding | 0/2
 (1 row)
 
 SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, 'HYBRID_TIME');
-      slot_name       | lsn
+      slot_name       | lsn 
 ----------------------+-----
  testslot_hybrid_time | 0/2
 (1 row)
@@ -34,7 +34,7 @@ SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, yb_lsn_type
 FROM pg_replication_slots
 ORDER BY slot_name;
-       slot_name        |    plugin     | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn | yb_lsn_type
+       slot_name        |    plugin     | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn | yb_lsn_type 
 ------------------------+---------------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------+-------------
  testslot1              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
  testslot2              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
@@ -44,14 +44,14 @@ ORDER BY slot_name;
 
 -- drop the replication slot and create with same name again.
 SELECT * FROM pg_drop_replication_slot('testslot1');
- pg_drop_replication_slot
+ pg_drop_replication_slot 
 --------------------------
-
+ 
 (1 row)
 
 -- TODO(#19263): Change the slot to temporary once supported.
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
- slot_name | lsn
+ slot_name | lsn 
 -----------+-----
  testslot1 | 0/2
 (1 row)
@@ -70,7 +70,7 @@ ERROR:  replication slot "testslot1" already exists
 -- success since user has 'replication' role
 SET ROLE regress_replicationslot_replication_user;
 SELECT * FROM pg_create_logical_replication_slot('testslot3', 'pgoutput', false);
- slot_name | lsn
+ slot_name | lsn 
 -----------+-----
  testslot3 | 0/2
 (1 row)
@@ -83,39 +83,39 @@ ERROR:  must be superuser or replication role to use replication slots
 RESET ROLE;
 -- drop replication slots
 SELECT * FROM pg_drop_replication_slot('testslot1');
- pg_drop_replication_slot
+ pg_drop_replication_slot 
 --------------------------
-
+ 
 (1 row)
 
 SELECT * FROM pg_drop_replication_slot('testslot2');
- pg_drop_replication_slot
+ pg_drop_replication_slot 
 --------------------------
-
+ 
 (1 row)
 
 SELECT * FROM pg_drop_replication_slot('testslot3');
- pg_drop_replication_slot
+ pg_drop_replication_slot 
 --------------------------
-
+ 
 (1 row)
 
 SELECT * FROM pg_drop_replication_slot('testslot_test_decoding');
- pg_drop_replication_slot
+ pg_drop_replication_slot 
 --------------------------
-
+ 
 (1 row)
 
 SELECT * FROM pg_drop_replication_slot('testslot_hybrid_time');
- pg_drop_replication_slot
+ pg_drop_replication_slot 
 --------------------------
-
+ 
 (1 row)
 
 SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;
- slot_name | plugin | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
+ slot_name | plugin | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn 
 -----------+--------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
 (0 rows)
 

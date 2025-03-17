@@ -109,6 +109,10 @@ Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
   return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
 }
 
+Result<master::CatalogManager*> PgMiniTestBase::catalog_manager_impl() const {
+  return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
+}
+
 void PgMiniTestBase::EnableYSQLFlags() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
@@ -118,8 +122,7 @@ Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t 
   auto* pg_ts = cluster_->mini_tablet_server(ts_idx);
   PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
       AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-      pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-      pg_ts->server()->GetSharedMemoryFd()));
+      pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
 
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
@@ -142,7 +145,7 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
   auto pg_ts = cluster_->mini_tablet_server(pg_ts_idx);
 
   BeforePgProcessStart();
-  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, pg_ts->server());
   ASSERT_OK(pg_supervisor_->Start());
   pg_ts->SetPgServerHandlers(
       [this] { return StartPostgres(); },
@@ -152,7 +155,7 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
 Status PgMiniTestBase::RecreatePgSupervisor() {
   pg_supervisor_ = std::make_unique<PgSupervisor>(
       VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port(), kPgTsIndex)),
-      /* tserver */ nullptr);
+      cluster_->mini_tablet_server(kPgTsIndex)->server());
   return Status::OK();
 }
 
