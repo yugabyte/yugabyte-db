@@ -134,4 +134,4 @@ Because this transaction is using the exported snapshot, it does not see the row
 
 ## Limitation
 
-Currently, exporting and setting a snapshot can only be performed in a transaction using the REPEATABLE READ isolation level.
+Currently, exporting and setting a snapshot can only be performed in a transaction using the REPEATABLE READ isolation level (Github Issues [#24161](https://github.com/yugabyte/yugabyte-db/issues/24161), [#24162](https://github.com/yugabyte/yugabyte-db/issues/24162)).
