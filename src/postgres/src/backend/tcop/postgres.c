@@ -808,7 +808,7 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	if (post_parse_analyze_hook)
