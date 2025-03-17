@@ -63,7 +63,6 @@ sudo dnf groupinstall -y 'Development Tools'
 sudo dnf -y install epel-release
 packages=(
   ccache
-  cmake3
   gcc-toolset-11
   gcc-toolset-11-libatomic-devel
   golang
@@ -87,6 +86,10 @@ sudo mkdir /opt/yb-build
 # run/modify instructions from here onwards (change $USER, make sure shell
 # variables are set appropriately when switching users).
 sudo chown "$USER" /opt/yb-build
+mkdir ~/tools
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-x86_64.tar.gz" | tar xzC ~/tools
+source <(echo 'export PATH="$HOME/tools/cmake-3.31.0-linux-x86_64/bin:$PATH"' \
+         | tee -a "$shellrc")
 source <(echo 'export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"' \
          | tee -a "$shellrc")
 
@@ -130,10 +133,6 @@ python3 -V
 ### CMake 3
 
 {{% readfile "includes/cmake.md" %}}
-
-```sh
-sudo dnf install -y cmake3
-```
 
 ### Java
 
