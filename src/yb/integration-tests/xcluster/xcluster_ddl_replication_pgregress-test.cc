@@ -155,7 +155,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     RETURN_NOT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
 
     // Setup xCluster.
-    RETURN_NOT_OK(CheckpointReplicationGroup());
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
 
     // Some of the scripts do take a long time to run so setting this timeout high.

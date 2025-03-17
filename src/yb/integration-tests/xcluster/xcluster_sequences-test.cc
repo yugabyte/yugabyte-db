@@ -449,7 +449,9 @@ class XClusterSequenceDDLOrdering : public XClusterDDLReplicationTestBase {
  public:
   Status SetUpClustersAndReplication() {
     RETURN_NOT_OK(SetUpClusters());
-    RETURN_NOT_OK(CheckpointReplicationGroup());
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
     return Status::OK();

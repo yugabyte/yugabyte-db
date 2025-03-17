@@ -161,7 +161,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     }
   }
 
-  void SetUp() {
+  void SetUp() override {
     YBTest::SetUp();
     LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
@@ -413,7 +413,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, const NamespaceCheckpointInfo& ns_info,
       bool all_tables_included = true, const PgSchemaName& table2_schema_name = kPgSchemaName) {
-    EXPECT_FALSE(ns_info.initial_bootstrap_required);
+    EXPECT_EQ(ns_info.initial_bootstrap_required, UseAutomaticMode());
     ASSERT_EQ(ns_info.table_infos.size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
     std::set<TableId> table_ids;
     for (const auto& table_info : ns_info.table_infos) {
@@ -714,8 +714,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTableDuringCheckpoint) {
   auto* sync_point_instance = yb::SyncPoint::GetInstance();
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"TESTAddTableDuringCheckpoint::TableCreated",
-        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+      {{.predecessor = "TESTAddTableDuringCheckpoint::TableCreated",
+        .successor = "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
   sync_point_instance->EnableProcessing();
 
   ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));
@@ -742,8 +742,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, DropTableDuringCheckpoint) {
   auto* sync_point_instance = yb::SyncPoint::GetInstance();
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"TESTAddTableDuringCheckpoint::TableCreated",
-        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+      {{.predecessor = "TESTAddTableDuringCheckpoint::TableCreated",
+        .successor = "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
   sync_point_instance->EnableProcessing();
 
   ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));

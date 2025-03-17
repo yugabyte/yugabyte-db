@@ -123,6 +123,7 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   RETURN_NOT_OK(UpdateCdcStateTableWithCheckpoints());
 
   if (req_.check_if_bootstrap_required()) {
+    LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
 
