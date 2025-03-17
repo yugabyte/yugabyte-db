@@ -2066,12 +2066,12 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 
 ```sh
 yb-admin \
-    -master_addresses <standby_master_addresses> \
+    -master_addresses <target_master_addresses> \
     get_xcluster_safe_time \
     [include_lag_and_skew]
 ```
 
-* *standby_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
 
 **Example**
@@ -2252,23 +2252,6 @@ statuses {
 }
 ```
 
-#### list_xcluster_outbound_replication_groups
-
-List the replication group identifiers for all inbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
- namespaces for use in xCluster replication.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <target_master_addresses> \
-    list_xcluster_outbound_replication_groups \
-    [<namespace_id>]
-```
-
-* *replication_group_id*: The replication group identifier.
-* *namespace_id*: (Optional) The namespace identifier.
-
 #### create_xcluster_checkpoint
 
 Checkpoint namespaces for use in xCluster replication.
@@ -2290,7 +2273,7 @@ yb-admin \
 
 #### is_xcluster_bootstrap_required
 
-Checks if the databases of a previously checkpointed replication group require a bootstrap of the target database to set up xCluster replication.
+Checks if the databases of a previously checkpointed replication group requires a bootstrap(backup/restore) of the database to the target universe.
 
 **Syntax**
 
