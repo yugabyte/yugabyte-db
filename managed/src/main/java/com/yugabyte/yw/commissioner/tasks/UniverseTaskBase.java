@@ -6033,6 +6033,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (!keepEntry) {
       // Delete the xCluster table configs from DB.
       createDeleteXClusterTableConfigEntryTask(xClusterConfig, tableIds);
+    } else {
+      // Reset the backup/restore objects for the config to ensure bootstrapping happens
+      // properly. These fields are set in the parent task and thus cannot be reset in the subtasks.
+      xClusterConfig.getTables().stream()
+          .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+          .forEach(
+              tableConfig -> {
+                tableConfig.setBackup(null);
+                tableConfig.setRestore(null);
+                tableConfig.update();
+              });
     }
   }
 
@@ -6174,6 +6185,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (keepEntry) {
       createResetXClusterConfigEntryTask(xClusterConfig)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      // Reset the backup/restore objects for the config to ensure bootstrapping happens
+      // properly. These fields are set in the parent task and thus cannot be reset in the subtasks.
+      xClusterConfig
+          .getTables()
+          .forEach(
+              tableConfig -> {
+                tableConfig.setBackup(null);
+                tableConfig.setRestore(null);
+                tableConfig.update();
+              });
+      xClusterConfig
+          .getNamespaces()
+          .forEach(
+              namespaceConfig -> {
+                namespaceConfig.setBackup(null);
+                namespaceConfig.setRestore(null);
+                namespaceConfig.update();
+              });
     } else {
       // Delete the xCluster config from DB.
       createDeleteXClusterConfigEntryTask(xClusterConfig)
