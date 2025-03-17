@@ -1315,4 +1315,6 @@ extern bool yb_is_calling_internal_function_for_ddl;
 
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
+extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
+
 #endif							/* PG_YB_UTILS_H */

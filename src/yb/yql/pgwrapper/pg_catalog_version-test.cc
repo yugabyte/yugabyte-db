@@ -2142,10 +2142,9 @@ TEST_F(PgCatalogVersionTest, WaitForSharedCatalogVersionToCatchup) {
     }
   });
   YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
-  auto result = ysqlsh_runner.ExecuteSqlScript(
-      main_script, "WaitForSharedCatalogVersionToCatchup" /* tmp_file_prefix */);
-  ASSERT_NOK_STR_CONTAINS(result,
-      "The catalog snapshot used for this transaction has been invalidated");
+  auto output = CHECK_RESULT(ysqlsh_runner.ExecuteSqlScript(
+      main_script, "WaitForSharedCatalogVersionToCatchup" /* tmp_file_prefix */));
+  LOG(INFO) << "output: " << output;
 }
 
 } // namespace pgwrapper

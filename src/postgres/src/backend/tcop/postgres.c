@@ -4650,7 +4650,7 @@ YBCheckSharedCatalogCacheVersion()
 	if (YBCIsInitDbModeEnvVarSet())
 		return;
 
-	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
+	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
 	const uint64_t local_catalog_version = YbGetCatalogCacheVersion();
 	const bool	need_global_cache_refresh = (local_catalog_version <
 											 shared_catalog_version);
@@ -4665,7 +4665,7 @@ YBCheckSharedCatalogCacheVersion()
 	}
 	if (need_global_cache_refresh)
 	{
-		const uint32_t num_catalog_versions =
+		uint32_t num_catalog_versions =
 			shared_catalog_version - local_catalog_version;
 		YbcCatalogMessageLists message_lists = {0};
 		const bool enable_inval_messages =
@@ -4673,6 +4673,20 @@ YBCheckSharedCatalogCacheVersion()
 			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages;
 		if (enable_inval_messages)
 		{
+			const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+			if (shared_catalog_version < catalog_master_version)
+			{
+				/*
+				 * This can happen when another session executes many DDLs
+				 * in a batch, when we see a new shared catalog version has
+				 * arrived in shared memory, master may have got a even newer
+				 * version. See comments in YbWaitForSharedCatalogVersionToCatchup
+				 * for a scenario that this wait can help.
+				 */
+				YbWaitForSharedCatalogVersionToCatchup(catalog_master_version);
+				shared_catalog_version = YbGetSharedCatalogVersion();
+				num_catalog_versions = shared_catalog_version - local_catalog_version;
+			}
 			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
 															local_catalog_version,
 															num_catalog_versions,
