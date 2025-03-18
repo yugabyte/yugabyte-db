@@ -4,11 +4,13 @@ import { useTranslation } from "react-i18next";
 import { YBAccordion, YBCodeBlock, YBInput, YBModal, YBSelect, YBToggle } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
-import type { UnsupportedSqlWithDetails } from "@app/api/src";
+import type { SqlObjectsDetails } from "@app/api/src";
 import WarningIcon from "@app/assets/alert-solid.svg";
+import YBLogo from "@app/assets/yb-logo.svg"
 import { getMappedData } from "./refactoringUtils";
 import { formatSnakeCase, useQueryParams } from "@app/helpers";
-
+import { Link } from "@material-ui/core";
+import GithubIcon from "@app/assets/github.svg"
 const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(4),
@@ -48,7 +50,7 @@ const useStyles = makeStyles((theme) => ({
   toggleSwitch: {
     flexShrink: 0,
   },
-  warningIcon: {
+  icon: {
     height: "14px",
     width: "14px",
     marginBottom: "2px",
@@ -61,10 +63,15 @@ const useStyles = makeStyles((theme) => ({
     padding: `${theme.spacing(0.6)}px ${theme.spacing(1)}px`,
     borderRadius: theme.shape.borderRadius,
   },
+  githubIcon: {
+    height: "40px",
+    width: "40px",
+    marginBottom: "2px",
+  },
 }));
 
 interface MigrationRefactoringSidePanelProps {
-  data: UnsupportedSqlWithDetails | undefined;
+  data: SqlObjectsDetails | undefined;
   onClose: () => void;
   header: string;
   title: string;
@@ -72,7 +79,7 @@ interface MigrationRefactoringSidePanelProps {
     [key: string]: {
       [key: string]: {
         [key: string]: {
-          [key: string]: boolean; // Final nested object with boolean values
+          [key: string]: boolean;
         };
       };
     };
@@ -88,6 +95,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   acknowledgedObjects,
   toggleAcknowledgment,
 }) => {
+
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -141,12 +149,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
     }
   };
 
-  const mappedData: {
-    groupKey: string;
-    sqlStatements: string[];
-    reasons: string[];
-    issueTypes: string[];
-  }[] = getMappedData(data?.suggestions_errors, "filePath");
+  const mappedData = getMappedData(data?.issues);
 
   const [searchByItem, setSearchByItem] = React.useState<string>("Any");
 
@@ -169,15 +172,20 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
       const sqlStatements: string[] = [];
       const reasons: string[] = [];
       const issueTypes: string[] = [];
+      const suggestions: string[] = [];
+      const GHs: string[] = [];
+      const docs_links: string[] = [];
 
       item.sqlStatements.forEach((stmt, index) => {
         const fileKey: string = item.groupKey.toLowerCase();
         const sqlKey: string = stmt.toLowerCase();
         const reasonKey: string = item.reasons[index].toLowerCase();
+
         const isAcknowledged =
           acknowledgedObjects?.[migrationUUID ?? ""]?.[fileKey]?.[sqlKey]?.[reasonKey];
+
         const ackMatched: boolean =
-          (ackType === "All") ||
+          ackType === "All" ||
           (ackType === "Acknowledged" && isAcknowledged === true) ||
           (ackType === "Not acknowledged" && !isAcknowledged);
 
@@ -188,6 +196,9 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             sqlStatements: string[];
             reasons: string[];
             issueTypes: string[];
+            GHs: string[];
+            suggestions: string[];
+            docs_links: string[];
           },
           index: number,
           stmt: string
@@ -208,6 +219,8 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
               return [item.groupKey];
             case "Reason":
               return [item.reasons[index]];
+            case "Suggestion":
+              return [item.suggestions[index]];
             default:
               return [];
           }
@@ -223,6 +236,9 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
           sqlStatements.push(stmt);
           reasons.push(item.reasons[index]);
           issueTypes.push(item.issueTypes[index]);
+          suggestions.push(item.suggestions[index]);
+          GHs.push(item.GHs[index]);
+          docs_links.push(item.docs_links[index]);
         }
       });
 
@@ -232,9 +248,13 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             sqlStatements,
             reasons,
             issueTypes,
+            suggestions,
+            GHs,
+            docs_links,
           }
         : null;
     };
+
 
     return mappedData.reduce((result, item) => {
       const filteredItem = filterItems(item, selectedAck);
@@ -247,34 +267,48 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
     const startIndex = page * perPage;
     const endIndex = startIndex + perPage;
 
-    // Tracks number of sql statements counted
-    var count = 0;
+    // Tracks number of SQL statements counted
+    let count = 0;
 
-    // Paginate based on sql statements
-    var paginatedData: typeof filteredData = [];
-    for (var i = 0; i < filteredData.length; i++) {
-      var tempSqlStatements: string[] = [];
-      var tempReasons: string[] = [];
-      var tempIssueTypes: string[] = [];
-      for (var j = 0; j < filteredData[i].sqlStatements.length; j++) {
+    // Paginate based on SQL statements
+    let paginatedData: typeof filteredData = [];
+
+    for (let i = 0; i < filteredData.length; i++) {
+      let tempSqlStatements: string[] = [];
+      let tempReasons: string[] = [];
+      let tempIssueTypes: string[] = [];
+      let tempSuggestions: string[] = [];
+      let tempGHs: string[] = [];
+      let tempDocsLinks: string[] = [];
+
+      for (let j = 0; j < filteredData[i].sqlStatements.length; j++) {
         if (count >= endIndex) break;
         if (count >= startIndex) {
           tempSqlStatements.push(filteredData[i].sqlStatements[j]);
           tempReasons.push(filteredData[i].reasons[j]);
-          tempIssueTypes.push(filteredData[i].issueTypes![j]);
+          tempIssueTypes.push(filteredData[i].issueTypes[j]);
+          tempSuggestions.push(filteredData[i].suggestions[j]);
+          tempGHs.push(filteredData[i].GHs[j]);
+          tempDocsLinks.push(filteredData[i].docs_links[j]);
         }
         count++;
       }
+
       if (tempSqlStatements.length > 0) {
         paginatedData.push({
           groupKey: filteredData[i].groupKey,
           sqlStatements: tempSqlStatements,
           reasons: tempReasons,
           issueTypes: tempIssueTypes,
+          suggestions: tempSuggestions,
+          GHs: tempGHs,
+          docs_links: tempDocsLinks,
         });
       }
+
       if (count >= endIndex) break;
     }
+
     return paginatedData;
   }, [filteredData, page, perPage]);
 
@@ -313,7 +347,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   return (
     <YBModal
       open={!!data}
-      title={header + (data?.unsupported_type ? `: ${data.unsupported_type}` : "")}
+      title={header + (data?.objectType ? `: ${data.objectType}` : "")}
       onClose={() => {
         setPage(0);
         setSelectedAck("All");
@@ -352,6 +386,9 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             </MenuItem>
             <MenuItem value="Reason">
               {t("clusterDetail.voyager.planAndAssess.refactoring.details.reason")}
+            </MenuItem>
+            <MenuItem value="Suggestion">
+              {t("clusterDetail.voyager.planAndAssess.refactoring.details.suggestion")}
             </MenuItem>
           </YBSelect>
         </Box>
@@ -424,7 +461,8 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
           defaultExpanded
         >
           <Box display="flex" flexDirection="column" gridGap={10}>
-            {filteredPaginatedData?.map(({ groupKey, sqlStatements, reasons, issueTypes }) => (
+            {filteredPaginatedData?.map(({
+              groupKey, sqlStatements, reasons, issueTypes, GHs, docs_links, suggestions }) => (
               <Box display="flex" flexDirection="column">
                 <Box my={2}>
                   <Typography variant="body2">{groupKey}</Typography>
@@ -443,7 +481,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
                                 gridGap={6}
                                 className={classes.warningBox}
                               >
-                                <WarningIcon className={classes.warningIcon} />
+                                <WarningIcon className={classes.icon} />
                                 {reasons[index]}
                               </Box>
                             )}
@@ -461,6 +499,48 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
                                 )} : ${formatSnakeCase(issueTypes[index])}`}
                               </Box>
                             )}
+
+                            {suggestions[index] && (
+                              <Box
+                                display="flex"
+                                alignItems="center"
+                                gridGap={10}
+                                my={2}
+                                width="fit-content"
+                                className={classes.warningBox}
+                              >
+                             {`${t(
+                              "clusterDetail.voyager.planAndAssess.refactoring.details.suggestion"
+                             )} : ${(suggestions[index])}`}
+                              </Box>
+                            )}
+
+                            <Box
+                              display="flex"
+                              alignItems="center" gridGap={10} my={2} width="fit-content">
+                              {/* GitHub Link */}
+                              {GHs[index] && (
+                                <Link href={GHs[index]} target="_blank">
+                                  <Box display="flex" alignItems="center" gridGap={5}>
+                                    <GithubIcon  className={classes.githubIcon}/>
+                                    <Typography variant="body2">
+                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.linkToGithub")}
+                                    </Typography>
+                                  </Box>
+                                </Link>
+                              )}
+                              <Divider className={classes.divider} />
+                              {docs_links[index] && (
+                                <Link href={docs_links[index]} target="_blank">
+                                  <Box display="flex" alignItems="center" gridGap={5}>
+                                    <YBLogo/>
+                                    <Typography variant="body2">
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.linkToDocs")}
+                                    </Typography>
+                                  </Box>
+                                </Link>
+                              )}
+                            </Box>
                           </Box>
                           <YBToggle
                             className={classes.toggleSwitch}
@@ -470,7 +550,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
                             checked={
                               localAcknowledgedObjects?.[migrationUUID ?? ""]?.[
                                 groupKey.toLowerCase()
-                              ]?.[sql.toLowerCase()]?.[reasons[index].toLowerCase()] ?? false
+                              ]?.[sql.toLowerCase()]?.[reasons[index]?.toLowerCase()] ?? false
                             }
                             onChange={() => handleLocalToggle(groupKey, sql, reasons[index])}
                           />
@@ -494,6 +574,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
               />
             </Box>
           </Box>
+
         </YBAccordion>
       </Box>
     </YBModal>

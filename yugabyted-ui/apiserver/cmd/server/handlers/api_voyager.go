@@ -975,7 +975,7 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
             assessmentReportVisualisationData.Report.TargetRecommendations.TotalColocatedSize
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeShardedTables =
-            assessmentReportVisualisationData.Report.TargetRecommendations.TotalShardedSize
+        assessmentReportVisualisationData.Report.TargetRecommendations.TotalShardedSize
 
     dbObjectsMap := map[string]int{}
     for _, dbObject := range assessmentReportVisualisationData.Report.SchemaSummary.DBObjects {
@@ -1042,7 +1042,7 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
     err = json.Unmarshal([]byte(assessmentReportPayload), &assessmentVisualisationData)
     if err != nil {
         log.Errorf(fmt.Sprintf("[%s] Error while JSON Unmarshal of the assessment report.",
-            LOGGER_FILE_NAME))
+          LOGGER_FILE_NAME))
         log.Errorf(err.Error())
     }
 
@@ -1253,12 +1253,13 @@ func (c *Container) GetTargetRecommendations(ctx echo.Context) error {
     targetRecommendationDetails.NumOfColocatedTables =
         int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
     targetRecommendationDetails.TotalSizeColocatedTables =
-        assessmentReportVisualisationData.Report.TargetRecommendations.TotalColocatedSize
+        assessmentReportVisualisationData.Report.
+            TargetRecommendations.TotalColocatedSize
     targetRecommendationDetails.NumOfShardedTable =
         int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
     targetRecommendationDetails.TotalSizeShardedTables =
-        assessmentReportVisualisationData.Report.TargetRecommendations.TotalShardedSize
-
+        assessmentReportVisualisationData.Report.
+            TargetRecommendations.TotalShardedSize
     tableRecommendations := map[string]string{}
 
     for _, value := range assessmentReport.Sizing.SizingRecommendation.ColocatedTables {

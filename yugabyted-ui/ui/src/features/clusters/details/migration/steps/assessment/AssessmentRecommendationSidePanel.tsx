@@ -71,7 +71,7 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
 
   const { data: targetRecommendationAPI, isFetching: isFetchingTargetRecommendationData } =
     useGetAssessmentTargetRecommendationInfoQuery({
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     });
 
   const targetRecommendationData = targetRecommendationAPI as
