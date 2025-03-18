@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.backuprestore.BackupUtil.TABLE_TYPE_TO_YQL_
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.CloneNamespaceParams;
 import com.yugabyte.yw.models.Universe;
@@ -143,7 +144,7 @@ public class CloneNamespace extends UniverseTaskBase {
                 throw new RuntimeException("Clone is still in CREATING state");
               }
               if (State.ABORTED.equals(cloneInfo.getState())) {
-                throw new RuntimeException(
+                throw new UnrecoverableException(
                     String.format(
                         "Clone creation has been aborted due to reason: %s",
                         cloneInfo.getAbortMessage()));
@@ -151,6 +152,8 @@ public class CloneNamespace extends UniverseTaskBase {
               // Clone is in an intermittent state.
               throw new RuntimeException(
                   String.format("Clone is in an intermittent state: %s", cloneInfo.getState()));
+            } catch (UnrecoverableException e) {
+              throw e;
             } catch (Exception e) {
               throw new RuntimeException(e);
             }
