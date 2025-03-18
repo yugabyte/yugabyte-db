@@ -1171,6 +1171,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration>
+      xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
+          new ConfKeyInfo<>(
+              "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
+              ScopeType.UNIVERSE,
+              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
+                  + " source universe during failover task execution",
+              "If the source universe is down, this RPC call will time out during failover"
+                  + " operation, increasing the failover task execution time; The lower the value,"
+                  + " the less time the failover task will take to complete. If it is set to zero,"
+                  + " this subtask during failover will be skipped providing a faster failover"
+                  + " execution time.",
+              ConfDataType.DurationType,
+              ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
