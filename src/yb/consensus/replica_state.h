@@ -121,7 +121,7 @@ class ReplicaState {
 
   ~ReplicaState();
 
-  Status StartUnlocked(const OpIdPB& last_in_wal);
+  Status StartUnlocked(const OpId& last_in_wal);
 
   // Should be used only to assert that the update_lock_ is held.
   bool IsLocked() const WARN_UNUSED_RESULT;
@@ -427,8 +427,7 @@ class ReplicaState {
 
   OpId MinRetryableRequestOpId();
 
-  Result<bool> RegisterRetryableRequest(
-    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side);
+  Result<bool> RegisterRetryableRequest(const ConsensusRoundPtr& round);
 
   RestartSafeCoarseMonoClock& Clock();
 
