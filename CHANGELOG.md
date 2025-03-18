@@ -13,6 +13,7 @@
 * Support collation with `$in` array operator *[Feature]*
 * Support unique index truncation by default with new operator class *[Feature]*
 * Support collation in aggregation `$redact` stage *[Feature]*
+* Support collation in aggregation `find` *[Feature]*
 * Support collation in aggregation `$set` stage *[Feature]*
 * Support collation in aggregation `$addFields` stage *[Feature]*
 * Support collation with `$setEquals`, `$setUnion`, `$setIntersection`, `$setDifference`, `$setIsSubet` in the aggregation pipeline *[Feature]*

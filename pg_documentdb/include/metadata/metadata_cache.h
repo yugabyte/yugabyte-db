@@ -299,6 +299,7 @@ Oid BsonDollarMergeExtractFilterFunctionOid(void);
 Oid BsonDollarMergeJoinFunctionOid(void);
 Oid BsonDollarProjectFindFunctionOid(void);
 Oid BsonDollarProjectFindWithLetFunctionOid(void);
+Oid BsonDollarProjectFindWithLetAndCollationFunctionOid(void);
 Oid BsonDollarUnwindFunctionOid(void);
 Oid BsonDollarUnwindWithOptionsFunctionOid(void);
 Oid BsonDollarReplaceRootFunctionOid(void);

@@ -3109,7 +3109,19 @@ HandleProjectFind(const bson_value_t *existingValue, const bson_value_t *queryVa
 
 	List *args;
 	Oid funcOid = BsonDollarProjectFindFunctionOid();
-	if (context->variableSpec != NULL)
+	if (IsCollationApplicable(context->collationString) && IsClusterVersionAtleast(
+			DocDB_V0, 102, 0))
+	{
+		pgbson *queryDoc = queryValue->value_type == BSON_TYPE_EOD ? PgbsonInitEmpty() :
+						   PgbsonInitFromDocumentBsonValue(queryValue);
+		Const *collationStringConst = MakeTextConst(context->collationString,
+													strlen(context->collationString));
+
+		args = list_make5(currentProjection, projectProcessed, MakeBsonConst(queryDoc),
+						  context->variableSpec, collationStringConst);
+		funcOid = BsonDollarProjectFindWithLetAndCollationFunctionOid();
+	}
+	else if (context->variableSpec != NULL)
 	{
 		pgbson *queryDoc = queryValue->value_type == BSON_TYPE_EOD ? PgbsonInitEmpty() :
 						   PgbsonInitFromDocumentBsonValue(queryValue);
@@ -3127,7 +3139,6 @@ HandleProjectFind(const bson_value_t *existingValue, const bson_value_t *queryVa
 		Const *queryDocProcessed = MakeBsonConst(queryDoc);
 		args = list_make3(currentProjection, projectProcessed, queryDocProcessed);
 	}
-
 
 	FuncExpr *resultExpr = makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
 										InvalidOid, COERCE_EXPLICIT_CALL);

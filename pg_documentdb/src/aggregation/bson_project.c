@@ -405,6 +405,7 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 	pgbson *querySpec = NULL;
 	pgbson *variableSpec = NULL;
+	char *collationString = NULL;
 
 	if (PG_NARGS() > 2)
 	{
@@ -424,7 +425,7 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 
 	const BsonProjectionQueryState *state;
 
-	int argPosition[2] = { 1, 0 };
+	int argPosition[3] = { 1, 0, 0 };
 	int numArgs = 1;
 
 	if (PG_NARGS() > 3)
@@ -435,6 +436,14 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 		numArgs = 2;
 	}
 
+	if (EnableCollation && PG_NARGS() > 4)
+	{
+		collationString = PG_ARGISNULL(4) ? NULL : text_to_cstring(PG_GETARG_TEXT_P(4));
+
+		argPosition[2] = 4;
+		numArgs = 3;
+	}
+
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
 
@@ -443,7 +452,8 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 		.allowInclusionExclusion = false,
 		.pathSpecIter = &pathSpecIter,
 		.querySpec = querySpec,
-		.variableSpec = variableSpec
+		.variableSpec = variableSpec,
+		.collationString = collationString
 	};
 
 	SetCachedFunctionStateMultiArgs(

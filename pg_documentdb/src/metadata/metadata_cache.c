@@ -687,6 +687,9 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_dollar_project_find with let args function */
 	Oid ApiCatalogBsonDollarProjectFindWithLetFunctionOid;
 
+	/* OID of the bson_dollar_project_find with let and collation function */
+	Oid ApiCatalogBsonDollarProjectFindWithLetAndCollationFunctionOid;
+
 	/* OID of the bson_dollar_unwind(bson, text) function */
 	Oid ApiCatalogBsonDollarUnwindFunctionOid;
 
@@ -3297,6 +3300,20 @@ BsonDollarProjectFindWithLetFunctionOid(void)
 		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
 		DocumentDBCoreBsonTypeId(),
 		DocumentDBCoreBsonTypeId());
+}
+
+
+Oid
+BsonDollarProjectFindWithLetAndCollationFunctionOid(void)
+{
+	return GetOperatorFunctionIdFiveArgs(
+		&Cache.ApiCatalogBsonDollarProjectFindWithLetAndCollationFunctionOid,
+		DocumentDBApiInternalSchemaName,
+		"bson_dollar_project_find",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId(),
+		TEXTOID);
 }
 
 
