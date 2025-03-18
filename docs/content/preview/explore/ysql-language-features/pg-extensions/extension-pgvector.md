@@ -152,6 +152,62 @@ Average groups of vectors belonging to the same category:
 SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 ```
 
+## Indexing in YugabyteDB
+
+{{<tags/feature/tp idea="1111">}} By default, vector search in YugabyteDB performs exact nearest neighbor search, ensuring perfect recall.
+
+To improve query performance, you can use approximate nearest neighbor search, which trades some recall for speed. Unlike traditional indexes, approximate indexes may return different results for queries.
+
+Supported index types are:
+
+* HNSW
+
+### HNSW
+
+YugabyteDB supports HNSW (Hierarchical Navigable Small World) indexing, which creates a multilayer graph to enable efficient high-dimensional vector search. HNSW offers faster query performance but requires more memory and has longer build times. You can create an index before inserting any data into the table.
+
+Add an index for each distance function you want to use.
+
+#### L2 distance
+
+```sql
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
+```
+
+#### Inner product
+
+```sql
+CREATE INDEX ON items USING ybhnsw (embedding vector_ip_ops);
+```
+
+#### Cosine distance
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_cosine_ops);
+```
+
+Supported types are:
+
+* `vector`
+
+### Index Options
+
+HNSW indexing in YugabyteDB allows fine-tuning with the following parameters:
+
+* `m`- the max number of connections per layer
+* `ef_construction`- the size of the dynamic candidate list for constructing the graph
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops) WITH (m = 16, ef_construction = 128);
+```
+
+A higher value of `ef_construction` provides better recall at the cost of index build time / insert speed.
+
+### Limitations
+
+1. Concurrent index creation is not supported yet.
+2. Partial indexes on vector columns are not supported yet.
+
 ## Read more
 
 - [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](/preview/tutorials/azure/azure-openai/)
