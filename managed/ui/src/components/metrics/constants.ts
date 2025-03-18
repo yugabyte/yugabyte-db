@@ -7,7 +7,6 @@ export const MetricOrigin = {
 export const MetricTypes = {
   YSQL_OPS: 'ysql_ops',
   YCQL_OPS: 'ycql_ops',
-  YEDIS_OPS: 'yedis_ops',
   SERVER: 'server',
   DISK_IO: 'disk_io',
   PER_PROCESS: 'per_process',
@@ -51,31 +50,6 @@ export const MetricTypesWithOperations = {
       'response_sizes',
       'cql_yb_transaction',
       'cql_yb_rpc_connections'
-    ]
-  },
-  yedis_ops: {
-    title: 'YEDIS',
-    metrics: [
-      'redis_rpcs_per_sec_all',
-      'redis_ops_latency_all',
-      'redis_server_rpc_p99',
-      'redis_yb_local_vs_remote_ops',
-      'tserver_rpc_queue_size_redis',
-      'redis_yb_local_vs_remote_latency',
-      'redis_reactor_latency',
-      'redis_rpcs_per_sec_hash',
-      'redis_ops_latency_hash',
-      'redis_rpcs_per_sec_ts',
-      'redis_ops_latency_ts',
-      'redis_rpcs_per_sec_set',
-      'redis_ops_latency_set',
-      'redis_rpcs_per_sec_sortedset',
-      'redis_ops_latency_sorted_set',
-      'redis_rpcs_per_sec_str',
-      'redis_ops_latency_str',
-      'redis_rpcs_per_sec_local',
-      'redis_ops_latency_local',
-      'redis_yb_rpc_connections'
     ]
   },
   server: {
@@ -305,7 +279,6 @@ export const MetricTypesByOrigin = {
     data: [
       'ysql_ops',
       'ycql_ops',
-      'yedis_ops',
       'disk_io',
       'per_process',
       'container',
@@ -321,7 +294,6 @@ export const MetricTypesByOrigin = {
     data: [
       'ysql_ops',
       'ycql_ops',
-      'yedis_ops',
       'disk_io',
       'container',
       'server',
@@ -339,17 +311,14 @@ export const MetricTypesByOrigin = {
 
 export const APITypeToNodeFlags = {
   YSQL: 'isYsqlServer',
-  YCQL: 'isYqlServer',
-  YEDIS: 'isRedisServer'
+  YCQL: 'isYqlServer'
 } as const;
 
 export const APIMetricToNodeFlag = {
   ysql_ops: APITypeToNodeFlags.YSQL,
   ycql_ops: APITypeToNodeFlags.YCQL,
-  yedis_ops: APITypeToNodeFlags.YEDIS,
   sql: APITypeToNodeFlags.YSQL,
-  cql: APITypeToNodeFlags.YCQL,
-  redis: APITypeToNodeFlags.YEDIS
+  cql: APITypeToNodeFlags.YCQL
 } as const;
 
 export const MetricConsts = {

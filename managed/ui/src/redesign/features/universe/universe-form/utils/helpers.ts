@@ -313,7 +313,7 @@ export const getUserIntent = (
     enableYCQL: instanceConfig.enableYCQL,
     enableYCQLAuth: instanceConfig.enableYCQLAuth,
     useTimeSync: instanceConfig.useTimeSync,
-    enableYEDIS: instanceConfig.enableYEDIS,
+    enableYEDIS: !!instanceConfig.enableYEDIS,
     useSpotInstance: instanceConfig.useSpotInstance,
     tserverK8SNodeResourceSpec: instanceConfig.tserverK8SNodeResourceSpec,
     accessKeyCode: advancedConfig.accessKeyCode,
