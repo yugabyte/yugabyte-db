@@ -1916,22 +1916,22 @@ To verify if any tables are already configured for replication, use [list_cdc_st
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    -master_addresses <target-master-addresses> \
     setup_universe_replication \
-    <source_universe_uuid>_<replication_name> \
-    <source_master_addresses> \
-    <comma_separated_list_of_table_ids> \
-    [ <comma_separated_list_of_producer_bootstrap_ids> ] \
+    <replication-group-id> \
+    <source-master-addresses> \
+    <source-table-ids> \
+    [ <bootstrap-ids> ] \
     [ transactional ]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name for the replication.
-* *source_master_addresses*: Comma-separated list of the source master addresses.
-* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
-* *transactional*: identifies the universe as Active in a transactional xCluster deployment.
+* *replication-group-id*: The replication group name.
+* *source-master-addresses*: Comma-separated list of the source master addresses.
+* *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* `bootstrap-ids`: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
+* `transactional`: identifies the universe as Active in a transactional xCluster deployment.
 
 {{< warning title="Important" >}}
 Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
@@ -1969,30 +1969,28 @@ To check if any tables are configured for replication, use [list_cdc_streams](#l
 Use the `set_master_addresses` subcommand to replace the source master address list. Use this if the set of masters on the source changes:
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    set_master_addresses <source_master_addresses>
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <replication-group-id> \
+    set_master_addresses <source-master-addresses>
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *source_master_addresses*: Comma-separated list of the source master addresses.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *source-master-addresses*: Comma-separated list of the source master addresses.
 
 Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    add_table [ <comma_separated_list_of_table_ids> ] \
-    [ <comma_separated_list_of_producer_bootstrap_ids> ]
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <replication-group-id> \
+    add_table <source-table-ids> \
+    [ <bootstrap-ids> ]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* `bootstrap-ids`: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
 Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
@@ -2001,28 +1999,26 @@ Enter the source universe bootstrap IDs in the same order as their corresponding
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    remove_table [ <comma_separated_list_of_table_ids> ]
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <replication-group-id> \
+    remove_table <source-table-ids>
 ```
 
-* *target_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
 
 Use the `rename_id` subcommand to rename xCluster replication streams.
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    rename_id <source_universe_uuid>_<new_replication_name>
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <replication-group-id> \
+    rename_id <new-replication-group-id>
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *new_replication_name*: The new name of the replication stream.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The existing replication group name.
+* *new-replication-group-id*: The new name of the replication group.
 
 #### delete_universe_replication <source_universe_uuid>
 
@@ -2032,13 +2028,12 @@ Deletes universe replication for the specified source universe.
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
-    delete_universe_replication <source_universe_uuid>_<replication_name>
+    -master_addresses <target-master-addresses> \
+    delete_universe_replication <replication-group-id>
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be deleted.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
 
 #### set_universe_replication_enabled
 
@@ -2048,13 +2043,12 @@ Sets the universe replication to be enabled or disabled.
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
-    set_universe_replication_enabled <source_universe_uuid>_<replication_name>
+    -master_addresses <target-master-addresses> \
+    set_universe_replication_enabled <replication-group-id> [0|1]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be enabled or disabled.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
 
@@ -2066,13 +2060,13 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    -master_addresses <target-master-addresses> \
     get_xcluster_safe_time \
     [include_lag_and_skew]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *include_lag_and_skew*: Set `include_lag_and_skew` option to show `safe_time_lag_sec` and `safe_time_skew_sec`, otherwise these are hidden by default.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* `include_lag_and_skew`: Display the `safe_time_lag_sec` and `safe_time_skew_sec`.
 
 **Example**
 
@@ -2108,15 +2102,15 @@ Verify when the producer and consumer are in sync for a given list of `stream_id
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     wait_for_replication_drain \
-    <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
+    <stream-ids> [<timestamp> | minus <interval>]
 ```
 
-* *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
-* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *stream-ids*: Comma-separated list of stream IDs.
+* `timestamp`: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
+* `minus <interval>`: The same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
 
 **Example**
 
@@ -2141,11 +2135,11 @@ Found undrained replications:
 
 #### list_cdc_streams
 
-Lists the CDC streams for the specified YB-Master servers.
+Lists the xCluster outbound streams.
 
 {{< note title="Tip" >}}
 
-Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+Use this command when setting up xCluster replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
 
 {{< /note >}}
 
@@ -2167,40 +2161,40 @@ yb-admin \
     list_cdc_streams
 ```
 
-#### delete_cdc_stream <stream_id> [force_delete]
+#### delete_cdc_stream
 
-Deletes underlying CDC stream for the specified YB-Master servers.
+Deletes underlying xCluster outbound streams.
 
 **Syntax**
 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    delete_cdc_stream <stream_id [force_delete]>
+    delete_cdc_stream <stream-id [force_delete]>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *stream_id*: The ID of the CDC stream.
-* `force_delete`: (Optional) Force the delete operation.
+* *stream-id*: The ID of the CDC stream.
+* `force_delete`: Force the delete operation.
 
 {{< note title="Note" >}}
 This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication-source-universe-uuid).
 {{< /note >}}
 
-#### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+#### bootstrap_cdc_producer
 
-Mark a set of tables in preparation for setting up universe level replication.
+Mark a set of tables in preparation for setting up xCluster replication.
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
-    bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+    -master_addresses <source-master-addresses> \
+    bootstrap_cdc_producer <source-table-ids>
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the tables (`table_id`).
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source-table-ids*: Comma-separated list of unique UUIDs associated with the tables (`table_id`).
 
 **Example**
 
@@ -2215,23 +2209,23 @@ table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9e
 ```
 
 {{< note title="Note" >}}
-The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
+The xCluster bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
 {{< /note >}}
 
 #### get_replication_status
 
-Returns the replication status of all consumer streams. If *source_universe_uuid* is provided, this will only return streams that belong to an associated universe key. If *replication_name* is provided, this will only return the stream that belongs to the specified replication.
+Returns the xCluster replication status of all inbound replication groups. If *replication-group-id* is provided, this will only return streams that belong to an associated replication group.
 
 **Syntax**
 
 ```sh
 yb-admin \
     -master_addresses <target-master-addresses> \
-    get_replication_status [ <source_universe_uuid>_<replication_name> ]
+    get_replication_status [ <replication-group-id> ]
 ```
 
-* *source_universe_uuid*: (Optional) The UUID of the source universe.
-* *replication_name*: (Optional) The name of the replication stream.
+* *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* `replication-group-id`: The replication group name.
 
 **Example**
 
@@ -2260,16 +2254,17 @@ Checkpoint namespaces for use in xCluster replication.
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     create_xcluster_checkpoint \
-    <replication_group_id> \
+    <replication-group-id> \
     <namespace_names> \
     [automatic_ddl_mode]
 ```
 
-* *replication_group_id*: The replication group identifier.
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
 * *namespace_names*: Comma-separated list of namespaces.
-* *automatic_ddl_mode*: (Optional) Use Automatic mode.
+* `automatic_ddl_mode`: Use Automatic xCluster mode.
 
 #### is_xcluster_bootstrap_required
 
@@ -2279,14 +2274,15 @@ Checks if the databases of a previously checkpointed replication group requires 
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     is_xcluster_bootstrap_required \
-    <replication_group_id> \
-    <namespace_names>
+    <replication-group-id> \
+    <namespace-names>
 ```
 
-* *replication_group_id*: The replication group identifier.
-* *namespace_names*: Comma-separated list of namespaces.
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *namespace-names*: Comma-separated list of namespaces.
 
 #### setup_xcluster_replication
 
@@ -2296,31 +2292,33 @@ Setup xCluster replication using a previously created checkpoint.
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     setup_xcluster_replication \
-    <replication_group_id> \
-    <target_master_addresses>
+    <replication-group-id> \
+    <target-master-addresses>
 ```
 
-* *replication_group_id*: The replication group identifier.
-* *target_master_addresses*: Comma-separated list of target universe master addresses.
+* *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *target-master-addresses*: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### drop_xcluster_replication
 
-Drops the xCluster replication group. If target master addresses are provided, it will also drop the replication on the target.
+Drops the xCluster replication group. If *target-master-addresses* are provided, it will also drop the replication on the target universe.
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     drop_xcluster_replication \
-    <replication_group_id> \
-    [<target_master_addresses>]
+    <replication-group-id> \
+    [<target-master-addresses>]
 ```
 
-* *replication_group_id*: The replication group identifier.
-* *target_master_addresses*: (Optional) Comma-separated list of target universe master addresses.
+* *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *target-master-addresses*: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### add_namespace_to_xcluster_checkpoint
 
@@ -2330,14 +2328,14 @@ Adds a database to an existing xCluster checkpoint.
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     add_namespace_to_xcluster_checkpoint \
-    <replication_group_id> \
-    <namespace_name>
+    <replication-group-id> \
+    <namespace-name>
 ```
-
-* *replication_group_id*: The replication group identifier.
-* *namespace_name*: The namespace to checkpoint.
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *namespace-name*: The namespace to checkpoint.
 
 #### add_namespace_to_xcluster_replication
 
@@ -2347,16 +2345,16 @@ Adds a database to an existing xCluster replication after it has been checkpoint
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     add_namespace_to_xcluster_replication \
-    <replication_group_id> \
-    <namespace_name> \
-    <target_master_addresses>
+    <replication-group-id> \
+    <namespace-name> \
+    <target-master-addresses>
 ```
-
-* *replication_group_id*: The replication group identifier.
-* *namespace_name*: The namespace to checkpoint.
-* *target_master_addresses*: Comma-separated list of target universe master addresses.
+* *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *namespace-name*: The namespace name.
+* *target-master-addresses*: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### remove_namespace_from_xcluster_replication
 
@@ -2366,31 +2364,33 @@ Removes a database from an existing xCluster replication. If target master addre
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     remove_namespace_from_xcluster_replication \
-    <replication_group_id> \
-    <namespace_name> \
-    [<target_master_addresses>]
+    <replication-group-id> \
+    <namespace-name> \
+    [<target-master-addresses>]
 ```
 
-* *replication_group_id*: The replication group identifier.
-* *namespace_name*: The namespace to checkpoint.
-* *target_master_addresses*: (Optional) Comma-separated list of target universe master addresses.
+* *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
+* *namespace-name*: The namespace name.
+* `target-master-addresses`: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### list_xcluster_outbound_replication_groups
 
-List the replication group identifiers for all outbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+List The replication group names for all outbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     list_xcluster_outbound_replication_groups \
-    [<namespace_id>]
+    [<namespace-id>]
 ```
 
-* *namespace_id*: (Optional) The namespace identifier.
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* `namespace-id`: The namespace UUID.
 
 #### get_xcluster_outbound_replication_group_info
 
@@ -2400,12 +2400,13 @@ Display the status of a specific outbound xCluster replication group.
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    -master_addresses <source-master-addresses> \
     get_xcluster_outbound_replication_group_info \
-    <replication_group_id>
+    <replication-group-id>
 ```
 
-* *replication_group_id*: The replication group identifier.
+* *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *replication-group-id*: The replication group name.
 
 ---
 

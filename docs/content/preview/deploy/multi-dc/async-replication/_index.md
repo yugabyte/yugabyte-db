@@ -41,12 +41,12 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 ## Best practices
 
-- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) to 86400 on both source and target universe.
+- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target universe.
 
     This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source cluster or an outage of the target cluster can be tolerated.
 
-- Make sure all gFlags are set to the same value on both the source and target universes.
+- Make sure all YB-Master and YB-Tserver flags are set to the same value on both the source and target universes.
 
-- Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incur a 20% CPU overhead.
+- Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 
-- Monitor disk space usage and ensure it remains below 65%. Allocate sufficient disk space to accommodate WALs generated for the `cdc_wal_retention_time_secs` setting, which exceeds the default [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain).
+- Monitor disk space usage and ensure it remains below 65%. Allocate sufficient disk space to accommodate WALs generated based on the `cdc_wal_retention_time_secs` setting, which is higher than the default [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) value.

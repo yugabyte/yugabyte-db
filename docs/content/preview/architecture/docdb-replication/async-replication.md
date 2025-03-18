@@ -3,7 +3,7 @@ title: xCluster
 headerTitle: xCluster replication
 linkTitle: xCluster
 description: xCluster replication between multiple YugabyteDB universes.
-headContent: High throughput asynchronous replication between independent YugabyteDB universes
+headContent: High throughput asynchronous physical replication
 aliases:
   - /preview/architecture/docdb/2dc-deployments/
 menu:
@@ -16,47 +16,47 @@ type: docs
 
 {{< figure src="/images/architecture/xCluster-icon.png" title="" class="w-50">}}
 
-## Synchronous versus asynchronous replication
-
-YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions.  It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency enabled by the Raft consensus algorithm.
-
-However, asynchronous replication can be beneficial in certain scenarios:
-
-- _Low write latency_: With synchronous replication, each write must reach a consensus across a majority of data centers. This can add tens or even hundreds of milliseconds of extra latency for writes in a multi-region deployment. xCluster reduces this latency by eliminating the need for immediate consensus across regions.
-- _Only two data centers needed_: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With xCluster you can achieve multi-region deployments with only two data centers.
-- _Disaster recovery_: xCluster utilizes independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
-
-The drawbacks of asynchronous xCluster replication are:
-
-- __Data loss on failure__: When a data center fails, any data that has not yet been replicated will be lost. The amount of data lost depends on the replication lag, which is usually subsecond but varies based on the network characteristics between the two data centers.
-- __Stale reads__: When reading from the secondary data center, there may be a delay in data availability due to the asynchronous nature of the replication. This can result in stale reads, which may not reflect the most recent writes. Non-transactional modes can serve torn reads of recently written data.
-
-
-{{< tip title="Deploy" >}}
-To better understand how xCluster replication works in practice, check out [xCluster deployment](../../../deploy/multi-dc/async-replication/).
-{{< /tip >}}
-
 ## YugabyteDB's xCluster replication
 
-xCluster replication is YugabyteDB's implementation of high throughput asynchronous replication between two YugabyteDB universes.  It allows you to set up one or more unidirectional replication _flows_ between universes.  Note that xCluster can only be used to replicate between primary clusters in two different universes; it cannot be used to replicate between clusters in the same universe.  (See [universe versus cluster](../../key-concepts/#universe) for more on the distinction between universes and clusters.)
+xCluster replication is YugabyteDB's implementation of high throughput asynchronous physical replication between two YugabyteDB universes.  It allows you to set up one or more unidirectional replication _flows_ between universes.  For each flow, data is replicated from a _source_ (also called a producer) universe to a _target_ (also called a consumer) universe.  Replication is done at the DocDB layer, by efficiently replicating WAL records asynchronously to the target universe.  Both YSQL and YCQL are supported.
 
-For each flow, data is replicated from a _source_ (also called a producer) universe to a _target_ (also called a consumer) universe.  Replication is done at the DocDB layer, by efficiently replicating WAL records asynchronously to the target universe.  Both YSQL and YCQL are supported.
+Multiple flows can be configured; for instance, setting up two unidirectional flows between two universes, one in each direction, enables bidirectional replication. This ensures that data written in one universe is replicated to the other without causing infinite loops. Refer to [supported deployment scenarios](#supported-deployment-scenarios) for details on the supported flow combinations.
 
-Multiple flows can be used; for example, two unidirectional flows between two universes, one in each direction, produce bidirectional replication where anything written in one universe will be replicated to the other &mdash; data is replicated only once to avoid infinite loops.  See [supported deployment scenarios](#supported-deployment-scenarios) for which flow combinations are currently supported.
+Although for simplicity we describe flows between entire universes, flows are actually composed of streams between pairs of YCQL tables or YSQL databases, one in each universe, allowing replication of only certain tables or databases.
 
-Although for simplicity, we will describe flows between entire universes, flows are actually composed of streams between pairs of tables, one in each universe, allowing replication of only certain namespaces or tables.
+Note that xCluster can only be used to replicate between primary clusters in two different universes; it cannot be used to replicate between clusters in the same universe.  (See [universe versus cluster](../../key-concepts/#universe) for more on the distinction between universes and clusters.)
+
 
 {{< tip >}}
 To understand the difference between xCluster, Geo-Partitioning and Read Replicas, refer to [Multi-Region Deployments](../../../explore/multi-region-deployments/).
 {{< /tip >}}
 
 
+## Synchronous versus asynchronous replication
+
+YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions.  It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency enabled by the Raft consensus algorithm.
+
+However, asynchronous replication can be beneficial in certain scenarios:
+
+- __Low write latency__: With synchronous replication, each write must reach a consensus across a majority of data centers. This can add tens or even hundreds of milliseconds of extra latency for writes in a multi-region deployment. xCluster reduces this latency by eliminating the need for immediate consensus across regions.
+- __Only two data centers needed__: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With xCluster you can achieve multi-region deployments with only two data centers.
+- __Disaster recovery__: xCluster utilizes independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
+
+The drawbacks of asynchronous xCluster replication are:
+
+- __Potential data loss__: In the event of a data center failure, any data that has not yet been replicated to the secondary data center will be lost. The extent of data loss is determined by the replication lag, which is typically subsecond but can vary depending on the network conditions between the data centers.
+- __Stale reads__: When reading from the secondary data center, there may be a delay in data availability due to the asynchronous nature of the replication. This can result in stale reads, which may not reflect the most recent writes. Non-transactional modes can serve torn reads of recently written data.
+
+{{< tip title="Deploy" >}}
+To understand the difference between xCluster, Geo-Partitioning, and Read Replicas, refer to [Multi-Region Deployments](../../../explore/multi-region-deployments/).
+{{< /tip >}}
+
 ## Asynchronous replication modes
 
 Because there is a useful trade-off between how much consistency is lost and what transactions are allowed, YugabyteDB provides two different modes of asynchronous replication:
 
-- __Non-transactional replication__: writes are allowed on the target-universe, but reads of recently replicated data can be inconsistent.
-- __Transactional replication__: consistency of reads is preserved on the target-universe, but writes are not allowed.
+- __Non-transactional replication__: writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
+- __Transactional replication__: consistency of reads is preserved on the target universe, but writes are not allowed.
 
 
 ### Non-transactional replication
@@ -101,9 +101,9 @@ Transactional replication is currently only available for YSQL deployments.
 Transactional replication comes in three modes:
 
 #### Automatic mode
- {{<tags/feature/tp>}}
 
-In this mode all aspects of replication are handled automatically, including schema changes.
+
+{{<tags/feature/tp idea="153">}}In this mode all aspects of replication are handled automatically, including schema changes.
 
 #### Semi-automatic mode
 Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
@@ -144,7 +144,7 @@ Tablet splitting generates WAL records, which are replicated to the target side.
 
 ### Single-shard transactions
 
-When a single-shard transaction commits, a single WAL record is generated that includes all the writes and the commit time for that transaction. This WAL record is then included in a batch of changes when the poller requests updates. Single-shard transaction only modify a single tablet.
+When a single-shard transaction commits, a single WAL record is generated that includes all the writes and the commit time for that transaction. This WAL record is then included in a batch of changes when the poller requests updates. Single-shard transactions only modify a single tablet.
 
 Upon receiving the changes, the poller examines each write to determine the key it writes to and identifies the corresponding target tablet. The poller then forwards the writes to the appropriate tablets. The commit times of the writes are preserved, and the writes are marked as _external_. This marking prevents them from being further replicated by xCluster, whether onward to another cluster or back to the original cluster in bidirectional replication scenarios.
 
@@ -154,15 +154,15 @@ Distributed transactions involve multiple WAL records and the transaction status
 
 On the target universe, xCluster generates a special inert format for provisional records. This format omits the original row locking information and an additional index on the key in the intents DB, as these are unnecessary on the target side.
 
-When a poller receives an apply WAL record, it distributes it to all the target tablets it manages. The transaction application on the target tablets mirrors that of the source universe. It converts the provisional writes into regular writes, maintaining the same commit time as on the source universe and marking them as external. At this stage, the transaction's writes to this tablet can be made become visible for reads.
+When a poller receives an apply WAL record, it distributes it to all the target tablets it manages. The transaction application on the target tablets mirrors that of the source universe. It converts the provisional writes into regular writes, maintaining the same commit time as on the source universe and marking them as external. At this stage, the transaction's writes to this tablet become visible for reads.
 
 Because pollers operate independently and the writes to multiple tablets are not applied atomically, writes from a single transaction affecting multiple tablets can become visible at different times.
 
 When a source transaction commits, it is applied to the relevant tablets lazily.  This means that even though transaction _X_ commits before transaction _Y_, _X_'s apply WAL record may occur after _Y_'s apply WAL record on some tablets.  If this happens, the writes from _X_ can become visible in the target universe after _Y_'s.  This is why non-transactional mode reads are only eventually consistent and not timeline consistent.
 
- Transactional mode addresses these issues by picking an appropriate [xCluster safe time](#transactional-mode).
 
 ### Transactional mode
+Transactional mode addresses these issues by picking an appropriate xCluster safe time.
 
 The xCluster safe time for each database on the target universe is calculated as the minimum _xCluster apply safe time_ reached by any tablet in that database. Pollers use information from the source tablet leaders to determine their _xCluster apply safe time_. This time ensures that all transactions committed before it have been applied on the target tablets.
 
@@ -244,12 +244,12 @@ The following deployment scenarios are not yet supported:
 
 - Backups
 
-    Backups are supported on both universe. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed. This applies to even transactional modes. So, it is recommended to take backups on the source universe only.
+    Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed. This applies to even transactional modes. So, it is recommended to take backups on the source universe only.
 
 ### Active-active multi-master limitations
 - Triggers
 
-    Because xCluster replication operates at the DocDB layer, it bypasses the query layer. So, only the database triggers on the source universe are fired, and the ones on the target side are not fired. It is recommended to avoid use the same triggers on both universes, to avoid any confusions.
+    Because xCluster replication operates at the DocDB layer, it bypasses the query layer. So, only the database triggers on the source universe are fired, and the ones on the target side are not fired. It is recommended to avoid using the same triggers on both universes, to avoid any confusion.
 
 - Indexes and Constraints
 
@@ -263,22 +263,22 @@ The following deployment scenarios are not yet supported:
 
 ### Non-transactional mode consistency issues
 
-Refer to the [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) section for details on how non-transactional mode can lead to inconsistencies.
+Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
 
 ### Transactional mode limitations
 
 - No writes are allowed in the target universe
 - YCQL is not yet supported
-In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
+
+- In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 
 ### Transactional Automatic mode limitations
-
-- Global objects like Users, Roles, Tablespaces are not replicated. These objects must be manually created on the Standby universes.
-- DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on the both universe be setting the GUC `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `CREATE TABLE AS`, and `SELECT INTO` DDL statements are not supported. You can workaround this by breaking the DDL up into a `CREATE TABLE` followed by `INSERT SELECT`.
-- Only the following list of extensions can be CREATED, DROPPED, or ALTER while automatic mode is setup: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, pgaudit. The remaining extensions must be created before setting up automatic mode.
-- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, `TRUNCATE` and `ALTER LARGE OBJECT` DDLs are not supported.
-- DDLs related to `FOREIGN DATA WRAPPER`, `FOREIGN TABLE`, `LANGUAGE`, `IMPORT FOREIGN SCHEMA`, `SECURITY LABEL`, `PUBLICATION` and `SUBSCRIPTION` are not supported.
+- Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
+- DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes be setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
+- CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
+- While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
+- ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
+- DDLs related to FOREIGN DATA WRAPPER, FOREIGN TABLE, LANGUAGE, IMPORT FOREIGN SCHEMA, SECURITY LABEL, PUBLICATION, and SUBSCRIPTION are not supported.
 
 ### Kubernetes
 - xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
