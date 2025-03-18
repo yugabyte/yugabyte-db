@@ -3900,7 +3900,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private void getAndSaveRestoreBackupCategory(
       RestoreBackupParams restoreParams, TaskInfo taskInfo, boolean forXCluster) {
     Set<String> backupLocations =
-        restoreParams.backupStorageInfoList.parallelStream()
+        restoreParams.backupStorageInfoList.stream()
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
     boolean isYbc =

@@ -188,7 +188,7 @@ public class NFSUtil implements StorageUtil {
       UUID universeUUID,
       boolean checkExistsOnAll) {
     List<String> absoluteLocationsList =
-        locations.parallelStream()
+        locations.stream()
             .map(l -> BackupUtil.getPathWithPrefixSuffixJoin(l, fileName))
             .collect(Collectors.toList());
     Map<String, Boolean> locationsFileCheckResultMap =
@@ -311,7 +311,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check SnapshotInfoPB file exists on all locations.
     boolean snapshotFileDoesNotExist =
-        cloudLocationsFileExistenceMap.entrySet().parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().stream()
             .anyMatch(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.SNAPSHOT_PB)
@@ -322,7 +322,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check KMS history
     boolean hasKMSHistory =
-        cloudLocationsFileExistenceMap.entrySet().parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().stream()
             .filter(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.BACKUP_KEYS_JSON)
