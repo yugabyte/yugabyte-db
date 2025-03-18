@@ -22,10 +22,13 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 #include <utils/uuid.h>
+#include <utils/numeric.h>
+#include <math.h>
 
 #include "utils/type_cache.h"
 #include "io/bson_core.h"
 #include "utils/documentdb_errors.h"
+#include "types/decimal128.h"
 
 
 extern bool BsonTextUseJsonRepresentation;
@@ -647,6 +650,55 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 			fieldBsonValue.value.v_binary.subtype = BSON_SUBTYPE_UUID;
 			fieldBsonValue.value.v_binary.data = &uuid->data[0];
 			fieldBsonValue.value.v_binary.data_len = 16;
+			PgbsonElementWriterWriteValue(writer, &fieldBsonValue);
+			return;
+		}
+
+		case NUMERICOID:
+		{
+			Numeric num = DatumGetNumeric(fieldValue);
+			if (numeric_is_inf(num))
+			{
+				fieldBsonValue.value_type = BSON_TYPE_DOUBLE;
+				fieldBsonValue.value.v_double = INFINITY;
+			}
+			else if (numeric_is_nan(num))
+			{
+				fieldBsonValue.value_type = BSON_TYPE_DOUBLE;
+				fieldBsonValue.value.v_double = NAN;
+			}
+			else
+			{
+				char *numStr = numeric_normalize(num);
+				fieldBsonValue.value_type = BSON_TYPE_DECIMAL128;
+				if (!bson_decimal128_from_string(numStr,
+												 &fieldBsonValue.value.v_decimal128))
+				{
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+									errmsg("Invalid numeric value %s", numStr)));
+				}
+
+				bool isFixedInteger = IsDecimal128AFixedInteger(&fieldBsonValue);
+				if (isFixedInteger && IsDecimal128InInt32Range(&fieldBsonValue))
+				{
+					fieldBsonValue.value.v_int32 = GetBsonDecimal128AsInt32(
+						&fieldBsonValue, ConversionRoundingMode_NearestEven);
+					fieldBsonValue.value_type = BSON_TYPE_INT32;
+				}
+				else if (isFixedInteger && IsDecimal128InInt64Range(&fieldBsonValue))
+				{
+					fieldBsonValue.value.v_int64 = GetBsonDecimal128AsInt64(
+						&fieldBsonValue, ConversionRoundingMode_NearestEven);
+					fieldBsonValue.value_type = BSON_TYPE_INT64;
+				}
+				else if (IsDecimal128InDoubleRange(&fieldBsonValue))
+				{
+					fieldBsonValue.value.v_double = GetBsonDecimal128AsDouble(
+						&fieldBsonValue);
+					fieldBsonValue.value_type = BSON_TYPE_DOUBLE;
+				}
+			}
+
 			PgbsonElementWriterWriteValue(writer, &fieldBsonValue);
 			return;
 		}

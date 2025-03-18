@@ -626,7 +626,7 @@ CleanupPortalState(Portal portal)
 /*
  * This is a copy of HoldPortal in portalmem.c
  * Essentially we have this called in Commit at the outer end of the request
- * However, since Citus doesn't have a ReScan implementation, if we have partially
+ * However, since the distribution layer doesn't have a ReScan implementation, if we have partially
  * scanned, when it rewinds, it simply keeps its position. This means we end up
  * missing rows that are part of the  query. By holding the portal up-front, we
  * make sure that all the rows are in our HoldStore and then we enumerate it.

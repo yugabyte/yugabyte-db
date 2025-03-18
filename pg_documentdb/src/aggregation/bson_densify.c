@@ -479,12 +479,6 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_DENSIFY);
 
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$densify aggregation stage is not supported yet.")));
-	}
-
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),

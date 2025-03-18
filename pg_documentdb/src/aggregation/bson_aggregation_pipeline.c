@@ -5204,7 +5204,7 @@ AddPercentileMedianGroupAccumulator(Query *query, const bson_value_t *accumulato
  * The aggregates are then pushed to a subquery and then an outer query
  * with the bson_repath_and_build is added as part of the group.
  * This is done because without this, sharded multi-node group by fails
- * due to a quirk in citus's worker query generation.
+ * due to a quirk in the distribution layer's worker query generation.
  *
  * TODO: Support n(elementsToFetch) as an expression for firstN, lastN, topN, bottomN
  */
@@ -5528,14 +5528,6 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$maxN"))
 		{
-			if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg("Accumulator $maxN is not implemented yet"),
-								errdetail_log(
-									"Accumulator $maxN is not implemented yet")));
-			}
-
 			repathArgs = AddMaxMinNGroupAccumulator(query,
 													&accumulatorElement.bsonValue,
 													repathArgs,
@@ -5548,14 +5540,6 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$minN"))
 		{
-			if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-								errmsg("Accumulator $minN is not implemented yet"),
-								errdetail_log(
-									"Accumulator $minN is not implemented yet")));
-			}
-
 			repathArgs = AddMaxMinNGroupAccumulator(query,
 													&accumulatorElement.bsonValue,
 													repathArgs,

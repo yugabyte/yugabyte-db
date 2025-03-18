@@ -342,7 +342,6 @@ SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "colldne", "pipeline": [], "as": "c" } } ], "cursor": {} }');
 
 BEGIN;
-set local citus.enable_local_execution to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
 
@@ -371,7 +370,6 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "agg_pipeline_invent
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "projection": {}, "sort": { "$natural": 1 }}');
 
 BEGIN;
-set local citus.enable_local_execution to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
 

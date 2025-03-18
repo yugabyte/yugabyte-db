@@ -4,9 +4,7 @@ SET documentdb.next_collection_index_id TO 2500;
 
 -- Call delete for a non existent collection.
 -- Note that this should not report any logs related to collection catalog lookup.
-SET citus.log_remote_commands TO ON;
 SELECT documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
-RESET citus.log_remote_commands;
 
 select 1 from documentdb_api.insert_one('db', 'removeme', '{"a":1,"_id":1}');
 select 1 from documentdb_api.insert_one('db', 'removeme', '{"a":2,"_id":2}');
@@ -111,10 +109,8 @@ rollback;
 
 -- validate _id extraction
 begin;
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
-reset citus.log_remote_commands;
 rollback;
 
 -- shard the collection
@@ -131,18 +127,14 @@ rollback;
 -- test pruning logic in delete
 begin;
 select count(*) from documentdb_api.collection('db', 'removeme');
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":0}]}');
-reset citus.log_remote_commands;
 select count(*) from documentdb_api.collection('db', 'removeme') where document @@ '{"a":5}';
 select count(*) from documentdb_api.collection('db', 'removeme');
 rollback;
 
 begin;
 select count(*) from documentdb_api.collection('db', 'removeme');
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
-reset citus.log_remote_commands;
 select count(*) from documentdb_api.collection('db', 'removeme') where document @@ '{"a":5}';
 select count(*) from documentdb_api.collection('db', 'removeme');
 rollback;
@@ -153,9 +145,7 @@ select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"li
 -- delete 1 with shard key filters is supported for sharded collections
 begin;
 select count(*) from documentdb_api.collection('db', 'removeme');
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}');
-reset citus.log_remote_commands;
 select count(*) from documentdb_api.collection('db', 'removeme') where document @@ '{"a":5}';
 select count(*) from documentdb_api.collection('db', 'removeme');
 rollback;
@@ -215,10 +205,8 @@ rollback;
 
 -- validate _id extraction
 begin;
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a": 11, "_id":6},"limit":0}]}');
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a": 11},{"_id":6},{"_id":5}]},"limit":0}]}');
-reset citus.log_remote_commands;
 rollback;
 
 -- delete with spec in special section

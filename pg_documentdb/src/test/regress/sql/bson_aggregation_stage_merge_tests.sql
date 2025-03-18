@@ -1,6 +1,5 @@
 SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
 
-SET citus.next_shard_id TO 78500000;
 SET documentdb.next_collection_id TO 780000;
 SET documentdb.next_collection_index_id TO 780000;
 
@@ -450,7 +449,6 @@ EXPLAIN (COSTS OFF)  SELECT document FROM bson_aggregation_pipeline('db', '{ "ag
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "sourceExplain", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "explainTarget", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
 
--- citus will wrap our query in a subquery: SELECT document, target_shard_key_value FROM (our query) AS subquery
 EXPLAIN (COSTS OFF)  SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sourceExplain", "pipeline": [{"$merge" : { "into": "explainTarget", "on" : "a", "whenMatched" : "replace" }} ] }');
 
 -- source and target are same

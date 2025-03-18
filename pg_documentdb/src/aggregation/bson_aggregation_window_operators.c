@@ -1446,12 +1446,6 @@ static WindowFunc *
 HandleDollarIntegralWindowOperator(const bson_value_t *opValue,
 								   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg(
-							"$integral is only supported on vCore 1.22.0 and above")));
-	}
 	return GetIntegralDerivativeWindowFunc(opValue, context, true);
 }
 
@@ -1464,12 +1458,6 @@ static WindowFunc *
 HandleDollarDerivativeWindowOperator(const bson_value_t *opValue,
 									 WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg(
-							"$derivative is only supported on vCore 1.22.0 and above")));
-	}
 	return GetIntegralDerivativeWindowFunc(opValue, context, false);
 }
 
@@ -1834,12 +1822,6 @@ static WindowFunc *
 HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
 										WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("Window operator $covariancePop is not supported yet")));
-	}
-
 	WindowFunc *windowFunc = makeNode(WindowFunc);
 	windowFunc->winfnoid = BsonCovariancePopAggregateFunctionOid();
 	windowFunc->wintype = BsonTypeId();
@@ -1860,11 +1842,6 @@ static WindowFunc *
 HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
 										 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("Window operator $covarianceSamp is not supported yet")));
-	}
 	WindowFunc *windowFunc = makeNode(WindowFunc);
 	windowFunc->winfnoid = BsonCovarianceSampAggregateFunctionOid();
 	windowFunc->wintype = BsonTypeId();
@@ -1885,11 +1862,6 @@ static WindowFunc *
 HandleDollarRankWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$rank is not supported yet")));
-	}
 	char *opName = "$rank";
 	ValidateInputForRankFunctions(opValue, context, opName);
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1911,11 +1883,6 @@ static WindowFunc *
 HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
 									WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 21, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$denseRank is not supported yet")));
-	}
 	char *opName = "$denseRank";
 	ValidateInputForRankFunctions(opValue, context, opName);
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1937,11 +1904,6 @@ static WindowFunc *
 HandleDollarDocumentNumberWindowOperator(const bson_value_t *opValue,
 										 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$documentNumber is not supported yet")));
-	}
 	char *opName = "$documentNumber";
 	ValidateInputForRankFunctions(opValue, context, opName);
 	WindowFunc *windowFunc = makeNode(WindowFunc);
@@ -1997,13 +1959,6 @@ static WindowFunc *
 HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 									   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg(
-							"$expMovingAvg is not supported yet.")));
-	}
-
 	if (list_length(context->sortOptions) == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
@@ -2082,12 +2037,6 @@ static WindowFunc *
 HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
 									 WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION605001),
-						errmsg(
-							"$linearFill is not supported yet.")));
-	}
 	if (list_length(context->sortOptions) != 1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION605001),
@@ -2149,12 +2098,6 @@ static WindowFunc *
 HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
 								   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg(
-							"$locf is not supported yet.")));
-	}
 	if (context->isWindowPresent)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
@@ -2210,12 +2153,6 @@ static WindowFunc *
 HandleDollarShiftWindowOperator(const bson_value_t *opValue,
 								WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$shift is not supported yet")));
-	}
-
 	if (context->isWindowPresent)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
@@ -2383,12 +2320,6 @@ static WindowFunc *
 HandleDollarTopNWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$topN is not supported yet")));
-	}
-
 	bool isNOperator = true;
 	return HandleDollarTopBottomOperators(opValue, context, "$topN",
 										  BsonFirstNAggregateAllArgsFunctionOid(),
@@ -2412,12 +2343,6 @@ static WindowFunc *
 HandleDollarBottomNWindowOperator(const bson_value_t *opValue,
 								  WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$bottomN is not supported yet")));
-	}
-
 	bool isNOperator = true;
 	return HandleDollarTopBottomOperators(opValue, context, "$bottomN",
 										  BsonLastNAggregateAllArgsFunctionOid(),
@@ -2440,12 +2365,6 @@ static WindowFunc *
 HandleDollarTopWindowOperator(const bson_value_t *opValue,
 							  WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$top is not supported yet")));
-	}
-
 	bool isNOperator = false;
 	return HandleDollarTopBottomOperators(opValue, context, "$top",
 										  BsonFirstAggregateAllArgsFunctionOid(),
@@ -2468,12 +2387,6 @@ static WindowFunc *
 HandleDollarBottomWindowOperator(const bson_value_t *opValue,
 								 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$bottom is not supported yet")));
-	}
-
 	bool isNOperator = false;
 	return HandleDollarTopBottomOperators(opValue, context, "$bottom",
 										  BsonLastAggregateAllArgsFunctionOid(),
@@ -2605,12 +2518,6 @@ static WindowFunc *
 HandleDollarStdDevPopWindowOperator(const bson_value_t *opValue,
 									WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("Window operator $stdDevPop is not supported yet")));
-	}
-
 	WindowFunc *windowFunc = makeNode(WindowFunc);
 	windowFunc->winfnoid = BsonStdDevPopAggregateFunctionOid();
 	windowFunc->wintype = BsonTypeId();
@@ -2631,12 +2538,6 @@ static WindowFunc *
 HandleDollarStdDevSampWindowOperator(const bson_value_t *opValue,
 									 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("Window operator $stdDevSamp is not supported yet")));
-	}
-
 	WindowFunc *windowFunc = makeNode(WindowFunc);
 	windowFunc->winfnoid = BsonStdDevSampAggregateFunctionOid();
 	windowFunc->wintype = BsonTypeId();
@@ -2717,12 +2618,6 @@ static WindowFunc *
 HandleDollarMaxNWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("Window operator $maxN is not supported yet")));
-	}
-
 	/*check the syntax of maxN/minN */
 	ValidteForMaxNMinNNAccumulators(opValue, "maxN");
 
@@ -2739,12 +2634,6 @@ static WindowFunc *
 HandleDollarMinNWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!(IsClusterVersionAtleast(DocDB_V0, 22, 0)))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("Window operator $minN is not supported yet")));
-	}
-
 	/*check the syntax of maxN/minN */
 	ValidteForMaxNMinNNAccumulators(opValue, "minN");
 
@@ -2762,12 +2651,6 @@ static WindowFunc *
 HandleDollarFirstWindowOperator(const bson_value_t *opValue,
 								WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$first is not supported yet")));
-	}
-
 	bool isNOperator = false;
 	Oid functionOid;
 	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
@@ -2792,12 +2675,6 @@ static WindowFunc *
 HandleDollarLastWindowOperator(const bson_value_t *opValue,
 							   WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$last is not supported yet")));
-	}
-
 	bool isNOperator = false;
 	Oid functionOid;
 	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
@@ -2829,12 +2706,6 @@ static WindowFunc *
 HandleDollarFirstNWindowOperator(const bson_value_t *opValue,
 								 WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$firstN is not supported yet")));
-	}
-
 	bool isNOperator = true;
 	Oid functionOid;
 	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)
@@ -2866,12 +2737,6 @@ static WindowFunc *
 HandleDollarLastNWindowOperator(const bson_value_t *opValue,
 								WindowOperatorContext *context)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$lastN is not supported yet")));
-	}
-
 	bool isNOperator = true;
 	Oid functionOid;
 	if (context->sortOptions != NIL && list_length(context->sortOptions) > 0)

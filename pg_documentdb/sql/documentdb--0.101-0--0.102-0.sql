@@ -6,6 +6,9 @@
 #include "udfs/aggregation/bson_aggregation_redact--0.102-0.sql"
 #include "udfs/aggregation/bson_merge_functions--0.102-0.sql"
 
+#include "udfs/aggregation/group_aggregates_support--0.102-0.sql"
+#include "udfs/aggregation/group_aggregates--0.102-0.sql"
+
 -- Schedule TTL Cron job to prune TTL indexes on every documentdb instance.
 DO LANGUAGE plpgsql $cmd$
 BEGIN
@@ -14,3 +17,7 @@ BEGIN
     END IF;
 END;
 $cmd$;
+
+DROP AGGREGATE IF EXISTS __API_CATALOG_SCHEMA__.BSON_OUT(__CORE_SCHEMA__.bson, text, text, text, text);
+DROP FUNCTION IF EXISTS __API_CATALOG_SCHEMA__.bson_out_transition;
+DROP FUNCTION IF EXISTS __API_CATALOG_SCHEMA__.bson_out_final;

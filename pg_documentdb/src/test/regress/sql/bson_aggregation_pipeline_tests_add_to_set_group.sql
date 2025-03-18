@@ -1,6 +1,5 @@
 SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 
-SET citus.next_shard_id TO 12200;
 SET documentdb.next_collection_id TO 12200;
 SET documentdb.next_collection_index_id TO 12200;
 

@@ -133,9 +133,6 @@
  documentdb_api_catalog | bson_object_agg_final                   | documentdb_core.bson       | bytea                                                                                                                           | func
  documentdb_api_catalog | bson_object_agg_transition              | bytea                      | bytea, documentdb_core.bson                                                                                                     | func
  documentdb_api_catalog | bson_orderby                            | documentdb_core.bson       | documentdb_core.bson, documentdb_core.bson                                                                                      | func
- documentdb_api_catalog | bson_out                                | documentdb_core.bson       | documentdb_core.bson, text, text, text, text                                                                                    | agg
- documentdb_api_catalog | bson_out_final                          | documentdb_core.bson       | bytea                                                                                                                           | func
- documentdb_api_catalog | bson_out_transition                     | bytea                      | bytea, documentdb_core.bson, text, text, text, text                                                                             | func
  documentdb_api_catalog | bson_query_match                        | boolean                    | documentdb_core.bson, documentdb_core.bson                                                                                      | func
  documentdb_api_catalog | bson_sum_avg_combine                    | bytea                      | bytea, bytea                                                                                                                    | func
  documentdb_api_catalog | bson_sum_avg_transition                 | bytea                      | bytea, documentdb_core.bson                                                                                                     | func
@@ -169,7 +166,7 @@
  documentdb_api_catalog | gin_bson_wildcard_project_extract_value | internal                   | documentdb_core.bson, internal                                                                                                  | func
  documentdb_api_catalog | gin_bson_wildcard_project_options       | void                       | internal                                                                                                                        | func
  documentdb_api_catalog | query_match_support                     | internal                   | internal                                                                                                                        | func
-(124 rows)
+(121 rows)
 
 \df documentdb_api_internal.*
                                                                                                                                                                                                                                                                                                                        List of functions

@@ -3,14 +3,12 @@ SET documentdb.next_collection_id TO 2500;
 SET documentdb.next_collection_index_id TO 2500;
 -- Call delete for a non existent collection.
 -- Note that this should not report any logs related to collection catalog lookup.
-SET citus.log_remote_commands TO ON;
 SELECT documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-RESET citus.log_remote_commands;
 select 1 from documentdb_api.insert_one('db', 'removeme', '{"a":1,"_id":1}');
 NOTICE:  creating collection
  ?column? 
@@ -287,7 +285,6 @@ select count(*) from documentdb_api.collection('db', 'removeme') where document 
 rollback;
 -- validate _id extraction
 begin;
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
                                          delete                                         
 ----------------------------------------------------------------------------------------
@@ -300,7 +297,6 @@ select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and
  ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-reset citus.log_remote_commands;
 rollback;
 -- shard the collection
 select documentdb_api.shard_collection('db', 'removeme', '{"a":"hashed"}', false);
@@ -344,14 +340,12 @@ select count(*) from documentdb_api.collection('db', 'removeme');
     10
 (1 row)
 
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":0}]}');
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-reset citus.log_remote_commands;
 select count(*) from documentdb_api.collection('db', 'removeme') where document @@ '{"a":5}';
  count 
 -------
@@ -372,14 +366,12 @@ select count(*) from documentdb_api.collection('db', 'removeme');
     10
 (1 row)
 
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-reset citus.log_remote_commands;
 select count(*) from documentdb_api.collection('db', 'removeme') where document @@ '{"a":5}';
  count 
 -------
@@ -408,14 +400,12 @@ select count(*) from documentdb_api.collection('db', 'removeme');
     10
 (1 row)
 
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}');
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-reset citus.log_remote_commands;
 select count(*) from documentdb_api.collection('db', 'removeme') where document @@ '{"a":5}';
  count 
 -------
@@ -588,7 +578,6 @@ select count(*) from documentdb_api.collection('db', 'removeme') where document 
 rollback;
 -- validate _id extraction
 begin;
-set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a": 11, "_id":6},"limit":0}]}');
                                          delete                                         
 ----------------------------------------------------------------------------------------
@@ -601,7 +590,6 @@ select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and
  ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-reset citus.log_remote_commands;
 rollback;
 -- delete with spec in special section
 begin;

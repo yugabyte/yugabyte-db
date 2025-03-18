@@ -175,7 +175,7 @@ RefreshCurrentVersion(void)
 	/*
 	 * Temporarily disable unimportant logs related to version lookup
 	 * so that regression test outputs don't become flaky (e.g.: due to commands
-	 * being executed by Citus locally).
+	 * being executed locally).
 	 */
 	int savedGUCLevel = NewGUCNestLevel();
 	SetGUCLocally("client_min_messages", "WARNING");

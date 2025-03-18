@@ -1,6 +1,5 @@
 -- These tests make sure that we ignore the common spec fields/actions that are not implemented for various commands
 SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
-SET citus.next_shard_id TO 160000;
 SET documentdb.next_collection_id TO 1600;
 SET documentdb.next_collection_index_id TO 1600;
 -- create index tests

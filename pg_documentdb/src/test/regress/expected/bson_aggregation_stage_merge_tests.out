@@ -1,5 +1,4 @@
 SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
-SET citus.next_shard_id TO 78500000;
 SET documentdb.next_collection_id TO 780000;
 SET documentdb.next_collection_index_id TO 780000;
 --Test without Enabling feature flag of $merge
@@ -1268,7 +1267,6 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
  { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
--- citus will wrap our query in a subquery: SELECT document, target_shard_key_value FROM (our query) AS subquery
 EXPLAIN (COSTS OFF)  SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sourceExplain", "pipeline": [{"$merge" : { "into": "explainTarget", "on" : "a", "whenMatched" : "replace" }} ] }');
                                                                      QUERY PLAN                                                                      
 -----------------------------------------------------------------------------------------------------------------------------------------------------

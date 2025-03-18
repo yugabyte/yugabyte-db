@@ -1176,7 +1176,6 @@ SELECT document FROM bson_aggregation_pipeline('db',
 (7 rows)
 
 BEGIN;
-set local citus.enable_local_execution to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
                                                                                                                                                                                                                                                                                                                                                 document                                                                                                                                                                                                                                                                                                                                                 
@@ -1289,7 +1288,6 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db',
 (5 rows)
 
 BEGIN;
-set local citus.enable_local_execution to off;
 SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
                                                                                                                                                                                                                                                                                                                                                 document                                                                                                                                                                                                                                                                                                                                                 

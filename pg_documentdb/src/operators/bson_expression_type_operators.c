@@ -356,11 +356,6 @@ void
 HandlePreParsedDollarToHashedIndexKey(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult)
 {
-	if (!IsClusterVersionAtleast(DocDB_V0, 22, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("$toHashedIndexkey is not supported yet")));
-	}
 	AggregationExpressionData *toHashArguments = arguments;
 
 	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
