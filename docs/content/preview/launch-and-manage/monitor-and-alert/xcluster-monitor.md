@@ -39,7 +39,7 @@ The list of xCluster metrics is available in the [xCluster metrics](../metrics/r
 
 <!-- YugabyteD Monitor -->
 
-Use the sub-command [xcluster status](../../../reference/configuration/yugabyted/#status-1) to display information about the specified xCluster replications. This command can be run on either the source or target cluster.
+Use the [xcluster status](../../../reference/configuration/yugabyted/#status-1) sub command to display information about the specified xCluster replication. You can run the command on either the source or target cluster.
 
 ```sh
 ./bin/yugabyted xcluster status \
@@ -82,7 +82,7 @@ To list outgoing groups on the Primary universe, use the [list_xcluster_outbound
     [namespace_id]
 ```
 
-To list inbound groups on the Standby universe, use the [list_universe_replications](../../../admin/yb-admin/#list_universe_replications) command:
+To list inbound groups on the Standby universe, use the [list_universe_replications](../../../admin/yb-admin/#list-universe-replications) command:
 
 ```sh
 ./bin/yb-admin \
@@ -91,7 +91,7 @@ To list inbound groups on the Standby universe, use the [list_universe_replicati
     [namespace_id]
 ```
 
-To get the status of the replication group use [get_replication_status](../../../admin/yb-admin/#get-replication-status)
+To get the status of the replication group, use [get_replication_status](../../../admin/yb-admin/#get-replication-status):
 
 ```sh
 yb-admin \
@@ -106,7 +106,7 @@ yb-admin \
 
 ## xCluster safe time
 
-For transactional xCluster replication groups the current xCluster safe time, is the safe time as of which consistent reads are performed on the target universe. You can use the following commands to see the current xCluster safe time:
+In transactional xCluster replication setups, the current xCluster safe time is the safe time as of which consistent reads are performed on the target universe. You can use the following commands to see the current xCluster safe time:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
@@ -185,17 +185,17 @@ Inbound xCluster Replications:
 
 You can access the YB-Master and YB-Tserver UIs to monitor the health of xCluster replication at `/xcluster`.
 
-*YB-Master outbound*
+**YB-Master source**
 
 <http://127.0.0.1:7000/xcluster>
 ![Source YB-Master outbound](/images/deploy/xcluster/automatic-outbound.jpg)
 
-*YB-Master inbound*
+**YB-Master target**
 
 <http://127.0.0.1:7000/xcluster>:
 ![Target YB-Master inbound](/images/deploy/xcluster/automatic-inbound.jpg)
 
-*YB-Tserver outbound*
+**YB-Tserver source**
 
 <http://127.0.0.1:9000/xcluster>:
 ![Source YB-Tserver inbound](/images/deploy/xcluster/tserver-outbound.jpg)

@@ -1927,7 +1927,7 @@ yb-admin \
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *source-master-addresses*: Comma-separated list of the source master addresses.
 * *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
 * `bootstrap-ids`: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
@@ -1975,7 +1975,7 @@ yb-admin -master_addresses <target-master-addresses> \
 ```
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *source-master-addresses*: Comma-separated list of the source master addresses.
 
 Use the `add_table` subcommand to add one or more tables to the existing list:
@@ -1988,7 +1988,7 @@ yb-admin -master_addresses <target-master-addresses> \
 ```
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
 * `bootstrap-ids`: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
@@ -2005,7 +2005,7 @@ yb-admin -master_addresses <target-master-addresses> \
 ```
 
 * *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
 
 Use the `rename_id` subcommand to rename xCluster replication streams.
@@ -2017,8 +2017,8 @@ yb-admin -master_addresses <target-master-addresses> \
 ```
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The existing replication group name.
-* *new-replication-group-id*: The new name of the replication group.
+* *replication-group-id*: The existing replication group identifier.
+* *new-replication-group-id*: The new replication group identifier.
 
 #### delete_universe_replication <source_universe_uuid>
 
@@ -2033,7 +2033,7 @@ yb-admin \
 ```
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 
 #### set_universe_replication_enabled
 
@@ -2048,7 +2048,7 @@ yb-admin \
 ```
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
 
@@ -2225,7 +2225,7 @@ yb-admin \
 ```
 
 * *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* `replication-group-id`: The replication group name.
+* `replication-group-id`: The replication group identifier.
 
 **Example**
 
@@ -2262,7 +2262,7 @@ yb-admin \
 ```
 
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
 * `automatic_ddl_mode`: Use Automatic xCluster mode.
 
@@ -2281,7 +2281,7 @@ yb-admin \
 ```
 
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *namespace-names*: Comma-separated list of namespaces.
 
 #### setup_xcluster_replication
@@ -2299,7 +2299,7 @@ yb-admin \
 ```
 
 * *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *target-master-addresses*: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### drop_xcluster_replication
@@ -2317,7 +2317,7 @@ yb-admin \
 ```
 
 * *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *target-master-addresses*: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### add_namespace_to_xcluster_checkpoint
@@ -2334,7 +2334,7 @@ yb-admin \
     <namespace-name>
 ```
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *namespace-name*: The namespace to checkpoint.
 
 #### add_namespace_to_xcluster_replication
@@ -2352,7 +2352,7 @@ yb-admin \
     <target-master-addresses>
 ```
 * *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *namespace-name*: The namespace name.
 * *target-master-addresses*: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
@@ -2372,13 +2372,13 @@ yb-admin \
 ```
 
 * *source-master-addresses*: Comma-separated list of source universe YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
 * *namespace-name*: The namespace name.
 * `target-master-addresses`: Comma-separated list of target universe YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### list_xcluster_outbound_replication_groups
 
-List The replication group names for all outbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+List The replication group identifiers for all outbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
 
 **Syntax**
 
@@ -2406,7 +2406,23 @@ yb-admin \
 ```
 
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *replication-group-id*: The replication group name.
+* *replication-group-id*: The replication group identifier.
+
+#### list_universe_replications
+
+List The replication group identifiers for all inbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <target-master-addresses> \
+    list_universe_replications \
+    [<namespace-id>]
+```
+
+* *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* `namespace-id`: The namespace UUID.
 
 ---
 

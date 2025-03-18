@@ -89,6 +89,8 @@ Reads occur as of the _xCluster safe time_, ensuring that all writes from all so
 
 _xCluster safe time_ advances as replication proceeds but lags behind real-time by the current replication lag.  This means, for example, if we write at 2:00:00 PM in the source universe and read at 2:00:01 PM in the target universe and replication lag is say five seconds then the read may read as of 1:59:56 PM and will not see the write.  We may not be able to see the write until 2:00:06 PM in the target universe assuming the replication lag remains at five seconds.
 
+![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
+
 If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using YugabyteDB's [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) feature. The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
 
 Target universe read-only transactions run at serializable isolation level on a single consistent snapshot as of the _xCluster safe time_.

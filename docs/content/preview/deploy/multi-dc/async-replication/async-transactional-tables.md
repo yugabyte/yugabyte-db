@@ -1,8 +1,8 @@
 ---
-title: Handling DDLs for Manually mode transactional xCluster
+title: Handling DDLs for Manual mode transactional xCluster
 headerTitle: DDL changes in Manually mode
-linkTitle: DDL changes in Manually mode
-description: How to handle DDLs when using Manually mode transactional xCluster replication
+linkTitle: Manual DDL changes
+description: How to handle DDLs when using Manual mode transactional xCluster replication
 headContent: Making DDL changes in Manually mode transactional xCluster
 menu:
   preview:
@@ -15,11 +15,11 @@ type: docs
 ---
 
 {{< tip >}}
-Use [Automatic mode](../async-transactional-setup-automatic), or [Semi-automatic mode](../async-transactional-setup-semi-automatic) for simpler management of DDL changes.
+Use [Automatic](../async-transactional-setup-automatic) or [Semi-automatic](../async-transactional-setup-semi-automatic) mode for simpler management of DDL changes.
 {{< /tip >}}
 
 
-The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [manually configured](../async-transactional-setup-manual/) transactional xCluster replication. For instruction on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes](../async-transactional-setup-semi-automatic/#making-ddl-changes).
+The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [manually configured](../async-transactional-setup-manual/) transactional xCluster replication. For instructions on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes](../async-transactional-setup-semi-automatic/#making-ddl-changes).
 
 When making DDL changes, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
 

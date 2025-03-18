@@ -73,21 +73,21 @@ Example Output:
 ]
 ```
 
-`safe_time` represents the latest timestamp at which all tables in the namespace have been transactionally replicated to the Standby cluster. Failover will restore the namespace to this time.
+`safe_time` represents the latest timestamp at which all tables in the namespace have been transactionally replicated to the Standby universe. Failover will restore the namespace to this time.
 
 `safe_time_lag_sec` represents the time in seconds between the current time and `safe_time`. This indicates how long the Primary universe has been unavailable.
 
-`safe_time_skew_sec` represents the difference in seconds between the most and least caught up tablet on the Standby cluster. It serves as a measure of estimated data that will be lost on failover.
+`safe_time_skew_sec` represents the difference in seconds between the most and least caught up tablet on the Standby universe. It serves as a measure of estimated data that will be lost on failover.
 
-Determine if the estimated data loss is acceptable. If you know the exact time the Primary universe went down, you can compare it to the `safe_time`. Otherwise, use `safe_time_skew_sec` as rough measures to estimate the data loss.
+Determine whether the estimated data loss is acceptable. If you know the exact time the Primary universe went down, you can compare it to the `safe_time`. Otherwise, use `safe_time_skew_sec` as a rough measure to estimate the data loss.
 
 For more information on replication metrics, refer to [xCluster metrics](../../../../launch-and-manage/monitor-and-alert/metrics/replication/).
 
 ### Restore the database(s) on B to a consistent state
 
-Use PITR to restore the cluster to a consistent state that cuts off any partially replicated transactions. Use the xCluster `safe_time` obtained in the previous step as the restore time.
+Use PITR to restore the universe to a consistent state that cuts off any partially replicated transactions. Use the xCluster `safe_time` obtained in the previous step as the restore time.
 
-If there are multiple databases in the same cluster, do PITR on all the databases sequentially (one after the other).
+If there are multiple databases, perform PITR on each database sequentially, one after the other.
 
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
@@ -209,7 +209,7 @@ After completing the preceding steps, the former Standby (B) is the new Primary 
 
 ## Set up reverse replication after A recovers
 
-If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the steps in [Setup transactional xCluster](../async-replication-transactional/).
+If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
 If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the databases on A need to be dropped and recreated from a backup of B (Bootstrap). Before dropping the databases on A, you can analyze them to determine the exact data that was lost by the failover.
 
@@ -325,7 +325,7 @@ Outbound xCluster Replication group rg1 deleted successfully
 Drop the database(s) on A.
 
 ### Perform setup from B to A
-Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Setup transactional xCluster](../async-replication-transactional/).
+Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
 
 If your eventual desired configuration is for A to be the Primary universe and B the Standby, follow the steps for [Planned switchover](../async-transactional-switchover/).

@@ -973,7 +973,7 @@ The `create_checkpoint` command outputs directions for bootstrapping the databas
 --replication_id *xcluster-replication-id*
 : A string to uniquely identify the replication.
 
---automatic_mode  {{<tags/feature/tp>}}
+--automatic_mode  {{<tags/feature/tp idea="2176">}}
 : Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 #### add_to_checkpoint
@@ -1879,7 +1879,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 
 ### Set up xCluster replication between clusters
 
-Follow instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 ### Pass additional flags to YB-Master and YB-TServer
 
