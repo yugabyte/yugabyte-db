@@ -7341,6 +7341,9 @@ BeginReportingGUCOptions(void)
 
 /*
  * ReportGUCOption: if appropriate, transmit option value to frontend
+ *
+ * YB: Always send back a ParameterStatus packet back, atleast to
+ * Connection Manager for full correctness.
  */
 static void
 ReportGUCOption(struct config_generic *record)
@@ -7350,7 +7353,18 @@ ReportGUCOption(struct config_generic *record)
 		char	   *val = _ShowOption(record, false);
 		StringInfoData msgbuf;
 
-		pq_beginmessage(&msgbuf, 'S');
+		/*
+		 * YB: Do not bombard the client with ParameterStatus packets.
+		 * Send a specialized ParameterStatus packet to instruct Connection
+		 * Manager to not forward the packet to the client if GUC_REPORT is
+		 * not enabled for the variable.
+		 */
+		bool guc_report_not_enabled = !(record->flags & GUC_REPORT);
+
+		if (YbIsClientYsqlConnMgr() && guc_report_not_enabled)
+			pq_beginmessage(&msgbuf, 'r');
+		else
+			pq_beginmessage(&msgbuf, 'S');
 		pq_sendstring(&msgbuf, record->name);
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);

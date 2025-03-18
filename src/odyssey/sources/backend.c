@@ -376,7 +376,7 @@ static inline int od_backend_startup(od_server_t *server,
 			}
 			break;
 		/* fallthrough */
-		case YB_ROLE_OID_PARAMETER_STATUS:
+		case YB_CONN_MGR_PARAMETER_STATUS:
 		case KIWI_BE_PARAMETER_STATUS: {
 			char *name;
 			uint32_t name_len;
@@ -986,7 +986,7 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 		od_debug(&instance->logger, context, server->client, server,
 			 "%s", kiwi_be_type_to_string(type));
 
-		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_ROLE_OID_PARAMETER_STATUS) {
+		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_CONN_MGR_PARAMETER_STATUS) {
 			/* update server parameter */
 			int rc;
 			rc = od_backend_update_parameter(server, context,
