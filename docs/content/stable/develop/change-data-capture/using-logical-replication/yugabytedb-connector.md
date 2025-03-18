@@ -1645,13 +1645,13 @@ If you have to take the snapshot, you’ll need to add 2 other configuration pro
 
 To learn more about the above configuration properties, visit [YugabyteDB connector properties](../using-logical-replication/yugabytedb-connector-properties)
 
-{{< warn title="Warning" >}}
+{{< warning title="Warning" >}}
 
 Note that the order of slot names, publication names and slot ranges is important since the assignment of ranges to slots is sequential and we want that the same range gets assigned to the same slot across restarts.
 
 The configuration for the connector shouldn’t change on restart.
 
-{{< /warn >}}
+{{< /warning >}}
 
 {{< note title="Important" >}}
 
