@@ -71,10 +71,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
@@ -148,8 +150,8 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    private String certDir;
-    private Path packagePath;
+    @NonNull private String certDir;
+    @Nullable private Path packagePath;
   }
 
   /** This class intercepts the client request to add the authorization token header. */
@@ -371,7 +373,7 @@ public class NodeAgentClient {
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
         .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
-        .signWith(SignatureAlgorithm.RS512, privateKey)
+        .signWith(privateKey, SignatureAlgorithm.RS512)
         .compact();
   }
 
@@ -591,14 +593,14 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    if (param.packagePath != null) {
+      builder.setPackagePath(param.packagePath.toString());
+    }
     stub.update(
         UpdateRequest.newBuilder()
             .setState(State.UPGRADE.name())
-            .setUpgradeInfo(
-                UpgradeInfo.newBuilder()
-                    .setPackagePath(param.packagePath.toString())
-                    .setCertDir(param.certDir)
-                    .build())
+            .setUpgradeInfo(builder.build())
             .build());
   }
 
