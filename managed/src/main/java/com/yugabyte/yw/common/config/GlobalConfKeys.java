@@ -1528,4 +1528,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " session level",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> nodeAgentServerCertExpiryNotice =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server_cert_expiry_notice",
+          ScopeType.GLOBAL,
+          "Node Agent Server Cert Expiry Notice",
+          "Duration to start notifying about expiry before node agent server cert actually expires",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

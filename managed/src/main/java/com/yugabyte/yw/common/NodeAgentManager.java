@@ -34,6 +34,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Builder;
@@ -71,7 +73,6 @@ public class NodeAgentManager {
   public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
   public static final String NODE_AGENT_RELEASES_PATH_PROPERTY = "yb.node_agent.releases.path";
   public static final String NODE_AGENT_SERVER_INSTALL_PROPERTY = "yb.node_agent.server.install";
-  public static final int CERT_EXPIRY_YEARS = 5;
   public static final int NODE_AGENT_JWT_EXPIRY_SECS = 1800;
 
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
@@ -113,7 +114,7 @@ public class NodeAgentManager {
   @Getter
   public static class InstallerFiles {
     @NonNull private String certDir;
-    @NonNull private Path packagePath;
+    @Nullable private Path packagePath;
     @Singular private List<Path> createDirs;
     @Singular private List<CopyFileInfo> copyFileInfos;
   }
@@ -148,10 +149,10 @@ public class NodeAgentManager {
   private Pair<X509Certificate, KeyPair> createRootCert(
       NodeAgent nodeAgent, String certPath, String keyPath) {
     try {
+      int expiresAt = appConfig.getInt("yb.tlsCertificate.root.expiryInYears");
       String certLabel = nodeAgent.getUuid().toString();
       KeyPair keyPair = CertificateHelper.getKeyPairObject();
-      X509Certificate x509 =
-          certificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
+      X509Certificate x509 = certificateHelper.generateCACertificate(certLabel, keyPair, expiresAt);
       CertificateHelper.writeCertFileContentToCertPath(x509, certPath);
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
       return new ImmutablePair<>(x509, keyPair);
@@ -292,6 +293,12 @@ public class NodeAgentManager {
       throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
     return nodeAgentOp.get().getPublicKey();
+  }
+
+  public Date getServerCertExpiry(NodeAgent nodeAgent) {
+    return CertificateHelper.extractDatesFromCertBundle(
+            Collections.singletonList(nodeAgent.getServerX509Cert()))
+        .getRight();
   }
 
   /**
@@ -450,22 +457,27 @@ public class NodeAgentManager {
    *
    * @param nodeAgent nodeAgent the node agent record.
    * @param nodeAgentDirPath path to the node agent directory.
+   * @param certsOnly generate only the certs if it is true.
    * @return the installer files.
    */
-  public InstallerFiles getInstallerFiles(NodeAgent nodeAgent, Path nodeAgentDirPath) {
+  public InstallerFiles getInstallerFiles(
+      NodeAgent nodeAgent, Path nodeAgentDirPath, boolean certsOnly) {
     InstallerFiles.InstallerFilesBuilder builder = InstallerFiles.builder();
-    // Package tgz file to be copied.
-    Path packagePath = getNodeAgentPackagePath(nodeAgent.getOsType(), nodeAgent.getArchType());
-    Path targetPackagePath = nodeAgentDirPath.resolve(Paths.get("release", "node-agent.tgz"));
-    builder.packagePath(targetPackagePath);
-    builder.copyFileInfo(new CopyFileInfo(packagePath, targetPackagePath));
-
     Path certDirPath = null;
-    if (nodeAgent.getState() == State.REGISTERING) {
-      builder.createDir(targetPackagePath.getParent());
-      certDirPath = nodeAgent.getCertDirPath();
-    } else {
+    if (certsOnly) {
       certDirPath = generateCerts(nodeAgent);
+    } else {
+      // Package tgz file to be copied.
+      Path packagePath = getNodeAgentPackagePath(nodeAgent.getOsType(), nodeAgent.getArchType());
+      Path targetPackagePath = nodeAgentDirPath.resolve(Paths.get("release", "node-agent.tgz"));
+      builder.packagePath(targetPackagePath);
+      builder.copyFileInfo(new CopyFileInfo(packagePath, targetPackagePath));
+      if (nodeAgent.getState() == State.REGISTERING) {
+        builder.createDir(targetPackagePath.getParent());
+        certDirPath = nodeAgent.getCertDirPath();
+      } else {
+        certDirPath = generateCerts(nodeAgent);
+      }
     }
 
     String targetCertDir = UUID.randomUUID().toString();

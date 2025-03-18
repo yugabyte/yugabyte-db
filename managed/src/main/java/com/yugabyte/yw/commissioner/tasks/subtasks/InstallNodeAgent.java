@@ -111,7 +111,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
     NodeAgent nodeAgent = createNodeAgent(universe, node);
     InstallerFiles installerFiles =
-        nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
+        nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath, false /* certsOnly */);
     Set<String> dirs =
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())

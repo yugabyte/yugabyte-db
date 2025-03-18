@@ -29,13 +29,15 @@ func HandleUpgradeState(
 	// Save the location of new certs in the config.
 	config.Update(util.PlatformCertsUpgradeKey, upgradeInfo.CertDir)
 
-	// Run the update script to point to the new version.
-	if err := task.HandleUpgradeScript(ctx, config); err != nil {
-		util.FileLogger().Errorf(ctx,
-			"Error in upgrading to version - %s",
-			err.Error(),
-		)
-		return err
+	if len(upgradeInfo.PackagePath) > 0 {
+		// Run the update script to point to the new version.
+		if err := task.HandleUpgradeScript(ctx, config); err != nil {
+			util.FileLogger().Errorf(ctx,
+				"Error in upgrading to version - %s",
+				err.Error(),
+			)
+			return err
+		}
 	}
 	util.FileLogger().Info(ctx, "Node agent has been succesfully upgraded")
 	return nil
