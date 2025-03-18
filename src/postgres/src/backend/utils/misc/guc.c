@@ -3194,6 +3194,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_separate_requests_for_sampling_stages", PGC_SUSET,
+			CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to allow using separate requests for "
+						 "block-based sampling stages. Not to be touched by "
+						 "users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_separate_requests_for_sampling_stages,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_refresh_matview_in_place", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Refresh materialized views in place."),
 			NULL,

@@ -71,6 +71,16 @@ constexpr T ReleaseVsDebugVsAsanVsTsan(
 #endif
 }
 
+template <class T>
+constexpr T ReleaseVsDebugVsAsanVsTsanVsApple(
+    T release_build_value, T debug_build_value, T asan_value, T tsan_value, T apple_value) {
+#if defined(__APPLE__)
+  return apple_value;
+#else
+  return ReleaseVsDebugVsAsanVsTsan(release_build_value, debug_build_value, asan_value, tsan_value);
+#endif
+}
+
 constexpr bool IsSanitizer() {
   return RegularBuildVsSanitizers(false, true);
 }
