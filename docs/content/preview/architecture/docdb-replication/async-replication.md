@@ -48,7 +48,7 @@ The drawbacks of asynchronous xCluster replication are:
 - __Stale reads__: When reading from the secondary data center, there may be a delay in data availability due to the asynchronous nature of the replication. This can result in stale reads, which may not reflect the most recent writes. Non-transactional modes can serve torn reads of recently written data.
 
 {{< tip title="Deploy" >}}
-To understand the difference between xCluster, Geo-Partitioning, and Read Replicas, refer to [Multi-Region Deployments](../../../explore/multi-region-deployments/).
+To better understand how xCluster replication works in practice, check out [xCluster deployment](../../../deploy/multi-dc/async-replication/).
 {{< /tip >}}
 
 ## Asynchronous replication modes

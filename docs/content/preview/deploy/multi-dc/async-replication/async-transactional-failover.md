@@ -152,7 +152,7 @@ Expect output similar to the following:
 }
 ```
 
-1. Restore to the `safe_time` of the database:
+2. Restore to the `safe_time` of the database:
 
 ```sh
 ./bin/yb-admin \
@@ -169,7 +169,7 @@ Expect output similar to the following:
 }
 ```
 
-1. Verify that restoration completed successfully by running the following command. Repeat this step until the restore state is RESTORED.
+3. Verify that restoration completed successfully by running the following command. Repeat this step until the restore state is RESTORED.
 
 ```sh
 ./bin/yb-admin \
