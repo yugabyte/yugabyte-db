@@ -179,7 +179,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               if (catalogUpgradeState != null
                   && catalogUpgradeState.equals(
                       YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
-                createPGUpgradeTServerCheckTask(newVersion, false /* downloadPackage */);
+                createPGUpgradeTServerCheckTask(newVersion);
               }
 
               createRunYsqlMajorVersionCatalogUpgradeTask();
