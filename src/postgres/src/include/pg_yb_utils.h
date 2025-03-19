@@ -901,7 +901,7 @@ YbTableDistribution YbGetTableDistribution(Oid relid);
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
-bool		YBIsSupportedLibcLocale(const char *localebuf);
+extern bool YBIsSupportedLibcLocale(const char *localebuf);
 
 /*
  * Check for unsupported libc locale in YugaByte mode.
@@ -929,12 +929,19 @@ extern void YBGetCollationInfo(Oid collation_id,
 /*
  * Setup collation info in attr.
  */
-void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
+extern void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
  */
-bool		YBIsCollationValidNonC(Oid collation_id);
+extern bool		YBIsCollationValidNonC(Oid collation_id);
+
+/*
+ * Check whether the DB collation is UTF-8.
+ */
+extern bool		YBIsDbLocaleDefault();
+
+extern bool		YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*
  * For the column 'attr_num' and its collation id, return the collation id that

@@ -2396,15 +2396,12 @@ setlocales(void)
 	char	   *canonname;
 
 	/*
-	 * Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale
-	 * in YB mode.
+	 * Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in
+	 * YB mode.
+	 * This is because as of 06/15/2019 we don't support collation-aware string
+	 * comparisons, but we still want to support storing UTF-8 strings.
+	 * This should be kept in line with TabletServerMain.
 	 */
-
-	/*
-	 * This is because as of 06/15/2019 we don't support collation-aware
-	 * string comparisons,
-	 */
-	/* but we still want to support storing UTF-8 strings. */
 	if (!locale &&
 		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
 	{
