@@ -5,10 +5,12 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -45,6 +47,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -73,6 +78,8 @@ public class BackupGarbageCollector {
 
   private final StorageUtilFactory storageUtilFactory;
 
+  private final ThreadPoolExecutor threadPool;
+
   private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
@@ -95,7 +102,8 @@ public class BackupGarbageCollector {
       YbcManager ybcManager,
       TaskInfoManager taskInfoManager,
       Commissioner commissioner,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      PlatformExecutorFactory platformExecutorFactory) {
     this.platformScheduler = platformScheduler;
     this.customerConfigService = customerConfigService;
     this.confGetter = confGetter;
@@ -105,6 +113,9 @@ public class BackupGarbageCollector {
     this.taskInfoManager = taskInfoManager;
     this.commissioner = commissioner;
     this.storageUtilFactory = storageUtilFactory;
+    this.threadPool =
+        platformExecutorFactory.createExecutor(
+            "backupGC", new ThreadFactoryBuilder().setNameFormat("backupGC-%d").build());
   }
 
   public void start() {
@@ -147,11 +158,31 @@ public class BackupGarbageCollector {
             CustomerConfig.getAllStorageConfigsQueuedForDeletion(customer.getUuid());
         for (CustomerConfig config : configList) {
           try {
+            List<Future<Boolean>> backupFutures = new ArrayList<>();
             List<Backup> backupList =
                 Backup.findAllBackupsQueuedForDeletionWithCustomerConfig(
                     config.getConfigUUID(), customer.getUuid());
+            // Wait for all backup deletes to finish, and track failures
+            log.info("Deleting {} backups for customer config {}", backupList.size(), config);
             for (Backup backup : backupList) {
-              if (!deleteBackup(customer, backup.getBackupUUID())) {
+              try {
+                backupFutures.add(runDeleteBackup(customer, backup.getBackupUUID()));
+              } catch (RejectedExecutionException e) {
+                log.warn(
+                    "threadpool for deleting backups is full, skipping until next garbage"
+                        + " collection cycle",
+                    e);
+                break;
+              }
+            }
+            // Wait for all backup deletes to finish, and track failures
+            for (Future<Boolean> future : backupFutures) {
+              try {
+                if (!future.get()) {
+                  failedToDeleteBackupCount++;
+                }
+              } catch (Exception e) {
+                log.error("Error occurred while deleting backup", e);
                 failedToDeleteBackupCount++;
               }
             }
@@ -165,12 +196,30 @@ public class BackupGarbageCollector {
           }
         }
         // Delete remaining backups queued for deletion.
+        List<Future<Boolean>> backupFutures = new ArrayList<>();
         List<Backup> backupList = Backup.findAllBackupsQueuedForDeletion(customer.getUuid());
         if (!CollectionUtils.isEmpty(backupList)) {
+          log.info("Deleting {} backups for customer {}", backupList.size(), customer.getUuid());
           for (Backup backup : backupList) {
-            if (!deleteBackup(customer, backup.getBackupUUID())) {
+            try {
+              backupFutures.add(runDeleteBackup(customer, backup.getBackupUUID()));
+            } catch (RejectedExecutionException e) {
+              log.warn(
+                  "threadpool for deleting backups is full, skipping the rest until next garbage"
+                      + " collection cycle",
+                  e);
+              break;
+            }
+          }
+        }
+        for (Future<Boolean> future : backupFutures) {
+          try {
+            if (!future.get()) {
               failedToDeleteBackupCount++;
             }
+          } catch (Exception e) {
+            log.error("Error occurred while deleting backup", e);
+            failedToDeleteBackupCount++;
           }
         }
         MetricLabelsBuilder metricLabelsBuilder =
@@ -298,7 +347,19 @@ public class BackupGarbageCollector {
         "Expired Backup Deletion");
   }
 
-  public synchronized boolean deleteBackup(Customer customer, UUID backupUUID) {
+  /**
+   * Submits an async task to delete a backup for the specified customer and backup UUID.
+   *
+   * @param customer The customer for whom the backup is to be deleted.
+   * @param backupUUID The unique identifier of the backup to be deleted.
+   * @return A Future representing the result of the backup deletion operation.
+   * @throws RejectedExecutionException If the task cannot be scheduled for execution.
+   */
+  private Future<Boolean> runDeleteBackup(Customer customer, UUID backupUUID) {
+    return threadPool.submit(() -> deleteBackup(customer, backupUUID));
+  }
+
+  public boolean deleteBackup(Customer customer, UUID backupUUID) {
     Backup backup = Backup.maybeGet(customer.getUuid(), backupUUID).orElse(null);
     int backupDeleteRetryCount =
         confGetter.getConfForScope(customer, CustomerConfKeys.backupGcNumberOfRetries) - 1;
