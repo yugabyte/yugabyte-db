@@ -13,8 +13,6 @@ type: docs
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
-Note that YugabyteDB support for pgvector does not currently include [indexing](https://github.com/pgvector/pgvector#indexing).
-
 To enable the extension:
 
 ```sql
