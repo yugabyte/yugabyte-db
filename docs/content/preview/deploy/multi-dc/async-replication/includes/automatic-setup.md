@@ -6,6 +6,11 @@ private = true
 
 Since this feature is in [technical preview](/preview/releases/versioning/#tech-preview-tp), you must enable it by adding the `xcluster_enable_ddl_replication` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list and setting it to true on yb-master in both universes.
 
+
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
     <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab"

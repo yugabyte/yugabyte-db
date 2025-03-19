@@ -3,7 +3,7 @@ title: Handling DDLs for Manual mode transactional xCluster
 headerTitle: DDL changes in Manually mode
 linkTitle: Manual DDL changes
 description: How to handle DDLs when using Manual mode transactional xCluster replication
-headContent: Making DDL changes in Manually mode transactional xCluster
+headContent: Making DDL changes in Manual mode transactional xCluster
 menu:
   preview:
     parent: async-replication-transactional

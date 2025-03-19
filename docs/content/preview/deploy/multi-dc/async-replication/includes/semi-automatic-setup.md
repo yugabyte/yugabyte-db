@@ -4,6 +4,10 @@ private = true
 +++
 -->
 
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
     <a href="#yugabyted-setup" class="nav-link active" id="yugabyted-setup-tab" data-bs-toggle="tab"

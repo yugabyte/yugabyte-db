@@ -1903,8 +1903,9 @@ The above command results in the following response:
 ```output
 Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
+### xCluster Replication Commands
 
-### xCluster Replication commands
+For detailed step-by-step instructions on deploying xCluster, refer to the [Deploy xCluster](../../deploy/multi-dc/async-replication). For monitoring xCluster, refer to the [Monitor xCluster](../../launch-and-manage/monitor-and-alert/xcluster-monitor).
 
 #### setup_universe_replication
 
@@ -2170,11 +2171,12 @@ Deletes underlying xCluster outbound streams.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    delete_cdc_stream <stream-id [force_delete]>
+    delete_cdc_stream <stream-id> \
+    [force_delete]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *stream-id*: The ID of the CDC stream.
+* *stream-id*: The ID of the xCluster stream.
 * `force_delete`: Force the delete operation.
 
 {{< note title="Note" >}}
@@ -2286,7 +2288,7 @@ yb-admin \
 
 #### setup_xcluster_replication
 
-Setup xCluster replication using a previously created checkpoint.
+Setup xCluster replication using a previously created [checkpoint](#create-xcluster-checkpoint).
 
 **Syntax**
 
