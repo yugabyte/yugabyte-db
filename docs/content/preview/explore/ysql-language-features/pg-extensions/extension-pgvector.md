@@ -192,7 +192,7 @@ Supported types are:
 
 ### Index options
 
-HNSW indexing in YugabyteDB allows fine-tuning with the following parameters:
+You can fine-tune HNSW indexing using the following parameters:
 
 * `m` - specifies the maximum number of connections per layer.
 * `ef_construction` - Specifies the size of the dynamic candidate list for constructing the graph.
