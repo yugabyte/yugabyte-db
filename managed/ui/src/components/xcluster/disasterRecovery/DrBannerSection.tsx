@@ -4,7 +4,10 @@ import { browserHistory } from 'react-router';
 
 import { YBButton } from '../../../redesign/components';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import { YBErrorIndicator } from '../../common/indicators';
 import {
@@ -188,7 +191,18 @@ export const DrBannerSection = ({
             </Typography>
             <div className={classes.bannerActionButtonContainer}>
               <RbacValidator
-                accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
+                customValidateFunction={() => {
+                  return (
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_RESTART,
+                      onResource: drConfig.primaryUniverseUuid
+                    }) &&
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_RESTART,
+                      onResource: drConfig.drReplicaUniverseUuid
+                    })
+                  );
+                }}
                 overrideStyle={{ display: 'block' }}
                 isControl
               >
