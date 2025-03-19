@@ -581,9 +581,7 @@ public class AWSUtil implements CloudUtil {
       throws AmazonS3Exception {
     List<S3ObjectSummary> objectSummary = listObjectsResult.getObjectSummaries();
     List<DeleteObjectsRequest.KeyVersion> objectKeys =
-        objectSummary.parallelStream()
-            .map(o -> new KeyVersion(o.getKey()))
-            .collect(Collectors.toList());
+        objectSummary.stream().map(o -> new KeyVersion(o.getKey())).collect(Collectors.toList());
     DeleteObjectsRequest deleteRequest =
         new DeleteObjectsRequest(bucketName).withKeys(objectKeys).withQuiet(false);
     s3Client.deleteObjects(deleteRequest);
