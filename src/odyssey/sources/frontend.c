@@ -324,9 +324,9 @@ od_frontend_attach(od_client_t *client, char *context,
 
 			/* YB: check auth failure status codes to update OID status */
 			if (yb_frontend_error_is_db_does_not_exist(client))
-				((od_route_t *)server->route)->yb_database_entry->status = YB_OID_DROPPED;
+				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1);
 			else if (yb_frontend_error_is_role_does_not_exist(client))
-				((od_route_t *)server->route)->yb_user_entry->status = YB_OID_DROPPED;
+				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid);
 
 			return OD_ESERVER_CONNECT;
 		}
@@ -2531,8 +2531,8 @@ void od_frontend(void *arg)
 			&instance->logger, "auth backend", client, NULL,
 			"invalidate all existing active and idle backends of the route"
 			", with user = %s, db = %s, having %d idle backends and %d active backends",
-			(char *)route->yb_user_entry->name,
-			(char *)route->yb_database_entry->name,
+			(char *)route->yb_user_name,
+			(char *)route->yb_database_name,
 			route->server_pool.count_idle,
 			route->server_pool.count_active);
 		route->max_logical_client_version =

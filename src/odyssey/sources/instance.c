@@ -185,9 +185,6 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 		}
 	}
 
-	rc = yb_oid_list_init(instance);
-	if (rc == -1)
-		goto error;
 
 	yb_read_conf_from_env_var(&router.rules, &instance->config,
 				 &instance->logger);
