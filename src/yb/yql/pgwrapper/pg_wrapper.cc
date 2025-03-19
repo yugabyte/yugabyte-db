@@ -346,6 +346,9 @@ DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_expression_pushdown, true,
+    "Enables expression pushdown for queries in mixed mode of a YSQL Major version upgrade.");
+
 DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;

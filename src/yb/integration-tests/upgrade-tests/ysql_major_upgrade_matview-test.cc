@@ -38,9 +38,7 @@ class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
   }
 
   Status CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType type) {
-    auto conn = VERIFY_RESULT(CreateConnToTs(std::nullopt));
-    auto version =
-        VERIFY_RESULT(conn.FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility"));
+    auto version = VERIFY_RESULT(ReadUpgradeCompatibilityGuc());
 
     auto expected_version = UpgradeCompatibilityGucValue(type);
     SCHECK_EQ(version, ToString(expected_version), IllegalState, "GUC version mismatch");

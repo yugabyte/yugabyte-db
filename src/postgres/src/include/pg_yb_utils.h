@@ -978,14 +978,18 @@ extern const uint32 yb_funcs_safe_for_pushdown[];
 extern const uint32 yb_funcs_unsafe_for_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_safe_for_pushdown' above.
+ * These functions are some of the more commonly used functions, and are less
+ * likely to cause issues when run in mixed mode pushdown. This list is not
+ * exhaustive, but gives us a useful starting point.
  */
-extern const int yb_funcs_safe_for_pushdown_count;
+extern const uint32 yb_funcs_safe_for_mixed_mode_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_unsafe_for_pushdown' above.
+ * Number of functions in the lists above.
  */
+extern const int yb_funcs_safe_for_pushdown_count;
 extern const int yb_funcs_unsafe_for_pushdown_count;
+extern const int yb_funcs_safe_for_mixed_mode_pushdown_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to

@@ -307,13 +307,14 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
  *	  point to valid lists. The output parameters idx_remote_quals and
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
+ *    - relid is the OID of the relation being scanned.
  */
 void
 yb_extract_pushdown_clauses(List *restrictinfo_list,
 							IndexOptInfo *indexinfo, bool bitmapindex,
 							List **local_quals, List **rel_remote_quals,
 							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs)
+							List **idx_colrefs, Oid relid)
 {
 	ListCell   *lc;
 
@@ -326,7 +327,7 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		if (ri->pseudoconstant)
 			continue;
 
-		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs);
+		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
 		/*
 		 * If clause was found pushable before, that shouldn't change.
 		 * Opposite is possible, join condition may be moved to inner and have
