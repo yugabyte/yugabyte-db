@@ -932,6 +932,7 @@
             },
             "useNewTargetUniverse": {
               "optionName": "Select a new universe as DR replica",
+              "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
               "drReplica": "DR Replica Universe"
             }
           },
