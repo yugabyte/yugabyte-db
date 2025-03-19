@@ -147,6 +147,10 @@ public class LocalNodeManager {
     versionBinPathMap.put(version, binPath);
   }
 
+  public String getVersionBinPath(String version) {
+    return versionBinPathMap.get(version);
+  }
+
   public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
     log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
     this.additionalGFlags = additionalGFlags;
@@ -969,7 +973,7 @@ public class LocalNodeManager {
     return nodesByNameMap.get(nodeDetails.nodeName);
   }
 
-  private String getNodeFSRoot(
+  public String getNodeFSRoot(
       UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String res = getNodeRoot(userIntent, nodeInfo) + "/data/";
     new File(res).mkdirs();

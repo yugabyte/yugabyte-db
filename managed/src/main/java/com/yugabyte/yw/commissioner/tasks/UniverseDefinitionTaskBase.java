@@ -3889,7 +3889,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             serverType,
             (node, params) -> {
               params.force = true;
-              // Override only expression pushdown flag.
               params.gflags =
                   ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
             })
