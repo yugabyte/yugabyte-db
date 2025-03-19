@@ -180,7 +180,7 @@ To edit custom Linux versions, remove Linux versions, and set a version as the d
 
     {{< warning title="Important" >}}
 
-Starting in version 2025.1 if you want to deploy an Azure universe in an airgapped environment you MUST provide your own Linux version.
+For YugabyteDB Anywhere v2025.1 and later, if you want to deploy a universe on Azure in an airgapped environment, you must provide your own Linux version.
 
     {{< /warning >}}
 
