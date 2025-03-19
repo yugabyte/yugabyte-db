@@ -2710,7 +2710,7 @@ TEST_F(PgIndexBackfillTest, VectorIndex) {
   LOG(INFO) << "Started to create index";
   // TODO(vector_index) Switch to using CONCURRENT index creation when it will be ready.
   ASSERT_OK(conn_->Execute(
-      "CREATE INDEX NONCONCURRENTLY ON test USING ybhnsw (embedding vector_l2_ops)"));
+      "CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
   LOG(INFO) << "Finished to create index";
   writer.WaitWritten(32);
   thread_holder.Stop();

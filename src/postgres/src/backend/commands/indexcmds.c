@@ -1266,6 +1266,8 @@ DefineIndex(Oid relationId,
 				 errmsg("access method \"%s\" only supported for indexes"
 						" using Yugabyte storage",
 						accessMethodName)));
+	if (concurrent && IsYBRelation(rel) && !amRoutine->yb_ambackfill)
+		concurrent = false;
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_ACCESS_METHOD_OID,
 								 accessMethodId);

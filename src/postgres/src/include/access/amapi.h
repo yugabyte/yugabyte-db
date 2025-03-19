@@ -350,6 +350,28 @@ typedef struct IndexAmRoutine
 	yb_aminsert_function yb_aminsert;
 	yb_amdelete_function yb_amdelete;
 	yb_amupdate_function yb_amupdate;
+	/*
+	 * Please note the non-obvious distinction between `ambuild` and `yb_ambackfill`.
+	 *
+	 * - `ambuild` is the function invoked during the creation of an index in a
+	 *   non-concurrent manner. This means the index is built while holding exclusive
+	 *   locks, which blocks other operations on the table during the build process.
+	 *
+	 * - `yb_ambackfill`, on the other hand, is used specifically for concurrent
+	 *   index creation. This allows the index to be built in the background without
+	 *   blocking other operations on the table, enabling greater concurrency and
+	 *   reducing downtime for the database.
+	 *
+	 * If `yb_ambackfill` is set to NULL, it indicates that the access method does
+	 *   not support concurrent index creation. In such cases, the system must fall
+	 *   back to the non-concurrent code path, which relies on `ambuild` for index
+	 *   creation. This ensures compatibility with access methods that lack
+	 *   concurrent build capabilities.
+	 *
+	 * Understanding this distinction is crucial for implementing or modifying
+	 * index creation logic, as it directly impacts the concurrency and performance
+	 * characteristics of the database system.
+	 */
 	yb_ambackfill_function yb_ambackfill;
 	yb_ammightrecheck_function yb_ammightrecheck;
 	yb_amgetbitmap_function yb_amgetbitmap;

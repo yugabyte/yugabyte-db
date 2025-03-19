@@ -103,7 +103,7 @@ makeBaseYbVectorHandler(bool is_copartitioned)
 		amroutine->amcanreturn = ybvectorcopartitionedcanreturn;
 		amroutine->yb_aminsert = ybvectorcopartitionedinsert;
 		amroutine->yb_amdelete = ybvectorcopartitioneddelete;
-		amroutine->yb_ambackfill = ybvectorcopartitionedbackfill;
+		amroutine->yb_ambackfill = NULL;
 		amroutine->ambuild = ybvectorcopartitionedbuild;
 		amroutine->yb_amiscopartitioned = true;
 	}
