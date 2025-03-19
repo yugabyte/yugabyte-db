@@ -128,7 +128,7 @@ public interface CloudUtil extends StorageUtil {
     if (checkFileExists(
         configData,
         /* Go to parent directory for backup_keys.json file. */
-        preflightParams.getBackupLocations().parallelStream()
+        preflightParams.getBackupLocations().stream()
             .map(bL -> bL.substring(0, bL.lastIndexOf('/')))
             .collect(Collectors.toSet()),
         BackupUtil.BACKUP_KEYS_JSON,
@@ -158,7 +158,7 @@ public interface CloudUtil extends StorageUtil {
     boolean useHttpsProxy = shouldUseHttpsProxy(configData);
     Map<NodeDetails, ProxyConfig> nodeProxyMap = universe.getNodeProxyConfigMap();
     Map<String, ProxySpec> pSpecMap =
-        nodeProxyMap.entrySet().parallelStream()
+        nodeProxyMap.entrySet().stream()
             .filter(e -> (e.getKey().cloudInfo.private_ip != null))
             .filter(
                 e ->
