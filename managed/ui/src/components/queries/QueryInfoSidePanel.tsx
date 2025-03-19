@@ -40,6 +40,7 @@ interface QueryInfoSidePanelBaseProps {
   visible: boolean;
   isPg15Supported: boolean;
   onHide: () => void;
+  isConnectionPoolEnabled: boolean;
 }
 interface SlowQueryInfoSidePanelProps extends QueryInfoSidePanelBaseProps {
   queryApi: typeof QueryApi.YSQL;
@@ -177,7 +178,8 @@ export const QueryInfoSidePanel = ({
   queryData,
   isPg15Supported,
   visible,
-  onHide
+  onHide,
+  isConnectionPoolEnabled
 }: QueryInfoSidePanelProps) => {
   const [currentTab, setCurrentTab] = useState<QueryInfoTab>(DEFAULT_TAB);
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
@@ -250,6 +252,7 @@ export const QueryInfoSidePanel = ({
 
   const queryDetails = queryData
     ? queryMetricFields.map((queryKey) => {
+        if (isConnectionPoolEnabled && ['clientHost', 'clientPort'].includes(queryKey)) return null;
         return (
           <div className={classes.queryMetricRow} key={queryKey}>
             <Typography className={classes.queryMetricLabel} variant="body2" color="textSecondary">
