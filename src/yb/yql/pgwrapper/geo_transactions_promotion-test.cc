@@ -52,6 +52,7 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
+DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb {
 
@@ -476,6 +477,90 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest 
       .blocker = VERIFY_RESULT(InitConnectionAndAcquireLock(1, conn1_region)),
       .waiter = VERIFY_RESULT(InitConnectionAndAcquireLock(2, conn2_region))
     });
+  }
+};
+
+class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = true;
+    GeoTransactionsPromotionTest::SetUp();
+  }
+
+  void CheckPromotionWithDdl(
+      TestTransactionType transaction_type, TestTransactionSuccess success,
+      bool ddl_as_first_statement) {
+    const std::string kTable2Name = "table2";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+    // Cleanup the table from any previous execution of the test.
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTable2Name));
+
+    // TODO(#26298): DDL + DML transaction block only works with SNAPSHOT_ISOLATION right now due to
+    // lack of savepoint support. Switch to READ_COMMITTED once savepoints are supported.
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+    constexpr int32_t field_value = 1234;
+
+    if (ddl_as_first_statement) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (value int primary key)", kTable2Name));
+    }
+
+    for (size_t i = 1; i <= tables_per_region_; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0$1_$2(value) VALUES ($3)", kTablePrefix, kLocalRegion, i, field_value));
+    }
+
+    if (!ddl_as_first_statement) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (value int primary key)", kTable2Name));
+    }
+
+    // Insert dummy data into the newly created table.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) VALUES ($1)", kTable2Name, field_value));
+
+    if (success) {
+      // Ensure data written is still fine.
+      for (size_t i = 1; i <= tables_per_region_; ++i) {
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+            "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
+      }
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+            "SELECT value FROM $0", kTable2Name))));
+    }
+
+    // Commit (or abort) and check data.
+    Status status;
+    if (transaction_type == TestTransactionType::kCommit) {
+      if (success) {
+        ASSERT_OK(conn.CommitTransaction());
+      } else {
+        ASSERT_NOK(conn.CommitTransaction());
+      }
+    } else {
+      ASSERT_OK(conn.RollbackTransaction());
+    }
+
+    if (transaction_type == TestTransactionType::kCommit && success) {
+      for (size_t i = 1; i <= tables_per_region_; ++i) {
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+            "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
+      }
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+            "SELECT value FROM $0", kTable2Name))));
+    } else {
+      for (size_t i = 1; i <= tables_per_region_; ++i) {
+        ASSERT_RESULT(conn.FetchMatrix(
+            strings::Substitute("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
+            0 /* rows */, 1 /* columns */));
+      }
+      if (transaction_type == TestTransactionType::kCommit) {
+        ASSERT_RESULT(conn.FetchMatrix(
+            strings::Substitute("SELECT value FROM $0", kTable2Name),
+            0 /* rows */, 1 /* columns */));
+      }
+    }
   }
 };
 
@@ -1223,6 +1308,26 @@ TEST_F(GeoPartitionedReadCommittedTest,
   auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
       "SELECT people FROM $0 WHERE country='C0' AND state='$1'", table_name, kLocalState)));
   ASSERT_EQ(res, num_sessions + 1);
+}
+
+TEST_F(GeoTransactionsPromotionWithDdlTest,
+       YB_DISABLE_TEST_IN_TSAN(TestPromotionWithDdlAsFirstStatement)) {
+  ASSERT_NO_FATALS(CheckPromotionWithDdl(
+      TestTransactionType::kAbort, TestTransactionSuccess::kTrue,
+      true /* ddl_as_first_statement */));
+  ASSERT_NO_FATALS(CheckPromotionWithDdl(
+      TestTransactionType::kCommit, TestTransactionSuccess::kTrue,
+      true /* ddl_as_first_statement */));
+}
+
+TEST_F(GeoTransactionsPromotionWithDdlTest,
+       YB_DISABLE_TEST_IN_TSAN(TestPromotionWithDdlInMiddleOfTransaction)) {
+  ASSERT_NO_FATALS(CheckPromotionWithDdl(
+      TestTransactionType::kAbort, TestTransactionSuccess::kTrue,
+      false /* ddl_as_first_statement */));
+  ASSERT_NO_FATALS(CheckPromotionWithDdl(
+      TestTransactionType::kCommit, TestTransactionSuccess::kTrue,
+      false /* ddl_as_first_statement */));
 }
 
 } // namespace client
