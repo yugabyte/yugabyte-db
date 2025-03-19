@@ -20,6 +20,7 @@
 * Support collation in aggregation `$replaceRoot` stage *[Feature]*
 * Top level aggregate command `let` variables support for `$geoNear` stage *[Feature]*
 * Enable Backend Command support for Statement Timeout *[Feature]*
+* Support type aggregation operator `$toUUID`. *[Feature]* 
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

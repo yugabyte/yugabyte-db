@@ -190,6 +190,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_TOOBJECTID] = "agg_operator_toobjectid",
 	[FEATURE_AGG_OPERATOR_TOSTRING] = "agg_operator_tostring",
 	[FEATURE_AGG_OPERATOR_TOUPPER] = "agg_operator_toupper",
+	[FEATURE_AGG_OPERATOR_TOUUID] = "agg_operator_touuid",
 	[FEATURE_AGG_OPERATOR_TRIM] = "agg_operator_trim",
 	[FEATURE_AGG_OPERATOR_TRUNC] = "agg_operator_trunc",
 	[FEATURE_AGG_OPERATOR_TSINCREMENT] = "agg_operator_tsincrement",

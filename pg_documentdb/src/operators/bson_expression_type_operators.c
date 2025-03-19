@@ -9,12 +9,15 @@
  */
 
 #include <postgres.h>
+#include <regex.h>
 
 #include "io/bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "types/decimal128.h"
 #include "utils/version_utils.h"
+#include <utils/uuid.h>
+#include "metadata/metadata_cache.h"
 
 /* --------------------------------------------------------- */
 /* Type definitions */
@@ -37,6 +40,7 @@ static void ProcessDollarToDate(const bson_value_t *currentValue, bson_value_t *
 static void ProcessDollarToDouble(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarToDecimal(const bson_value_t *currentValue,
 								   bson_value_t *result);
+static void ProcessDollarToUUID(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarConvert(const bson_value_t *currentValue, bson_value_t *result,
 								 bson_type_t toType);
 static void ProcessDollarToHashedIndexKey(const bson_value_t *currentValue,
@@ -68,7 +72,6 @@ static inline void ThrowInvalidConversionError(bson_type_t sourceType, bson_type
 											   targetType);
 static inline void ThrowOverflowTargetError(const bson_value_t *value);
 static inline void ThrowFailedToParseNumber(const char *value, const char *reason);
-
 
 /* --------------------------------------------------------- */
 /* Parse and handle pre-parse functions */
@@ -319,6 +322,31 @@ HandlePreParsedDollarToDecimal(pgbson *doc, void *arguments,
 {
 	HandlePreParsedTypeOperatorOneOperand(doc, arguments, expressionResult,
 										  ProcessDollarToDecimal);
+}
+
+
+/*
+ * Parses a $toUUID expression.
+ * $toUUID is expressed as { "$toUUID": <expression> }
+ */
+void
+ParseDollarToUUID(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
+{
+	ParseTypeOperatorOneOperand(argument, data, "$toUUID", context,
+								ProcessDollarToUUID);
+}
+
+
+/*
+ * Handles executing a pre-parsed $toUUID expression.
+ */
+void
+HandlePreParsedDollarToUUID(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	HandlePreParsedTypeOperatorOneOperand(doc, arguments, expressionResult,
+										  ProcessDollarToUUID);
 }
 
 
@@ -1252,6 +1280,70 @@ ProcessDollarToDate(const bson_value_t *currentValue, bson_value_t *result)
 	}
 
 	result->value_type = BSON_TYPE_DATE_TIME;
+}
+
+
+/* Process the evaluated expression for $toUUID.
+ * If null or undefined, the result should be null. */
+static void
+ProcessDollarToUUID(const bson_value_t *currentValue, bson_value_t *result)
+{
+	if (IsExpressionResultNullOrUndefined(currentValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	if (currentValue->value_type != BSON_TYPE_UTF8)
+	{
+		ThrowInvalidConversionError(currentValue->value_type, BSON_TYPE_BINARY);
+	}
+
+	const char *uuidStr = currentValue->value.v_utf8.str;
+
+	/* Basic validation - must be 36 characters with hyphens in standard positions */
+	/* check string length to make a early return on invalid string */
+	/* Postgresql uuid_in function allows the UUID string being wrapped with braces and without hyphens */
+	/* so we also need to check the hyphens in the correct positions */
+	/* We don't need to check if it is wrapped with braces as a UUID with braces has a length of 38, */
+	/* which fails at the first check. */
+	if (currentValue->value.v_utf8.len != 36 || uuidStr[8] != '-' || uuidStr[13] != '-' ||
+		uuidStr[18] != '-' || uuidStr[23] != '-')
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
+							"Failed to parse BinData %s in $convert with no onError value: Invalid UUID string: %s",
+							uuidStr, uuidStr)));
+	}
+
+	/* Use PostgreSQL uuid_in function to parse and validate the UUID */
+	PG_TRY();
+	{
+		Datum uuidDatum = CStringGetDatum(uuidStr);
+		Oid uuidInFuncId = PostgresUUIDInFunctionId();
+		Datum uuidResult = OidFunctionCall1(uuidInFuncId, uuidDatum);
+
+		pg_uuid_t *uuid = DatumGetUUIDP(uuidResult);
+
+		result->value_type = BSON_TYPE_BINARY;
+		result->value.v_binary.subtype = BSON_SUBTYPE_UUID;
+		result->value.v_binary.data = (uint8_t *) palloc(16);
+		result->value.v_binary.data_len = 16;
+
+		memcpy(result->value.v_binary.data, uuid->data, 16);
+	}
+	PG_CATCH();
+	{
+		ErrorData *edata;
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
+							"Failed to parse BinData %s in $convert with no onError value: Invalid UUID string: %s",
+							uuidStr, uuidStr), errdetail_log(
+							"Failed to parse BinData as UUID with error: %s",
+							edata->message)));
+	}
+	PG_END_TRY();
 }
 
 

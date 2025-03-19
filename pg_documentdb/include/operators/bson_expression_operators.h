@@ -452,6 +452,8 @@ void HandlePreParsedDollarToObjectId(pgbson *doc, void *arguments,
 									 ExpressionResult *expressionResult);
 void HandlePreParsedDollarToString(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarToUUID(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult);
 void HandlePreParsedDollarToLower(pgbson *doc, void *arguments,
 								  ExpressionResult *expressionResult);
 void HandlePreParsedDollarToUpper(pgbson *doc, void *arguments,
@@ -800,6 +802,8 @@ void ParseDollarToObjectId(const bson_value_t *argument, AggregationExpressionDa
 						   ParseAggregationExpressionContext *context);
 void ParseDollarToString(const bson_value_t *argument, AggregationExpressionData *data,
 						 ParseAggregationExpressionContext *context);
+void ParseDollarToUUID(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context);
 void ParseDollarToLower(const bson_value_t *argument, AggregationExpressionData *data,
 						ParseAggregationExpressionContext *context);
 void ParseDollarToUpper(const bson_value_t *argument, AggregationExpressionData *data,

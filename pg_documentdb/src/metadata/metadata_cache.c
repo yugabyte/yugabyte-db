@@ -552,6 +552,9 @@ typedef struct DocumentDBApiOidCacheData
 	/* Oid of the extract_interval postgres function which extracts a given date part from interval. */
 	Oid PostgresDatePartFromInterval;
 
+	/* OID of the uuid_in postgres method which converts a string to uuid */
+	Oid PostgresUUIDInFunctionIdOid;
+
 	/* OID of Rum Index access methods */
 	Oid RumIndexAmId;
 
@@ -2574,6 +2577,16 @@ PostgresDatePartFromInterval(void)
 {
 	return GetPostgresInternalFunctionId(&Cache.PostgresDatePartFromInterval,
 										 "interval_part");
+}
+
+
+/*
+ * Returns the OID of the "uuid_in" internal postgres method
+ */
+Oid
+PostgresUUIDInFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresUUIDInFunctionIdOid, "uuid_in");
 }
 
 

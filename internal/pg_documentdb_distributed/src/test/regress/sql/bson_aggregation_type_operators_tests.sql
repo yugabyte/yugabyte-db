@@ -416,3 +416,18 @@ select *from bson_dollar_project('{}', '{"result": { "$toHashedIndexKey": {"$num
 select *from bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHashedIndexKey": "$tests.test" } }');
 select *from bson_dollar_project('{"tests": 3}', '{"result": { "$toHashedIndexKey": "$test" } }');
 select *from bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHashedIndexKey": "$tests.tes" } }');
+
+-- $toUUID tests
+-- equivalent $convert query should be tested after extended $convert syntax is supported
+-- positive tests
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": null }}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": "123e4567-e89b-12d3-a456-426614174000" }}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": ["123e4567-e89b-12d3-a456-426614174000"] }}');
+
+-- negative tests
+-- invalid string
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": "invalid-uuid-1234" }}');
+-- invalid type
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": 1234 }}');
+-- invalid count number of array input
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": ["123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000"] }}');

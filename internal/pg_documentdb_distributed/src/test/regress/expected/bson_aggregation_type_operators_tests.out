@@ -1646,3 +1646,34 @@ select *from bson_dollar_project('{"tests": {"test" : 5}}', '{"result": { "$toHa
  { "result" : { "$numberLong" : "4154612158245552303" } }
 (1 row)
 
+-- $toUUID tests
+-- equivalent $convert query should be tested after extended $convert syntax is supported
+-- positive tests
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": null }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": "123e4567-e89b-12d3-a456-426614174000" }}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Ej5FZ+ibEtOkVkJmFBdAAA==", "subType" : "04" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": ["123e4567-e89b-12d3-a456-426614174000"] }}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Ej5FZ+ibEtOkVkJmFBdAAA==", "subType" : "04" } } }
+(1 row)
+
+-- negative tests
+-- invalid string
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": "invalid-uuid-1234" }}');
+ERROR:  Failed to parse BinData invalid-uuid-1234 in $convert with no onError value: Invalid UUID string: invalid-uuid-1234
+-- invalid type
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": 1234 }}');
+ERROR:  Unsupported conversion from int to binData in $convert with no onError value
+-- invalid count number of array input
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": ["123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000"] }}');
+ERROR:  Expression $toUUID takes exactly 1 arguments. 2 were passed in.

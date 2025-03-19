@@ -174,6 +174,7 @@ Oid PostgresMakeIntervalFunctionId(void);
 Oid PostgresDateBinFunctionId(void);
 Oid PostgresAgeBetweenTimestamp(void);
 Oid PostgresDatePartFromInterval(void);
+Oid PostgresUUIDInFunctionId(void);
 
 /* Index AM */
 Oid RumIndexAmId(void);
