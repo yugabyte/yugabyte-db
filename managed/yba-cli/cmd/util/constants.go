@@ -185,6 +185,18 @@ const (
 	DeleteInProgressBackupState = "DeleteInProgress"
 )
 
+// Scopes of runtime configuration
+const (
+	// UniverseScope scope
+	UniverseScope = "UNIVERSE"
+	// ProviderScope scope
+	ProviderScope = "PROVIDER"
+	// CustomerScope scope
+	CustomerScope = "CUSTOMER"
+	// GlobalScope scope
+	GlobalScope = "GLOBAL"
+)
+
 // ScheduleBackupStates
 const (
 	// DeletingScheduleBackupState state

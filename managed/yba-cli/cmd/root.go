@@ -12,6 +12,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/customer"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
@@ -113,7 +114,10 @@ func init() {
 	rootCmd.AddCommand(rbac.RBACCmd)
 	rootCmd.AddCommand(user.UserCmd)
 	rootCmd.AddCommand(xcluster.XClusterCmd)
+	rootCmd.AddCommand(customer.CustomerCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
+
+	addGroupsCmd(rootCmd)
 
 	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
 
@@ -169,4 +173,62 @@ func initConfig() {
 		logrus.Debugf("Using config file: %s\n", viper.ConfigFileUsed())
 	}
 
+}
+
+func addGroupsCmd(rootCmd *cobra.Command) {
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "authentication",
+			Title: "Authentication Commands",
+		},
+	)
+
+	auth.AuthCmd.GroupID = "authentication"
+	auth.LoginCmd.GroupID = "authentication"
+	auth.RegisterCmd.GroupID = "authentication"
+	auth.HostCmd.GroupID = "authentication"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "integration",
+			Title: "Integration Commands",
+		},
+	)
+
+	ear.EARCmd.GroupID = "integration"
+	eit.EITCmd.GroupID = "integration"
+	provider.ProviderCmd.GroupID = "integration"
+	storageconfiguration.StorageConfigurationCmd.GroupID = "integration"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "universe",
+			Title: "Universe Operation Commands",
+		},
+	)
+
+	backup.BackupCmd.GroupID = "universe"
+	universe.UniverseCmd.GroupID = "universe"
+	xcluster.XClusterCmd.GroupID = "universe"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "access-management",
+			Title: "Access Management Commands",
+		},
+	)
+	customer.CustomerCmd.GroupID = "access-management"
+	user.UserCmd.GroupID = "access-management"
+	rbac.RBACCmd.GroupID = "access-management"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "advance",
+			Title: "Advance Commands",
+		},
+	)
+
+	runtimeconfiguration.RuntimeConfigurationCmd.GroupID = "advance"
+	release.ReleaseCmd.GroupID = "advance"
 }

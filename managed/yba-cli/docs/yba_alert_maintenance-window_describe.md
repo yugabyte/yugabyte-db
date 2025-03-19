@@ -1,28 +1,26 @@
-## yba runtime-config scope key set
+## yba alert maintenance-window describe
 
-Set a YugabyteDB Anywhere runtime configuration scope key value
+Describe a YugabyteDB Anywhere maintenance window
 
 ### Synopsis
 
-Set a runtime configuration scope key value in YugabyteDB Anywhere Run "yba runtime-config key-info list" to get the list of keys in a scope type.
+Describe a YugabyteDB Anywhere maintenance window
 
 ```
-yba runtime-config scope key set [flags]
+yba alert maintenance-window describe [flags]
 ```
 
 ### Examples
 
 ```
-yba runtime-config scope key set --uuid <scope> --name <key-name> --value <value>
+yba alert maintenance-window describe --uuid <maintenance-window-uuid>
 ```
 
 ### Options
 
 ```
-  -u, --uuid string    [Required] The scope UUID of the key to be set.
-  -n, --name string    [Required] The key name to be set.
-  -v, --value string   [Required] The value to be set.
-  -h, --help           help for set
+  -u, --uuid string   [Required] UUID of the maintenance window.
+  -h, --help          help for describe
 ```
 
 ### Options inherited from parent commands
@@ -41,5 +39,5 @@ yba runtime-config scope key set --uuid <scope> --name <key-name> --value <value
 
 ### SEE ALSO
 
-* [yba runtime-config scope key](yba_runtime-config_scope_key.md)	 - Manage YugabyteDB Anywhere runtime configuration scope keys
+* [yba alert maintenance-window](yba_alert_maintenance-window.md)	 - Manage YugabyteDB Anywhere maintenance window
 

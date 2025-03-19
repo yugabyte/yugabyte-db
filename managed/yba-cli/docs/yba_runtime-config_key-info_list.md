@@ -19,7 +19,8 @@ yba runtime-config key-info list
 ### Options
 
 ```
-  -h, --help   help for list
+      --type string   [Optional] Scope type. Allowed values: universe, customer, provider, global.
+  -h, --help          help for list
 ```
 
 ### Options inherited from parent commands

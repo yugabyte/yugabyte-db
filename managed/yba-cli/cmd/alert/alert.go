@@ -9,6 +9,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/channel"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/configuration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/destination"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/maintenancewindow"
 )
 
 // AlertCmd set of commands are used to perform operations on alerts
@@ -30,7 +31,10 @@ func init() {
 	AlertCmd.AddCommand(describeAlertCmd)
 	AlertCmd.AddCommand(countAlertCmd)
 	AlertCmd.AddCommand(acknowledgeAlertCmd)
+	AlertCmd.AddCommand(controlAlertCmd)
 	AlertCmd.AddCommand(configuration.ConfigurationAlertCmd)
 	AlertCmd.AddCommand(destination.DestinationAlertCmd)
 	AlertCmd.AddCommand(channel.ChannelAlertCmd)
+	AlertCmd.AddCommand(maintenancewindow.MaintenanceWindowCmd)
+
 }

@@ -23,8 +23,8 @@ yba alert channel email create --name <alert-channel-name> \
       --use-default-rececipients    [Optional] Use default recipients for alert channel. (default false)
       --recipients stringArray      [Optional] Recipients for alert channel. Can be provided as separate flags or as comma-separated values. Required when use-default-recipients is false
       --use-default-smtp-settings   [Optional] Use default SMTP settings for alert channel. Values of smtp-server, smtp-port, email-from, smtp-username, smtp-password, use-ssl, use-tls are used if false. (default false)
-      --smtp-server string          [Optional] SMTP server for alert channel. If smtp-server is empty, runtime configuration value "yb.health.default_smtp_server" is used.
-      --smtp-port int               [Optional] SMTP port for alert channel. If smtp-port is -1, runtime configuration value "yb.health.default_smtp_port" is used for non SSL connection and "yb.health.default_smtp_port_ssl" is used for SSL connection. (default -1)
+      --smtp-server string          [Optional] SMTP server for alert channel. Required when use-default-smtp-settings is false
+      --smtp-port int               [Optional] SMTP port for alert channel. Required when use-default-smtp-settings is false (default -1)
       --email-from string           [Optional] SMTP email 'from' address. Required when use-default-smtp-settings is false
       --smtp-username string        [Optional] SMTP username.
       --smtp-password string        [Optional] SMTP password.

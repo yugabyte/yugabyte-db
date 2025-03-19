@@ -19,7 +19,7 @@ yba runtime-config scope describe --uuid <scope>
 ### Options
 
 ```
-  -u, --uuid string   [Required] The scope UUID to be described.
+  -u, --uuid string   [Required] The scope UUID to be described. Run "yba [customer|universe|provider] list" to fetch UUID of the scope type.
   -h, --help          help for describe
 ```
 

@@ -27,7 +27,6 @@ var createEmailChannelAlertCmd = &cobra.Command{
   --use-default-recipients --use-default-smtp-settings`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		channelutil.ValidateChannelUtil(cmd, "create")
-
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 
@@ -89,9 +88,25 @@ var createEmailChannelAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
+			if server == "" {
+				logrus.Fatal(
+					formatter.Colorize(
+						"SMTP server is required when use-default-smtp-settings is false\n",
+						formatter.RedColor,
+					),
+				)
+			}
 			port, err := cmd.Flags().GetInt("smtp-port")
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if port == -1 {
+				logrus.Fatal(
+					formatter.Colorize(
+						"SMTP port is required when use-default-smtp-settings is false\n",
+						formatter.RedColor,
+					),
+				)
 			}
 			useSSL, err := cmd.Flags().GetBool("use-ssl")
 			if err != nil {
@@ -148,13 +163,22 @@ func init() {
 			"use-ssl, use-tls are used if false. (default false)")
 
 	createEmailChannelAlertCmd.Flags().String("smtp-server", "",
-		"[Optional] SMTP server for alert channel. "+
-			"If smtp-server is empty, runtime configuration value \"yb.health.default_smtp_server\" is used.",
+		fmt.Sprintf(
+			"[Optional] SMTP server for alert channel. %s",
+			formatter.Colorize(
+				"Required when use-default-smtp-settings is false",
+				formatter.GreenColor,
+			),
+		),
 	)
 	createEmailChannelAlertCmd.Flags().Int("smtp-port", -1,
-		"[Optional] SMTP port for alert channel. "+
-			"If smtp-port is -1, runtime configuration value \"yb.health.default_smtp_port\""+
-			" is used for non SSL connection and \"yb.health.default_smtp_port_ssl\" is used for SSL connection.",
+		fmt.Sprintf(
+			"[Optional] SMTP port for alert channel. %s",
+			formatter.Colorize(
+				"Required when use-default-smtp-settings is false",
+				formatter.GreenColor,
+			),
+		),
 	)
 	createEmailChannelAlertCmd.Flags().String("email-from", "",
 		fmt.Sprintf(

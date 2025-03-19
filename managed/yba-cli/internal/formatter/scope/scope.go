@@ -10,15 +10,25 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
-	defaultScopeListing = "table {{.UUID}}\t{{.Type}}\t{{.MutableScope}}"
+	defaultScopeListing = "table {{.UUID}}\t{{.Name}}\t{{.Type}}\t{{.MutableScope}}"
 
 	mutableScopeHeader    = "Mutable Scope"
 	numberOfConfigsHeader = "Number of Configurations"
 )
+
+// Customers list
+var Customers []ybaclient.Customer
+
+// Providers list
+var Providers []ybaclient.Provider
+
+// Universes list
+var Universes []ybaclient.UniverseResp
 
 // Context for scope outputs
 type Context struct {
@@ -80,6 +90,7 @@ func NewScopeContext() *Context {
 	scopeCtx.Header = formatter.SubHeaderContext{
 		"UUID":            formatter.UUIDHeader,
 		"Type":            formatter.TypeHeader,
+		"Name":            formatter.NameHeader,
 		"MutableScope":    mutableScopeHeader,
 		"NumberOfConfigs": numberOfConfigsHeader,
 	}
@@ -89,6 +100,34 @@ func NewScopeContext() *Context {
 // UUID fetches scope UUID
 func (c *Context) UUID() string {
 	return c.s.GetUuid()
+}
+
+// Name fetches scope name
+func (c *Context) Name() string {
+	switch c.s.GetType() {
+	case util.UniverseScope:
+		for _, universe := range Universes {
+			if universe.GetUniverseUUID() == c.s.GetUuid() {
+				return universe.GetName()
+			}
+		}
+
+	case util.CustomerScope:
+		for _, customer := range Customers {
+			if customer.GetUuid() == c.s.GetUuid() {
+				return customer.GetName()
+			}
+		}
+
+	case util.ProviderScope:
+		for _, provider := range Providers {
+			if provider.GetUuid() == c.s.GetUuid() {
+				return provider.GetName()
+			}
+
+		}
+	}
+	return "-"
 }
 
 // Type fetches scope type

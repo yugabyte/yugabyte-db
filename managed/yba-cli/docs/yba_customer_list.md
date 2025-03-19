@@ -1,28 +1,25 @@
-## yba runtime-config scope key set
+## yba customer list
 
-Set a YugabyteDB Anywhere runtime configuration scope key value
+List all YugabyteDB Anywhere customers
 
 ### Synopsis
 
-Set a runtime configuration scope key value in YugabyteDB Anywhere Run "yba runtime-config key-info list" to get the list of keys in a scope type.
+List all YugabyteDB Anywhere customers
 
 ```
-yba runtime-config scope key set [flags]
+yba customer list [flags]
 ```
 
 ### Examples
 
 ```
-yba runtime-config scope key set --uuid <scope> --name <key-name> --value <value>
+yba customer list
 ```
 
 ### Options
 
 ```
-  -u, --uuid string    [Required] The scope UUID of the key to be set.
-  -n, --name string    [Required] The key name to be set.
-  -v, --value string   [Required] The value to be set.
-  -h, --help           help for set
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -41,5 +38,5 @@ yba runtime-config scope key set --uuid <scope> --name <key-name> --value <value
 
 ### SEE ALSO
 
-* [yba runtime-config scope key](yba_runtime-config_scope_key.md)	 - Manage YugabyteDB Anywhere runtime configuration scope keys
+* [yba customer](yba_customer.md)	 - Manage YugabyteDB Anywhere customers
 

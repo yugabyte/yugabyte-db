@@ -66,17 +66,18 @@ func (fs *FullScopeContext) Write() error {
 	fs.PostFormat(tmpl, NewScopeContext())
 	fs.Output.Write([]byte("\n"))
 
-	// configEntries subSection
-	logrus.Debugf("Number of Config Entries: %d", len(fs.s.GetConfigEntries()))
-	fs.subSection("Configuration Entries")
-	for i, v := range fs.s.GetConfigEntries() {
-		configEntryContext := *NewConfigEntryContext()
-		configEntryContext.Output = os.Stdout
-		configEntryContext.Format = NewFullScopeFormat(viper.GetString("output"))
-		configEntryContext.SetConfigEntry(v)
-		configEntryContext.Write(i)
+	if len(fs.s.GetConfigEntries()) != 0 {
+		// configEntries subSection
+		logrus.Debugf("Number of Config Entries: %d", len(fs.s.GetConfigEntries()))
+		fs.subSection("Configuration Entries")
+		for i, v := range fs.s.GetConfigEntries() {
+			configEntryContext := *NewConfigEntryContext()
+			configEntryContext.Output = os.Stdout
+			configEntryContext.Format = NewFullScopeFormat(viper.GetString("output"))
+			configEntryContext.SetConfigEntry(v)
+			configEntryContext.Write(i)
+		}
 	}
-
 	return nil
 }
 

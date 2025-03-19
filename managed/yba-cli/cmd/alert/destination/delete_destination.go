@@ -91,7 +91,7 @@ var deleteDestinationAlertCmd = &cobra.Command{
 		}
 
 		if rDelete.GetSuccess() {
-			logrus.Info(fmt.Sprintf("The alert destination %s (%s) has been deleted",
+			logrus.Info(fmt.Sprintf("The alert destination %s (%s) has been deleted\n",
 				formatter.Colorize(destinationName, formatter.GreenColor), alertUUID))
 
 		} else {

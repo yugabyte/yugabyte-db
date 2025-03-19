@@ -1,32 +1,19 @@
-## yba alert count
+## yba alert maintenance-window
 
-Count YugabyteDB Anywhere alerts
+Manage YugabyteDB Anywhere maintenance window
 
 ### Synopsis
 
-Count alerts in YugabyteDB Anywhere
+Manage YugabyteDB Anywhere maintenance window
 
 ```
-yba alert count [flags]
-```
-
-### Examples
-
-```
-yba alert count
+yba alert maintenance-window [flags]
 ```
 
 ### Options
 
 ```
-      --configuration-uuid string    [Optional] Configuration UUID to filter alerts.
-      --configuration-types string   [Optional] Comma separated list of configuration types.
-      --severities string            [Optional] Comma separated list of severities. Allowed values: severe, warning.
-      --source-uuids string          [Optional] Comma separated list of source UUIDs.
-      --source-name string           [Optional] Source name to filter alerts.
-      --states string                [Optional] Comma separated list of states. Allowed values: active, acknowledged, suspended, resolved.
-      --uuids string                 [Optional] Comma separated list of alert UUIDs.
-  -h, --help                         help for count
+  -h, --help   help for maintenance-window
 ```
 
 ### Options inherited from parent commands
@@ -46,4 +33,9 @@ yba alert count
 ### SEE ALSO
 
 * [yba alert](yba_alert.md)	 - Manage YugabyteDB Anywhere alerts
+* [yba alert maintenance-window create](yba_alert_maintenance-window_create.md)	 - Create a maintenance window to suppress alerts
+* [yba alert maintenance-window delete](yba_alert_maintenance-window_delete.md)	 - Delete a YugabyteDB Anywhere maintenance window
+* [yba alert maintenance-window describe](yba_alert_maintenance-window_describe.md)	 - Describe a YugabyteDB Anywhere maintenance window
+* [yba alert maintenance-window list](yba_alert_maintenance-window_list.md)	 - List YugabyteDB Anywhere maintenance windows
+* [yba alert maintenance-window update](yba_alert_maintenance-window_update.md)	 - Update a maintenance window to suppress alerts
 

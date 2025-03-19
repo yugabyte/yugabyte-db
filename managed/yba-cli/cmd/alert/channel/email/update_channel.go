@@ -136,6 +136,15 @@ var updateEmailChannelAlertCmd = &cobra.Command{
 			logrus.Debug("Updating alert channel SMTP server\n")
 			smtpData.SetSmtpServer(server)
 
+			if smtpData.GetSmtpServer() == "" {
+				logrus.Fatalf(
+					formatter.Colorize(
+						"SMTP server is required when use-default-smtp-settings is false\n",
+						formatter.RedColor,
+					),
+				)
+			}
+
 			if cmd.Flags().Changed("smtp-port") {
 				port, err := cmd.Flags().GetInt("smtp-port")
 				if err != nil {

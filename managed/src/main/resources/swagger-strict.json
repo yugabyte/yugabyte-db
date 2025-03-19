@@ -32836,6 +32836,14 @@
             "in" : "query",
             "name" : "request",
             "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "ListMaintenanceWindowsRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindowApiFilter"
+            }
           }
         ],
         "responses" : {
