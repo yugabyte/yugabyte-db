@@ -3243,6 +3243,20 @@ void MasterPathHandlers::HandleStatefulServicesJson(
   jw.EndObject();
 }
 
+void MasterPathHandlers::HandleObjectLocksPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto ts_local_lock_manager = master_->catalog_manager_impl()
+                                      ->object_lock_info_manager()
+                                      ->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    output << "<h2>Could not locate the object lock manager...</h2>\n";
+    return;
+  }
+  ts_local_lock_manager->DumpLocksToHtml(output);
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   const bool is_styled = true;
   const bool is_on_nav_bar = true;
@@ -3295,6 +3309,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/stateful-services", "Stateful Services",
       &MasterPathHandlers::HandleStatefulServices, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/ObjectLockManager", "Object Lock Manager",
+      &MasterPathHandlers::HandleObjectLocksPage, is_styled);
 
   // JSON Endpoints
   RegisterLeaderOrRedirect(
