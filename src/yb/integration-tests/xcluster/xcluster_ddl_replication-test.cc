@@ -1318,6 +1318,80 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 }
 
+using XClusterDDLReplicationSetupTest = XClusterDDLReplicationSwitchoverTest;
+
+TEST_F(XClusterDDLReplicationSetupTest, ReplicationSetUpBumpsOidCounter) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  // The resulting statement will consume 100 pg_enum OIDs.
+  auto CreateGiantEnumStatement = [](std::string name) {
+    std::string result = Format("CREATE TYPE $0 AS ENUM ('l0'", name);
+    for (int i = 1; i < 100; i++) {
+      result += Format(", 'l$0'", i);
+    }
+    return result + ");";
+  };
+
+  google::SetVLOGLevel("catalog_manager*", 1);
+  google::SetVLOGLevel("pg_client_service*", 1);
+  google::SetVLOGLevel("xcluster_source_manager", 1);
+  // Cache only 30 OIDs at a time; see below for why this value was chosen.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_oid_cache_prefetch_size) = 30;
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+
+  // Create a giant enum on cluster A.
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute(CreateGiantEnumStatement("first_enum")));
+    // Backup requires at least one table so create one.
+    ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+  }
+
+  // Reset OID counters on A by backing up then restoring the database on cluster A.
+  ASSERT_OK(BackupFromProducer());
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(RestoreToConsumer());
+  SetReplicationDirection(ReplicationDirection::AToB);
+
+  // Allocate a few OIDs on A to force caching of normal space OIDs.
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE TABLE exercise_cache (x INT);"));
+  }
+
+  // Set up xCluster replication with a nonempty database.
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // At this point, in the absence of OID cache invalidation, we would still have OIDs cached on A
+  // from before replication was set up.  (Replication setup does create some objects, consuming
+  // OIDs, but not enough to exhaust the cache size of 30 we have set.)
+  //
+  // Importantly, we do not have enough OIDs cached to handle an entire giant enum.
+
+  {
+    // Drop via manual DDL replication the enum on only cluster A.
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute(R"(
+                     SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1;
+                     DROP TYPE first_enum;
+                     SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=0;)"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Now create a new giant enum via normal DDL replication.  If we did not bump up the normal
+    // space OID counter and invalidate on A then this will cause a OID collision on cluster B
+    // because the new enum on A will use OIDs freed up by dropping the previous enum but those OIDs
+    // are still in use on B because the previous enum still exists there.
+    ASSERT_OK(conn.Execute(CreateGiantEnumStatement("second_enum")));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+}
+
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
  public:
   void SetUp() override {

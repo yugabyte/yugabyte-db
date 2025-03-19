@@ -42,23 +42,19 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_catversions.h"
-#include "yb/master/ysql/ysql_manager_if.h"
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partial_row.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/tablespace_parser.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
-#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/retryable_requests.h"
@@ -66,26 +62,26 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/casts.h"
-#include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/split.h"
 
-#include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/rpc/thread_pool.h"
 
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -99,7 +95,6 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -161,8 +156,7 @@ DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
 DEFINE_test_flag(double, simulate_catalog_message_read_failure, 0.0,
                  "Inject random failure of pg_yb_invalidation_messages read from sys_catalog.");
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 namespace {
 
@@ -1685,6 +1679,75 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   return kPgInvalidOid;
 }
 
+Result<uint32_t> SysCatalogTable::ReadHighestNormalPreservableOid(uint32_t database_oid) {
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  LongOperationTracker long_operation_tracker("ReadHighestNormalPreservableOid", 3s);
+
+  // XCluster needs to be able preserve OIDs for pg_enum, pg_type, and pg_class; pg_class's
+  // relfilenodes needs to be kept distinct from its OIDs so we include those as well.
+  const std::vector<uint32_t> table_oids = {kPgEnumTableOid, kPgTypeTableOid, kPgClassTableOid};
+  uint32_t maximum_normal_oid = 0;
+  for (const auto table_oid : table_oids) {
+    auto read_data = VERIFY_RESULT(TableReadData(database_oid, table_oid, ReadHybridTime()));
+    const auto& schema = read_data.schema();
+
+    dockv::ReaderProjection projection;
+    const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+    const bool relfilenode_present = table_oid == kPgClassTableOid;
+    const auto relfilenode_col_id =
+        relfilenode_present ? VERIFY_RESULT(schema.ColumnIdByName("relfilenode")).rep() : 0;
+    if (relfilenode_present) {
+      projection.Init(schema, {oid_col_id, relfilenode_col_id});
+    } else {
+      projection.Init(schema, {oid_col_id});
+    }
+
+    auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+    {
+      const dockv::KeyEntryValues empty_key_components;
+      // We are doing a full table scan in the forward direction here because there is no index for
+      // relfilenode.
+      docdb::DocPgsqlScanSpec spec(
+          schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+          /*condition=*/nullptr, /*hash_code=*/std::nullopt,
+          /*max_hash_code=*/std::nullopt);
+      RETURN_NOT_OK(iter->Init(spec));
+    }
+
+    qlexpr::QLTableRow row;
+    while (VERIFY_RESULT(iter->FetchNext(&row))) {
+      const auto& oid_col = row.GetValue(oid_col_id);
+      SCHECK(
+          oid_col, IllegalState,
+          "Could not read oid column from table ID $0 from database ID $1:", read_data.table_id,
+          database_oid);
+      const uint32_t oid = oid_col->uint32_value();
+      if (oid < kPgUpperBoundNormalObjectId) {
+        maximum_normal_oid = std::max(maximum_normal_oid, oid);
+      } else if (!relfilenode_present) {
+        // Because OID is the primary key (ascending) for these tables, if we do not need to look at
+        // relfilenode, then we can exit as soon as we have seen an OID at or above
+        // kPgUpperBoundNormalObjectId.
+        break;
+      }
+
+      if (!relfilenode_present) {
+        continue;
+      }
+      const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+      SCHECK(
+          relfilenode_col, IllegalState,
+          "Could not read relfilenode column from table ID $0 from database ID $1:",
+          read_data.table_id, database_oid);
+      const uint32_t relfilenode = relfilenode_col->uint32_value();
+      if (relfilenode < kPgUpperBoundNormalObjectId) {
+        maximum_normal_oid = std::max(maximum_normal_oid, relfilenode);
+      }
+    }
+  }
+  return maximum_normal_oid;
+}
+
 Result<DbOidVersionToMessageListMap>
 SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
   if (RandomActWithProbability(FLAGS_TEST_simulate_catalog_message_read_failure)) {
@@ -2136,5 +2199,4 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> PgTableReadData::NewIterato
   return tablet->NewRowIterator(projection, read_hybrid_time, table_id);
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master
