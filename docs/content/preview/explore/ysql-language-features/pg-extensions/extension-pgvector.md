@@ -197,6 +197,8 @@ You can fine-tune HNSW indexing using the following parameters:
 * `m` - specifies the maximum number of connections per layer.
 * `ef_construction` - Specifies the size of the dynamic candidate list for constructing the graph.
 
+For example:
+
 ```sql
 CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops) WITH (m = 16, ef_construction = 128);
 ```
@@ -205,8 +207,8 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 ### Limitations
 
-1. Concurrent index creation is not supported yet.
-2. Partial indexes on vector columns are not supported yet.
+- Concurrent index creation is not supported yet.
+- Partial indexes on vector columns are not supported yet.
 
 ## Read more
 
