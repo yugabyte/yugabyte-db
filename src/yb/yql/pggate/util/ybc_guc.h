@@ -98,6 +98,14 @@ extern bool yb_binary_restore;
 extern bool yb_ignore_pg_class_oids;
 
 /*
+ * Guc variable to ignore requests to set relfilenode ids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_relfilenode will have no
+ * effect.
+ */
+extern bool yb_ignore_relfilenode_ids;
+
+/*
  * Set to true only for runs with EXPLAIN ANALYZE
  */
 extern bool yb_run_with_explain_analyze;

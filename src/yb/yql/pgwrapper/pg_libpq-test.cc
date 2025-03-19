@@ -4466,6 +4466,7 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_binary_restore = true"));
   ASSERT_OK(conn.Execute("SET yb_ignore_pg_class_oids = false"));
+  ASSERT_OK(conn.Execute("SET yb_ignore_relfilenode_ids = false"));
 
   uint32_t next_oid = 16384;
 
@@ -4477,20 +4478,30 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
       "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$0'::pg_catalog.oid)",
       next_oid++));
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
+
     // Restore table.
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(id int)", table));
 
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
     // Restore first index of the table.
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 on $1(id)", table, table));
 
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
     // Restore second index of the table.
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 on $1(id)", table, table));
   }
@@ -4498,6 +4509,8 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   // Turn off restore simulation and run regular "ALTER TABLE" operation.
   ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
+  ASSERT_OK(conn.Execute("SET yb_ignore_relfilenode_ids = true"));
+
   // This DDL used to show "Duplicate table" error due to OID collision because the OID
   // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
   // during table rewrite.

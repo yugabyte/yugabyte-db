@@ -2609,6 +2609,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_ignore_relfilenode_ids", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores requests to set relfilenode IDs in yb_binary_restore mode"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_relfilenode_ids,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Relaxes some internal sanity checks for system "
 						 "catalogs to allow creating them."),

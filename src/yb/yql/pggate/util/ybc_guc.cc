@@ -31,6 +31,8 @@ bool yb_binary_restore = false;
 
 bool yb_ignore_pg_class_oids = true;
 
+bool yb_ignore_relfilenode_ids = true;
+
 bool yb_pushdown_strict_inequality = true;
 
 bool yb_pushdown_is_not_null = true;

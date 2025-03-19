@@ -156,6 +156,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -248,6 +249,7 @@ END $$;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -338,6 +340,7 @@ END $$;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -377,6 +380,7 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -446,6 +450,7 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -485,6 +490,7 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;

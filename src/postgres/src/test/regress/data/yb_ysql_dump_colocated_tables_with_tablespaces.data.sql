@@ -7,6 +7,7 @@
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
