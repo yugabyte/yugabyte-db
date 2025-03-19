@@ -698,38 +698,38 @@ The type of LSN to use for the specified replication slot:
 
 ##### streaming.mode
 
-Specified whether the connector should use a single task mode to stream changes or multi task mode.
+Specifies whether the connector should stream changes using a single slot or multiple slots in parallel.
 
-* `default` uses the single task mode and streams all the changes using it.
-* `parallel` uses a multi task mode and streams changes using the number of specified replication slots.
+* `default` uses a single task to stream all changes.
+* `parallel` uses multi task mode and streams changes using the number of specified replication slots.
 
 {{< note title="Important" >}}
 
-When deploying the connector with `parallel` streaming mode, the user will need to ensure that the `table.include.list` only contains one table for which the streaming is supposed to happen in parallel.
+When deploying the connector using `parallel` streaming mode, you need to ensure that the `table.include.list` only contains one table for which the streaming is supposed to happen in parallel.
 
 {{< /note >}}
 
 {{< note title="Usage with snapshot" >}}
 
-If `snapshot.mode` is set to `initial` or `initial_only`, the user also needs to ensure that the configuration also contains a valid value for the configuration property `primary.key.hash.columns`.
+If `snapshot.mode` is set to `initial` or `initial_only`, you need to ensure that the configuration also contains a valid value for the configuration property `primary.key.hash.columns`.
 
 {{< /note >}}
 
 ##### slot.names
 
-A list of comma separated values of different slot names to be used by each task when using the `streaming.mode=parallel`.
+A list of slot names, provided as comma-separated values, to be used by each task when using `streaming.mode=parallel`.
 
 No default.
 
 {{< warning title="Warning" >}}
 
-The configuration `slot.names` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
+`slot.names` applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
 
 {{< /warning >}}
 
 ##### publication.names
 
-A list of comma separated values of different publication names to be used by each task when using the `streaming.mode=parallel`.
+A list of publication names, provided as comma-separated values, to be used by each task when using `streaming.mode=parallel`.
 
 No default.
 
@@ -741,7 +741,7 @@ The configuration `publication.names` is only supposed to be used when `streamin
 
 ##### slot.ranges
 
-A list of semi-colon separated values of different hash code ranges to be used by each task when using the `streaming.mode=parallel`.
+A range of slots to be used by each task when using `streaming.mode=parallel`, provided as tablet hash code ranges separated by semi colons.
 
 No default.
 
@@ -751,7 +751,7 @@ The configuration `slot.ranges` is only supposed to be used when `streaming.mode
 
 {{< /warning >}}
 
-For example, suppose we have a table with 3 tablets where the tablets have hash ranges as `[0,21845)`, `[21845,43690)` and `[43690,65536)` then the value for this configuration would be `slot.ranges=0,21845;21845,43690;43690,65536`.
+For example, suppose you have a table with 3 tablets where the tablets have hash ranges of `[0,21845)`, `[21845,43690)`, and `[43690,65536)`. The value for this configuration would be `slot.ranges=0,21845;21845,43690;43690,65536`.
 
 ##### primary.key.hash.columns
 
@@ -759,7 +759,7 @@ The columns of the table which consitute the hash part of the primary key.
 
 {{< note title="Use only with parallel streaming mode" >}}
 
-This configuration is only supposed to be used when `streaming.mode` is set to `parallel`.
+This property is only valid when `streaming.mode` is set to `parallel`.
 
 {{< /note >}}
 
