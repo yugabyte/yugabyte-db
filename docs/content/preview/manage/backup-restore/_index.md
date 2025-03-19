@@ -55,7 +55,7 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     icon="fa-light fa-camera">}}
 
   {{<index/item
-    title="Point-in-time recovery"
+    title="Point in time recovery"
     body="Restore data to a particular point in time."
     href="point-in-time-recovery/"
     icon="fa-light fa-timeline-arrow">}}
@@ -64,6 +64,12 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Instant database cloning"
     body="Clone a database for data recovery, development, and testing."
     href="instant-db-cloning/"
+    icon="fa-solid fa-clone">}}
+
+  {{<index/item
+    title="Point in time query"
+    body="Query data as at a specific point in time."
+    href="point-in-time-query/"
     icon="fa-solid fa-clone">}}
 
 {{</index/block>}}

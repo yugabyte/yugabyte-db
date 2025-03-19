@@ -1042,6 +1042,12 @@ The time interval, in seconds, to retain history/older versions of data. Point-i
 
 Default: `900` (15 minutes)
 
+##### --timestamp_syscatalog_history_retention_interval_sec
+
+The time interval, in seconds, to retain history/older versions of the system catalog.
+
+Default: `900` (15 minutes)
+
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
@@ -1894,6 +1900,16 @@ Enables skipping updates to columns that are part of secondary indexes and const
 This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
 
 Default: true
+
+##### yb_read_time
+
+Enables [point in time queries](../../../manage/backup-restore/point-in-time-query/) by sepcifying a unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. When set, all the read queries in the current session will read the data as of `yb_read_time`. Other YSQL sessions are not affected.
+
+To reset the session to normal behavior (current time), set `yb_read_time` to 0.
+
+Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
+
+Default: 0
 
 ## Admin UI
 
