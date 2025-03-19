@@ -657,6 +657,7 @@ typedef struct {
   uint64_t last_pub_refresh_time;
   const char *yb_lsn_type;
   uint64_t active_pid;
+  bool expired;
 } YbcReplicationSlotDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in

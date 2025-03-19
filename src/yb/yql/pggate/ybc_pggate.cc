@@ -2560,6 +2560,7 @@ YbcStatus YBCPgListReplicationSlots(
           .last_pub_refresh_time = info.last_pub_refresh_time(),
           .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
           .active_pid = info.active_pid(),
+          .expired = info.expired(),
       };
       ++dest;
     }
@@ -2615,6 +2616,7 @@ YbcStatus YBCPgGetReplicationSlot(
       .last_pub_refresh_time = slot_info.last_pub_refresh_time(),
       .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
       .active_pid = slot_info.active_pid(),
+      .expired = slot_info.expired(),
   };
 
   return YBCStatusOK();

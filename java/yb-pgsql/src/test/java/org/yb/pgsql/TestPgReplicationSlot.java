@@ -3618,7 +3618,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
-  public void testActivePidPopulationOnStreamRestart() throws Exception {
+  public void testActivePidAndWalStatusPopulationOnStreamRestart() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");
@@ -3695,6 +3695,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertTrue(res2.next());
       activePid2 = res2.getInt("active_pid");
       assertTrue(res2.getBoolean("active"));
+      String status = res2.getString("wal_status");
+      assertEquals("reserved", status);
 
       res2.close();
       assertEquals(activePid1, activePid2);
@@ -3817,6 +3819,39 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       res2.close();
       assertEquals(xmin2, xmin1);
+    }
+    conn.close();
+  }
+
+  @Test
+  public void testWalStatusLost() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put("cdc_intent_retention_ms", "0");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    String slotName = "test_logical_replication_slot";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+      conn.unwrap(PGConnection.class).getReplicationAPI();
+    replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName(slotName)
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res1 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      assertTrue(res1.next());
+      String status = res1.getString("wal_status");
+      assertEquals("lost", status);
     }
     conn.close();
   }

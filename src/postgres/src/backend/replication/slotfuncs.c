@@ -382,6 +382,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		bool		yb_stream_active;
 		uint64		yb_restart_commit_ht;
 		const char *yb_lsn_type;
+		bool        yb_stream_expired;
 
 		if (IsYugaByteEnabled())
 		{
@@ -393,6 +394,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
 			yb_lsn_type = slot->yb_lsn_type;
+			yb_stream_expired = slot->expired;
 
 			slot_contents.data.restart_lsn = slot->restart_lsn;
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
@@ -477,9 +479,16 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 		if (IsYugaByteEnabled())
 		{
-			/* YB_TODO: Correctly set the walstate based on slot expiry. */
-			walstate = WALAVAIL_REMOVED;
-			values[i++] = CStringGetTextDatum("lost");
+			if (yb_stream_expired)
+			{
+				values[i++] = CStringGetTextDatum("lost");
+				walstate = WALAVAIL_REMOVED;
+			}
+			else
+			{
+				values[i++] = CStringGetTextDatum("reserved");
+				walstate = WALAVAIL_RESERVED;
+			}
 		}
 		else
 		{

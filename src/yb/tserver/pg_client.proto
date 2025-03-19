@@ -599,6 +599,7 @@ message PgReplicationSlotInfoPB {
   string output_plugin_name = 11;
   PGReplicationSlotLsnType yb_lsn_type = 12;
   uint64 active_pid = 13;
+  bool expired = 14;
 }
 
 message PgListReplicationSlotsResponsePB {

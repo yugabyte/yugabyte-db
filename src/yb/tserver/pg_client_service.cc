@@ -140,6 +140,7 @@ DEFINE_RUNTIME_uint64(ysql_cdc_active_replication_slot_window_ms, 60000,
                       "actively used. ReplicationSlots which haven't been used in this interval are"
                       "considered to be inactive.");
 TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
+DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
@@ -1310,11 +1311,29 @@ class PgClientServiceImpl::Impl {
       auto replication_slot = resp->mutable_replication_slots()->Add();
       replication_slot->set_yb_lsn_type(stream.replication_slot_lsn_type);
       stream.ToPB(replication_slot);
+      auto it = stream_to_latest_active_time.find(*stream_id);
+      auto last_active_time_micros = (it != stream_to_latest_active_time.end()) ? it->second : 0;
       auto is_stream_active =
-          current_time - stream_to_latest_active_time[*stream_id] <=
+          current_time - last_active_time_micros <=
           1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+
+      auto expiration_threshold_micros =
+          static_cast<int64_t>(1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+      int64_t idle_duration_micros;
+      // If the active time has not been set yet implying no tables are present in the database
+      // we use the consistent snapshot time to check if the slot/stream has expired or not
+      if (!stream_to_latest_active_time.contains(*stream_id)) {
+        idle_duration_micros =
+            current_time -
+            HybridTime(stream_to_metadata[*stream_id].second.second).GetPhysicalValueMicros();
+      } else {
+        idle_duration_micros = current_time - stream_to_latest_active_time[*stream_id];
+      }
+
+      auto is_stream_expired = idle_duration_micros > expiration_threshold_micros;
+      replication_slot->set_expired(is_stream_expired);
 
       if (stream_to_metadata.contains(*stream_id)) {
         auto slot_metadata = stream_to_metadata[*stream_id];
@@ -1375,9 +1394,10 @@ class PgClientServiceImpl::Impl {
     uint64_t record_id_commit_time_ht;
     uint64_t last_pub_refresh_time = 0;
     uint64_t active_pid = 0;
+    bool is_stream_expired;
     RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
         stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
-        &record_id_commit_time_ht, &last_pub_refresh_time, &active_pid));
+        &record_id_commit_time_ht, &last_pub_refresh_time, &active_pid, &is_stream_expired));
     resp->mutable_replication_slot_info()->set_replication_slot_status(
         (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
@@ -1395,13 +1415,14 @@ class PgClientServiceImpl::Impl {
     slot_info->set_record_id_commit_time_ht(record_id_commit_time_ht);
     slot_info->set_last_pub_refresh_time(last_pub_refresh_time);
     slot_info->set_active_pid(active_pid);
+    slot_info->set_expired(is_stream_expired);
     return Status::OK();
   }
 
   Status GetReplicationSlotInfoFromCDCState(
       const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
       uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
-      uint64_t* last_pub_refresh_time, uint64_t* active_pid) {
+      uint64_t* last_pub_refresh_time, uint64_t* active_pid, bool* expired) {
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
@@ -1459,6 +1480,15 @@ class PgClientServiceImpl::Impl {
     *DCHECK_NOTNULL(active) =
         GetCurrentTimeMicros() - last_activity_time_micros <=
         1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+
+    auto commit_idle_duration_micros =
+        GetCurrentTimeMicros() - HybridTime(*record_id_commit_time_ht).GetPhysicalValueMicros();
+    auto last_activity_idle_duration_micros = GetCurrentTimeMicros() - last_activity_time_micros;
+    auto expiration_threshold_micros = 1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms);
+    *DCHECK_NOTNULL(expired) =
+        (last_activity_time_micros == 0)
+            ? (commit_idle_duration_micros > expiration_threshold_micros)
+            : (last_activity_idle_duration_micros > expiration_threshold_micros);
     return Status::OK();
   }
 
