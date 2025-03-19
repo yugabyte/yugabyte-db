@@ -190,18 +190,18 @@ Supported types are:
 
 * `vector`
 
-### Index Options
+### Index options
 
 HNSW indexing in YugabyteDB allows fine-tuning with the following parameters:
 
-* `m`- the max number of connections per layer
-* `ef_construction`- the size of the dynamic candidate list for constructing the graph
+* `m` - specifies the maximum number of connections per layer.
+* `ef_construction` - Specifies the size of the dynamic candidate list for constructing the graph.
 
 ```sql
 CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops) WITH (m = 16, ef_construction = 128);
 ```
 
-A higher value of `ef_construction` provides better recall at the cost of index build time / insert speed.
+A higher `ef_construction` value provides faster recall at the cost of index build time / insert speed.
 
 ### Limitations
 
