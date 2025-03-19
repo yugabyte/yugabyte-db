@@ -176,6 +176,14 @@ int od_auth_query(od_client_t *client, char *peer)
 
 	/* preformat and execute query */
 	char *query = malloc(yb_max_query_size + 1);
+	if (query == NULL) {
+		od_debug(&instance->logger, "auth_query", auth_client, server,
+			 "failed to allocate memory for auth query");
+		od_router_close(router, auth_client);
+		od_router_unroute(router, auth_client);
+		od_client_free(auth_client);
+		return NOT_OK_RESPONSE;
+	}
 	query[yb_max_query_size] = '\0';
 	char *format_pos = rule->auth_query;
 	char *format_end = rule->auth_query + strlen(rule->auth_query);
