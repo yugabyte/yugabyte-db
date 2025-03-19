@@ -69,6 +69,7 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/locks.h"
@@ -249,8 +250,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
-  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data)
-      EXCLUDES(lock_);
+  void SetYsqlDBCatalogVersions(const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
+      EXCLUDES(lock_) override;
   void SetYsqlDBCatalogInvalMessages(
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
       EXCLUDES(lock_);

@@ -631,7 +631,11 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      DoReleaseObjectLocksIfNecessary(txn_id);
+      WARN_NOT_OK(
+          background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
+            DoReleaseObjectLocksIfNecessary(txn_id);
+          }),
+          Format("Failed to submit task for releasing exclusive object locks of txn $0", txn_id));
     } else {
       VLOG(1) << "DDL Verification state for " << txn_id << " has "
               << tables.size() << " tables remaining";

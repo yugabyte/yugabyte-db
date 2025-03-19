@@ -19,6 +19,11 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tablet_server-test-base.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/sync_point.h"
@@ -38,17 +43,23 @@ constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 
-class TSLocalLockManagerTest : public YBTest {
+class TSLocalLockManagerTest : public tserver::TabletServerTestBase {
  protected:
-  TSLocalLockManagerTest() : lm_(new server::HybridClock()) {
-    lm_.TEST_MarkBootstrapped();
+  TSLocalLockManagerTest() {
+    auto ts = TabletServerTestBase::CreateMiniTabletServer();
+    CHECK_OK(ts);
+    mini_server_.reset(ts->release());
+    lm_ = std::make_unique<tserver::TSLocalLockManager>(
+        new server::HybridClock(), mini_server_->server());
+    lm_->TEST_MarkBootstrapped();
   }
 
-  tserver::TSLocalLockManager lm_;
+  std::unique_ptr<tserver::MiniTabletServer> mini_server_;
+  std::unique_ptr<tserver::TSLocalLockManager> lm_;
 
   void SetUp() override {
     YBTest::SetUp();
-    ASSERT_OK(lm_.clock()->Init());
+    ASSERT_OK(lm_->clock()->Init());
   }
 
   Status LockObjects(
@@ -64,7 +75,7 @@ class TSLocalLockManagerTest : public YBTest {
       lock->set_object_oid(object_ids[i]);
       lock->set_lock_type(lock_types[i]);
     }
-    return lm_.AcquireObjectLocks(req, deadline);
+    return lm_->AcquireObjectLocks(req, deadline);
   }
 
   Status LockObject(
@@ -77,7 +88,7 @@ class TSLocalLockManagerTest : public YBTest {
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
-    return lm_.ReleaseObjectLocks(req, deadline);
+    return lm_->ReleaseObjectLocks(req, deadline);
   }
 
   Status ReleaseAllLocksForTxn(
@@ -85,15 +96,15 @@ class TSLocalLockManagerTest : public YBTest {
     tserver::ReleaseObjectLockRequestPB req;
     req.set_txn_id(owner.txn_id.data(), owner.txn_id.size());
     req.set_subtxn_id(owner.subtxn_id);
-    return lm_.ReleaseObjectLocks(req, deadline);
+    return lm_->ReleaseObjectLocks(req, deadline);
   }
 
   size_t GrantedLocksSize() const {
-    return lm_.TEST_GrantedLocksSize();
+    return lm_->TEST_GrantedLocksSize();
   }
 
   size_t WaitingLocksSize() const {
-    return lm_.TEST_WaitingLocksSize();
+    return lm_->TEST_WaitingLocksSize();
   }
 };
 

@@ -19,6 +19,7 @@
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_fwd.h"
 
 namespace yb::master {
 
@@ -116,6 +117,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
   bool SkipCatalogVersionChecks() override;
+
+  void SetYsqlDBCatalogVersions(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
 
   const std::string& permanent_uuid() const override;
 

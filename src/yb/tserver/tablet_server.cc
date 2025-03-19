@@ -90,6 +90,7 @@
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
@@ -360,7 +361,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
   }
   if (opts.server_type == TabletServerOptions::kServerType &&
       PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_);
+    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
   } else {
     ts_local_lock_manager_ = nullptr;
   }
@@ -784,7 +785,7 @@ void TabletServer::Shutdown() {
 
 tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
   std::lock_guard l(lock_);
-  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_);
+  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
   return ts_local_lock_manager_;
 }
 
@@ -1061,7 +1062,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 }
 
 void TabletServer::SetYsqlDBCatalogVersions(
-  const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  const tserver::DBCatalogVersionDataPB& db_catalog_version_data) {
   DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
   std::lock_guard l(lock_);
 

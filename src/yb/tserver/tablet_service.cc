@@ -98,6 +98,7 @@
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_fwd.h"

@@ -2965,8 +2965,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void RemoveNamespaceFromMaps(
       YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) EXCLUDES(mutex_);
 
-  void DoReleaseObjectLocksIfNecessary(
-      const TransactionId& txn_id) REQUIRES(ddl_txn_verifier_mutex_);
+  void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

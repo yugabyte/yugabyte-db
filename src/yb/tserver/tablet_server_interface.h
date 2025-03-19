@@ -28,7 +28,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
@@ -139,6 +139,9 @@ class TabletServerIf : public LocalTabletServer {
   virtual const std::string& permanent_uuid() const = 0;
 
   virtual Result<std::string> GetUniverseUuid() const = 0;
+
+  virtual void SetYsqlDBCatalogVersions(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data) = 0;
 };
 
 } // namespace tserver
