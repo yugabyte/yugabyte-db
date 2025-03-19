@@ -1,7 +1,7 @@
 ---
 title: Query at a point in time
-headerTitle: Point in time query
-linkTitle: Point in time query
+headerTitle: Point-in-time query
+linkTitle: Point-in-time query
 description: Read data at a specific point in time for data recovery and analysis.
 tags:
   feature: tech-preview
@@ -13,16 +13,16 @@ menu:
 type: docs
 ---
 
-Use point in time queries to read data as it was at a specific point in time, within a configurable retention period. This includes reading data that has been changed or deleted. Use point in time queries for the following:
+Use point-in-time queries to read data as it was at a specific point in time, within a configurable retention period. This includes reading data that has been changed or deleted. Use point-in-time queries for the following:
 
 - Read rows that have been deleted by mistake. Restore the rows by exporting the result of the query and then importing it back into the database.
 - Analyze trends and data changes over time.
 
-## Configure point in time queries
+## Configure point-in-time queries
 
 ### Set the history retention interval
 
-As with [point in time recovery](../point-in-time-recovery/), the history retention period (that is, the period available for historical queries) is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace.
+As with [point-in-time recovery](../point-in-time-recovery/), the history retention period (that is, the period available for historical queries) is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace.
 
 In addition, you must also set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query.
 
@@ -32,7 +32,7 @@ The default retention period is 900 seconds (15 minutes).
 
 ### Set the read time
 
-To enable point in time queries, set the `yb_read_time` YSQL configuration parameter to specify the timestamp at which you want to read your queries. `yb_read_time` takes a unix timestamp in microseconds, which allows you to read data at up to microsecond precision. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session.
+To enable point-in-time queries, set the `yb_read_time` YSQL configuration parameter to specify the timestamp at which you want to read your queries. `yb_read_time` takes a unix timestamp in microseconds, which allows you to read data at up to microsecond precision. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session.
 
 Suppose the current point in time is `Mar-13-2025 13:00:00`, and you want to read the data as of timestamp `Mar-13-2025 09:48:46` (which corresponds to unix timestamp `1741909726000000`). Set the read time as follows:
 
@@ -81,7 +81,7 @@ The following example shows how you can use point-in-time queries to recover acc
     (10 rows)
     ```
 
-1. Determine the exact time when your database is in the correct state. You will use this timestamp as the read timestamp for the point in time query. Use the following query to retrieve the current time in UNIX timestamp format:
+1. Determine the exact time when your database is in the correct state. You will use this timestamp as the read timestamp for the point-in-time query. Use the following query to retrieve the current time in UNIX timestamp format:
 
     ```sql
     SELECT (EXTRACT (EPOCH FROM CURRENT_TIMESTAMP)*1000000)::decimal(38,0);
@@ -188,4 +188,4 @@ The following example shows how you can use point-in-time queries to recover acc
     (10 rows)
     ```
 
-In cases where the deletion affected many tables in the database, you can use point in time queries to read the deleted rows for every table. Alternatively, you can use [database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.
+In cases where the deletion affected many tables in the database, you can use point-in-time queries to read the deleted rows for every table. Alternatively, you can use [database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.
