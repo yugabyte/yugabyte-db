@@ -6680,7 +6680,7 @@ yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
 
 	root->yb_cur_batched_relids = NULL;
 
-	int			num_outer_tuples = get_loop_count(root, path_relid,
+	double		num_outer_tuples = get_loop_count(root, path_relid,
 												  other_varnos);
 
 	root->yb_cur_batched_relids = batched_relids;
