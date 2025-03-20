@@ -375,6 +375,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     std::optional<PgClientServiceMockImpl> mock;
   };
 
+  Result<std::string> GetUniverseUuid() const override;
+
  protected:
   virtual Status RegisterServices();
 

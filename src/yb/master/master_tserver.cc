@@ -217,5 +217,10 @@ Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const
   return STATUS_FORMAT(InternalError, "Unexpected call of GetMetrics()");
 }
 
+Result<std::string> MasterTabletServer::GetUniverseUuid() const {
+  LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
+}
+
 } // namespace master
 } // namespace yb

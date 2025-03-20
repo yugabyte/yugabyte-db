@@ -12,6 +12,8 @@
 //
 
 #include <string>
+#include <vector>
+
 #pragma once
 
 namespace yb {
@@ -80,6 +82,22 @@ struct YBTabletServerPlacementInfo {
     pb->set_is_primary(is_primary);
     pb->set_public_ip(public_ip);
     pb->set_pg_port(pg_port);
+  }
+};
+
+struct TabletServersInfo {
+  std::vector<YBTabletServerPlacementInfo> tablet_servers;
+  std::string universe_uuid;
+
+  template <class PB>
+  static TabletServersInfo FromPB(const PB& pb) {
+    TabletServersInfo info;
+    info.universe_uuid = pb.universe_uuid();
+    info.tablet_servers.reserve(pb.servers().size());
+    for (const auto& server : pb.servers()) {
+      info.tablet_servers.push_back(YBTabletServerPlacementInfo::FromPB(server));
+    }
+    return info;
   }
 };
 

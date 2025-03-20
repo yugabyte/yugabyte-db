@@ -1037,10 +1037,11 @@ class PgClientServiceImpl::Impl {
   Status ListLiveTabletServers(
       const PgListLiveTabletServersRequestPB& req, PgListLiveTabletServersResponsePB* resp,
       rpc::RpcContext* context) {
-    auto tablet_servers = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
-    for (const auto& server : tablet_servers) {
+    auto tablet_servers_info = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
+    for (const auto& server : tablet_servers_info.tablet_servers) {
       server.ToPB(resp->mutable_servers()->Add());
     }
+    resp->set_universe_uuid(VERIFY_RESULT(tablet_server_.GetUniverseUuid()));
     return Status::OK();
   }
 

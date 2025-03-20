@@ -1954,7 +1954,7 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
-  const auto &servers_info = result.get();
+  const auto &servers_info = result.get().tablet_servers;
   *count = servers_info.size();
   *servers = NULL;
   if (!servers_info.empty()) {
@@ -1971,6 +1971,7 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
         .is_primary = info.is_primary,
         .pg_port = info.pg_port,
         .uuid = YBCPAllocStdString(info.server.uuid),
+        .universe_uuid = YBCPAllocStdString(result.get().universe_uuid),
       };
       ++dest;
     }

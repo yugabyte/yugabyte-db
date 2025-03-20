@@ -110,6 +110,8 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const = 0;
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
+
+  virtual Result<std::string> GetUniverseUuid() const = 0;
 };
 
 } // namespace tserver

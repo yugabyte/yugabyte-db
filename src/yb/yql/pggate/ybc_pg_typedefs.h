@@ -424,6 +424,7 @@ typedef struct PgServerDescriptor {
   bool is_primary;
   uint16_t pg_port;
   const char *uuid;
+  const char *universe_uuid;
 } YBCServerDescriptor;
 
 typedef struct PgColumnInfo {

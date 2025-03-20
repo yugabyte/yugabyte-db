@@ -1585,4 +1585,8 @@ Result<std::vector<TserverMetricsInfoPB>> TabletServer::GetMetrics() const {
   return result;
 }
 
+Result<std::string> TabletServer::GetUniverseUuid() const {
+  return fs_manager_->GetUniverseUuidFromTserverInstanceMetadata();
+}
+
 }  // namespace yb::tserver

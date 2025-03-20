@@ -105,6 +105,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
+  Result<std::string> GetUniverseUuid() const override;
+
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

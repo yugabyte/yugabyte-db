@@ -510,6 +510,7 @@ message PgGetIndexBackfillProgressResponsePB {
 message PgListLiveTabletServersResponsePB {
   AppStatusPB status = 1;
   repeated PgLiveTabletServerPB servers = 2;
+  string universe_uuid = 3;
 }
 
 message PgListReplicationSlotsRequestPB {}
