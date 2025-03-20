@@ -737,6 +737,13 @@ extern bool yb_enable_inplace_index_update;
  */
 extern bool yb_enable_advisory_locks;
 
+/*
+ * Enable invalidation messages.
+ */
+extern bool yb_enable_invalidation_messages;
+extern int yb_invalidation_message_expiration_secs;
+extern int yb_max_num_invalidation_messages;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool		has_infra;

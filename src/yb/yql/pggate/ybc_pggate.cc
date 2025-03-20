@@ -173,9 +173,7 @@ DEFINE_RUNTIME_PREVIEW_bool(
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_yb_enable_invalidation_messages);
-DECLARE_int32(TEST_yb_invalidation_message_expiration_secs);
-DECLARE_int32(TEST_yb_max_num_invalidation_messages);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_enable_inheritance);
 
@@ -2258,12 +2256,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
-      .TEST_yb_enable_invalidation_messages =
-          &FLAGS_TEST_yb_enable_invalidation_messages,
-      .TEST_yb_invalidation_message_expiration_secs =
-          &FLAGS_TEST_yb_invalidation_message_expiration_secs,
-      .TEST_yb_max_num_invalidation_messages =
-          &FLAGS_TEST_yb_max_num_invalidation_messages,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
       .ysql_enable_inheritance =

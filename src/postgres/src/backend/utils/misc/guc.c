@@ -3266,6 +3266,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable invalidation messages"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_invalidation_messages,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -5162,6 +5173,30 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_test_delay_after_applying_inval_message_ms,
 		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Invalidation messages expiration time in catalog table "
+						 "pg_yb_invalidation_messages."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_invalidation_message_expiration_secs,
+		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_max_num_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Max number of invalidation messages supported for incremental "
+						 "catalog cache refresh."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_max_num_invalidation_messages,
+		4096, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

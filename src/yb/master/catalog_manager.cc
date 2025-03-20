@@ -10157,7 +10157,7 @@ CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
 
 Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
     bool use_cache) {
-  if (!FLAGS_TEST_yb_enable_invalidation_messages ||
+  if (!FLAGS_ysql_yb_enable_invalidation_messages ||
       !FLAGS_ysql_enable_db_catalog_version_mode ||
       !catalog_version_table_in_perdb_mode_) {
     return DbOidVersionToMessageListMap();
@@ -13283,7 +13283,7 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
     changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
   }
-  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
     // Maybe last time invalidation messages refresh failed, read it again.
     if (!changed) {
       SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);

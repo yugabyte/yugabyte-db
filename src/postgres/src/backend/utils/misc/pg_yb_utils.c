@@ -1083,7 +1083,7 @@ YBOnPostgresBackendShutdown()
 void
 YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 {
-	if (!*YBCGetGFlags()->TEST_yb_enable_invalidation_messages)
+	if (!yb_enable_invalidation_messages)
 		return;
 
 	/*
@@ -2036,6 +2036,9 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_enable_advisory_locks = false;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+bool		yb_enable_invalidation_messages = false;
+int			yb_invalidation_message_expiration_secs = 10;
+int			yb_max_num_invalidation_messages = 4096;
 
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
@@ -2467,8 +2470,7 @@ YBCommitTransactionContainingDDL()
 		 * we may have missed some invalidation messages associated with them.
 		 */
 		bool enable_inval_msgs =
-			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
-			ddl_transaction_state.num_committed_pg_txns == 0;
+			yb_enable_invalidation_messages && ddl_transaction_state.num_committed_pg_txns == 0;
 		if (enable_inval_msgs)
 		{
 			/*
@@ -2516,7 +2518,7 @@ YBCommitTransactionContainingDDL()
 			nmsgs = numCatCacheMsgs + numRelCacheMsgs;
 			if (nmsgs > 0)
 			{
-				int max_allowed = *YBCGetGFlags()->TEST_yb_max_num_invalidation_messages;
+				int max_allowed = yb_max_num_invalidation_messages;
 				if (nmsgs > max_allowed)
 				{
 					elog(LOG, "too many messages: %d, max allowed %d", nmsgs, max_allowed);
@@ -2602,7 +2604,7 @@ YBCommitTransactionContainingDDL()
 	 */
 	if (increment_done)
 	{
-		if (*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
+		if (yb_enable_invalidation_messages &&
 			database_oid == MyDatabaseId && YBIsDBCatalogVersionMode())
 		{
 			const uint64_t new_version = YbGetNewCatalogVersion();

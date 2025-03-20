@@ -366,8 +366,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
-	if (*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
-		YBIsDBCatalogVersionMode())
+	if (yb_enable_invalidation_messages && YBIsDBCatalogVersionMode())
 	{
 		Oid func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
 									 : YbGetNewIncrementCatalogVersionFunctionOid();
@@ -376,8 +375,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 			YbResetNewCatalogVersion();
 			bool is_null = false;
 			Datum messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
-			int expiration_secs =
-				*YBCGetGFlags()->TEST_yb_invalidation_message_expiration_secs;
+			int expiration_secs = yb_invalidation_message_expiration_secs;
 			if (is_global_ddl)
 			{
 				/*

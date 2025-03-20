@@ -601,7 +601,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
       String enable_invalidation_messages = miniCluster.getClient().getFlag(
             miniCluster.getTabletServers().keySet().iterator().next(),
-            "TEST_yb_enable_invalidation_messages");
+            "ysql_yb_enable_invalidation_messages");
       LOG.info("enable_invalidation_messages: " + enable_invalidation_messages);
 
       // Now repeat the same test as above, but start a transaction in stmt2 in

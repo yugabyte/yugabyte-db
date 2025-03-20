@@ -500,7 +500,7 @@ Status HeartbeatPoller::TryHeartbeat() {
                           << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
       server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
-      if (FLAGS_TEST_yb_enable_invalidation_messages) {
+      if (FLAGS_ysql_yb_enable_invalidation_messages) {
         if (last_hb_response_.has_db_catalog_inval_messages_data()) {
           server_.SetYsqlDBCatalogInvalMessages(
               last_hb_response_.db_catalog_inval_messages_data());
