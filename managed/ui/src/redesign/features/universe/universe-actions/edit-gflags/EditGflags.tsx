@@ -22,7 +22,8 @@ import {
   getCurrentVersion,
   getPrimaryCluster,
   transformFlagArrayToObject,
-  createErrorMessage
+  createErrorMessage,
+  transitToUniverse
 } from '../../universe-form/utils/helpers';
 import {
   transformToEditFlagsForm,
@@ -228,6 +229,8 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
               });
             if (isNewTaskUIEnabled) {
               dispatch(showTaskInDrawer(taskUUID));
+            } else {
+              transitToUniverse(universeUUID);
             }
           }
           onClose();

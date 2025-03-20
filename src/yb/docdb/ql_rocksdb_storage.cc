@@ -38,9 +38,12 @@ namespace yb::docdb {
 
 using dockv::DocKey;
 
-QLRocksDBStorage::QLRocksDBStorage(const std::string& log_prefix, const DocDB& doc_db)
-    : log_prefix_(log_prefix), doc_db_(doc_db) {
-}
+QLRocksDBStorage::QLRocksDBStorage(
+    const std::string& log_prefix, const DocDB& doc_db,
+    const EncodedPartitionBounds& encoded_partition_bounds)
+    : log_prefix_(log_prefix),
+      doc_db_(doc_db),
+      encoded_partition_bounds_(encoded_partition_bounds) {}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -275,34 +278,11 @@ std::string QLRocksDBStorage::ToString() const {
 
 namespace {
 
-std::string BoundAsString(Slice bound) {
-  return bound.ToDebugHexString();
-}
-
-std::string BoundAsString(const std::string& bound) {
-  return BoundAsString(Slice(bound));
-}
-
-std::string BoundAsString(const KeyBuffer& bound) {
-  return BoundAsString(bound.AsSlice());
-}
-
-template <typename T>
-std::string GetBoundsAsString(const std::pair<T, T>& bounds) {
-  return Format("$0 - $1", BoundAsString(bounds.first), BoundAsString(bounds.second));
-}
-
-template <typename T>
-std::string GetBoundsAsString(const yb::Result<std::pair<T, T>>& bounds_result) {
-  if (!bounds_result.ok()) {
-    return bounds_result.status().ToString();
-  }
-  return GetBoundsAsString(bounds_result.get());
-}
-
 std::string IteratorPositionAsString(const rocksdb::Iterator& iter) {
-  return Format(
-      "key -> value: $0 -> $1", iter.key().ToDebugHexString(), iter.value().ToDebugHexString());
+  return iter.Valid() ? Format(
+                            "key -> value: $0 -> $1", iter.key().ToDebugHexString(),
+                            iter.value().ToDebugHexString())
+                      : "<Invalid>";
 }
 
 // We use encoded doc keys or their prefixes (potentially with incremented last byte, see
@@ -364,6 +344,10 @@ class SampleBlocksIterator {
   virtual Result<std::pair<Slice, Slice>> GetCurrentBlockBounds() const = 0;
 
  protected:
+  bool HasReachedIteratorUpperbound(Slice key) {
+    return !upperbound_key_.empty() && key.compare(upperbound_key_) >= 0;
+  }
+
   rocksdb::DataBlockAwareIndexIterator& index_iter_;
   const Slice upperbound_key_;
   size_t num_index_keys_processed_ = 0;
@@ -411,7 +395,7 @@ class SplitIntersectingSampleBlocksIterator : public SampleBlocksIterator {
 
     VLOG_IF_WITH_FUNC(4, index_iter_.Valid())
         << "Index iterator: " << IteratorPositionAsString(index_iter_)
-        << " data block bounds: " << GetBoundsAsString(index_iter_.GetCurrentDataBlockBounds())
+        << " data block bounds: " << AsDebugHexString(index_iter_.GetCurrentDataBlockBounds())
         << " num_index_keys_processed_: " << num_index_keys_processed_;
     return Status::OK();
   }
@@ -440,11 +424,11 @@ class SplitIntersectingSampleBlocksIterator : public SampleBlocksIterator {
     }
     current_data_block_bounds_ = VERIFY_RESULT(index_iter_.GetCurrentDataBlockBounds());
     ++num_data_blocks_accessed_;
-    VLOG_WITH_FUNC(3) << "Data block bounds: " << GetBoundsAsString(current_data_block_bounds_);
+    VLOG_WITH_FUNC(3) << "Data block bounds: " << AsDebugHexString(current_data_block_bounds_);
 
     current_sample_block_upper_bound_ =
         VERIFY_RESULT(ExtractDocKey(current_data_block_bounds_.second));
-    if (current_sample_block_upper_bound_.compare(upperbound_key_) >= 0) {
+    if (HasReachedIteratorUpperbound(current_sample_block_upper_bound_)) {
       // Last sample block.
       current_sample_block_upper_bound_.Clear();
     }
@@ -494,7 +478,7 @@ class SplitIntersectingSampleBlocksIteratorV3 : public SampleBlocksIterator {
 
     VLOG_IF_WITH_FUNC(4, index_iter_.Valid())
         << "Index iterator: " << IteratorPositionAsString(index_iter_)
-        << " data block bounds: " << GetBoundsAsString(index_iter_.GetCurrentDataBlockBounds())
+        << " data block bounds: " << AsDebugHexString(index_iter_.GetCurrentDataBlockBounds())
         << " num_index_keys_processed_: " << num_index_keys_processed_;
     return Status::OK();
   }
@@ -520,7 +504,7 @@ class SplitIntersectingSampleBlocksIteratorV3 : public SampleBlocksIterator {
     // see comments for ExtractDocKey, TryExtractDocKey and
     // YQLRowwiseIteratorIf::SeekToDocKeyPrefix.
     current_sample_block_upper_bound_ = TryExtractDocKey(entry.key);
-    if (current_sample_block_upper_bound_.AsSlice().compare(upperbound_key_) >= 0) {
+    if (HasReachedIteratorUpperbound(current_sample_block_upper_bound_.AsSlice())) {
       // Last sample block.
       current_sample_block_upper_bound_.Clear();
     }
@@ -616,10 +600,10 @@ class CombineIntersectingSampleBlocksIterator : public SampleBlocksIterator {
   Status UpdateSampleBlockBounds() {
     current_data_block_bounds_ = VERIFY_RESULT(index_iter_.GetCurrentDataBlockBounds());
     ++num_data_blocks_accessed_;
-    VLOG_WITH_FUNC(3) << "Data block bounds: " << GetBoundsAsString(current_data_block_bounds_);
+    VLOG_WITH_FUNC(3) << "Data block bounds: " << AsDebugHexString(current_data_block_bounds_);
     current_sample_block_upper_bound_ =
         VERIFY_RESULT(ExtractDocKey(current_data_block_bounds_.second));
-    if (current_sample_block_upper_bound_.compare(upperbound_key_) >= 0) {
+    if (HasReachedIteratorUpperbound(current_sample_block_upper_bound_)) {
       // Last sample block.
       current_sample_block_upper_bound_.Clear();
     }
@@ -654,12 +638,27 @@ Result<std::unique_ptr<SampleBlocksIterator>> CreateSampleBlocksIterator(
       blocks_sampling_method);
 }
 
+bool PutAdjustedSampleBlockBounds(
+    std::pair<Slice, Slice> sample_block, Slice partition_lower_bound_key,
+    Slice partition_upper_bound_key, size_t index,
+    QLRocksDBStorage::SampleBlocksReservoir* reservoir) {
+  auto adjusted_sample_block_bounds = std::make_pair(
+      KeyBuffer(sample_block.first.empty() ? partition_lower_bound_key : sample_block.first),
+      KeyBuffer(sample_block.second.empty() ? partition_upper_bound_key : sample_block.second));
+  if (adjusted_sample_block_bounds.first == adjusted_sample_block_bounds.second) {
+    // Don't put empty sample block
+    return false;
+  }
+  (*reservoir)[index] = std::move(adjusted_sample_block_bounds);
+  return true;
+}
+
 } // namespace
 
-Result<YQLStorageIf::SampleBlocksData> QLRocksDBStorage::GetSampleBlocks(
+Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
     std::reference_wrapper<const DocReadContext> doc_read_context,
     DocDbBlocksSamplingMethod blocks_sampling_method,
-    size_t num_blocks_for_sample) const {
+    size_t num_blocks_for_sample, BlocksSamplingState* state) const {
 
   struct ScopedStats {
     ScopedStats(const DocDB& doc_db_, int vlog_level_) : doc_db(doc_db_), vlog_level(vlog_level_) {}
@@ -686,16 +685,35 @@ Result<YQLStorageIf::SampleBlocksData> QLRocksDBStorage::GetSampleBlocks(
     scoped_stats = std::make_unique<ScopedStats>(doc_db_, /* vlog_level = */ 2);
   }
 
-  LOG_WITH_PREFIX_AND_FUNC(INFO) << "num_blocks_for_sample: " << num_blocks_for_sample;
-  if (!doc_read_context.get().schema().is_colocated()) {
-    return STATUS_FORMAT(
-        NotSupported, "$0GetSampleBlocks is only supported for colocated tables", LogPrefix());
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "num_blocks_for_sample: " << num_blocks_for_sample
+                                 << " state: " << state->ToString();
+
+  const auto is_colocated = doc_read_context.get().schema().is_colocated();
+
+  Slice partition_lower_bound_key;
+  Slice partition_upper_bound_key;
+
+  {
+    const Slice table_key_prefix = doc_read_context.get().table_key_prefix();
+    const Slice table_upperbound_key = doc_read_context.get().upperbound();
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "table_key_prefix: " << table_key_prefix.ToDebugHexString()
+                                 << " table_upperbound_key: "
+                                 << table_upperbound_key.ToDebugHexString();
+
+    if (is_colocated) {
+      partition_lower_bound_key = table_key_prefix;
+      partition_upper_bound_key = table_upperbound_key;
+    } else {
+      partition_lower_bound_key = encoded_partition_bounds_.start_key.AsSlice();
+      partition_upper_bound_key = encoded_partition_bounds_.end_key.AsSlice();
+    }
   }
 
-  const Slice table_key_prefix = doc_read_context.get().table_key_prefix();
-  const Slice table_upperbound_key = doc_read_context.get().upperbound();
-  VLOG_WITH_PREFIX_AND_FUNC(2) << "table_key_prefix: " << table_key_prefix
-                               << " table_upperbound_key: " << table_upperbound_key;
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "partition_lower_bound_key: "
+                               << partition_lower_bound_key.ToDebugHexString()
+                               << " partition_upper_bound_key: "
+                               << partition_upper_bound_key.ToDebugHexString()
+                               << " is_colocated: " << is_colocated;
 
   rocksdb::ReadOptions read_options;
   if (scoped_stats) {
@@ -705,87 +723,63 @@ Result<YQLStorageIf::SampleBlocksData> QLRocksDBStorage::GetSampleBlocks(
   // An index block contains one entry per data block, where the key is a string >= last key in that
   // data block and < the first key in the successive data block. The value is the BlockHandle
   // (file offset and length) for the data block.
+  // We are skipping last index iterator entry because we are replacing it with empty key which
+  // will be handled as a table upper bound.
   auto index_iter =
-      doc_db_.regular->NewDataBlockAwareIndexIterator(read_options, rocksdb::SkipLastEntry::kFalse);
+      doc_db_.regular->NewDataBlockAwareIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
 
-  if (table_key_prefix.empty()) {
-    index_iter->SeekToFirst();
-  } else {
-    index_iter->Seek(table_key_prefix);
-    if (index_iter->Valid() && index_iter->key() == table_key_prefix) {
-      // Index iterator points to data block with keys <= table_key_prefix, skip it.
-      index_iter->Next();
-    }
+  Slice table_rows_start = partition_lower_bound_key.empty()
+                               ? Slice(&dockv::kMinRegularDbTableRowFirstByte, 1)
+                               : partition_lower_bound_key;
+  index_iter->Seek(table_rows_start);
+  if (index_iter->Valid() && index_iter->key() == table_rows_start) {
+    // Index iterator points to data block with keys <= table_rows_start, skip it.
+    index_iter->Next();
   }
   VLOG_WITH_PREFIX_AND_FUNC(2) << "index_iter: " << index_iter->KeyDebugHexString();
 
-  SampleBlocksData result;
-  auto& blocks_reservoir = result.boundaries;
+  SampleBlocksReservoir blocks_reservoir;
   blocks_reservoir.reserve(num_blocks_for_sample);
+  blocks_reservoir.insert(blocks_reservoir.begin(), num_blocks_for_sample, {});
 
-  auto sample_block_iter = VERIFY_RESULT(
-      CreateSampleBlocksIterator(blocks_sampling_method, index_iter.get(), table_upperbound_key));
+  auto sample_block_iter = VERIFY_RESULT(CreateSampleBlocksIterator(
+      blocks_sampling_method, index_iter.get(), partition_upper_bound_key));
 
-  size_t num_sample_blocks_processed = 0;
   Status status;
   for (; VERIFY_RESULT(sample_block_iter->CheckedValid());
-       ++num_sample_blocks_processed, status = sample_block_iter->Next()) {
+       ++state->num_blocks_processed, status = sample_block_iter->Next()) {
     RETURN_NOT_OK(status);
-    if (blocks_reservoir.size() < num_blocks_for_sample) {
+    if (state->num_blocks_collected < num_blocks_for_sample) {
       const auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "Candidate sample block bounds: " << GetBoundsAsString(block_bounds)
-          << " num_sample_blocks_processed: " << num_sample_blocks_processed
-          << " blocks_reservoir.size(): " << blocks_reservoir.size();
-      blocks_reservoir.emplace_back(block_bounds.first, block_bounds.second);
+          << "Candidate sample block bounds: " << AsDebugHexString(block_bounds)
+          << " state: " << state->ToString();
+      if (PutAdjustedSampleBlockBounds(
+              block_bounds, partition_lower_bound_key, partition_upper_bound_key,
+              state->num_blocks_collected, &blocks_reservoir)) {
+        ++state->num_blocks_collected;
+      }
     } else {
       VLOG_WITH_PREFIX_AND_FUNC(4)
           << "Current sample block bounds: "
-          << GetBoundsAsString(sample_block_iter->GetCurrentBlockBounds())
-          << " num_sample_blocks_processed: " << num_sample_blocks_processed
-          << " blocks_reservoir.size(): " << blocks_reservoir.size();
+          << AsDebugHexString(sample_block_iter->GetCurrentBlockBounds())
+          << " state: " << state->ToString();
       if (RandomActWithProbability(
-              1.0 * num_blocks_for_sample / (num_sample_blocks_processed + 1))) {
+              1.0 * num_blocks_for_sample / (state->num_blocks_processed + 1))) {
         const auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
         VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "Candidate sample block bounds: " << GetBoundsAsString(block_bounds);
+            << "Candidate sample block bounds: " << AsDebugHexString(block_bounds);
         const auto replace_idx = RandomUniformInt<size_t>(0, num_blocks_for_sample - 1);
-        blocks_reservoir[replace_idx].first = block_bounds.first;
-        blocks_reservoir[replace_idx].second = block_bounds.second;
+        PutAdjustedSampleBlockBounds(
+            block_bounds, partition_lower_bound_key, partition_upper_bound_key, replace_idx,
+            &blocks_reservoir);
       }
     }
   }
 
-  LOG_WITH_PREFIX_AND_FUNC(INFO) << "num_sample_blocks_processed: " << num_sample_blocks_processed
-                                 << " blocks_reservoir.size(): " << blocks_reservoir.size() << " "
-                                 << sample_block_iter->StatsToString();
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "state: " << state->ToString();
 
-  std::sort(blocks_reservoir.begin(), blocks_reservoir.end(), [](const auto& b1, const auto& b2) {
-    return b1.first < b2.first;
-  });
-  LOG_WITH_PREFIX_AND_FUNC(INFO) << "Sorted reservoir";
-
-  KeyBuffer prev_upper_bound;
-  for (const auto& bounds : blocks_reservoir) {
-    VLOG_WITH_PREFIX_AND_FUNC(3) << "Sample block bounds: " << GetBoundsAsString(bounds);
-    if (bounds.first < prev_upper_bound) {
-      return STATUS_FORMAT(
-          InternalError, "GetSampleBlocks error. bounds: $0 starts before prev_upper_bound: $1",
-          GetBoundsAsString(bounds), BoundAsString(prev_upper_bound));
-    }
-    if (bounds.first == bounds.second && num_sample_blocks_processed > 1) {
-      return STATUS_FORMAT(
-          InternalError,
-          "GetSampleBlocks error. Empty sample block is only allowed as the only block in the "
-          "table, num_sample_blocks_processed: $0",
-          num_sample_blocks_processed);
-    }
-    prev_upper_bound = bounds.second;
-  }
-
-  result.num_total_blocks = num_sample_blocks_processed;
-
-  return std::move(result);
+  return std::move(blocks_reservoir);
 }
 
 }  // namespace yb::docdb

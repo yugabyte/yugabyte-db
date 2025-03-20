@@ -14,8 +14,9 @@
 #ifndef PROCSIGNAL_H
 #define PROCSIGNAL_H
 
-#include "postgres.h"
 #include "storage/backendid.h"
+
+/* YB includes */
 #include "storage/proc.h"
 
 
@@ -73,7 +74,6 @@ extern void ProcessProcSignalBarrier(void);
 
 extern void procsignal_sigusr1_handler(SIGNAL_ARGS);
 
-extern void CleanupProcSignalState(int status, Datum arg);
 extern void CleanupProcSignalStateForProc(PGPROC *proc);
 
 #endif							/* PROCSIGNAL_H */

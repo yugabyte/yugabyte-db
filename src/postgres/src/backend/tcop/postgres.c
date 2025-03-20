@@ -4650,7 +4650,7 @@ YBCheckSharedCatalogCacheVersion()
 	if (YBCIsInitDbModeEnvVarSet())
 		return;
 
-	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
+	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
 	const uint64_t local_catalog_version = YbGetCatalogCacheVersion();
 	const bool	need_global_cache_refresh = (local_catalog_version <
 											 shared_catalog_version);
@@ -4665,12 +4665,28 @@ YBCheckSharedCatalogCacheVersion()
 	}
 	if (need_global_cache_refresh)
 	{
-		const uint32_t num_catalog_versions =
+		uint32_t num_catalog_versions =
 			shared_catalog_version - local_catalog_version;
 		YbcCatalogMessageLists message_lists = {0};
-		if (YBIsDBCatalogVersionMode() &&
-			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages)
+		const bool enable_inval_messages =
+			YBIsDBCatalogVersionMode() &&
+			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages;
+		if (enable_inval_messages)
 		{
+			const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+			if (shared_catalog_version < catalog_master_version)
+			{
+				/*
+				 * This can happen when another session executes many DDLs
+				 * in a batch, when we see a new shared catalog version has
+				 * arrived in shared memory, master may have got a even newer
+				 * version. See comments in YbWaitForSharedCatalogVersionToCatchup
+				 * for a scenario that this wait can help.
+				 */
+				YbWaitForSharedCatalogVersionToCatchup(catalog_master_version);
+				shared_catalog_version = YbGetSharedCatalogVersion();
+				num_catalog_versions = shared_catalog_version - local_catalog_version;
+			}
 			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
 															local_catalog_version,
 															num_catalog_versions,
@@ -4683,14 +4699,19 @@ YBCheckSharedCatalogCacheVersion()
 		if (message_lists.num_lists > 0 && YbApplyInvalidationMessages(&message_lists))
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
-			elog(DEBUG1, "YBRefreshCache skipped");
+			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+				 message_lists.num_lists,
+				 local_catalog_version, shared_catalog_version);
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
+			if (yb_test_delay_after_applying_inval_message_ms > 0)
+				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
 			/* TODO(myang): only invalidate affected entries in the pggate cache? */
 			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
 			return;
 		}
 
-		ereport(LOG,
+		ereport(enable_inval_messages ? LOG : DEBUG1,
 				(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
 						message_lists.num_lists, local_catalog_version,
 						shared_catalog_version, num_catalog_versions)));

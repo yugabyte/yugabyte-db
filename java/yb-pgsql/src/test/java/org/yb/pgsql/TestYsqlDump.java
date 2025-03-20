@@ -81,6 +81,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Turn off sequence cache.
     flagMap.put("ysql_sequence_cache_minval", "0");
+    flagMap.put("ysql_enable_inheritance", "true");
     return flagMap;
   }
 
@@ -95,7 +96,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static String  VERSION_NUMBER_REPLACEMENT_STR =
       " version X.X-YB-X.X.X.X-bX";
 
-  private String postprocessOutputLine(String s) {
+  private static String postprocessOutputLine(String s) {
     if (s == null)
       return null;
     return StringUtil.expandTabsAndRemoveTrailingSpaces(
@@ -373,7 +374,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   /** Compare the expected output and the actual output. */
-  private void assertOutputFile(File expected, File actual) throws IOException {
+  public static void assertOutputFile(File expected, File actual) throws IOException {
     List<String> expectedLines = FileUtils.readLines(expected, StandardCharsets.UTF_8);
     List<String> actualLines   = FileUtils.readLines(actual, StandardCharsets.UTF_8);
 
@@ -394,7 +395,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     assertOnlyEmptyLines(message, actualLines.subList(i, actualLines.size()));
   }
 
-  private void assertOnlyEmptyLines(String message, List<String> lines) {
+  private static void assertOnlyEmptyLines(String message, List<String> lines) {
     Set<String> processedLinesSet =
         lines.stream().map((l) -> l.trim()).collect(Collectors.toSet());
     assertTrue(message, Sets.newHashSet("").containsAll(processedLinesSet));

@@ -127,6 +127,10 @@ HEALTH_CHECK_CONNECTION_POOLING_MANAGER_BOOT_TIME_SEC = MetricDefinition(
     "ybp_health_check_connection_pooling_manager_boot_time_sec",
     "Connection pooling manager process boot time in seconds from epoch",
     "sec")
+HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC = MetricDefinition(
+    "ybp_health_check_otel_collector_boot_time_sec",
+    "Otel Collector process boot time in seconds from epoch",
+    "sec")
 HEALTH_CHECK_NODE_MASTER_FATAL_LOGS = MetricDefinition(
     "ybp_health_check_node_master_fatal_logs",
     "Master process recent fatal logs")
@@ -1066,7 +1070,7 @@ class NodeChecker():
 
     def check_uptime_for_process(self, process):
         logging.info("Checking uptime for {} process {}".format(self.node, process))
-        if process in [MASTER, TSERVER, CONNECTION_POOLING_MANAGER]:
+        if process in [MASTER, TSERVER, CONNECTION_POOLING_MANAGER, OTEL_COLLECTOR]:
             e = self._new_entry("Uptime", process)
         else:
             e = self._new_metric_entry("Uptime", process)
@@ -1087,6 +1091,8 @@ class NodeChecker():
                 hc_metric_definition = HEALTH_CHECK_TSERVER_BOOT_TIME_SEC
             elif process == CONNECTION_POOLING_MANAGER:
                 hc_metric_definition = HEALTH_CHECK_CONNECTION_POOLING_MANAGER_BOOT_TIME_SEC
+            elif process == OTEL_COLLECTOR:
+                hc_metric_definition = HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
             else:
                 hc_metric_definition = HEALTH_CHECK_POSTMASTER_BOOT_TIME_SEC
 
@@ -2553,6 +2559,9 @@ def main():
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
+
+    if n.otel_enabled and not n.is_k8s:
+        coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")

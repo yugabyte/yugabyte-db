@@ -86,7 +86,21 @@ var upgradeVMImageCmd = &cobra.Command{
 			)
 		}
 
-		primaryCluster := clusters[0]
+		var primaryCluster ybaclient.Cluster
+		for _, c := range clusters {
+			if strings.EqualFold(c.GetClusterType(), util.PrimaryClusterType) {
+				primaryCluster = c
+				break
+			}
+		}
+
+		if primaryCluster == (ybaclient.Cluster{}) {
+			err := fmt.Errorf(
+				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
+			)
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		}
+
 		primaryUserIntent := primaryCluster.GetUserIntent()
 
 		provider, response, err := authAPI.GetProvider(primaryUserIntent.GetProvider()).Execute()
@@ -124,7 +138,21 @@ var upgradeVMImageCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			rrCluster := clusters[1]
+			var rrCluster ybaclient.Cluster
+			for _, c := range clusters {
+				if strings.EqualFold(c.GetClusterType(), util.ReadReplicaClusterType) {
+					rrCluster = c
+					break
+				}
+			}
+
+			if rrCluster == (ybaclient.Cluster{}) {
+				err := fmt.Errorf(
+					"No read replica cluster found in universe " + universeName + " (" + universeUUID + ")\n",
+				)
+				logrus.Fatalf(formatter.Colorize(err.Error(), formatter.RedColor))
+			}
+
 			rrImageBundle := ""
 			if !inheritFromPrimary {
 				rrLinuxVersionName, err := cmd.Flags().GetString("rr-linux-version")

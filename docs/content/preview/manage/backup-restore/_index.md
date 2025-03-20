@@ -64,6 +64,12 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Instant database cloning"
     body="Clone a database for data recovery, development, and testing."
     href="instant-db-cloning/"
-    icon="fa-solid fa-clone">}}
+    icon="fa-light fa-clone">}}
+
+  {{<index/item
+    title="Time travel query"
+    body="Query data as at a specific point in time."
+    href="time-travel-query/"
+    icon="fa-light fa-clock-rotate-left">}}
 
 {{</index/block>}}

@@ -49,7 +49,7 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
     return false;
   }
 
-  if (table.IsColocatedUserTable()) {
+  if (table.IsSecondaryTable()) {
     // Only the colocated parent table needs to be replicated.
     return false;
   }

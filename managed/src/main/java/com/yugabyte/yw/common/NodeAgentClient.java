@@ -97,6 +97,7 @@ import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -188,8 +189,8 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    private String certDir;
-    private Path packagePath;
+    @NonNull private String certDir;
+    @Nullable private Path packagePath;
   }
 
   /** This class intercepts the client request to add the authorization token header. */
@@ -838,14 +839,14 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    if (param.packagePath != null) {
+      builder.setPackagePath(param.packagePath.toString());
+    }
     stub.update(
         UpdateRequest.newBuilder()
             .setState(State.UPGRADE.name())
-            .setUpgradeInfo(
-                UpgradeInfo.newBuilder()
-                    .setPackagePath(param.packagePath.toString())
-                    .setCertDir(param.certDir)
-                    .build())
+            .setUpgradeInfo(builder.build())
             .build());
   }
 

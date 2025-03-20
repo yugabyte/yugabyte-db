@@ -208,7 +208,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -277,11 +276,13 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.Singular;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
@@ -334,6 +335,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateUniverse,
           TaskType.CreateKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.ReadOnlyClusterDelete,
           TaskType.EditUniverse,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
@@ -398,7 +400,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ReadOnlyClusterDelete,
           TaskType.CreateSupportBundle,
           TaskType.CreateBackupSchedule,
           TaskType.CreateBackupScheduleKubernetes,
@@ -429,6 +430,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.MultiTableBackup,
           TaskType.ResumeKubernetesUniverse,
           TaskType.ReadOnlyClusterDelete,
+          TaskType.FailoverDrConfig,
           TaskType.ResumeUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
@@ -502,6 +504,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private boolean loadBalancerOff = false;
     private final Map<UUID, UniverseUpdaterConfig> lockedUniverses = new ConcurrentHashMap<>();
     private final AtomicReference<Set<NodeDetails>> masterNodes = new AtomicReference<>();
+    @Getter @Setter private SubTaskGroup precheckTaskGroup;
 
     ExecutionContext() {
       this.universeUuid = taskParams().getUniverseUUID();
@@ -860,6 +863,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return executionContext.get();
   }
 
+  /**
+   * For the case of prechecks-only execution, we put all the prechecks into the same task group. So
+   * we cache this task group in that case (or create separate group otherwise).
+   *
+   * @param name - specific name for subtask group if we use separate group.
+   * @return
+   */
+  protected SubTaskGroup doInPrecheckSubTaskGroup(String name, Consumer<SubTaskGroup> consumer) {
+    boolean addToRunnableTask = true;
+    SubTaskGroup subTaskGroup;
+    if (taskParams().isRunOnlyPrechecks()) {
+      ExecutionContext context = getOrCreateExecutionContext();
+      if (context.precheckTaskGroup == null) {
+        context.precheckTaskGroup =
+            createSubTaskGroup("AllPreflightChecks", SubTaskGroupType.PreflightChecks);
+      }
+      subTaskGroup = context.precheckTaskGroup;
+      addToRunnableTask = false;
+    } else {
+      subTaskGroup = createSubTaskGroup(name, SubTaskGroupType.PreflightChecks);
+    }
+    consumer.accept(subTaskGroup);
+    if (addToRunnableTask && subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
   protected boolean isLeaderBlacklistValidRF(NodeDetails nodeDetails) {
     Cluster curCluster = getUniverse().getCluster(nodeDetails.placementUuid);
     if (curCluster == null) {
@@ -1183,11 +1214,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected boolean maybeRunOnlyPrechecks() {
     if (taskParams().isRunOnlyPrechecks()) {
-      createPrecheckTasks(getUniverse());
+      initAndAddPrecheckTasks(getUniverse());
       getRunnableTask().runSubTasks();
       return true;
     }
     return false;
+  }
+
+  private void initAndAddPrecheckTasks(Universe universe) {
+    createPrecheckTasks(universe);
+    ExecutionContext context = getOrCreateExecutionContext();
+    SubTaskGroup precheckTaskGroup = context.precheckTaskGroup;
+    if (precheckTaskGroup != null && precheckTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(precheckTaskGroup);
+      context.precheckTaskGroup = null;
+    }
   }
 
   /**
@@ -1218,7 +1259,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
-      createPrecheckTasks(universe);
+      initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
       if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
           && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
@@ -1707,17 +1748,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createPGUpgradeTServerCheckTask(
       String ybSoftwareVersion, boolean downloadPackage) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("PGUpgradeTServerCheck", SubTaskGroupType.PreflightChecks);
-    PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
-    PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.downloadPackage = downloadPackage;
-    params.ybSoftwareVersion = ybSoftwareVersion;
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "PGUpgradeTServerCheck",
+        subTaskGroup -> {
+          PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
+          PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.downloadPackage = downloadPackage;
+          params.ybSoftwareVersion = ybSoftwareVersion;
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   public SubTaskGroup createCleanUpPGUpgradeDataDirTask() {
@@ -1812,61 +1853,65 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to check memory limit on the universe nodes. */
-  public SubTaskGroup createAvailableMemoryCheck(
+  public void createAvailableMemoryCheck(
       Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckMemory");
-    CheckMemory task = createTask(CheckMemory.class);
-    CheckMemory.Params params = new CheckMemory.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.memoryType = memoryType;
-    params.memoryLimitKB = memoryLimitKB;
-    params.nodeIpList =
-        nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    doInPrecheckSubTaskGroup(
+        "CheckMemory",
+        subTaskGroup -> {
+          CheckMemory task = createTask(CheckMemory.class);
+          CheckMemory.Params params = new CheckMemory.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.memoryType = memoryType;
+          params.memoryLimitKB = memoryLimitKB;
+          params.nodeIpList =
+              nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Creates a task to check locale on the universe nodes. */
   public SubTaskGroup createLocaleCheckTask(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLocale");
-    CheckLocale task = createTask(CheckLocale.class);
-    CheckLocale.Params params = new CheckLocale.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "CheckLocale",
+        subTaskGroup -> {
+          CheckLocale task = createTask(CheckLocale.class);
+          CheckLocale.Params params = new CheckLocale.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Creates a task to check glibc on the universe nodes */
   public SubTaskGroup createCheckGlibcTask(
       Collection<NodeDetails> nodes, String ybSoftwareVersion) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckGlibc");
-    CheckGlibc task = createTask(CheckGlibc.class);
-    CheckGlibc.Params params = new CheckGlibc.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.ybSoftwareVersion = ybSoftwareVersion;
-    params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "CheckGlibc",
+        subTaskGroup -> {
+          CheckGlibc task = createTask(CheckGlibc.class);
+          CheckGlibc.Params params = new CheckGlibc.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.ybSoftwareVersion = ybSoftwareVersion;
+          params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Create a task to preform pre-check for software upgrade. */
-  public SubTaskGroup createCheckUpgradeTask(String ybSoftwareVersion) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUpgrade");
-    CheckUpgrade task = createTask(CheckUpgrade.class);
-    CheckUpgrade.Params params = new CheckUpgrade.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.ybSoftwareVersion = ybSoftwareVersion;
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+  public void createCheckUpgradeTask(String ybSoftwareVersion) {
+    doInPrecheckSubTaskGroup(
+        "CheckUpgrade",
+        subTaskGroup -> {
+          CheckUpgrade task = createTask(CheckUpgrade.class);
+          CheckUpgrade.Params params = new CheckUpgrade.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.ybSoftwareVersion = ybSoftwareVersion;
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
@@ -2179,15 +2224,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (provider.getCloudCode() == CloudType.onprem) {
-        try {
-          AccessKey accessKey =
-              AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
-          if (accessKey.getKeyInfo().skipProvisioning) {
-            return;
-          }
-        } catch (Exception e) {
-          // Access Key are optional for onprem providers. We can return in case it is not
-          // present as the nodes will be manually provisioned.
+        if (provider.getDetails().skipProvisioning) {
           return;
         }
       }
@@ -3863,7 +3900,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private void getAndSaveRestoreBackupCategory(
       RestoreBackupParams restoreParams, TaskInfo taskInfo, boolean forXCluster) {
     Set<String> backupLocations =
-        restoreParams.backupStorageInfoList.parallelStream()
+        restoreParams.backupStorageInfoList.stream()
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
     boolean isYbc =
@@ -4565,8 +4602,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createDnsManipulationTask(
       DnsManager.DnsCommandType eventType, boolean isForceDelete, Universe universe) {
+    return createDnsManipulationTask(eventType, isForceDelete, universe, Collections.emptySet());
+  }
+
+  public SubTaskGroup createDnsManipulationTask(
+      DnsManager.DnsCommandType eventType,
+      boolean isForceDelete,
+      Universe universe,
+      Set<String> serversToExclude) {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster);
+    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster, serversToExclude);
   }
 
   /**
@@ -4575,10 +4620,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param eventType the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
    * @param primaryCluster primary cluster information.
+   * @param serversToExclude servers to exclude
    * @return subtask group
    */
   public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType, boolean isForceDelete, Cluster primaryCluster) {
+      DnsManager.DnsCommandType eventType,
+      boolean isForceDelete,
+      Cluster primaryCluster,
+      Set<String> serversToExclude) {
     UserIntent userIntent = primaryCluster.userIntent;
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDnsEntry");
     Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
@@ -4599,6 +4648,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         String.format(
             "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
     params.isForceDelete = isForceDelete;
+    params.serversToExclude = serversToExclude;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
     task.initialize(params);
@@ -5983,6 +6033,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (!keepEntry) {
       // Delete the xCluster table configs from DB.
       createDeleteXClusterTableConfigEntryTask(xClusterConfig, tableIds);
+    } else {
+      // Reset the backup/restore objects for the config to ensure bootstrapping happens
+      // properly. These fields are set in the parent task and thus cannot be reset in the subtasks.
+      xClusterConfig.getTables().stream()
+          .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+          .forEach(
+              tableConfig -> {
+                tableConfig.setBackup(null);
+                tableConfig.setRestore(null);
+                tableConfig.update();
+              });
     }
   }
 
@@ -6105,8 +6166,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 != CloudType.kubernetes)) {
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       File targetRootCertDirPath = sourceUniverse.getUniverseDetails().getSourceRootCertDirPath();
-      // Delete the source universe root cert from the target universe if it is transferred.
-      if (targetRootCertDirPath != null) {
+      // For the failover task, ignore running this subtask to improve its performance.
+      TaskType taskType = getTaskExecutor().getTaskType(getClass());
+      // Delete the target universe root cert from the source universe if it is transferred.
+      if (targetRootCertDirPath != null && taskType != TaskType.FailoverDrConfig) {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
                 xClusterConfig.getReplicationGroupName(),
@@ -6122,6 +6185,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (keepEntry) {
       createResetXClusterConfigEntryTask(xClusterConfig)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      // Reset the backup/restore objects for the config to ensure bootstrapping happens
+      // properly. These fields are set in the parent task and thus cannot be reset in the subtasks.
+      xClusterConfig
+          .getTables()
+          .forEach(
+              tableConfig -> {
+                tableConfig.setBackup(null);
+                tableConfig.setRestore(null);
+                tableConfig.update();
+              });
+      xClusterConfig
+          .getNamespaces()
+          .forEach(
+              namespaceConfig -> {
+                namespaceConfig.setBackup(null);
+                namespaceConfig.setRestore(null);
+                namespaceConfig.update();
+              });
     } else {
       // Delete the xCluster config from DB.
       createDeleteXClusterConfigEntryTask(xClusterConfig)
@@ -6534,22 +6615,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       List<String> command,
       BiConsumer<NodeDetails, ShellResponse> responseConsumer,
       @Nullable ShellProcessContext shellContext) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(RunNodeCommand.class.getSimpleName());
-    nodes.stream()
-        .forEach(
-            n -> {
-              RunNodeCommand.Params params = new RunNodeCommand.Params();
-              params.setUniverseUUID(taskParams().getUniverseUUID());
-              params.nodeName = n.getNodeName();
-              params.command = command;
-              params.responseConsumer = response -> responseConsumer.accept(n, response);
-              params.shellContext = shellContext;
-              RunNodeCommand task = createTask(RunNodeCommand.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            });
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return doInPrecheckSubTaskGroup(
+        "RunNodeCommand",
+        subTaskGroup -> {
+          nodes.stream()
+              .forEach(
+                  n -> {
+                    RunNodeCommand.Params params = new RunNodeCommand.Params();
+                    params.setUniverseUUID(taskParams().getUniverseUUID());
+                    params.nodeName = n.getNodeName();
+                    params.command = command;
+                    params.responseConsumer = response -> responseConsumer.accept(n, response);
+                    params.shellContext = shellContext;
+                    RunNodeCommand task = createTask(RunNodeCommand.class);
+                    task.initialize(params);
+                    subTaskGroup.addSubTask(task);
+                  });
+        });
   }
 
   // Start Schedule backup methods
@@ -6712,8 +6794,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         getRunnableTask().runSubTasks();
       }
-      // Mark schedule Active
-      schedule = Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+      if (scheduleParams.timeBeforeDelete > 0L) {
+        // Update expiry time of backups related to this schedule.
+        Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
+            .forEach(
+                backup -> {
+                  Date newExpiry =
+                      new DateTime(backup.getCreateTime())
+                          .plusMillis((int) scheduleParams.timeBeforeDelete)
+                          .toDate();
+                  backup.setExpiry(newExpiry);
+                  backup.save();
+                });
+      }
+      // Restore schedule status
+      schedule.setStatus(schedule.getPrevStableStatus());
       if (kubernetesStatus != null) {
         kubernetesStatus.updateBackupScheduleStatus(
             scheduleParams.getKubernetesResourceDetails(), schedule);

@@ -17,8 +17,10 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/transaction.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/util/status_callback.h"
 
 namespace yb::rpc {
 class RpcContext;
@@ -26,6 +28,7 @@ class RpcContext;
 
 namespace yb::tserver {
 class TSLocalLockManager;
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 }
 namespace yb::tserver {
 class AcquireObjectLockRequestPB;
@@ -55,13 +58,14 @@ class ObjectLockInfoManager {
   void UnlockObject(
       const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void ReleaseLocksForTxn(const TransactionId& txn_id);
 
   tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
   void UpdateTabletServerLeaseEpoch(const std::string& tserver_uuid, uint64_t current_lease_epoch);
   void Clear();
-  std::shared_ptr<tserver::TSLocalLockManager> TEST_ts_local_lock_manager();
-  std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager();
+  tserver::TSLocalLockManagerPtr TEST_ts_local_lock_manager();
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager();
 
   // Releases any object locks that may have been taken by the specified tservers's previous
   // incarnations.

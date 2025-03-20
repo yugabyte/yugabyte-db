@@ -64,6 +64,9 @@ class TabletVectorIndexes : public TabletComponent {
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
       EXCLUDES(vector_indexes_mutex_);
 
+  // Removes specified index, also destroying its data on disk.
+  Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+
   // Returns a collection of vector indexes for the given vector index table ids. Returns nullptr
   // if at least one vector indexes is not found by the give table id. The order of vector indexes
   // in the returned collection is not guaranteed to be preserved.
@@ -102,6 +105,9 @@ class TabletVectorIndexes : public TabletComponent {
 
   docdb::DocVectorIndexPtr IndexForTableUnlocked(
       const TableId& table_id) const REQUIRES_SHARED(vector_indexes_mutex_);
+
+  docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
+      REQUIRES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
 

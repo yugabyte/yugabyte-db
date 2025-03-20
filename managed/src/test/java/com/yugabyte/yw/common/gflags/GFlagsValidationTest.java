@@ -84,5 +84,12 @@ public class GFlagsValidationTest extends FakeDBApplication {
         .get(ServerType.TSERVER)
         .put("ysql_conn_mgr_future_key", "100");
     gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags);
+
+    connectionPoolingGflags.put(
+        UUID.fromString("00000000-0000-0000-0000-000000000000"),
+        connectionPoolingGflagsSpecificGflags);
+    assertThrows(
+        PlatformServiceException.class,
+        () -> gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags));
   }
 }

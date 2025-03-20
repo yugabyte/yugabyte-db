@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.1.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.1.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -19,6 +19,79 @@ SET row_security = off;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: level0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.level0 (
+    c1 integer,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
+    CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
+    CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
+);
+
+
+ALTER TABLE public.level0 OWNER TO yugabyte_test;
+
+--
+-- Name: level1_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.level1_0 (
+    c1 integer NOT NULL,
+    CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
+)
+INHERITS (public.level0);
+
+
+ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
+
+--
+-- Name: level1_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.level1_1 (
+    c2 text,
+    CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
+    CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
+)
+INHERITS (public.level0);
+
+
+ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
+
+--
+-- Name: level2_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.level2_0 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL
+)
+INHERITS (public.level1_0);
+
+
+ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
+
+--
+-- Name: level2_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TABLE public.level2_1 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL,
+    c4 text NOT NULL,
+    CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
+)
+INHERITS (public.level1_0, public.level1_1);
+
+
+ALTER TABLE public.level2_1 OWNER TO yugabyte_test;
 
 --
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -127,6 +200,51 @@ ALTER TABLE ONLY public.part_uniq_const ATTACH PARTITION public.part_uniq_const_
 --
 
 ALTER TABLE ONLY public.part_uniq_const ATTACH PARTITION public.part_uniq_const_default DEFAULT;
+
+
+--
+-- Data for Name: level0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level0 (c1, c2, c3, c4) FROM stdin;
+\N	0	\N	\N
+\.
+
+
+--
+-- Data for Name: level1_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_0 (c1, c2, c3, c4) FROM stdin;
+2	1_0	1_0	\N
+\.
+
+
+--
+-- Data for Name: level1_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_1 (c1, c2, c3, c4) FROM stdin;
+\N	1_1	\N	1_1
+\.
+
+
+--
+-- Data for Name: level2_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_0 (c1, c2, c3, c4) FROM stdin;
+1	2_0	2_0	\N
+\.
+
+
+--
+-- Data for Name: level2_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_1 (c1, c2, c3, c4) FROM stdin;
+2	2_1	2_1	2_1
+\.
 
 
 --
@@ -250,6 +368,20 @@ ALTER TABLE ONLY public.part_uniq_const_50_100
 
 ALTER TABLE ONLY public.part_uniq_const_default
     ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE  (v1, v2);
+
+
+--
+-- Name: level1_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC);
+
+
+--
+-- Name: level2_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
 
 
 --

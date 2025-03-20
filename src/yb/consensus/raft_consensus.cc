@@ -501,7 +501,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       RETURN_NOT_OK(StartReplicaOperationUnlocked(replicate, HybridTime::kInvalid));
     }
 
-    RETURN_NOT_OK(state_->InitCommittedOpIdUnlocked(yb::OpId::FromPB(info.last_committed_id)));
+    RETURN_NOT_OK(state_->InitCommittedOpIdUnlocked(info.last_committed_id));
 
     queue_->Init(state_->GetLastReceivedOpIdUnlocked());
   }
@@ -676,6 +676,10 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
     // Increment the term.
     RETURN_NOT_OK(IncrementTermUnlocked());
     new_term = state_->GetCurrentTermUnlocked();
+
+    // Vote for ourselves.
+    // TODO: Consider using a separate Mutex for voting, which must sync to disk.
+    RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
   }
 
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
@@ -685,12 +689,6 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
   // Initialize the VoteCounter.
   auto num_voters = CountVoters(active_config);
   auto majority_size = MajoritySize(num_voters);
-
-  // Vote for ourselves.
-  if (!preelection) {
-    // TODO: Consider using a separate Mutex for voting, which must sync to disk.
-    RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
-  }
 
   auto counter = std::make_unique<VoteCounter>(num_voters, majority_size);
   bool duplicate;
@@ -1301,8 +1299,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
       DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
-      auto result = state_->RegisterRetryableRequest(
-          round, tablet::IsLeaderSide(state_->GetActiveRoleUnlocked() == PeerRole::LEADER));
+      auto result = state_->RegisterRetryableRequest(round);
       if (!result.ok()) {
         round->NotifyReplicationFinished(
             result.status(), round->bound_term(), /* applied_op_ids = */ nullptr);

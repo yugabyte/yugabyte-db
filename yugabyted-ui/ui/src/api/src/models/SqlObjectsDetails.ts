@@ -12,6 +12,8 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { AnalysisIssueDetails } from './AnalysisIssueDetails';
 
 
 /**
@@ -46,10 +48,10 @@ export interface SqlObjectsDetails  {
   objectNames?: string;
   /**
    * 
-   * @type {string}
+   * @type {AnalysisIssueDetails[]}
    * @memberof SqlObjectsDetails
    */
-  objectDetails?: string;
+  issues?: AnalysisIssueDetails[];
 }
 
 

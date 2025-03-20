@@ -26,6 +26,8 @@
 
 namespace yb::pggate {
 
+class SampleRowsPickerIf;
+
 //--------------------------------------------------------------------------------------------------
 // SAMPLE collect table statistics and take random rows sample
 //--------------------------------------------------------------------------------------------------
@@ -46,15 +48,13 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
       int targrows, const SampleRandomState& rand_state, HybridTime read_time);
 
  private:
-  class SamplePicker;
-
   explicit PgSample(const PgSession::ScopedRefPtr& pg_session);
 
   Status Prepare(
       const PgObjectId& table_id, bool is_region_local, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time);
 
-  std::unique_ptr<SamplePicker> sample_picker_;
+  std::unique_ptr<SampleRowsPickerIf> sample_rows_picker_;
 };
 
 }  // namespace yb::pggate

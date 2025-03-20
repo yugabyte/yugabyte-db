@@ -66,6 +66,10 @@ const scoped_refptr<MetricEntity>& MasterTabletServer::MetricEnt() const {
   return metric_entity_;
 }
 
+tserver::TSLocalLockManagerPtr MasterTabletServer::ts_local_lock_manager() const {
+  return nullptr;
+}
+
 Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(
     const TabletId& tablet_id) const {
   return master_->catalog_manager()->GetServingTablet(tablet_id);

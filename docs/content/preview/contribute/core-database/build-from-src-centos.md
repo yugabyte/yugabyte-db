@@ -65,7 +65,6 @@ sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y centos-release-scl epel-release
 packages=(
   ccache
-  cmake3
   devtoolset-11
   devtoolset-11-libatomic-devel
   git
@@ -81,14 +80,16 @@ packages=(
   which
 )
 sudo yum install -y "${packages[@]}"
-sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 sudo mkdir /opt/yb-build
 
 # If you'd like to use an unprivileged user for development, manually
 # run/modify instructions from here onwards (change $USER, make sure shell
 # variables are set appropriately when switching users).
 sudo chown "$USER" /opt/yb-build
+mkdir ~/tools
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-x86_64.tar.gz" | tar xzC ~/tools
+source <(echo 'export PATH="$HOME/tools/cmake-3.31.0-linux-x86_64/bin:$PATH"' \
+         | tee -a "$shellrc")
 source <(echo 'source /opt/rh/rh-python38/enable' \
          | tee -a "$shellrc")
 source <(echo 'source /opt/rh/rh-maven35/enable' \
@@ -130,15 +131,6 @@ source /opt/rh/rh-python38/enable
 ### CMake 3
 
 {{% readfile "includes/cmake.md" %}}
-
-The package manager has that, but we still need to link the name `cmake` to `cmake3`.
-Do similarly for `ctest`.
-
-```sh
-sudo yum install -y cmake3
-sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
-```
 
 ### Java
 

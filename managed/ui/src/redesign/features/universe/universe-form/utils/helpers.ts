@@ -46,9 +46,6 @@ export const transitToUniverse = (universeUUID?: string) =>
     ? browserHistory.push(`/universes/${universeUUID}/tasks`)
     : browserHistory.push(`/universes`);
 
-export const transitToUniverseOverview = (universeUUID: string) =>
-  browserHistory.push(`/universes/${universeUUID}`);
-
 export const getClusterByType = (universeData: UniverseDetails, clusterType: ClusterType) =>
   universeData?.clusters?.find((cluster) => cluster.clusterType === clusterType);
 
@@ -316,7 +313,7 @@ export const getUserIntent = (
     enableYCQL: instanceConfig.enableYCQL,
     enableYCQLAuth: instanceConfig.enableYCQLAuth,
     useTimeSync: instanceConfig.useTimeSync,
-    enableYEDIS: instanceConfig.enableYEDIS,
+    enableYEDIS: !!instanceConfig.enableYEDIS,
     useSpotInstance: instanceConfig.useSpotInstance,
     tserverK8SNodeResourceSpec: instanceConfig.tserverK8SNodeResourceSpec,
     accessKeyCode: advancedConfig.accessKeyCode,
@@ -471,9 +468,11 @@ export const editReadReplica = async (
         });
       if (isNewTaskUIEnabled) {
         dispatch(showTaskInDrawer(taskUUID));
+      } else {
+        transitToUniverse(universeUUID);
       }
     }
-    response && transitToUniverseOverview(universeUUID);
+    response && !runOnlyPrechecks && transitToUniverse(universeUUID);
     return response;
   } catch (error) {
     console.error(error);

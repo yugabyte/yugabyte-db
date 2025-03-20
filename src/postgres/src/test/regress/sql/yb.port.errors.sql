@@ -77,11 +77,9 @@ alter table nonesuch rename to newnonesuch;
 alter table nonesuch rename to stud_emp;
 
 -- conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table stud_emp rename to student;
 
 -- self-conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table stud_emp rename to stud_emp;
 
 
@@ -91,16 +89,13 @@ alter table stud_emp rename to stud_emp;
 alter table nonesuchrel rename column nonesuchatt to newnonesuchatt;
 
 -- no such attribute
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table emp rename column nonesuchatt to newnonesuchatt;
 
 -- conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table emp rename column salary to manager;
 
 -- conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
-alter table emp rename column salary to oid;
+alter table emp rename column salary to ctid;
 
 
 --

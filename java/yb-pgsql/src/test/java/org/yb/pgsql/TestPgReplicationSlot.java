@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -3596,5 +3597,262 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
 
     assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
+  }
+
+  @Test
+  public void testActivePidNull() throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    try (Statement statement = conn.createStatement()) {
+      statement.execute(
+            "SELECT * FROM pg_create_logical_replication_slot('test_slot', 'test_decoding')"
+      );
+    }
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery("SELECT active_pid FROM pg_replication_slots");
+      assertTrue(res.next());
+      Integer activePid = res.getObject("active_pid", Integer.class);
+      assertNull(activePid);
+      res.close();
+    }
+    conn.close();
+  }
+
+  @Test
+  public void testActivePidAndWalStatusPopulationOnStreamRestart() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a int primary key, b int)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_1");
+    }
+
+    String slotName = "test_logical_replication_slot";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+      conn.unwrap(PGConnection.class).getReplicationAPI();
+    replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName(slotName)
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    LogSequenceNumber lastLsn = stream.getLastReceiveLSN();
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res1 = stmt.executeQuery("SELECT pid FROM pg_stat_replication");
+      int activePid1 = -2;
+      assertTrue(res1.next());
+      activePid1 = res1.getInt("pid");
+
+      ResultSet res2 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      int activePid2 = -1;
+      assertTrue(res2.next());
+      activePid2 = res2.getInt("active_pid");
+      assertTrue(res2.getBoolean("active"));
+
+      res2.close();
+      assertEquals(activePid1, activePid2);
+    }
+    stream.close();
+    conn.close();
+
+    //Restarting connection
+    conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery("SELECT active_pid FROM pg_replication_slots");
+      assertTrue(res.next());
+      int activePid = res.getInt("active_pid");
+      assertTrue(res.wasNull());
+      LOG.info(String.format("active_pid is %d", activePid));
+      res.close();
+    }
+
+    //Creating new stream with same slot
+    PGReplicationStream newStream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(lastLsn)
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    try (Statement stmt1 = connection.createStatement()) {
+      ResultSet res1 = stmt1.executeQuery("SELECT * FROM pg_stat_replication");
+      int activePid1 = -2;
+      if (res1.next()) {
+          activePid1 = res1.getInt("pid");
+      }
+      ResultSet res2 = stmt1.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      int activePid2 = -1;
+      assertTrue(res2.next());
+      activePid2 = res2.getInt("active_pid");
+      assertTrue(res2.getBoolean("active"));
+      String status = res2.getString("wal_status");
+      assertEquals("reserved", status);
+
+      res2.close();
+      assertEquals(activePid1, activePid2);
+    }
+    conn.close();
+  }
+
+  @Test
+  public void testActivePidPopulationFromDifferentTServers() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a int primary key, b int)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_1");
+    }
+
+    String slotName = "test_logical_replication_slot";
+    Connection conn1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    Connection conn2 = getConnectionBuilder().withTServer(1).replicationConnect();
+    Connection conn2_2 = getConnectionBuilder().withTServer(1).replicationConnect();
+    Connection conn3 = getConnectionBuilder().withTServer(2).replicationConnect();
+    //Creating slot on 1st TServer
+    PGReplicationConnection replConnection1 =
+      conn1.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection1, slotName, YB_OUTPUT_PLUGIN_NAME);
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+
+    //Acquiring slot on 2nd TServer
+    PGReplicationConnection replConnection2 =
+      conn2.unwrap(PGConnection.class).getReplicationAPI();
+    PGReplicationStream stream = replConnection2.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+
+    int activePid1 = -1;
+    int activePid2 = -2;
+    int activePid3 = -3;
+    int activePid4 = -4;
+    try (Statement stmt = conn2_2.createStatement()) {
+      ResultSet res1 = stmt.executeQuery("SELECT * FROM pg_stat_replication");
+      assertTrue(res1.next());
+      activePid1 = res1.getInt("pid");
+
+      ResultSet res2 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      assertTrue(res2.next());
+      activePid2 = res2.getInt("active_pid");
+      assertTrue(res2.getBoolean("active"));
+
+      res2.close();
+      assertEquals(activePid1, activePid2);
+    }
+
+    try (Statement stmt = conn1.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      assertTrue(res.next());
+      activePid3 = res.getInt("active_pid");
+
+      assertEquals(activePid2, activePid3);
+    }
+
+    try (Statement stmt = conn3.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      assertTrue(res.next());
+      activePid4 = res.getInt("active_pid");
+
+      assertEquals(activePid2, activePid4);
+    }
+    conn1.close();
+    conn2.close();
+    conn2_2.close();
+    conn3.close();
+  }
+
+  @Test
+  public void testBackendXminAndStatePopulation() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a int primary key, b int)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_1");
+    }
+
+    String slotName = "test_logical_replication_slot";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+      conn.unwrap(PGConnection.class).getReplicationAPI();
+    replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName(slotName)
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res1 = stmt.executeQuery("SELECT * FROM pg_stat_replication");
+      int xmin1 = -2;
+      assertTrue(res1.next());
+      xmin1 = res1.getInt("backend_xmin");
+      String state = res1.getString("state");
+
+      assertEquals("streaming", state);
+
+      ResultSet res2 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      int xmin2 = -1;
+      assertTrue(res2.next());
+      xmin2 = res2.getInt("xmin");
+
+      res2.close();
+      assertEquals(xmin2, xmin1);
+    }
+    conn.close();
+  }
+
+  @Test
+  public void testWalStatusLost() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put("cdc_intent_retention_ms", "0");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    String slotName = "test_logical_replication_slot";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+      conn.unwrap(PGConnection.class).getReplicationAPI();
+    replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName(slotName)
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res1 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
+      assertTrue(res1.next());
+      String status = res1.getString("wal_status");
+      assertEquals("lost", status);
+    }
+    conn.close();
   }
 }

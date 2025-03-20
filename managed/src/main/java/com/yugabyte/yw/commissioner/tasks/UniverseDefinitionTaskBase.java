@@ -1142,7 +1142,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
+    createDnsManipulationTask(
+            DnsManager.DnsCommandType.Create, false, primaryCluster, Collections.emptySet())
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the swamper target file.
@@ -2147,50 +2148,48 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> nodesToBeProvisioned,
       @Nullable UUID rootCA,
       @Nullable UUID clientRootCA) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("PreflightNodeCheck", SubTaskGroupType.PreflightChecks);
-    clusters.stream()
-        .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
-        .forEach(
-            cluster -> {
-              nodesToBeProvisioned.stream()
-                  .filter(node -> cluster.uuid.equals(node.placementUuid))
-                  .forEach(
-                      node -> {
-                        PreflightNodeCheck.Params params = new PreflightNodeCheck.Params();
-                        UserIntent userIntent = cluster.userIntent;
-                        params.nodeName = node.nodeName;
-                        params.nodeUuid = node.nodeUuid;
-                        params.deviceInfo = userIntent.getDeviceInfoForNode(node);
-                        params.azUuid = node.azUuid;
-                        params.placementUuid = node.placementUuid;
-                        params.isMaster = node.isMaster;
-                        params.isTserver = node.isTserver;
-                        params.setUniverseUUID(taskParams().getUniverseUUID());
-                        params.rootCA = rootCA;
-                        params.setClientRootCA(clientRootCA);
-                        UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
-                            params.communicationPorts, node);
-                        params.extraDependencies.installNodeExporter =
-                            taskParams().extraDependencies.installNodeExporter;
-                        PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
-                        task.initialize(params);
-                        subTaskGroup.addSubTask(task);
-                      });
-            });
-    if (subTaskGroup.getSubTaskCount() > 0) {
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
-    }
+    doInPrecheckSubTaskGroup(
+        "PreflightNodeCheck",
+        subTaskGroup -> {
+          clusters.stream()
+              .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+              .forEach(
+                  cluster -> {
+                    nodesToBeProvisioned.stream()
+                        .filter(node -> cluster.uuid.equals(node.placementUuid))
+                        .forEach(
+                            node -> {
+                              PreflightNodeCheck.Params params = new PreflightNodeCheck.Params();
+                              UserIntent userIntent = cluster.userIntent;
+                              params.nodeName = node.nodeName;
+                              params.nodeUuid = node.nodeUuid;
+                              params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+                              params.azUuid = node.azUuid;
+                              params.placementUuid = node.placementUuid;
+                              params.isMaster = node.isMaster;
+                              params.isTserver = node.isTserver;
+                              params.setUniverseUUID(taskParams().getUniverseUUID());
+                              params.rootCA = rootCA;
+                              params.setClientRootCA(clientRootCA);
+                              UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+                                  params.communicationPorts, node);
+                              params.extraDependencies.installNodeExporter =
+                                  taskParams().extraDependencies.installNodeExporter;
+                              PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
+                              task.initialize(params);
+                              subTaskGroup.addSubTask(task);
+                            });
+                  });
+        });
   }
 
   /**
-   * Create preflight node check tasks for on-prem nodes in the universe if the nodes are in
+   * Create preflight node check tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
+  public void createPreflightNodeCheckTasks(Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
         clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
@@ -2201,14 +2200,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
-    applyOnNodesWithStatus(
-        universe,
-        nodesToProvision,
-        false,
-        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
-        filteredNodes -> {
-          createPreflightNodeCheckTasks(clusters, filteredNodes, null, null);
-        });
+    if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      createPreflightNodeCheckTasks(
+          clusters, nodesToProvision, null /*rootCA*/, null /*clientRootCA*/);
+    }
+  }
+
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt) {
+    createCheckCertificateConfigTask(
+        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 
   /**
@@ -2289,13 +2294,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Create check certificate config tasks for on-prem nodes in the universe if the nodes are in
+   * Create check certificate config tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
+  public void createCheckCertificateConfigTask(Collection<Cluster> clusters) {
     log.info("Checking certificate config for on-prem nodes in the universe.");
     Set<Cluster> onPremClusters =
         clusters.stream()
@@ -2320,15 +2324,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
-    applyOnNodesWithStatus(
-        universe,
-        nodesToProvision,
-        false,
-        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
-        filteredNodes -> {
-          createCheckCertificateConfigTask(
-              clusters, filteredNodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
-        });
+    if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      createCheckCertificateConfigTask(
+          clusters, nodesToProvision, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
+    }
   }
 
   /**
@@ -2962,30 +2961,30 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  public SubTaskGroup createInstanceExistsCheckTasks(
+  public void createInstanceExistsCheckTasks(
       UUID universeUuid,
       UniverseDefinitionTaskParams parentTaskParams,
       Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("InstanceExistsCheck", SubTaskGroupType.PreflightChecks);
-    for (NodeDetails node : nodes) {
-      if (node.placementUuid == null) {
-        String errMsg = String.format("Node %s does not have placement.", node.nodeName);
-        throw new RuntimeException(errMsg);
-      }
-      NodeTaskParams params = new NodeTaskParams();
-      params.setUniverseUUID(universeUuid);
-      params.nodeName = node.nodeName;
-      params.nodeUuid = node.nodeUuid;
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      params.clusters = parentTaskParams.clusters;
-      InstanceExistCheck task = createTask(InstanceExistCheck.class);
-      task.initialize(params);
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    doInPrecheckSubTaskGroup(
+        "InstanceExistsCheck",
+        subTaskGroup -> {
+          for (NodeDetails node : nodes) {
+            if (node.placementUuid == null) {
+              String errMsg = String.format("Node %s does not have placement.", node.nodeName);
+              throw new RuntimeException(errMsg);
+            }
+            NodeTaskParams params = new NodeTaskParams();
+            params.setUniverseUUID(universeUuid);
+            params.nodeName = node.nodeName;
+            params.nodeUuid = node.nodeUuid;
+            params.azUuid = node.azUuid;
+            params.placementUuid = node.placementUuid;
+            params.clusters = parentTaskParams.clusters;
+            InstanceExistCheck task = createTask(InstanceExistCheck.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
+        });
   }
 
   public void createValidateDiskSizeOnNodeRemovalTasks(
@@ -3445,32 +3444,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   protected void verifyClustersConsistency(Set<String> skipMaybeRunning) {
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.verifyClusterStateBeforeTask)) {
-      TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("PrecheckCluster");
-      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.skipMayBeRunning = skipMaybeRunning;
-      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
-      CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addSubTask(task);
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
+      doInPrecheckSubTaskGroup(
+          "CheckClusterConsistency",
+          subTaskGroup -> {
+            CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.skipMayBeRunning = skipMaybeRunning;
+            params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
+            CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
+            task.initialize(params);
+            // Add it to the task list.
+            subTaskGroup.addSubTask(task);
+          });
     }
   }
 
   protected void checkLeaderlessTablets() {
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.leaderlessTabletsCheckEnabled)) {
-      SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLeaderlessTables");
-      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      ServerSubTaskParams params = new ServerSubTaskParams();
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
+      doInPrecheckSubTaskGroup(
+          "CheckLeaderlessTablets",
+          subTaskGroup -> {
+            ServerSubTaskParams params = new ServerSubTaskParams();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
 
-      CheckLeaderlessTablets checkLeaderlessTablets = createTask(CheckLeaderlessTablets.class);
-      checkLeaderlessTablets.initialize(params);
-      subTaskGroup.addSubTask(checkLeaderlessTablets);
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
+            CheckLeaderlessTablets checkLeaderlessTablets =
+                createTask(CheckLeaderlessTablets.class);
+            checkLeaderlessTablets.initialize(params);
+            subTaskGroup.addSubTask(checkLeaderlessTablets);
+          });
     }
   }
 
@@ -3482,20 +3484,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       return;
     }
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.useNodesAreSafeToTakeDown)) {
-      SubTaskGroup subTaskGroup = createSubTaskGroup("CheckNodesAreSafeToTakeDown");
-      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      CheckNodesAreSafeToTakeDown.Params params = new CheckNodesAreSafeToTakeDown.Params();
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.targetSoftwareVersion = targetSoftwareVersion;
-      params.nodesToCheck = mastersAndTservers;
-      params.fallbackToSingleSplits = fallbackToSingleSplits;
-      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
+      doInPrecheckSubTaskGroup(
+          "CheckNodesAreSafeToTakeDown",
+          subTaskGroup -> {
+            CheckNodesAreSafeToTakeDown.Params params = new CheckNodesAreSafeToTakeDown.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.targetSoftwareVersion = targetSoftwareVersion;
+            params.nodesToCheck = mastersAndTservers;
+            params.fallbackToSingleSplits = fallbackToSingleSplits;
+            params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
 
-      CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
-          createTask(CheckNodesAreSafeToTakeDown.class);
-      checkNodesAreSafeToTakeDown.initialize(params);
-      subTaskGroup.addSubTask(checkNodesAreSafeToTakeDown);
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
+            CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
+                createTask(CheckNodesAreSafeToTakeDown.class);
+            checkNodesAreSafeToTakeDown.initialize(params);
+            subTaskGroup.addSubTask(checkNodesAreSafeToTakeDown);
+          });
     }
   }
 
@@ -3608,12 +3611,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .build();
     // Check only the exit code in shellProcessHandler.
     return createRunNodeCommandTask(
-            universe,
-            nodes,
-            command,
-            (n, r) -> r.processErrors("linger could not be enabled for yugabyte user"),
-            null /* shell context */)
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+        universe,
+        nodes,
+        command,
+        (n, r) -> r.processErrors("linger could not be enabled for yugabyte user"),
+        null /* shell context */);
   }
 
   protected <X> void addParallelTasks(
@@ -3877,13 +3879,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
-      Universe universe, List<NodeDetails> nodes, String flagValue) {
+      Universe universe, ServerType serverType, List<NodeDetails> nodes, String flagValue) {
     if (nodes.isEmpty()) {
       return;
     }
     createSetFlagInMemoryTasks(
             nodes,
-            ServerType.TSERVER,
+            serverType,
             (node, params) -> {
               params.force = true;
               // Override only expression pushdown flag.

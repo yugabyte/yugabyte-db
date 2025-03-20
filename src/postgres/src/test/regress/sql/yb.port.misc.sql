@@ -13,7 +13,7 @@
 CREATE FUNCTION overpaid(emp)
    RETURNS bool
    AS :'regresslib'
-   LANGUAGE C STRICT; -- YB: fails because creating emp requires unsupported INHERITS
+   LANGUAGE C STRICT;
 
 CREATE FUNCTION reverse_name(name)
    RETURNS name
@@ -87,13 +87,11 @@ SELECT * FROM onek_copy EXCEPT ALL SELECT * FROM onek;
 \set filename :abs_builddir '/results/stud_emp.data'
 COPY BINARY stud_emp TO :'filename';
 
-/* YB: uncomment when stud_emp is available (needs INHERITS)
 CREATE TEMP TABLE stud_emp_copy (LIKE stud_emp);
 
 COPY BINARY stud_emp_copy FROM :'filename';
 
 SELECT * FROM stud_emp_copy;
-*/ -- YB
 
 --
 -- test data for postquel functions
@@ -195,7 +193,6 @@ CREATE FUNCTION equipment_named_ambiguous_2b(hobby text)
 --
 SELECT p.name, name(p.hobbies) FROM ONLY person p;
 
-/* YB: uncomment when person's descendant tables such as stud_emp are supported
 --
 -- as above, but jeff also does post_hacking.
 --
@@ -233,7 +230,7 @@ SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p;
 SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p;
 
 SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p;
-*/ -- YB
+
 
 SELECT name(equipment(hobby_construct(text 'skywalking', text 'mer')));
 
@@ -264,11 +261,10 @@ SELECT * FROM equipment(ROW('skywalking', 'mer'));
 
 SELECT name(equipment(ROW('skywalking', 'mer')));
 
-/* YB: uncomment when person's descendant tables such as stud_emp are supported
 SELECT *, name(equipment(h.*)) FROM hobbies_r h;
 
 SELECT *, (equipment(CAST((h.*) AS hobbies_r))).name FROM hobbies_r h;
-*/ -- YB
+
 
 --
 -- functional joins

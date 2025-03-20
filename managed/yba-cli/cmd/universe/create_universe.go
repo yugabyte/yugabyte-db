@@ -29,6 +29,7 @@ var v1 = viper.New()
 var createUniverseCmd = &cobra.Command{
 	Use:     "create",
 	Aliases: []string{"add"},
+	GroupID: "action",
 	Short:   "Create YugabyteDB Anywhere universe",
 	Long:    "Create an universe in YugabyteDB Anywhere",
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
@@ -302,6 +303,7 @@ func init() {
 	createUniverseCmd.Flags().StringArray("preferred-region", []string{},
 		"[Optional] Preferred region to place the node of the cluster in. "+
 			"Provide preferred regions for each cluster as a separate flag. (default [])")
+	// Zones would be a []([]string) array
 
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+

@@ -6,12 +6,10 @@ import { YBTooltip } from "@app/components";
 import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import {
   MigrateSchemaTaskInfo,
-  MigrationAssesmentInfo,
   MigrationAssessmentReport,
   useGetMigrationAssessmentInfoQuery,
   useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
-  useGetVoyagerMigrationAssesmentDetailsQuery,
 } from "@app/api/src";
 import type { Migration } from "./MigrationOverview";
 import CaretRightIcon from "@app/assets/caret-right.svg";
@@ -80,25 +78,25 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
 }) => {
   const classes = useStyles();
 
-  const { data: migrationAssessmentData } = useGetVoyagerMigrationAssesmentDetailsQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+  const { data: migrationAssessmentData } = useGetMigrationAssessmentInfoQuery({
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const { data: migrationSchemaData } = useGetVoyagerMigrateSchemaTasksQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const { data: migrationMetricsData } = useGetVoyagerDataMigrationMetricsQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const { data: newMigrationAPIData } = useGetMigrationAssessmentInfoQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const mNewAssessment = newMigrationAPIData as MigrationAssessmentReport | undefined;
 
-  const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
+  const mAssessmentData = migrationAssessmentData as MigrationAssessmentReport;
   const mSchemaData = migrationSchemaData as MigrateSchemaTaskInfo;
 
   const getTooltip = (step: string) => {
@@ -137,7 +135,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             // We have not reached the verify phase
             if (stepIndex === MigrationStep["Assessment"]) {
               if (
-                mAssessmentData?.assesment_status === true ||
+                mAssessmentData?.assessment_status === true ||
                 mNewAssessment?.summary?.migration_complexity
               ) {
                 completed = true;

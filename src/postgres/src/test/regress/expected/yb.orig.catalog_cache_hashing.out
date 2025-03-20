@@ -2,6 +2,9 @@
  * This test checks if the hash function used for the catalog cache has changed.
  * It runs the hash function on a set of up to 100 keys for each catalog cache--
  * the expected output has the hash values from when this test was created.
+ * If the test fails, it indicates that the hash function used for the catalog
+ * cache has changed and we need to increment YbSharedInvalCatcacheMsgVersion
+ * to force a full catalog cache refresh.
  *
  * Because some system tables have a large number of rows, this test limits the
  * number of rows checked to 100 for each catalog cache.

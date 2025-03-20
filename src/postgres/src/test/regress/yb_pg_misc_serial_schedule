@@ -10,6 +10,7 @@
 test: yb.port.test_setup
 
 test: yb.port.create_function_c
+test: yb.port.create_misc
 test: yb.port.create_operator
 test: yb.port.create_table
 test: yb.port.create_type
@@ -20,4 +21,5 @@ test: yb.port.random
 test: yb.port.misc
 test: yb.port.misc_functions
 test: yb.port.prepare
+# with depends on create_misc
 test: yb.port.with

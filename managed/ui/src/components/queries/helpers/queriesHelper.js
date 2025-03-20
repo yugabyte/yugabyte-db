@@ -78,9 +78,10 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
 
   let errors = {};
   const ysqlQueries = data ? handleQueryResponse(data) : [];
-
+  const lastStatsResetTimestamp = data?.data?.ysql?.stats_reset;
   return {
     ysqlQueries,
+    lastStatsResetTimestamp,
     errors,
     loading: isFetching,
     getSlowQueries: refetch

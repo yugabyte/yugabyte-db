@@ -45,7 +45,7 @@ INSERT INTO collate_test1 VALUES (1, 'abc'), (2, 'äbc'), (3, 'bbc'), (4, 'ABC')
 INSERT INTO collate_test2 SELECT * FROM collate_test1;
 INSERT INTO collate_test3 SELECT * FROM collate_test1;
 
--- Repeat the test with expression pushdown disabled
+-- Repeat the tests from yb.port.collate.icu.utf8 with expression pushdown disabled
 set yb_enable_expression_pushdown to off;
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
 EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
@@ -66,8 +66,28 @@ SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
 SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+
+-- Test remote filters with collations - if DocDB uses a different collation, the filter will return
+-- unexpected results.
 set yb_enable_expression_pushdown to on;
 
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+
+SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+
+-- repeat the tests with expression pushdown disabled
+set yb_enable_expression_pushdown to off;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+
+SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
 
 CREATE TABLE tab1(id varchar(10));
 INSERT INTO tab1 values ('aaaa');
@@ -108,9 +128,9 @@ SELECT CASE WHEN v LIKE '%linux%' THEN 'true' ELSE 'false' END as linux FROM (SE
   \set posix_result 'ZZZ aaa'
 \endif
 
-\set default_result 'ZZZ aaa'
-\set ucs_basic_result 'ZZZ aaa'
-\set en_us_x_icu_result 'aaa ZZZ'
+\set default_result 'ZZZ aaa äää'
+\set ucs_basic_result 'ZZZ aaa äää'
+\set en_us_x_icu_result 'aaa äää ZZZ'
 
 -- test YB default db
 \c yugabyte
@@ -118,10 +138,13 @@ CREATE DATABASE test_default_db
 TEMPLATE template0;
 \c test_default_db
 CREATE TABLE tab(id text);
-INSERT INTO tab VALUES ('aaa'), ('ZZZ');
+INSERT INTO tab VALUES ('aaa'), ('äää'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'default_result';
 
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+/*+ Set(yb_enable_expression_pushdown off) */ SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 
 -- test YB "POSIX" db
 \c yugabyte
@@ -130,9 +153,12 @@ LOCALE "POSIX"
 TEMPLATE template0;
 \c test_posix_db
 CREATE TABLE tab(id text);
-INSERT INTO tab VALUES ('aaa'), ('ZZZ');
+INSERT INTO tab VALUES ('aaa'), ('äää'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'posix_result';
+
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 
 -- test YB "ucs_basic" db
 \c yugabyte
@@ -143,9 +169,12 @@ TEMPLATE template0;
 -- test YB "ucs_basic" table
 \c yugabyte
 CREATE TABLE tab2(id text COLLATE "ucs_basic");
-INSERT INTO tab2 VALUES ('aaa'), ('ZZZ');
+INSERT INTO tab2 VALUES ('aaa'), ('äää'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab2 ORDER BY id) as id \gset
 SELECT :'id' = :'ucs_basic_result';
+
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab2 WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab2 WHERE upper(id) = 'ÄÄÄ';
 
 -- test YB en_US.UTF-8 db
 \c yugabyte
@@ -154,9 +183,12 @@ LOCALE "en_US.UTF-8"
 TEMPLATE template0;
 \c test_en_us_utf8_db
 CREATE TABLE tab(id text);
-INSERT INTO tab VALUES ('aaa'), ('ZZZ');
+INSERT INTO tab VALUES ('aaa'), ('äää'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'utf8_result';
+
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 
 -- test YB en-US-x-icu
 \c yugabyte
@@ -167,9 +199,12 @@ LOCALE "en_US.UTF-8"
 TEMPLATE template0;
 \c test_en_us_x_icu_db
 CREATE TABLE tab(id text);
-INSERT INTO tab VALUES ('aaa'), ('ZZZ');
+INSERT INTO tab VALUES ('aaa'), ('äää'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'en_us_x_icu_result';
+
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 
 -- test YB en_US.utf8 db, LOCALE overridden by LC_COLLATE and LC_CTYPE
 \c yugabyte
@@ -180,9 +215,12 @@ LC_CTYPE :en_us_collname
 TEMPLATE template0;
 \c test_en_us_utf8_db2
 CREATE TABLE tab(id text);
-INSERT INTO tab VALUES ('aaa'), ('ZZZ');
+INSERT INTO tab VALUES ('aaa'), ('äää'), ('ZZZ');
 SELECT string_agg(id, ' ') as id FROM (SELECT id from tab ORDER BY id) as id \gset
 SELECT :'id' = :'utf8_result';
+
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 
 -- test YB blar db, invalid locale name
 \c yugabyte

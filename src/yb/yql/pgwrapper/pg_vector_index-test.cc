@@ -47,16 +47,11 @@ DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 
-namespace yb::tablet {
-
-extern bool TEST_block_after_backfilling_first_vector_index_chunks;
-
-}
-
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::tablet {
 
+extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 }
@@ -67,6 +62,7 @@ YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
 
 using FloatVector = std::vector<float>;
+const std::string kVectorIndexName = "vi";
 
 const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
@@ -113,13 +109,13 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
   Status CreateIndex(PGConn& conn) {
     return conn.ExecuteFormat(
-        "CREATE INDEX ON test USING ybhnsw (embedding $0) "
+        "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
             "WITH (ef_construction = 256, m = 32, m0 = 128)",
-        VectorOpsName());
+        VectorOpsName(), kVectorIndexName);
   }
 
-  Result<PGConn> MakeIndex(size_t dimensions = 3) {
-    auto conn = VERIFY_RESULT(MakeTable(dimensions));
+  Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
+    auto conn =  VERIFY_RESULT(table_exists ? Connect() : MakeTable(dimensions));
     RETURN_NOT_OK(CreateIndex(conn));
     return conn;
   }
@@ -133,7 +129,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   void VerifyRows(
       PGConn& conn, bool add_filter, const std::vector<std::string>& expected, int64_t limit = -1);
 
-  void TestSimple();
+  void TestSimple(bool table_exists = false);
   void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
   void TestRestart(tablet::FlushFlags flush_flags);
   void TestMetric(const std::string& expected);
@@ -226,8 +222,8 @@ uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
   return result;
 }
 
-void PgVectorIndexTest::TestSimple() {
-  auto conn = ASSERT_RESULT(MakeIndex());
+void PgVectorIndexTest::TestSimple(bool table_exists) {
+  auto conn = ASSERT_RESULT(MakeIndex(3, table_exists));
 
   size_t num_found_peers = 0;
   auto check_tablets = [this, &num_found_peers]() -> Result<bool> {
@@ -242,12 +238,14 @@ void PgVectorIndexTest::TestSimple() {
       auto tables = metadata.GetAllColocatedTables();
       tablet::TableInfoPtr main_table_info;
       tablet::TableInfoPtr index_table_info;
+      size_t num_indexes = 0;
       for (const auto& table_id : tables) {
         auto table_info = VERIFY_RESULT(metadata.GetTableInfo(table_id));
         LOG(INFO) << "Table: " << table_info->ToString();
         if (table_info->table_name == "test") {
           main_table_info = table_info;
         } else if (table_info->index_info) {
+          ++num_indexes;
           index_table_info = table_info;
         }
       }
@@ -255,7 +253,11 @@ void PgVectorIndexTest::TestSimple() {
         continue;
       }
       ++num_found_peers;
-      if (!index_table_info) {
+      if (num_indexes != 1) {
+        return false;
+      }
+      auto vector_indexes = tablet->vector_indexes().List();
+      if (!vector_indexes || vector_indexes->size() != 1) {
         return false;
       }
       SCHECK_EQ(
@@ -268,8 +270,10 @@ void PgVectorIndexTest::TestSimple() {
   ASSERT_OK(WaitFor(check_tablets, 10s * kTimeMultiplier, "Index created on all tablets"));
   ASSERT_NE(num_found_peers, 0);
 
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1.0, 0.5, 0.25]')"));
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, '[0.125, 0.375, 0.25]')"));
+  if (!table_exists) {
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1.0, 0.5, 0.25]')"));
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, '[0.125, 0.375, 0.25]')"));
+  }
 
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT * FROM test" + IndexQuerySuffix("[1.0, 0.4, 0.3]", 5)));
@@ -283,6 +287,13 @@ TEST_P(PgVectorIndexTest, Simple) {
 TEST_P(PgVectorIndexTest, NotApplied) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   TestSimple();
+}
+
+TEST_P(PgVectorIndexTest, Drop) {
+  TestSimple();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  TestSimple(true);
 }
 
 std::string VectorAsString(int64_t id) {
@@ -489,6 +500,8 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2", kDistantVector));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 10", kCloseVector));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = NULL WHERE id = 20"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1000, NULL)"));
 
   std::vector<std::string> expected = {
     BuildRow(10, kCloseVector),

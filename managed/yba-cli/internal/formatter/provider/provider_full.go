@@ -260,7 +260,7 @@ func (fp *FullProviderContext) startSubsection(format string) (*template.Templat
 }
 
 func (fp *FullProviderContext) subSection(name string) {
-	fp.Output.Write([]byte("\n\n"))
+	fp.Output.Write([]byte("\n"))
 	fp.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fp.Output.Write([]byte("\n"))
 }

@@ -193,6 +193,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, tru
     "Enable the pg_locks view. This view provides information about the locks held by "
     "active postgres sessions.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pg_locks_integrate_advisory_locks, kLocalPersisted,
+    false, true,
+    "Enables pg_locks to integrate and display advisory locks details correctly.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
     "Enable using the DocDB Vector type from YSQL.");
 
@@ -274,6 +278,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, f
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
     kLocalVolatile, false, true, "Allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING");
+
+// TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366:
+// Convert to auto flag with target value set to true after block-based ANALYZE with concurrent
+// dynamic tablet splitting is fully supported and tested.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_allow_separate_requests_for_sampling_stages, false,
+    "Allow using separate requests for block-based sampling stages");
 
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",

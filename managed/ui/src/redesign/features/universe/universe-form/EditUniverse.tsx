@@ -24,8 +24,7 @@ import {
   getPrimaryCluster,
   getPrimaryFormData,
   transformTagsArrayToObject,
-  transitToUniverse,
-  transitToUniverseOverview
+  transitToUniverse
 } from './utils/helpers';
 import {
   Cluster,
@@ -135,9 +134,11 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
           });
         if (isNewTaskUIEnabled) {
           dispatch(showTaskInDrawer(taskUUID));
+        } else {
+          transitToUniverse(uuid);
         }
       }
-      response && transitToUniverseOverview(uuid);
+      response && !runOnlyPrechecks && transitToUniverse(uuid);
     } catch (error) {
       toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
       console.error(error);

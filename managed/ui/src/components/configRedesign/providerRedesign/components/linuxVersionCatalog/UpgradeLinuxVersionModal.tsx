@@ -28,7 +28,10 @@ import {
 } from '../../../../../redesign/components';
 import { useIsTaskNewUIEnabled } from '../../../../../redesign/features/tasks/TaskUtils';
 import { showTaskInDrawer } from '../../../../../actions/tasks';
-import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
+import {
+  createErrorMessage,
+  transitToUniverse
+} from '../../../../../redesign/features/universe/universe-form/utils/helpers';
 import { UPGRADE_TYPE } from '../../../../../redesign/features/universe/universe-actions/rollback-upgrade/utils/types';
 import { ClusterType, Universe } from '../../../../../redesign/helpers/dtos';
 import {
@@ -161,6 +164,8 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
         );
         if (isNewTaskUIEnabled) {
           dispatch(showTaskInDrawer(taskUUID));
+        } else {
+          transitToUniverse(universeData.universeUUID);
         }
         onHide();
       },

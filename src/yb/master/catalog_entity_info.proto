@@ -411,13 +411,10 @@ message SysObjectLockEntryPB {
     // object_id -> Locks taken
     map<uint64, LockTypesPB> objects = 1;
   }
-  message DBObjectsMapPB {
-    // db_id -> map of objects/locks-taken
-    map<uint64, ObjectLocksMapPB> dbs = 1;
-  }
   message SubtxnDBMapPB {
-    // subtxn -> DB ...
-    map<uint32, DBObjectsMapPB> subtxns = 1;
+    optional uint64 db_id = 1;
+    // subtxn -> object locks ...
+    map<uint32, ObjectLocksMapPB> subtxns = 2;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...

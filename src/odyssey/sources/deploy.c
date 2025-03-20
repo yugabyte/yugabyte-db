@@ -57,6 +57,9 @@ int od_deploy(od_client_t *client, char *context)
 	query_count = 0;
 
 	char *query = malloc(yb_max_query_size + 1);
+	if (query == NULL) {
+		return -1;
+	}
 	query[yb_max_query_size] = '\0';
 	int query_size;
 	query_size = kiwi_vars_cas(&client->vars, &server->vars, query,

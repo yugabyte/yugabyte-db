@@ -24,6 +24,7 @@
 #include "yb/docdb/object_lock_manager.h"
 #include "yb/dockv/value_type.h"
 #include "yb/server/clock.h"
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/status.h"
 
@@ -50,7 +51,7 @@ YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 // it with all exisitng DDL (global) locks.
 class TSLocalLockManager {
  public:
-  explicit TSLocalLockManager(const server::ClockPtr& clock);
+  TSLocalLockManager(const server::ClockPtr& clock, TabletServerIf* server);
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
@@ -85,6 +86,7 @@ class TSLocalLockManager {
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& resp);
 
+  bool IsBootstrapped() const;
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
   void TEST_MarkBootstrapped();

@@ -4,6 +4,11 @@
  public | chat_user                                      | table             | yugabyte_test
  public | hash_tbl_pk_with_include_clause                | table             | yugabyte_test
  public | hash_tbl_pk_with_multiple_included_columns     | table             | yugabyte_test
+ public | level0                                         | table             | yugabyte_test
+ public | level1_0                                       | table             | yugabyte_test
+ public | level1_1                                       | table             | yugabyte_test
+ public | level2_0                                       | table             | yugabyte_test
+ public | level2_1                                       | table             | yugabyte_test
  public | p1                                             | table             | yugabyte_test
  public | p2                                             | table             | yugabyte_test
  public | part_uniq_const                                | partitioned table | yugabyte_test
@@ -46,7 +51,7 @@
  public | tr1                                            | table             | yugabyte_test
  public | tr2                                            | table             | yugabyte_test
  public | uaccount                                       | table             | regress_rls_alice
-(45 rows)
+(50 rows)
 
           List of tablespaces
     Name    |     Owner     | Location 
@@ -176,5 +181,101 @@ Indexes:
  public     | part_uniq_const_50_100                      | part_uniq_const_50_100_v1_v2_key                 |            | CREATE UNIQUE INDEX part_uniq_const_50_100_v1_v2_key ON public.part_uniq_const_50_100 USING lsm (v1 HASH, v2 ASC)
  public     | part_uniq_const_default                     | part_uniq_const_default_v1_v2_key                |            | CREATE UNIQUE INDEX part_uniq_const_default_v1_v2_key ON public.part_uniq_const_default USING lsm (v1 HASH, v2 ASC)
  public     | part_uniq_const_50_100                      | part_uniq_const_50_100_v2_uniq                   |            | CREATE UNIQUE INDEX part_uniq_const_50_100_v2_uniq ON public.part_uniq_const_50_100 USING lsm (v2 ASC)
-(50 rows)
+ public     | level1_0                                    | level1_0_pkey                                    |            | CREATE UNIQUE INDEX level1_0_pkey ON public.level1_0 USING lsm (c1 ASC)
+ public     | level1_1                                    | level1_1_pkey                                    |            | CREATE UNIQUE INDEX level1_1_pkey ON public.level1_1 USING lsm (c2 HASH)
+ public     | level1_1                                    | level1_1_c3_idx                                  |            | CREATE INDEX level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC)
+ public     | level2_1                                    | level2_1_pkey                                    |            | CREATE UNIQUE INDEX level2_1_pkey ON public.level2_1 USING lsm (c4 HASH)
+ public     | level2_1                                    | level2_1_c3_idx                                  |            | CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC)
+(55 rows)
+
+               Table "public.level0"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | text    |           | not null | 
+ c3     | text    |           |          | 
+ c4     | text    |           |          | 
+Check constraints:
+    "level0_c1_cons" CHECK (c1 > 0)
+    "level0_c1_cons2" CHECK (c1 IS NULL) NO INHERIT
+Number of child tables: 2 (Use \d+ to list them.)
+
+              Table "public.level1_0"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           | not null | 
+ c2     | text    |           | not null | 
+ c3     | text    |           |          | 
+ c4     | text    |           |          | 
+Indexes:
+    "level1_0_pkey" PRIMARY KEY, lsm (c1 ASC)
+Check constraints:
+    "level0_c1_cons" CHECK (c1 > 0)
+Inherits: level0
+Number of child tables: 2 (Use \d+ to list them.)
+
+              Table "public.level1_1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | text    |           | not null | 
+ c3     | text    |           |          | 
+ c4     | text    |           |          | 
+Indexes:
+    "level1_1_pkey" PRIMARY KEY, lsm (c2 HASH)
+    "level1_1_c3_idx" lsm (c3 DESC)
+Check constraints:
+    "level0_c1_cons" CHECK (c1 > 0)
+    "level1_1_c1_cons" CHECK (c1 >= 2)
+Inherits: level0
+Number of child tables: 1 (Use \d+ to list them.)
+
+              Table "public.level2_0"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           | not null | 
+ c2     | text    |           | not null | 
+ c3     | text    |           | not null | 
+ c4     | text    |           |          | 
+Check constraints:
+    "level0_c1_cons" CHECK (c1 > 0)
+Inherits: level1_0
+
+              Table "public.level2_1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           | not null | 
+ c2     | text    |           | not null | 
+ c3     | text    |           | not null | 
+ c4     | text    |           | not null | 
+Indexes:
+    "level2_1_pkey" PRIMARY KEY, lsm (c4 HASH)
+    "level2_1_c3_idx" lsm (c3 ASC)
+Check constraints:
+    "level0_c1_cons" CHECK (c1 > 0)
+    "level1_1_c1_cons" CHECK (c1 >= 2)
+Inherits: level1_0,
+          level1_1
+
+ tableoid | c1 | c2  | c3  | c4  
+----------+----+-----+-----+-----
+ level2_0 |  1 | 2_0 | 2_0 | 
+ level2_1 |  2 | 2_1 | 2_1 | 2_1
+ level1_0 |  2 | 1_0 | 1_0 | 
+ level1_1 |    | 1_1 |     | 1_1
+ level0   |    | 0   |     | 
+(5 rows)
+
+ tableoid | c1 | c2  | c3  | c4  
+----------+----+-----+-----+-----
+ level2_0 |  1 | 2_0 | 2_0 | 
+ level2_1 |  2 | 2_1 | 2_1 | 2_1
+ level1_0 |  2 | 1_0 | 1_0 | 
+(3 rows)
+
+ tableoid | c1 | c2  | c3  | c4  
+----------+----+-----+-----+-----
+ level2_1 |  2 | 2_1 | 2_1 | 2_1
+ level1_1 |    | 1_1 |     | 1_1
+(2 rows)
 

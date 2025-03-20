@@ -20,6 +20,7 @@ import (
 var describeUniverseCmd = &cobra.Command{
 	Use:     "describe",
 	Aliases: []string{"get"},
+	GroupID: "action",
 	Short:   "Describe a YugabyteDB Anywhere universe",
 	Long:    "Describe a universe in YugabyteDB Anywhere",
 	Example: `yba universe describe --name <universe-name>`,

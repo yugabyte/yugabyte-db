@@ -718,7 +718,7 @@ void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTableDrop(
   // cdc_wal_retention_time_secs.
 
   // Only the parent colocated table is replicated via xCluster.
-  if (table_info.IsColocatedUserTable()) {
+  if (table_info.IsSecondaryTable()) {
     return;
   }
 
@@ -1087,6 +1087,7 @@ Status XClusterSourceManager::PopulateXClusterStatus(
     group_status.replication_group_id = replication_info->Id();
     group_status.state = SysXClusterOutboundReplicationGroupEntryPB::State_Name(metadata.state());
     group_status.target_universe_info = metadata.target_universe_info().DebugString();
+    group_status.automatic_ddl_mode = metadata.automatic_ddl_mode();
 
     for (const auto& [namespace_id, namespace_status] : metadata.namespace_infos()) {
       XClusterOutboundReplicationGroupNamespaceStatus ns_status;

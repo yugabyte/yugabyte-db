@@ -10,8 +10,7 @@
 CREATE FUNCTION overpaid(emp)
    RETURNS bool
    AS :'regresslib'
-   LANGUAGE C STRICT; -- YB: fails because creating emp requires unsupported INHERITS
-ERROR:  type emp does not exist
+   LANGUAGE C STRICT;
 CREATE FUNCTION reverse_name(name)
    RETURNS name
    AS :'regresslib'
@@ -75,14 +74,19 @@ SELECT * FROM onek_copy EXCEPT ALL SELECT * FROM onek;
 
 \set filename :abs_builddir '/results/stud_emp.data'
 COPY BINARY stud_emp TO :'filename';
-ERROR:  relation "stud_emp" does not exist
-/* YB: uncomment when stud_emp is available (needs INHERITS)
 CREATE TEMP TABLE stud_emp_copy (LIKE stud_emp);
-
 COPY BINARY stud_emp_copy FROM :'filename';
-
+WARNING:  batched COPY is not supported on temporary tables
+DETAIL:  Defaulting to using one transaction for the entire copy.
+HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 SELECT * FROM stud_emp_copy;
-*/ -- YB
+ name  | age |  location  | salary | manager | gpa | percent 
+-------+-----+------------+--------+---------+-----+---------
+ jeff  |  23 | (8,7.7)    |    600 | sharon  | 3.5 |        
+ cim   |  30 | (10.5,4.7) |    400 |         | 3.4 |        
+ linda |  19 | (0.9,6.1)  |    100 |         | 2.9 |        
+(3 rows)
+
 --
 -- test data for postquel functions
 --
@@ -169,11 +173,17 @@ SELECT p.name, name(p.hobbies) FROM ONLY person p;
  sally | basketball
 (3 rows)
 
-/* YB: uncomment when person's descendant tables such as stud_emp are supported
 --
 -- as above, but jeff also does post_hacking.
 --
 SELECT p.name, name(p.hobbies) FROM person* p;
+ name  |    name     
+-------+-------------
+ mike  | posthacking
+ joe   | basketball
+ sally | basketball
+ jeff  | posthacking
+(4 rows)
 
 --
 -- the next two queries demonstrate how functions generate bogus duplicates.
@@ -181,8 +191,25 @@ SELECT p.name, name(p.hobbies) FROM person* p;
 --
 SELECT DISTINCT hobbies_r.name, name(hobbies_r.equipment) FROM hobbies_r
   ORDER BY 1,2;
+    name     |     name      
+-------------+---------------
+ basketball  | hightops
+ posthacking | advil
+ posthacking | peet's coffee
+ skywalking  | guts
+(4 rows)
 
 SELECT hobbies_r.name, (hobbies_r.equipment).name FROM hobbies_r;
+    name     |     name      
+-------------+---------------
+ posthacking | advil
+ posthacking | peet's coffee
+ posthacking | advil
+ posthacking | peet's coffee
+ basketball  | hightops
+ basketball  | hightops
+ skywalking  | guts
+(7 rows)
 
 --
 -- mike needs advil and peet's coffee,
@@ -190,24 +217,72 @@ SELECT hobbies_r.name, (hobbies_r.equipment).name FROM hobbies_r;
 -- everyone else is fine.
 --
 SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p;
+ name  |    name     |     name      
+-------+-------------+---------------
+ mike  | posthacking | advil
+ mike  | posthacking | peet's coffee
+ joe   | basketball  | hightops
+ sally | basketball  | hightops
+(4 rows)
 
 --
 -- as above, but jeff needs advil and peet's coffee as well.
 --
 SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p;
+ name  |    name     |     name      
+-------+-------------+---------------
+ mike  | posthacking | advil
+ mike  | posthacking | peet's coffee
+ joe   | basketball  | hightops
+ sally | basketball  | hightops
+ jeff  | posthacking | advil
+ jeff  | posthacking | peet's coffee
+(6 rows)
 
 --
 -- just like the last two, but make sure that the target list fixup and
 -- unflattening is being done correctly.
 --
 SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p;
+     name      | name  |    name     
+---------------+-------+-------------
+ advil         | mike  | posthacking
+ peet's coffee | mike  | posthacking
+ hightops      | joe   | basketball
+ hightops      | sally | basketball
+(4 rows)
 
 SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p;
+     name      | name  |    name     
+---------------+-------+-------------
+ advil         | mike  | posthacking
+ peet's coffee | mike  | posthacking
+ hightops      | joe   | basketball
+ hightops      | sally | basketball
+ advil         | jeff  | posthacking
+ peet's coffee | jeff  | posthacking
+(6 rows)
 
 SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p;
+     name      |    name     | name  
+---------------+-------------+-------
+ advil         | posthacking | mike
+ peet's coffee | posthacking | mike
+ hightops      | basketball  | joe
+ hightops      | basketball  | sally
+(4 rows)
 
 SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p;
-*/ -- YB
+     name      |    name     | name  
+---------------+-------------+-------
+ advil         | posthacking | mike
+ peet's coffee | posthacking | mike
+ hightops      | basketball  | joe
+ hightops      | basketball  | sally
+ advil         | posthacking | jeff
+ peet's coffee | posthacking | jeff
+(6 rows)
+
 SELECT name(equipment(hobby_construct(text 'skywalking', text 'mer')));
  name 
 ------
@@ -263,9 +338,16 @@ SELECT name(equipment_named_ambiguous_2b(text 'skywalking'));
 SELECT hobbies_by_name('basketball');
 */ -- YB
 SELECT name, overpaid(emp.*) FROM emp;
-ERROR:  relation "emp" does not exist
-LINE 4: SELECT name, overpaid(emp.*) FROM emp;
-                                          ^
+  name  | overpaid 
+--------+----------
+ sharon | t
+ sam    | t
+ bill   | t
+ jeff   | f
+ cim    | f
+ linda  | f
+(6 rows)
+
 --
 -- Try a few cases with SQL-spec row constructor expressions
 --
@@ -281,11 +363,30 @@ SELECT name(equipment(ROW('skywalking', 'mer')));
  guts
 (1 row)
 
-/* YB: uncomment when person's descendant tables such as stud_emp are supported
 SELECT *, name(equipment(h.*)) FROM hobbies_r h;
+    name     | person |     name      
+-------------+--------+---------------
+ posthacking | mike   | advil
+ posthacking | mike   | peet's coffee
+ posthacking | jeff   | advil
+ posthacking | jeff   | peet's coffee
+ basketball  | joe    | hightops
+ basketball  | sally  | hightops
+ skywalking  |        | guts
+(7 rows)
 
 SELECT *, (equipment(CAST((h.*) AS hobbies_r))).name FROM hobbies_r h;
-*/ -- YB
+    name     | person |     name      
+-------------+--------+---------------
+ posthacking | mike   | advil
+ posthacking | mike   | peet's coffee
+ posthacking | jeff   | advil
+ posthacking | jeff   | peet's coffee
+ basketball  | joe    | hightops
+ basketball  | sally  | hightops
+ skywalking  |        | guts
+(7 rows)
+
 --
 -- functional joins
 --

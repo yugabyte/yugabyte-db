@@ -129,19 +129,6 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    try {
-      deleteNodeAgent(nodeDetails);
-    } catch (Exception e) {
-      if (!taskParams().isForceDelete) {
-        throw e;
-      } else {
-        log.debug(
-            "Ignoring error deleting node agent {} due to isForceDelete being set.",
-            taskParams().nodeName,
-            e);
-      }
-    }
-
     if (userIntent.providerType == Common.CloudType.onprem
         && nodeDetails.state != NodeDetails.NodeState.Decommissioned) {
       Optional<NodeInstance> nodeInstanceOpt = NodeInstance.maybeGetByName(taskParams().nodeName);
@@ -154,6 +141,21 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         } else {
           nodeInstanceOpt.get().clearNodeDetails();
           log.info("Marked node instance {} as available", taskParams().nodeName);
+        }
+      }
+    }
+
+    if (!cleanupFailed) {
+      try {
+        deleteNodeAgent(nodeDetails);
+      } catch (Exception e) {
+        if (!taskParams().isForceDelete) {
+          throw e;
+        } else {
+          log.debug(
+              "Ignoring error deleting node agent {} due to isForceDelete being set.",
+              taskParams().nodeName,
+              e);
         }
       }
     }

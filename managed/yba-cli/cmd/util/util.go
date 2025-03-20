@@ -214,26 +214,14 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 	}
 
 	errorMap := (*errorBlock.Error).(map[string]interface{})
-	for k, v := range errorMap {
-		if k != "" {
-			errorString = fmt.Sprintf("Field: %s, Error:", k)
-		}
-		var checkType []interface{}
-		var checkTypeMap map[string]interface{}
-		if reflect.TypeOf(v) == reflect.TypeOf(checkType) {
-			for _, s := range *StringSlice(v.([]interface{})) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
-			}
-		} else if reflect.TypeOf(v) == reflect.TypeOf(checkTypeMap) {
-			for _, s := range *StringMap(v.(map[string]interface{})) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
-			}
-			errorString = fmt.Sprintf("%s %v", errorString, v)
-		} else {
-			errorString = fmt.Sprintf("%s %s", errorString, v.(string))
-		}
 
+	bytes, err := json.Marshal(errorMap)
+	if err != nil {
+		errorString = fmt.Sprintf("%s %v", errorString, errorMap)
+	} else {
+		errorString = fmt.Sprintf("%s %s", errorString, string(bytes))
 	}
+
 	return errorString
 }
 

@@ -466,6 +466,49 @@ void TabletVectorIndexes::FillMaxPersistentOpIds(
   }
 }
 
+docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId& table_id) {
+  if (!vector_indexes_list_) {
+    return nullptr;
+  }
+  for (auto it = vector_indexes_list_->begin(); it != vector_indexes_list_->end(); ++it) {
+    if ((**it).table_id() == table_id) {
+      auto result = *it;
+      auto& indexes = vector_indexes_list_;
+      if (indexes.use_count() == 1) {
+        indexes->erase(it);
+        return result;
+      }
+
+      auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
+      new_indexes->reserve(indexes->size() - 1);
+      new_indexes->insert(new_indexes->end(), vector_indexes_list_->begin(), it);
+      new_indexes->insert(new_indexes->end(), ++it, vector_indexes_list_->end());
+      indexes = std::move(new_indexes);
+      return result;
+    }
+  }
+  return nullptr;
+}
+
+Status TabletVectorIndexes::Remove(const TableId& table_id) {
+  if (!has_vector_indexes_.load()) {
+    return Status::OK();
+  }
+  docdb::DocVectorIndexPtr index;
+  {
+    UniqueLock lock(vector_indexes_mutex_);
+    auto it = vector_indexes_map_.find(table_id);
+    if (it == vector_indexes_map_.end()) {
+      return Status::OK();
+    }
+    index = RemoveTableFromList(table_id);
+    RSTATUS_DCHECK(
+        index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
+    vector_indexes_map_.erase(it);
+  }
+  return index->Destroy();
+}
+
 Status TabletVectorIndexes::Verify() {
   auto list = List();
   if (!list) {

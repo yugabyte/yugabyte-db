@@ -90,7 +90,7 @@ func (fs *FullScopeContext) startSubsection(format string) (*template.Template, 
 }
 
 func (fs *FullScopeContext) subSection(name string) {
-	fs.Output.Write([]byte("\n\n"))
+	fs.Output.Write([]byte("\n"))
 	fs.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fs.Output.Write([]byte("\n"))
 }

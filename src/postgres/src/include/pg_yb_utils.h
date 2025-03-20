@@ -707,6 +707,11 @@ extern bool yb_test_collation;
 extern bool yb_test_inval_message_portability;
 
 /*
+ * If > 0, add a delay after apply invalidation messages.
+ */
+extern int yb_test_delay_after_applying_inval_message_ms;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -896,7 +901,7 @@ YbTableDistribution YbGetTableDistribution(Oid relid);
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
-bool		YBIsSupportedLibcLocale(const char *localebuf);
+extern bool YBIsSupportedLibcLocale(const char *localebuf);
 
 /*
  * Check for unsupported libc locale in YugaByte mode.
@@ -924,12 +929,19 @@ extern void YBGetCollationInfo(Oid collation_id,
 /*
  * Setup collation info in attr.
  */
-void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
+extern void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
  */
-bool		YBIsCollationValidNonC(Oid collation_id);
+extern bool		YBIsCollationValidNonC(Oid collation_id);
+
+/*
+ * Check whether the DB collation is UTF-8.
+ */
+extern bool		YBIsDbLocaleDefault();
+
+extern bool		YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*
  * For the column 'attr_num' and its collation id, return the collation id that
@@ -1309,5 +1321,7 @@ extern bool YbInvalidationMessagesTableExists();
 extern bool yb_is_calling_internal_function_for_ddl;
 
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
+
+extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
 
 #endif							/* PG_YB_UTILS_H */

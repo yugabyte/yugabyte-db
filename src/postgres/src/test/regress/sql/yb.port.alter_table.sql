@@ -248,8 +248,6 @@ ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
 CREATE TABLE constraint_rename_test (a int CONSTRAINT con1 CHECK (a > 0), b int, c int);
 \d constraint_rename_test
 CREATE TABLE constraint_rename_test2 (a int CONSTRAINT con1 CHECK (a > 0), d int) INHERITS (constraint_rename_test);
-/*
-TODO: Uncomment when inheritance is supported (https://github.com/yugabyte/yugabyte-db/issues/1129).
 \d constraint_rename_test2
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- fail
@@ -269,7 +267,6 @@ DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
 ALTER TABLE IF EXISTS constraint_not_exist RENAME CONSTRAINT con3 TO con3foo; -- ok
 ALTER TABLE IF EXISTS constraint_rename_test ADD CONSTRAINT con4 UNIQUE (a);
-*/
 
 -- renaming constraints with cache reset of target relation
 CREATE TABLE constraint_rename_cache (a int,
@@ -343,24 +340,804 @@ DELETE FROM attmp3 WHERE NOT b > 10;
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
 
+-- Test inherited NOT VALID CHECK constraints
+select * from attmp3;
+CREATE TABLE attmp6 () INHERITS (attmp3);
+CREATE TABLE attmp7 () INHERITS (attmp3);
+
+INSERT INTO attmp6 VALUES (6, 30), (7, 16);
+ALTER TABLE attmp3 ADD CONSTRAINT b_le_20 CHECK (b <= 20) NOT VALID;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_le_20;	-- fails
+DELETE FROM attmp6 WHERE b > 20;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_le_20;	-- succeeds
+
+-- An already validated constraint must not be revalidated
+CREATE FUNCTION boo(int) RETURNS int IMMUTABLE STRICT LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'boo: %', $1; RETURN $1; END; $$;
+INSERT INTO attmp7 VALUES (8, 18);
+ALTER TABLE attmp7 ADD CONSTRAINT identity CHECK (b = boo(b));
+ALTER TABLE attmp3 ADD CONSTRAINT IDENTITY check (b = boo(b)) NOT VALID;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT identity;
+
+-- A NO INHERIT constraint should not be looked for in children during VALIDATE CONSTRAINT
+create table parent_noinh_convalid (a int);
+create table child_noinh_convalid () inherits (parent_noinh_convalid);
+insert into parent_noinh_convalid values (1);
+insert into child_noinh_convalid values (1);
+alter table parent_noinh_convalid add constraint check_a_is_2 check (a = 2) no inherit not valid;
+-- fail, because of the row in parent
+alter table parent_noinh_convalid validate constraint check_a_is_2;
+delete from only parent_noinh_convalid;
+-- ok (parent itself contains no violating rows)
+alter table parent_noinh_convalid validate constraint check_a_is_2;
+select convalidated from pg_constraint where conrelid = 'parent_noinh_convalid'::regclass and conname = 'check_a_is_2';
+-- cleanup
+drop table parent_noinh_convalid, child_noinh_convalid;
+
+-- Try (and fail) to create constraint from attmp5(a) to attmp4(a) - unique constraint on
+-- attmp4 is a,b
+
+ALTER TABLE attmp5 add constraint attmpconstr foreign key(a) references attmp4(a) match full;
+
+DROP TABLE attmp7;
+
+DROP TABLE attmp6;
+
+DROP TABLE attmp5;
+
+DROP TABLE attmp4;
+
+DROP TABLE attmp3;
+
+DROP TABLE attmp2;
+
+-- NOT VALID with plan invalidation -- ensure we don't use a constraint for
+-- exclusion until validated
+set constraint_exclusion TO 'partition';
+create table nv_parent (d date, check (false) no inherit not valid);
+-- not valid constraint added at creation time should automatically become valid
+\d nv_parent
+
+create table nv_child_2010 () inherits (nv_parent);
+create table nv_child_2011 () inherits (nv_parent);
+alter table nv_child_2010 add check (d between '2010-01-01'::date and '2010-12-31'::date) not valid;
+alter table nv_child_2011 add check (d between '2011-01-01'::date and '2011-12-31'::date) not valid;
+explain (costs off) select * from nv_parent where d between '2011-08-01' and '2011-08-31';
+create table nv_child_2009 (check (d between '2009-01-01'::date and '2009-12-31'::date)) inherits (nv_parent);
+explain (costs off) select * from nv_parent where d between '2011-08-01'::date and '2011-08-31'::date;
+explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
+-- after validation, the constraint should be used
+alter table nv_child_2011 VALIDATE CONSTRAINT nv_child_2011_d_check;
+explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
+
+-- add an inherited NOT VALID constraint
+alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::date) not valid;
+\d nv_child_2009
+-- we leave nv_parent and children around to help test pg_dump logic
+
+-- Foreign key adding test with mixed types
+
+-- Note: these tables are TEMP to avoid name conflicts when this test
+-- is run in parallel with foreign_key.sql.
+
+CREATE TEMP TABLE PKTABLE (ptest1 int PRIMARY KEY);
+INSERT INTO PKTABLE VALUES(42);
+CREATE TEMP TABLE FKTABLE (ftest1 inet);
+-- This next should fail, because int=inet does not exist
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+-- This should also fail for the same reason, but here we
+-- give the column name
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable(ptest1);
+DROP TABLE FKTABLE;
+-- This should succeed, even though they are different types,
+-- because int=int8 exists and is a member of the integer opfamily
+CREATE TEMP TABLE FKTABLE (ftest1 int8);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+-- Check it actually works
+INSERT INTO FKTABLE VALUES(42);		-- should succeed
+INSERT INTO FKTABLE VALUES(43);		-- should fail
+DROP TABLE FKTABLE;
+-- This should fail, because we'd have to cast numeric to int which is
+-- not an implicit coercion (or use numeric=numeric, but that's not part
+-- of the integer opfamily)
+CREATE TEMP TABLE FKTABLE (ftest1 numeric);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+-- On the other hand, this should work because int implicitly promotes to
+-- numeric, and we allow promotion on the FK side
+CREATE TEMP TABLE PKTABLE (ptest1 numeric PRIMARY KEY);
+INSERT INTO PKTABLE VALUES(42);
+CREATE TEMP TABLE FKTABLE (ftest1 int);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+-- Check it actually works
+INSERT INTO FKTABLE VALUES(42);		-- should succeed
+INSERT INTO FKTABLE VALUES(43);		-- should fail
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+
+CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
+                           PRIMARY KEY(ptest1, ptest2));
+-- This should fail, because we just chose really odd types
+CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
+DROP TABLE FKTABLE;
+-- Again, so should this...
+CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
+     references pktable(ptest1, ptest2);
+DROP TABLE FKTABLE;
+-- This fails because we mixed up the column ordering
+CREATE TEMP TABLE FKTABLE (ftest1 int, ftest2 inet);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
+     references pktable(ptest2, ptest1);
+-- As does this...
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
+     references pktable(ptest1, ptest2);
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+
+-- Test that ALTER CONSTRAINT updates trigger deferrability properly
+
+CREATE TEMP TABLE PKTABLE (ptest1 int primary key);
+CREATE TEMP TABLE FKTABLE (ftest1 int);
+
+ALTER TABLE FKTABLE ADD CONSTRAINT fknd FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION NOT DEFERRABLE;
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdd FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdi FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE FKTABLE ADD CONSTRAINT fknd2 FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION DEFERRABLE INITIALLY DEFERRED;
+/* YB: ALTER CONSTRAINT is not supported #3945
+ALTER TABLE FKTABLE ALTER CONSTRAINT fknd2 NOT DEFERRABLE;
+*/ -- YB
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdd2 FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION NOT DEFERRABLE;
+/* YB: ALTER CONSTRAINT is not supported #3945
+ALTER TABLE FKTABLE ALTER CONSTRAINT fkdd2 DEFERRABLE INITIALLY DEFERRED;
+*/ -- YB
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdi2 FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION NOT DEFERRABLE;
+/* YB: ALTER CONSTRAINT is not supported #3945
+ALTER TABLE FKTABLE ALTER CONSTRAINT fkdi2 DEFERRABLE INITIALLY IMMEDIATE;
+*/ -- YB
+
+SELECT conname, tgfoid::regproc, tgtype, tgdeferrable, tginitdeferred
+FROM pg_trigger JOIN pg_constraint con ON con.oid = tgconstraint
+WHERE tgrelid = 'pktable'::regclass
+ORDER BY 1,2,3;
+SELECT conname, tgfoid::regproc, tgtype, tgdeferrable, tginitdeferred
+FROM pg_trigger JOIN pg_constraint con ON con.oid = tgconstraint
+WHERE tgrelid = 'fktable'::regclass
+ORDER BY 1,2,3;
+
+-- temp tables should go away by themselves, need not drop them.
+
+-- test check constraint adding
+
+create table atacc1 ( test int );
+-- add a check constraint
+alter table atacc1 add constraint atacc_test1 check (test>3);
+-- should fail
+insert into atacc1 (test) values (2);
+-- should succeed
+insert into atacc1 (test) values (4);
+drop table atacc1;
+
+-- let's do one where the check fails when added
+create table atacc1 ( test int );
+-- insert a soon to be failing row
+insert into atacc1 (test) values (2);
+-- add a check constraint (fails)
+alter table atacc1 add constraint atacc_test1 check (test>3);
+insert into atacc1 (test) values (4);
+drop table atacc1;
+
+-- let's do one where the check fails because the column doesn't exist
+create table atacc1 ( test int );
+-- add a check constraint (fails)
+alter table atacc1 add constraint atacc_test1 check (test1>3);
+drop table atacc1;
+
+-- something a little more complicated
+create table atacc1 ( test int, test2 int, test3 int);
+-- add a check constraint (fails)
+alter table atacc1 add constraint atacc_test1 check (test+test2<test3*4);
+-- should fail
+insert into atacc1 (test,test2,test3) values (4,4,2);
+-- should succeed
+insert into atacc1 (test,test2,test3) values (4,4,5);
+drop table atacc1;
+
+-- lets do some naming tests
+create table atacc1 (test int check (test>3), test2 int);
+alter table atacc1 add check (test2>test);
+-- should fail for $2
+insert into atacc1 (test2, test) values (3, 4);
+drop table atacc1;
+
+-- inheritance related tests
+create table atacc1 (test int);
+create table atacc2 (test2 int);
+create table atacc3 (test3 int) inherits (atacc1, atacc2);
+alter table atacc2 add constraint foo check (test2>0);
+-- fail and then succeed on atacc2
+insert into atacc2 (test2) values (-3);
+insert into atacc2 (test2) values (3);
+-- fail and then succeed on atacc3
+insert into atacc3 (test2) values (-3);
+insert into atacc3 (test2) values (3);
+drop table atacc3;
+drop table atacc2;
+drop table atacc1;
+
+-- same things with one created with INHERIT
+create table atacc1 (test int);
+create table atacc2 (test2 int);
+create table atacc3 (test3 int) inherits (atacc1, atacc2);
+alter table atacc3 no inherit atacc2;
+-- fail
+alter table atacc3 no inherit atacc2;
+-- make sure it really isn't a child
+insert into atacc3 (test2) values (3);
+select test2 from atacc2;
+-- fail due to missing constraint
+alter table atacc2 add constraint foo check (test2>0);
+alter table atacc3 inherit atacc2;
+-- fail due to missing column
+alter table atacc3 rename test2 to testx;
+alter table atacc3 inherit atacc2;
+-- fail due to mismatched data type
+alter table atacc3 add test2 bool;
+alter table atacc3 inherit atacc2;
+alter table atacc3 drop test2;
+-- succeed
+alter table atacc3 add test2 int;
+update atacc3 set test2 = 4 where test2 is null;
+alter table atacc3 add constraint foo check (test2>0);
+alter table atacc3 inherit atacc2;
+-- fail due to duplicates and circular inheritance
+alter table atacc3 inherit atacc2;
+alter table atacc2 inherit atacc3;
+alter table atacc2 inherit atacc2;
+-- test that we really are a child now (should see 4 not 3 and cascade should go through)
+select test2 from atacc2;
+drop table atacc2 cascade;
+drop table atacc1;
+
+-- adding only to a parent is allowed as of 9.2
+
+create table atacc1 (test int);
+create table atacc2 (test2 int) inherits (atacc1);
+-- ok:
+alter table atacc1 add constraint foo check (test>0) no inherit;
+-- check constraint is not there on child
+insert into atacc2 (test) values (-3);
+-- check constraint is there on parent
+insert into atacc1 (test) values (-3);
+insert into atacc1 (test) values (3);
+-- fail, violating row:
+alter table atacc2 add constraint foo check (test>0) no inherit;
+drop table atacc2;
+drop table atacc1;
+
+-- test unique constraint adding
+
+create table atacc1 ( test int ) ;
+-- add a unique constraint
+alter table atacc1 add constraint atacc_test1 unique (test);
+-- insert first value
+insert into atacc1 (test) values (2);
+-- should fail
+insert into atacc1 (test) values (2);
+-- should succeed
+insert into atacc1 (test) values (4);
+-- try to create duplicates via alter table using - should fail
+alter table atacc1 alter column test type integer using 0;
+drop table atacc1;
+
+-- let's do one where the unique constraint fails when added
+create table atacc1 ( test int );
+-- insert soon to be failing rows
+insert into atacc1 (test) values (2);
+insert into atacc1 (test) values (2);
+-- add a unique constraint (fails)
+alter table atacc1 add constraint atacc_test1 unique (test);
+insert into atacc1 (test) values (3);
+drop table atacc1;
+
+-- let's do one where the unique constraint fails
+-- because the column doesn't exist
+create table atacc1 ( test int );
+-- add a unique constraint (fails)
+alter table atacc1 add constraint atacc_test1 unique (test1);
+drop table atacc1;
+
+-- something a little more complicated
+create table atacc1 ( test int, test2 int);
+-- add a unique constraint
+alter table atacc1 add constraint atacc_test1 unique (test, test2);
+-- insert initial value
+insert into atacc1 (test,test2) values (4,4);
+-- should fail
+insert into atacc1 (test,test2) values (4,4);
+-- should all succeed
+insert into atacc1 (test,test2) values (4,5);
+insert into atacc1 (test,test2) values (5,4);
+insert into atacc1 (test,test2) values (5,5);
+drop table atacc1;
+
+-- lets do some naming tests
+create table atacc1 (test int, test2 int, unique(test));
+alter table atacc1 add unique (test2);
+-- should fail for @@ second one @@
+insert into atacc1 (test2, test) values (3, 3);
+insert into atacc1 (test2, test) values (2, 3);
+drop table atacc1;
+
+-- test primary key constraint adding
+
+create table atacc1 ( id serial, test int) ;
+-- add a primary key constraint
+alter table atacc1 add constraint atacc_test1 primary key (test);
+-- insert first value
+insert into atacc1 (test) values (2);
+-- should fail
+insert into atacc1 (test) values (2);
+-- should succeed
+insert into atacc1 (test) values (4);
+-- inserting NULL should fail
+insert into atacc1 (test) values(NULL);
+-- try adding a second primary key (should fail)
+alter table atacc1 add constraint atacc_oid1 primary key(id);
+-- drop first primary key constraint
+alter table atacc1 drop constraint atacc_test1 restrict;
+-- try adding a primary key on oid (should succeed)
+alter table atacc1 add constraint atacc_oid1 primary key(id);
+drop table atacc1;
+
+-- let's do one where the primary key constraint fails when added
+create table atacc1 ( test int );
+-- insert soon to be failing rows
+insert into atacc1 (test) values (2);
+insert into atacc1 (test) values (2);
+-- add a primary key (fails)
+alter table atacc1 add constraint atacc_test1 primary key (test);
+insert into atacc1 (test) values (3);
+drop table atacc1;
+
+-- let's do another one where the primary key constraint fails when added
+create table atacc1 ( test int );
+-- insert soon to be failing row
+insert into atacc1 (test) values (NULL);
+-- add a primary key (fails)
+alter table atacc1 add constraint atacc_test1 primary key (test);
+insert into atacc1 (test) values (3);
+drop table atacc1;
+
+-- let's do one where the primary key constraint fails
+-- because the column doesn't exist
+create table atacc1 ( test int );
+-- add a primary key constraint (fails)
+alter table atacc1 add constraint atacc_test1 primary key (test1);
+drop table atacc1;
+
+-- adding a new column as primary key to a non-empty table.
+-- should fail unless the column has a non-null default value.
+create table atacc1 ( test int );
+insert into atacc1 (test) values (0);
+-- add a primary key column without a default (fails).
+alter table atacc1 add column test2 int primary key;
+-- now add a primary key column with a default (succeeds).
+alter table atacc1 add column test2 int default 0 primary key;
+drop table atacc1;
+
+-- this combination used to have order-of-execution problems (bug #15580)
+create table atacc1 (a int);
+insert into atacc1 values(1);
+alter table atacc1
+  add column b float8 not null default random(),
+  add primary key(a);
+drop table atacc1;
+
+-- additionally, we've seen issues with foreign key validation not being
+-- properly delayed until after a table rewrite.  Check that works ok.
+create table atacc1 (a int primary key);
+alter table atacc1 add constraint atacc1_fkey foreign key (a) references atacc1 (a) not valid;
+alter table atacc1 validate constraint atacc1_fkey, alter a type bigint;
+drop table atacc1;
+
+-- we've also seen issues with check constraints being validated at the wrong
+-- time when there's a pending table rewrite.
+create table atacc1 (a bigint, b int);
+insert into atacc1 values(1,1);
+alter table atacc1 add constraint atacc1_chk check(b = 1) not valid;
+alter table atacc1 validate constraint atacc1_chk, alter a type int;
+drop table atacc1;
+
+-- same as above, but ensure the constraint violation is detected
+create table atacc1 (a bigint, b int);
+insert into atacc1 values(1,2);
+alter table atacc1 add constraint atacc1_chk check(b = 1) not valid;
+alter table atacc1 validate constraint atacc1_chk, alter a type int;
+drop table atacc1;
+
+-- something a little more complicated
+create table atacc1 ( test int, test2 int);
+-- add a primary key constraint
+alter table atacc1 add constraint atacc_test1 primary key (test, test2);
+-- try adding a second primary key - should fail
+alter table atacc1 add constraint atacc_test2 primary key (test);
+-- insert initial value
+insert into atacc1 (test,test2) values (4,4);
+-- should fail
+insert into atacc1 (test,test2) values (4,4);
+insert into atacc1 (test,test2) values (NULL,3);
+insert into atacc1 (test,test2) values (3, NULL);
+insert into atacc1 (test,test2) values (NULL,NULL);
+-- should all succeed
+insert into atacc1 (test,test2) values (4,5);
+insert into atacc1 (test,test2) values (5,4);
+insert into atacc1 (test,test2) values (5,5);
+drop table atacc1;
+
+-- lets do some naming tests
+create table atacc1 (test int, test2 int, primary key(test));
+-- only first should succeed
+insert into atacc1 (test2, test) values (3, 3);
+insert into atacc1 (test2, test) values (2, 3);
+insert into atacc1 (test2, test) values (1, NULL);
+drop table atacc1;
+
+-- alter table / alter column [set/drop] not null tests
+-- try altering system catalogs, should fail
+alter table pg_class alter column relname drop not null;
+alter table pg_class alter relname set not null;
+
+-- try altering non-existent table, should fail
+alter table non_existent alter column bar set not null;
+alter table non_existent alter column bar drop not null;
+
+-- test setting columns to null and not null and vice versa
+-- test checking for null values and primary key
+create table atacc1 (test int not null);
+alter table atacc1 add constraint "atacc1_pkey" primary key (test);
+alter table atacc1 alter column test drop not null;
+alter table atacc1 drop constraint "atacc1_pkey";
+alter table atacc1 alter column test drop not null;
+insert into atacc1 values (null);
+alter table atacc1 alter test set not null;
+delete from atacc1;
+alter table atacc1 alter test set not null;
+
+-- try altering a non-existent column, should fail
+alter table atacc1 alter bar set not null;
+alter table atacc1 alter bar drop not null;
+
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+alter table myview alter column test drop not null;
+alter table myview alter column test set not null;
+drop view myview;
+
+drop table atacc1;
+
+-- set not null verified by constraints
+create table atacc1 (test_a int, test_b int);
+insert into atacc1 values (null, 1);
+-- constraint not cover all values, should fail
+alter table atacc1 add constraint atacc1_constr_or check(test_a is not null or test_b < 10);
+alter table atacc1 alter test_a set not null;
+alter table atacc1 drop constraint atacc1_constr_or;
+-- not valid constraint, should fail
+alter table atacc1 add constraint atacc1_constr_invalid check(test_a is not null) not valid;
+alter table atacc1 alter test_a set not null;
+alter table atacc1 drop constraint atacc1_constr_invalid;
+-- with valid constraint
+update atacc1 set test_a = 1;
+alter table atacc1 add constraint atacc1_constr_a_valid check(test_a is not null);
+alter table atacc1 alter test_a set not null;
+delete from atacc1;
+
+insert into atacc1 values (2, null);
+alter table atacc1 alter test_a drop not null;
+-- test multiple set not null at same time
+-- test_a checked by atacc1_constr_a_valid, test_b should fail by table scan
+alter table atacc1 alter test_a set not null, alter test_b set not null;
+-- commands order has no importance
+alter table atacc1 alter test_b set not null, alter test_a set not null;
+
+-- valid one by table scan, one by check constraints
+update atacc1 set test_b = 1;
+alter table atacc1 alter test_b set not null, alter test_a set not null;
+
+alter table atacc1 alter test_a drop not null, alter test_b drop not null;
+-- both column has check constraints
+alter table atacc1 add constraint atacc1_constr_b_valid check(test_b is not null);
+alter table atacc1 alter test_b set not null, alter test_a set not null;
+drop table atacc1;
+
 -- test inheritance
+create table parent (a int);
+create table child (b varchar(255)) inherits (parent);
+
+alter table parent alter a set not null;
+insert into parent values (NULL);
+insert into child (a, b) values (NULL, 'foo');
+alter table parent alter a drop not null;
+insert into parent values (NULL);
+insert into child (a, b) values (NULL, 'foo');
+alter table only parent alter a set not null;
+alter table child alter a set not null;
+delete from parent;
+alter table only parent alter a set not null;
+insert into parent values (NULL);
+alter table child alter a set not null;
+insert into child (a, b) values (NULL, 'foo');
+delete from child;
+alter table child alter a set not null;
+insert into child (a, b) values (NULL, 'foo');
+drop table child;
+drop table parent;
+
+-- test setting and removing default values
+create table def_test (
+	c1	int4 default 5,
+	c2	text default 'initial_default'
+);
+insert into def_test default values;
+alter table def_test alter column c1 drop default;
+insert into def_test default values;
+alter table def_test alter column c2 drop default;
+insert into def_test default values;
+alter table def_test alter column c1 set default 10;
+alter table def_test alter column c2 set default 'new_default';
+insert into def_test default values;
+select * from def_test;
+
+-- set defaults to an incorrect type: this should fail
+alter table def_test alter column c1 set default 'wrong_datatype';
+alter table def_test alter column c2 set default 20;
+
+-- set defaults on a non-existent column: this should fail
+alter table def_test alter column c3 set default 30;
+
+-- set defaults on views: we need to create a view, add a rule
+-- to allow insertions into it, and then alter the view to add
+-- a default
+create view def_view_test as select * from def_test;
+create rule def_view_test_ins as
+	on insert to def_view_test
+	do instead insert into def_test select new.*;
+insert into def_view_test default values;
+alter table def_view_test alter column c1 set default 45;
+insert into def_view_test default values;
+alter table def_view_test alter column c2 set default 'view_default';
+insert into def_view_test default values;
+select * from def_view_test;
+
+drop rule def_view_test_ins on def_view_test;
+drop view def_view_test;
+drop table def_test;
+
+-- alter table / drop column tests
+-- try altering system catalogs, should fail
+alter table pg_class drop column relname;
+
+-- try altering non-existent table, should fail
+alter table nosuchtable drop column bar;
+
+-- test dropping columns
+create table atacc1 (a int4 not null, b int4, c int4 not null, d int4);
+insert into atacc1 values (1, 2, 3, 4);
+alter table atacc1 drop a;
+alter table atacc1 drop a;
+
+-- SELECTs
+select * from atacc1;
+select * from atacc1 order by a;
+select * from atacc1 order by "........pg.dropped.1........";
+select * from atacc1 group by a;
+select * from atacc1 group by "........pg.dropped.1........";
+select atacc1.* from atacc1;
+select a from atacc1;
+select atacc1.a from atacc1;
+select b,c,d from atacc1;
+select a,b,c,d from atacc1;
+select * from atacc1 where a = 1;
+select "........pg.dropped.1........" from atacc1;
+select atacc1."........pg.dropped.1........" from atacc1;
+select "........pg.dropped.1........",b,c,d from atacc1;
+select * from atacc1 where "........pg.dropped.1........" = 1;
+
+-- UPDATEs
+update atacc1 set a = 3;
+update atacc1 set b = 2 where a = 3;
+update atacc1 set "........pg.dropped.1........" = 3;
+update atacc1 set b = 2 where "........pg.dropped.1........" = 3;
+
+-- INSERTs
+insert into atacc1 values (10, 11, 12, 13);
+insert into atacc1 values (default, 11, 12, 13);
+insert into atacc1 values (11, 12, 13);
+insert into atacc1 (a) values (10);
+insert into atacc1 (a) values (default);
+insert into atacc1 (a,b,c,d) values (10,11,12,13);
+insert into atacc1 (a,b,c,d) values (default,11,12,13);
+insert into atacc1 (b,c,d) values (11,12,13);
+insert into atacc1 ("........pg.dropped.1........") values (10);
+insert into atacc1 ("........pg.dropped.1........") values (default);
+insert into atacc1 ("........pg.dropped.1........",b,c,d) values (10,11,12,13);
+insert into atacc1 ("........pg.dropped.1........",b,c,d) values (default,11,12,13);
+
+-- DELETEs
+delete from atacc1 where a = 3;
+delete from atacc1 where "........pg.dropped.1........" = 3;
+delete from atacc1;
+
+-- try dropping a non-existent column, should fail
+alter table atacc1 drop bar;
+
+-- try removing an oid column, should succeed (as it's nonexistent)
+alter table atacc1 SET WITHOUT OIDS;
+
+-- try adding an oid column, should fail (not supported)
+alter table atacc1 SET WITH OIDS;
+
+-- try dropping the xmin column, should fail
+alter table atacc1 drop xmin;
+
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+select * from myview;
+alter table myview drop d;
+drop view myview;
+
+-- test some commands to make sure they fail on the dropped column
+analyze atacc1(a);
+analyze atacc1("........pg.dropped.1........");
+vacuum analyze atacc1(a);
+vacuum analyze atacc1("........pg.dropped.1........");
+comment on column atacc1.a is 'testing';
+comment on column atacc1."........pg.dropped.1........" is 'testing';
+/* YB: set storage for column not supported #1124
+alter table atacc1 alter a set storage plain;
+alter table atacc1 alter "........pg.dropped.1........" set storage plain;
+*/ -- YB
+alter table atacc1 alter a set statistics 0;
+alter table atacc1 alter "........pg.dropped.1........" set statistics 0;
+alter table atacc1 alter a set default 3;
+alter table atacc1 alter "........pg.dropped.1........" set default 3;
+alter table atacc1 alter a drop default;
+alter table atacc1 alter "........pg.dropped.1........" drop default;
+alter table atacc1 alter a set not null;
+alter table atacc1 alter "........pg.dropped.1........" set not null;
+alter table atacc1 alter a drop not null;
+alter table atacc1 alter "........pg.dropped.1........" drop not null;
+alter table atacc1 rename a to x;
+alter table atacc1 rename "........pg.dropped.1........" to x;
+alter table atacc1 add primary key(a);
+alter table atacc1 add primary key("........pg.dropped.1........");
+alter table atacc1 add unique(a);
+alter table atacc1 add unique("........pg.dropped.1........");
+alter table atacc1 add check (a > 3);
+alter table atacc1 add check ("........pg.dropped.1........" > 3);
+create table atacc2 (id int4 unique);
+alter table atacc1 add foreign key (a) references atacc2(id);
+alter table atacc1 add foreign key ("........pg.dropped.1........") references atacc2(id);
+alter table atacc2 add foreign key (id) references atacc1(a);
+alter table atacc2 add foreign key (id) references atacc1("........pg.dropped.1........");
+drop table atacc2;
+create index "testing_idx" on atacc1(a);
+create index "testing_idx" on atacc1("........pg.dropped.1........");
+
+-- test create as and select into
+insert into atacc1 values (21, 22, 23);
+create table attest1 as select * from atacc1;
+select * from attest1;
+drop table attest1;
+select * into attest2 from atacc1;
+select * from attest2;
+drop table attest2;
+
+-- try dropping all columns
+alter table atacc1 drop c;
+alter table atacc1 drop d;
+alter table atacc1 drop b;
+select * from atacc1;
+
+drop table atacc1;
+
+-- test constraint error reporting in presence of dropped columns
+create table atacc1 (id serial primary key, value int check (value < 10));
+insert into atacc1(value) values (100);
+alter table atacc1 drop column value;
+alter table atacc1 add column value int check (value < 10);
+insert into atacc1(value) values (100);
+insert into atacc1(id, value) values (null, 0);
+drop table atacc1;
+
+-- test inheritance
+create table parent (a int, b int, c int);
+insert into parent values (1, 2, 3);
+alter table parent drop a;
+create table child (d varchar(255)) inherits (parent);
+insert into child values (12, 13, 'testing');
+
+select * from parent;
+select * from child;
+alter table parent drop c;
+select * from parent;
+select * from child;
+
+drop table child;
+drop table parent;
+
+-- check error cases for inheritance column merging
+create table parent (a float8, b numeric(10,4), c text collate "C");
+
+create table child (a float4) inherits (parent); -- fail
+create table child (b decimal(10,7)) inherits (parent); -- fail
+create table child (c text collate "POSIX") inherits (parent); -- fail
+create table child (a double precision, b decimal(10,4)) inherits (parent);
+
+drop table child;
+drop table parent;
+
+-- test copy in/out
+create table attest (a int4, b int4, c int4);
+insert into attest values (1,2,3);
+alter table attest drop a;
+copy attest to stdout;
+copy attest(a) to stdout;
+copy attest("........pg.dropped.1........") to stdout;
+copy attest from stdin;
+10	11	12
+\.
+select * from attest;
+copy attest from stdin;
+21	22
+\.
+select * from attest;
+copy attest(a) from stdin;
+copy attest("........pg.dropped.1........") from stdin;
+copy attest(b,c) from stdin;
+31	32
+\.
+select * from attest;
+drop table attest;
+
+-- test inheritance
+
+create table dropColumn (a int, b int, e int);
+create table dropColumnChild (c int) inherits (dropColumn);
+create table dropColumnAnother (d int) inherits (dropColumnChild);
+
+-- these two should fail
+alter table dropColumnchild drop column a;
+alter table only dropColumnChild drop column b;
+
+
+
+-- these three should work
+alter table only dropColumn drop column e;
+alter table dropColumnChild drop column c;
+alter table dropColumn drop column a;
 
 create table renameColumn (a int);
 create table renameColumnChild (b int) inherits (renameColumn);
-/* YB: uncomment when INHERITS is supported
 create table renameColumnAnother (c int) inherits (renameColumnChild);
 
 -- these three should fail
 alter table renameColumnChild rename column a to d;
 alter table only renameColumnChild rename column a to d;
 alter table only renameColumn rename column a to d;
-*/ -- YB
 
 -- these should work
 alter table renameColumn rename column a to d;
-/* YB: uncomment when INHERITS is supported
 alter table renameColumnChild rename column b to a;
-*/ -- YB
 
 -- these should work
 alter table if exists doesnt_exist_tab rename column a to d;
@@ -369,6 +1146,523 @@ alter table if exists doesnt_exist_tab rename column b to a;
 -- this should work
 alter table renameColumn add column w int;
 
+-- this should fail
+alter table only renameColumn add column x int;
+
+
+-- Test corner cases in dropping of inherited columns
+
+create table p1 (f1 int, f2 int);
+create table c1 (f1 int not null) inherits(p1);
+
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+/* YB: #26094 issue with inherits
+-- should work
+alter table p1 drop column f1;
+-- c1.f1 is still there, but no longer inherited
+select f1 from c1;
+alter table c1 drop column f1;
+select f1 from c1;
+
+drop table p1 cascade;
+
+create table p1 (f1 int, f2 int);
+create table c1 () inherits(p1);
+
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+alter table p1 drop column f1;
+-- c1.f1 is dropped now, since there is no local definition for it
+select f1 from c1;
+*/ -- YB
+drop table p1 cascade;
+
+create table p1 (f1 int, f2 int);
+create table c1 () inherits(p1);
+
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+alter table only p1 drop column f1;
+-- c1.f1 is NOT dropped, but must now be considered non-inherited
+alter table c1 drop column f1;
+
+drop table p1 cascade;
+
+create table p1 (f1 int, f2 int);
+create table c1 (f1 int not null) inherits(p1);
+
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+alter table only p1 drop column f1;
+-- c1.f1 is still there, but no longer inherited
+alter table c1 drop column f1;
+
+drop table p1 cascade;
+
+create table p1(id int, name text);
+create table p2(id2 int, name text, height int);
+create table c1(age int) inherits(p1,p2);
+create table gc1() inherits (c1);
+
+select relname, attname, attinhcount, attislocal
+from pg_class join pg_attribute on (pg_class.oid = pg_attribute.attrelid)
+where relname in ('p1','p2','c1','gc1') and attnum > 0 and not attisdropped
+order by relname, attnum;
+
+-- should work
+alter table only p1 drop column name;
+-- should work. Now c1.name is local and inhcount is 0.
+/* YB: #26094 issue with inherit
+alter table p2 drop column name;
+*/ -- YB
+-- should be rejected since its inherited
+alter table gc1 drop column name;
+/* YB: #26094 issue with inherits
+-- should work, and drop gc1.name along
+alter table c1 drop column name;
+-- should fail: column does not exist
+alter table gc1 drop column name;
+*/ -- YB
+-- should work and drop the attribute in all tables
+alter table p2 drop column height;
+
+-- IF EXISTS test
+create table dropColumnExists ();
+alter table dropColumnExists drop column non_existing; --fail
+alter table dropColumnExists drop column if exists non_existing; --succeed
+
+select relname, attname, attinhcount, attislocal
+from pg_class join pg_attribute on (pg_class.oid = pg_attribute.attrelid)
+where relname in ('p1','p2','c1','gc1') and attnum > 0 and not attisdropped
+order by relname, attnum; -- YB output differs due to commented lines above
+
+drop table p1, p2 cascade;
+
+-- test attinhcount tracking with merged columns
+
+create table depth0();
+create table depth1(c text) inherits (depth0);
+create table depth2() inherits (depth1);
+/* YB: #26094 issue with inherits
+alter table depth0 add c text;
+
+select attrelid::regclass, attname, attinhcount, attislocal
+from pg_attribute
+where attnum > 0 and attrelid::regclass in ('depth0', 'depth1', 'depth2')
+order by attrelid::regclass::text, attnum;
+
+-- test renumbering of child-table columns in inherited operations
+
+create table p1 (f1 int);
+create table c1 (f2 text, f3 int) inherits (p1);
+
+alter table p1 add column a1 int check (a1 > 0);
+alter table p1 add column f2 text;
+
+insert into p1 values (1,2,'abc');
+insert into c1 values(11,'xyz',33,0); -- should fail
+insert into c1 values(11,'xyz',33,22);
+
+select * from p1;
+update p1 set a1 = a1 + 1, f2 = upper(f2);
+select * from p1;
+*/ -- YB
+drop table p1 cascade;
+
+-- test that operations with a dropped column do not try to reference
+-- its datatype
+
+create domain mytype as text;
+create temp table foo (f1 text, f2 mytype, f3 text);
+
+insert into foo values('bb','cc','dd');
+select * from foo;
+
+drop domain mytype cascade;
+
+select * from foo;
+insert into foo values('qq','rr');
+select * from foo;
+update foo set f3 = 'zz';
+select * from foo;
+select f3,max(f1) from foo group by f3;
+
+-- Simple tests for alter table column type
+alter table foo alter f1 TYPE integer; -- fails
+alter table foo alter f1 TYPE varchar(10);
+
+create table anothertab (atcol1 serial8, atcol2 boolean,
+	constraint anothertab_chk check (atcol1 <= 3));
+
+insert into anothertab (atcol1, atcol2) values (default, true);
+insert into anothertab (atcol1, atcol2) values (default, false);
+select * from anothertab;
+
+alter table anothertab alter column atcol1 type boolean; -- fails
+alter table anothertab alter column atcol1 type boolean using atcol1::int; -- fails
+alter table anothertab alter column atcol1 type integer;
+
+select * from anothertab order by atcol1; /* YB order changes due to rewrite */
+
+insert into anothertab (atcol1, atcol2) values (45, null); -- fails
+insert into anothertab (atcol1, atcol2) values (default, null);
+
+select * from anothertab order by atcol1; /* YB order changes due to rewrite */
+
+alter table anothertab alter column atcol2 type text
+      using case when atcol2 is true then 'IT WAS TRUE'
+                 when atcol2 is false then 'IT WAS FALSE'
+                 else 'IT WAS NULL!' end;
+
+select * from anothertab order by atcol1; /* YB order changes due to rewrite */
+alter table anothertab alter column atcol1 type boolean
+        using case when atcol1 % 2 = 0 then true else false end; -- fails
+alter table anothertab alter column atcol1 drop default;
+alter table anothertab alter column atcol1 type boolean
+        using case when atcol1 % 2 = 0 then true else false end; -- fails
+alter table anothertab drop constraint anothertab_chk;
+alter table anothertab drop constraint anothertab_chk; -- fails
+alter table anothertab drop constraint IF EXISTS anothertab_chk; -- succeeds
+
+alter table anothertab alter column atcol1 type boolean
+        using case when atcol1 % 2 = 0 then true else false end;
+
+select * from anothertab order by atcol2; /* YB order changes due to rewrite */
+
+drop table anothertab;
+
+-- Test index handling in alter table column type (cf. bugs #15835, #15865)
+/* YB: not supported exclude using
+create table anothertab(f1 int primary key, f2 int unique,
+                        f3 int, f4 int, f5 int);
+alter table anothertab
+  add exclude using btree (f3 with =);
+alter table anothertab
+  add exclude using btree (f4 with =) where (f4 is not null);
+alter table anothertab
+  add exclude using btree (f4 with =) where (f5 > 0);
+alter table anothertab
+  add unique(f1,f4);
+create index on anothertab(f2,f3);
+create unique index on anothertab(f4);
+
+\d anothertab
+alter table anothertab alter column f1 type bigint;
+alter table anothertab
+  alter column f2 type bigint,
+  alter column f3 type bigint,
+  alter column f4 type bigint;
+alter table anothertab alter column f5 type bigint;
+\d anothertab
+
+drop table anothertab;
+*/ -- YB
+
+-- test that USING expressions are parsed before column alter type / drop steps
+create table another (f1 int, f2 text, f3 text);
+
+insert into another values(1, 'one', 'uno');
+insert into another values(2, 'two', 'due');
+insert into another values(3, 'three', 'tre');
+
+select * from another;
+
+/* YB: #26195
+alter table another
+  alter f1 type text using f2 || ' and ' || f3 || ' more',
+  alter f2 type bigint using f1 * 10,
+  drop column f3;
+
+select * from another;
+*/ -- YB
+drop table another;
+
+-- Create an index that skips WAL, then perform a SET DATA TYPE that skips
+-- rewriting the index.
+begin;
+create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
+alter table skip_wal_skip_rewrite_index alter c type varchar(20);
+commit;
+
+-- We disallow changing table's row type if it's used for storage
+create table at_tab1 (a int, b text);
+create table at_tab2 (x int, y at_tab1);
+alter table at_tab1 alter column b type varchar; -- fails
+drop table at_tab2;
+-- Use of row type in an expression is defended differently
+create table at_tab2 (x int, y text, check((x,y)::at_tab1 = (1,'42')::at_tab1));
+alter table at_tab1 alter column b type varchar; -- allowed, but ...
+insert into at_tab2 values(1,'42'); -- ... this will fail
+drop table at_tab1, at_tab2;
+-- Check it for a partitioned table, too
+create table at_tab1 (a int, b text) partition by list(a);
+create table at_tab2 (x int, y at_tab1);
+alter table at_tab1 alter column b type varchar; -- fails
+drop table at_tab1, at_tab2;
+
+-- Alter column type that's part of a partitioned index
+create table at_partitioned (a int, b text) partition by range (a);
+create table at_part_1 partition of at_partitioned for values from (0) to (1000);
+insert into at_partitioned values (512, '0.123');
+create table at_part_2 (b text, a int);
+insert into at_part_2 values ('1.234', 1024);
+create index on at_partitioned (b);
+create index on at_partitioned (a);
+\d at_part_1
+\d at_part_2
+alter table at_partitioned attach partition at_part_2 for values from (1000) to (2000);
+\d at_part_2
+alter table at_partitioned alter column b type numeric using b::numeric;
+\d at_part_1
+\d at_part_2
+drop table at_partitioned;
+
+-- Alter column type when no table rewrite is required
+-- Also check that comments are preserved
+create table at_partitioned(id int, name varchar(64), unique (id, name))
+  partition by hash(id);
+comment on constraint at_partitioned_id_name_key on at_partitioned is 'parent constraint';
+comment on index at_partitioned_id_name_key is 'parent index';
+create table at_partitioned_0 partition of at_partitioned
+  for values with (modulus 2, remainder 0);
+comment on constraint at_partitioned_0_id_name_key on at_partitioned_0 is 'child 0 constraint';
+comment on index at_partitioned_0_id_name_key is 'child 0 index';
+create table at_partitioned_1 partition of at_partitioned
+  for values with (modulus 2, remainder 1);
+comment on constraint at_partitioned_1_id_name_key on at_partitioned_1 is 'child 1 constraint';
+comment on index at_partitioned_1_id_name_key is 'child 1 index';
+insert into at_partitioned values(1, 'foo');
+insert into at_partitioned values(3, 'bar');
+
+create temp table old_oids as
+  select relname, oid as oldoid, relfilenode as oldfilenode
+  from pg_class where relname like 'at_partitioned%';
+
+select relname,
+  c.oid = oldoid as orig_oid,
+  case relfilenode
+    when 0 then 'none'
+    when c.oid then 'own'
+    when oldfilenode then 'orig'
+    else 'OTHER'
+    end as storage,
+  obj_description(c.oid, 'pg_class') as desc
+  from pg_class c left join old_oids using (relname)
+  where relname like 'at_partitioned%'
+  order by relname;
+
+select conname, obj_description(oid, 'pg_constraint') as desc
+  from pg_constraint where conname like 'at_partitioned%'
+  order by conname;
+
+alter table at_partitioned alter column name type varchar(127);
+
+-- Note: these tests currently show the wrong behavior for comments :-(
+
+select relname,
+  c.oid = oldoid as orig_oid,
+  case relfilenode
+    when 0 then 'none'
+    when c.oid then 'own'
+    when oldfilenode then 'orig'
+    else 'OTHER'
+    end as storage,
+  obj_description(c.oid, 'pg_class') as desc
+  from pg_class c left join old_oids using (relname)
+  where relname like 'at_partitioned%'
+  order by relname;
+
+select conname, obj_description(oid, 'pg_constraint') as desc
+  from pg_constraint where conname like 'at_partitioned%'
+  order by conname;
+
+-- Don't remove this DROP, it exposes bug #15672
+drop table at_partitioned;
+
+-- disallow recursive containment of row types
+create temp table recur1 (f1 int);
+alter table recur1 add column f2 recur1; -- fails
+alter table recur1 add column f2 recur1[]; -- fails
+create domain array_of_recur1 as recur1[];
+alter table recur1 add column f2 array_of_recur1; -- fails
+create temp table recur2 (f1 int, f2 recur1);
+alter table recur1 add column f2 recur2; -- fails
+alter table recur1 add column f2 int;
+alter table recur1 alter column f2 type recur2; -- fails
+
+-- SET STORAGE may need to add a TOAST table
+/* YB: storage semantics does not match PG
+create table test_storage (a text);
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+alter table test_storage alter a set storage plain;
+-- rewrite table to remove its TOAST table; need a non-constant column default
+alter table test_storage add b int default random()::int;
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+alter table test_storage alter a set storage extended; -- re-add TOAST table
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+
+-- test that SET STORAGE propagates to index correctly
+create index test_storage_idx on test_storage (b, a);
+alter table test_storage alter column a set storage external;
+\d+ test_storage
+\d+ test_storage_idx
+*/ -- YB
+
+-- ALTER COLUMN TYPE with a check constraint and a child table (bug #13779)
+CREATE TABLE test_inh_check (a float check (a > 10.2), b float);
+CREATE TABLE test_inh_check_child() INHERITS(test_inh_check);
+\d test_inh_check
+\d test_inh_check_child
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+ALTER TABLE test_inh_check ALTER COLUMN a TYPE numeric;
+\d test_inh_check
+\d test_inh_check_child
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+-- also try noinherit, local, and local+inherited cases
+ALTER TABLE test_inh_check ADD CONSTRAINT bnoinherit CHECK (b > 100) NO INHERIT;
+ALTER TABLE test_inh_check_child ADD CONSTRAINT blocal CHECK (b < 1000);
+ALTER TABLE test_inh_check_child ADD CONSTRAINT bmerged CHECK (b > 1);
+ALTER TABLE test_inh_check ADD CONSTRAINT bmerged CHECK (b > 1);
+\d test_inh_check
+\d test_inh_check_child
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+ALTER TABLE test_inh_check ALTER COLUMN b TYPE numeric;
+\d test_inh_check
+\d test_inh_check_child
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+
+-- ALTER COLUMN TYPE with different schema in children
+-- Bug at https://postgr.es/m/20170102225618.GA10071@telsasoft.com
+CREATE TABLE test_type_diff (f1 int);
+CREATE TABLE test_type_diff_c (extra smallint) INHERITS (test_type_diff);
+ALTER TABLE test_type_diff ADD COLUMN f2 int;
+INSERT INTO test_type_diff_c VALUES (1, 2, 3);
+ALTER TABLE test_type_diff ALTER COLUMN f2 TYPE bigint USING f2::bigint;
+
+CREATE TABLE test_type_diff2 (int_two int2, int_four int4, int_eight int8);
+CREATE TABLE test_type_diff2_c1 (int_four int4, int_eight int8, int_two int2);
+CREATE TABLE test_type_diff2_c2 (int_eight int8, int_two int2, int_four int4);
+CREATE TABLE test_type_diff2_c3 (int_two int2, int_four int4, int_eight int8);
+ALTER TABLE test_type_diff2_c1 INHERIT test_type_diff2;
+ALTER TABLE test_type_diff2_c2 INHERIT test_type_diff2;
+ALTER TABLE test_type_diff2_c3 INHERIT test_type_diff2;
+INSERT INTO test_type_diff2_c1 VALUES (1, 2, 3);
+INSERT INTO test_type_diff2_c2 VALUES (4, 5, 6);
+INSERT INTO test_type_diff2_c3 VALUES (7, 8, 9);
+ALTER TABLE test_type_diff2 ALTER COLUMN int_four TYPE int8 USING int_four::int8;
+-- whole-row references are disallowed
+ALTER TABLE test_type_diff2 ALTER COLUMN int_four TYPE int4 USING (pg_column_size(test_type_diff2));
+
+-- check for rollback of ANALYZE corrupting table property flags (bug #11638)
+/* YB: DDL rollback is not supported
+CREATE TABLE check_fk_presence_1 (id int PRIMARY KEY, t text);
+CREATE TABLE check_fk_presence_2 (id int REFERENCES check_fk_presence_1, t text);
+BEGIN;
+ALTER TABLE check_fk_presence_2 DROP CONSTRAINT check_fk_presence_2_id_fkey;
+ANALYZE check_fk_presence_2;
+ROLLBACK;
+\d check_fk_presence_2
+DROP TABLE check_fk_presence_1, check_fk_presence_2;
+*/ -- YB
+
+-- check column addition within a view (bug #14876)
+create table at_base_table(id int, stuff text);
+insert into at_base_table values (23, 'skidoo');
+create view at_view_1 as select * from at_base_table bt;
+create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
+\d+ at_view_1
+\d+ at_view_2
+explain (verbose, costs off) select * from at_view_2;
+select * from at_view_2;
+
+create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
+\d+ at_view_1
+\d+ at_view_2
+explain (verbose, costs off) select * from at_view_2;
+select * from at_view_2;
+
+drop view at_view_2;
+drop view at_view_1;
+drop table at_base_table;
+
+-- check adding a column not iself requiring a rewrite, together with
+-- a column requiring a default (bug #16038)
+
+-- ensure that rewrites aren't silently optimized away, removing the
+-- value of the test
+CREATE FUNCTION check_ddl_rewrite(p_tablename regclass, p_ddl text)
+RETURNS boolean
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_relfilenode oid;
+BEGIN
+    v_relfilenode := relfilenode FROM pg_class WHERE oid = p_tablename;
+
+    EXECUTE p_ddl;
+
+    RETURN v_relfilenode <> (SELECT relfilenode FROM pg_class WHERE oid = p_tablename);
+END;
+$$;
+
+CREATE TABLE rewrite_test(col text);
+INSERT INTO rewrite_test VALUES ('something');
+INSERT INTO rewrite_test VALUES (NULL);
+
+-- empty[12] don't need rewrite, but notempty[12]_rewrite will force one
+SELECT check_ddl_rewrite('rewrite_test', $$
+  ALTER TABLE rewrite_test
+      ADD COLUMN empty1 text,
+      ADD COLUMN notempty1_rewrite serial;
+$$);
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN notempty2_rewrite serial,
+        ADD COLUMN empty2 text;
+$$);
+-- also check that fast defaults cause no problem, first without rewrite
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN empty3 text,
+        ADD COLUMN notempty3_norewrite int default 42;
+$$);
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN notempty4_norewrite int default 42,
+        ADD COLUMN empty4 text;
+$$);
+-- then with rewrite
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN empty5 text,
+        ADD COLUMN notempty5_norewrite int default 42,
+        ADD COLUMN notempty5_rewrite serial;
+$$);
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN notempty6_rewrite serial,
+        ADD COLUMN empty6 text,
+        ADD COLUMN notempty6_norewrite int default 42;
+$$);
+
+-- cleanup
+DROP FUNCTION check_ddl_rewrite(regclass, text);
+DROP TABLE rewrite_test;
 
 --
 -- lock levels
@@ -505,6 +1799,323 @@ CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
 ALTER TABLE tt7 NOT OF;
 \d tt7
+
+/* YB: fails in debug build due to #26227
+-- make sure we can drop a constraint on the parent but it remains on the child
+CREATE TABLE test_drop_constr_parent (c text CHECK (c IS NOT NULL));
+CREATE TABLE test_drop_constr_child () INHERITS (test_drop_constr_parent);
+ALTER TABLE ONLY test_drop_constr_parent DROP CONSTRAINT "test_drop_constr_parent_c_check";
+-- should fail
+INSERT INTO test_drop_constr_child (c) VALUES (NULL);
+DROP TABLE test_drop_constr_parent CASCADE;
+*/ -- YB
+
+--
+-- IF EXISTS test
+--
+ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
+ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
+ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
+ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
+ALTER TABLE IF EXISTS tt8 RENAME COLUMN f TO f1;
+ALTER TABLE IF EXISTS tt8 SET SCHEMA alter2;
+
+CREATE TABLE tt8(a int);
+CREATE SCHEMA alter2;
+
+ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
+ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
+ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
+ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
+ALTER TABLE IF EXISTS tt8 RENAME COLUMN f TO f1;
+ALTER TABLE IF EXISTS tt8 SET SCHEMA alter2;
+
+\d alter2.tt8
+
+DROP TABLE alter2.tt8;
+DROP SCHEMA alter2;
+
+--
+-- Check conflicts between index and CHECK constraint names
+--
+CREATE TABLE tt9(c integer);
+ALTER TABLE tt9 ADD CHECK(c > 1);
+ALTER TABLE tt9 ADD CHECK(c > 2);  -- picks nonconflicting name
+ALTER TABLE tt9 ADD CONSTRAINT foo CHECK(c > 3);
+ALTER TABLE tt9 ADD CONSTRAINT foo CHECK(c > 4);  -- fail, dup name
+ALTER TABLE tt9 ADD UNIQUE(c);
+ALTER TABLE tt9 ADD UNIQUE(c);  -- picks nonconflicting name
+ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key UNIQUE(c);  -- fail, dup name
+ALTER TABLE tt9 ADD CONSTRAINT foo UNIQUE(c);  -- fail, dup name
+ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key CHECK(c > 5);  -- fail, dup name
+ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key2 CHECK(c > 6);
+ALTER TABLE tt9 ADD UNIQUE(c);  -- picks nonconflicting name
+\d tt9
+DROP TABLE tt9;
+
+
+-- Check that comments on constraints and indexes are not lost at ALTER TABLE.
+CREATE TABLE comment_test (
+  id int,
+  positive_col int CHECK (positive_col > 0),
+  indexed_col int,
+  CONSTRAINT comment_test_pk PRIMARY KEY (id));
+CREATE INDEX comment_test_index ON comment_test(indexed_col);
+
+COMMENT ON COLUMN comment_test.id IS 'Column ''id'' on comment_test';
+COMMENT ON INDEX comment_test_index IS 'Simple index on comment_test';
+COMMENT ON CONSTRAINT comment_test_positive_col_check ON comment_test IS 'CHECK constraint on comment_test.positive_col';
+COMMENT ON CONSTRAINT comment_test_pk ON comment_test IS 'PRIMARY KEY constraint of comment_test';
+COMMENT ON INDEX comment_test_pk IS 'Index backing the PRIMARY KEY of comment_test';
+
+SELECT col_description('comment_test'::regclass, 1) as comment;
+SELECT indexrelid::regclass::text as index, obj_description(indexrelid, 'pg_class') as comment FROM pg_index where indrelid = 'comment_test'::regclass ORDER BY 1, 2;
+SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment FROM pg_constraint where conrelid = 'comment_test'::regclass ORDER BY 1, 2;
+
+-- Change the datatype of all the columns. ALTER TABLE is optimized to not
+-- rebuild an index if the new data type is binary compatible with the old
+-- one. Check do a dummy ALTER TABLE that doesn't change the datatype
+-- first, to test that no-op codepath, and another one that does.
+ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE int;
+ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE text;
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE int;
+ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE bigint;
+
+-- Check that the comments are intact.
+SELECT col_description('comment_test'::regclass, 1) as comment;
+SELECT indexrelid::regclass::text as index, obj_description(indexrelid, 'pg_class') as comment FROM pg_index where indrelid = 'comment_test'::regclass ORDER BY 1, 2;
+SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment FROM pg_constraint where conrelid = 'comment_test'::regclass ORDER BY 1, 2;
+
+-- Check compatibility for foreign keys and comments. This is done
+-- separately as rebuilding the column type of the parent leads
+-- to an error and would reduce the test scope.
+CREATE TABLE comment_test_child (
+  id text CONSTRAINT comment_test_child_fk REFERENCES comment_test);
+CREATE INDEX comment_test_child_fk ON comment_test_child(id);
+COMMENT ON COLUMN comment_test_child.id IS 'Column ''id'' on comment_test_child';
+COMMENT ON INDEX comment_test_child_fk IS 'Index backing the FOREIGN KEY of comment_test_child';
+COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KEY constraint of comment_test_child';
+
+-- Change column type of parent
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
+
+-- Comments should be intact
+SELECT col_description('comment_test_child'::regclass, 1) as comment;
+SELECT indexrelid::regclass::text as index, obj_description(indexrelid, 'pg_class') as comment FROM pg_index where indrelid = 'comment_test_child'::regclass ORDER BY 1, 2;
+SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment FROM pg_constraint where conrelid = 'comment_test_child'::regclass ORDER BY 1, 2;
+
+-- Check that we map relation oids to filenodes and back correctly.  Only
+-- display bad mappings so the test output doesn't change all the time.  A
+-- filenode function call can return NULL for a relation dropped concurrently
+-- with the call's surrounding query, so ignore a NULL mapped_oid for
+-- relations that no longer exist after all calls finish.
+CREATE TEMP TABLE filenode_mapping AS
+SELECT
+    oid, mapped_oid, reltablespace, relfilenode, relname
+FROM pg_class,
+    pg_filenode_relation(reltablespace, pg_relation_filenode(oid)) AS mapped_oid
+WHERE relkind IN ('r', 'i', 'S', 't', 'm') AND mapped_oid IS DISTINCT FROM oid AND relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
+
+SELECT m.* FROM filenode_mapping m LEFT JOIN pg_class c ON c.oid = m.oid
+WHERE (c.oid IS NOT NULL OR m.mapped_oid IS NOT NULL) AND m.relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
+
+-- Checks on creating and manipulation of user defined relations in
+-- pg_catalog.
+
+/* YB: creating user tables in system catalog doesn't work
+SHOW allow_system_table_mods;
+-- disallowed because of search_path issues with pg_dump
+CREATE TABLE pg_catalog.new_system_table();
+-- instead create in public first, move to catalog
+CREATE TABLE new_system_table(id serial primary key, othercol text);
+ALTER TABLE new_system_table SET SCHEMA pg_catalog;
+ALTER TABLE new_system_table SET SCHEMA public;
+ALTER TABLE new_system_table SET SCHEMA pg_catalog;
+-- will be ignored -- already there:
+ALTER TABLE new_system_table SET SCHEMA pg_catalog;
+ALTER TABLE new_system_table RENAME TO old_system_table;
+CREATE INDEX old_system_table__othercol ON old_system_table (othercol);
+INSERT INTO old_system_table(othercol) VALUES ('somedata'), ('otherdata');
+UPDATE old_system_table SET id = -id;
+DELETE FROM old_system_table WHERE othercol = 'somedata';
+TRUNCATE old_system_table;
+ALTER TABLE old_system_table DROP CONSTRAINT new_system_table_pkey;
+ALTER TABLE old_system_table DROP COLUMN othercol;
+DROP TABLE old_system_table;
+*/ -- YB
+
+-- set logged
+CREATE UNLOGGED TABLE unlogged1(f1 SERIAL PRIMARY KEY, f2 TEXT); -- has sequence, toast
+-- check relpersistence of an unlogged table
+/* YB: LOGGED is only supported syntactically
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
+ORDER BY relname;
+*/ -- YB
+CREATE UNLOGGED TABLE unlogged2(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES unlogged1); -- foreign key
+CREATE UNLOGGED TABLE unlogged3(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES unlogged3); -- self-referencing foreign key
+ALTER TABLE unlogged3 SET LOGGED; -- skip self-referencing foreign key
+/* YB: LOGGED is only supported syntactically
+ALTER TABLE unlogged2 SET LOGGED; -- fails because a foreign key to an unlogged table exists
+*/ -- YB
+ALTER TABLE unlogged1 SET LOGGED;
+/* YB: LOGGED is only supported syntactically
+-- check relpersistence of an unlogged table after changing to permanent
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
+ORDER BY relname;
+*/ -- YB
+ALTER TABLE unlogged1 SET LOGGED; -- silently do nothing
+DROP TABLE unlogged3;
+DROP TABLE unlogged2;
+DROP TABLE unlogged1;
+
+-- set unlogged
+CREATE TABLE logged1(f1 SERIAL PRIMARY KEY, f2 TEXT); -- has sequence, toast
+/* YB: LOGGED is only supported syntactically
+-- check relpersistence of a permanent table
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^logged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
+UNION ALL
+SELECT r.relname ||' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
+ORDER BY relname;
+*/ -- YB
+CREATE TABLE logged2(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES logged1); -- foreign key
+CREATE TABLE logged3(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES logged3); -- self-referencing foreign key
+ALTER TABLE logged1 SET UNLOGGED; -- fails because a foreign key from a permanent table exists
+ALTER TABLE logged3 SET UNLOGGED; -- skip self-referencing foreign key
+ALTER TABLE logged2 SET UNLOGGED;
+ALTER TABLE logged1 SET UNLOGGED;
+/* YB: LOGGED is only supported syntactically
+-- check relpersistence of a permanent table after changing to unlogged
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^logged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
+UNION ALL
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
+ORDER BY relname;
+ALTER TABLE logged1 SET UNLOGGED; -- silently do nothing
+*/ -- YB
+DROP TABLE logged3;
+DROP TABLE logged2;
+DROP TABLE logged1;
+
+-- test ADD COLUMN IF NOT EXISTS
+CREATE TABLE test_add_column(c1 integer);
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer, -- fail because c2 already exists
+	ADD COLUMN c3 integer primary key;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN c3 integer primary key;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer primary key; -- skipping because c3 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
+	ADD COLUMN c4 integer REFERENCES test_add_column;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c4 integer REFERENCES test_add_column;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 8);
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 10);
+\d test_add_column*
+DROP TABLE test_add_column;
+\d test_add_column*
+
+-- assorted cases with multiple ALTER TABLE steps
+CREATE TABLE ataddindex(f1 INT);
+INSERT INTO ataddindex VALUES (42), (43);
+CREATE UNIQUE INDEX ataddindexi0 ON ataddindex(f1);
+ALTER TABLE ataddindex
+  ADD PRIMARY KEY USING INDEX ataddindexi0,
+  ALTER f1 TYPE BIGINT;
+\d ataddindex
+DROP TABLE ataddindex;
+
+/* YB: exclude constraint is not supported
+CREATE TABLE ataddindex(f1 VARCHAR(10));
+INSERT INTO ataddindex(f1) VALUES ('foo'), ('a');
+ALTER TABLE ataddindex
+  ALTER f1 SET DATA TYPE TEXT,
+  ADD EXCLUDE ((f1 LIKE 'a') WITH =);
+\d ataddindex
+DROP TABLE ataddindex;
+*/ -- YB
+
+CREATE TABLE ataddindex(id int, ref_id int);
+ALTER TABLE ataddindex
+  ADD PRIMARY KEY (id),
+  ADD FOREIGN KEY (ref_id) REFERENCES ataddindex;
+\d ataddindex
+DROP TABLE ataddindex;
+
+CREATE TABLE ataddindex(id int, ref_id int);
+ALTER TABLE ataddindex
+  ADD UNIQUE (id),
+  ADD FOREIGN KEY (ref_id) REFERENCES ataddindex (id);
+\d ataddindex
+DROP TABLE ataddindex;
+
+-- unsupported constraint types for partitioned tables
+CREATE TABLE partitioned (
+	a int,
+	b int
+) PARTITION BY RANGE (a, (a+b+1));
+/* YB does not support exclusion constraints
+ALTER TABLE partitioned ADD EXCLUDE USING gist (a WITH &&);
+*/ -- YB
+
+-- cannot drop column that is part of the partition key
+ALTER TABLE partitioned DROP COLUMN a;
+ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
+ALTER TABLE partitioned DROP COLUMN b;
+ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
+
+-- partitioned table cannot participate in regular inheritance
+CREATE TABLE nonpartitioned (
+	a int,
+	b int
+);
+ALTER TABLE partitioned INHERIT nonpartitioned;
+ALTER TABLE nonpartitioned INHERIT partitioned;
+
+-- cannot add NO INHERIT constraint to partitioned tables
+ALTER TABLE partitioned ADD CONSTRAINT chk_a CHECK (a > 0) NO INHERIT;
+
+DROP TABLE partitioned, nonpartitioned;
 
 --
 -- ATTACH PARTITION
@@ -943,12 +2554,10 @@ ALTER TABLE list_parted2 add constraint check_b2 check (b <> 'zz') NO INHERIT;
 
 -- check that a partition cannot participate in regular inheritance
 CREATE TABLE inh_test () INHERITS (part_2);
--- Uncomment if INHERITS is supported (#5956).
-/*
 CREATE TABLE inh_test (LIKE part_2);
 ALTER TABLE inh_test INHERIT part_2;
 ALTER TABLE part_2 INHERIT inh_test;
-*/
+
 -- cannot drop or alter type of partition key columns of lower level
 -- partitioned tables; for example, part_5, which is list_parted2's
 -- partition, is partitioned on b;

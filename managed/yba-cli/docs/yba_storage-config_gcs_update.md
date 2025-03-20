@@ -21,7 +21,7 @@ yba storage-config gcs update --name <storage-configuration-name> \
 
 ```
       --update-credentials             [Optional] Update credentials of the storage configuration. (default false) If set to true, provide either credentials-file-path or set use-gcp-iam.
-      --credentials-file-path string   GCS Credentials File Path. Required for non IAM role based storage configurations. Can also be set using environment variable GOOGLE_APPLICATION_CREDENTIALS.
+      --credentials-file-path string   GCS Credentials File Path. Required for non IAM role based storage configurations.
       --use-gcp-iam                    [Optional] Use IAM Role from the YugabyteDB Anywhere Host. Supported for Kubernetes GKE clusters with workload identity. Configuration creation will fail on insufficient permissions on the host. (default false)
       --new-name string                [Optional] Update name of the storage configuration.
   -h, --help                           help for update

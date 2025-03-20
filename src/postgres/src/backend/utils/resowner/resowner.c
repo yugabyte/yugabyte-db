@@ -1171,6 +1171,7 @@ ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
 	ResourceArrayAdd(&owner->ybinheritsrefarr, PointerGetDatum(entry));
 }
 
+
 /*
  * Forget that a YbPgInherits cache reference is owned by a ResourceOwner
  */
@@ -1180,8 +1181,9 @@ ResourceOwnerForgetYbPgInheritsRef(ResourceOwner owner,
 {
 	if (!ResourceArrayRemove(&owner->ybinheritsrefarr, PointerGetDatum(entry)))
 		elog(ERROR, "YbPgInheritsCache entry %d is not owned by resource owner %s",
-			 entry->parentOid, owner->name);
+			 entry->oid, owner->name);
 }
+
 
 /*
  * Debugging subroutine
@@ -1198,7 +1200,7 @@ PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry)
 {
 	elog(WARNING,
 		 "YbPgInheritsCache reference leak: Entry for oid \"%d\" not released",
-		 entry->parentOid);
+		 entry->oid);
 }
 
 /*

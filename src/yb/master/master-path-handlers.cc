@@ -832,7 +832,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
 
   auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
   if (!cluster_config_result.ok()) {
@@ -984,7 +984,7 @@ void MasterPathHandlers::HandleHealthCheck(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   // TODO: Lock not needed since other APIs handle it.  Refactor other functions accordingly
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
 
   auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
   if (!cluster_config_result.ok()) {
@@ -1215,11 +1215,13 @@ void MasterPathHandlers::HandleAllTables(
         has_colocated_tables[table_cat] = true;
       }
 
-      auto colocated_tablet = table->GetColocatedUserTablet();
-      if (colocated_tablet) {
-        const auto parent_table = colocated_tablet->table();
-        table_row[kParentOid] = GetParentTableOid(parent_table);
-        has_tablegroups[table_cat] = true;
+      if (table->IsSecondaryTable() && !table_locked->is_vector_index()) {
+        auto colocated_tablets = table->GetTablets();
+        if (colocated_tablets.ok()) {
+          const auto parent_table = colocated_tablets->front()->table();
+          table_row[kParentOid] = GetParentTableOid(parent_table);
+          has_tablegroups[table_cat] = true;
+        }
       }
     } else if (table_cat == kParentTable) {
       // Colocated parent table.
@@ -1232,7 +1234,7 @@ void MasterPathHandlers::HandleAllTables(
     }
 
     // System tables and colocated user tables do not have size info
-    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+    if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
@@ -1339,7 +1341,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
   bool only_user_tables = ParseLeadingBoolValue(
       FindWithDefault(req.parsed_args, "only_user_tables", ""), false);
 
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
   jw.StartObject();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
@@ -1404,10 +1406,12 @@ void MasterPathHandlers::HandleAllTablesJSON(
         table_row.colocation_id = Format("$0", schema.colocated_table_id().colocation_id());
       }
 
-      auto colocated_tablet = table->GetColocatedUserTablet();
-      if (colocated_tablet) {
-        const auto parent_table = colocated_tablet->table();
-        table_row.parent_oid = GetParentTableOid(parent_table);
+      if (table->IsSecondaryTable() && !table_locked->is_vector_index()) {
+        auto colocated_tablets = table->GetTablets();
+        if (colocated_tablets.ok()) {
+          const auto parent_table = colocated_tablets->front()->table();
+          table_row.parent_oid = GetParentTableOid(parent_table);
+        }
       }
     } else if (table_cat == kParentTable) {
       // Colocated parent table.
@@ -1415,7 +1419,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
     }
 
     // System tables and colocated user tables do not have size info.
-    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+    if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
@@ -1510,7 +1514,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
 void MasterPathHandlers::HandleGetMetaCacheJson(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  JsonWriter writer(output, JsonWriter::COMPACT);
+  JsonWriter writer(output, JsonWriter::COMPACT_ESCAPE_STR);
   master_->WriteServerMetaCacheAsJson(&writer);
 }
 
@@ -1589,7 +1593,7 @@ void MasterPathHandlers::HandleNamespacesJSON(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
 
   std::vector<scoped_refptr<NamespaceInfo>> namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
@@ -1952,7 +1956,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
   jw.StartObject();
 
   // True if table_id, false if (keyspace, table).
@@ -2411,7 +2415,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
 void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest& req,
                                                     Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
 
   auto leaderless_ts = GetLeaderlessTablets();
   if (!leaderless_ts) {
@@ -2444,7 +2448,7 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
 void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebRequest& req,
                                                     Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
 
   auto underreplicated_tablets = GetUnderReplicatedTablets();
 
@@ -2880,7 +2884,7 @@ Status JsonDumpCollection(JsonWriter* jw, Master* master, stringstream* output) 
   } else {
     // Print just an error message.
     output->str("");
-    JsonWriter jw_err(output, JsonWriter::COMPACT);
+    JsonWriter jw_err(output, JsonWriter::COMPACT_ESCAPE_STR);
     jw_err.StartObject();
     jw_err.String("error");
     jw_err.String(s.ToString());
@@ -2896,7 +2900,7 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
   jw.StartObject();
 
   if (JsonDumpCollection<JsonKeyspaceDumper>(&jw, master_, output).ok() &&
@@ -2910,7 +2914,7 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
 void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
                                               Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
   jw.StartObject();
   {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
@@ -2934,7 +2938,7 @@ void MasterPathHandlers::HandleGetMastersStatus(const Webserver::WebRequest& req
   vector<ServerEntryPB> masters;
   Status s = master_->ListMasters(&masters);
   ListMastersResponsePB pb_resp;
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
   if (!s.ok()) {
     jw.Protobuf(pb_resp);
     return;
@@ -2966,7 +2970,7 @@ void MasterPathHandlers::HandleGetClusterConfig(
 void MasterPathHandlers::HandleGetClusterConfigJSON(
   const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT);
+  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
@@ -2984,7 +2988,7 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 }
 
 void MasterPathHandlers::GetXClusterJSON(std::stringstream& output, bool pretty) {
-  JsonWriter jw(&output, pretty ? JsonWriter::PRETTY : JsonWriter::COMPACT);
+  JsonWriter jw(&output, pretty ? JsonWriter::PRETTY_ESCAPE_STR : JsonWriter::COMPACT_ESCAPE_STR);
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   jw.StartObject();
@@ -3032,6 +3036,8 @@ void MasterPathHandlers::HandleXCluster(
           Format("Group: $0", outbound_replication_group.replication_group_id));
 
       output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
+      output << "\nddl_mode: "
+             << (outbound_replication_group.automatic_ddl_mode ? "automatic" : "semi-automatic");
       if (!outbound_replication_group.target_universe_info.empty()) {
         output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
       }
@@ -3127,7 +3133,7 @@ void MasterPathHandlers::HandleXCluster(
 void MasterPathHandlers::HandleVersionInfoDump(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY);
+  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
 
   // Get the version info.
   VersionInfoPB version_info;
@@ -3209,7 +3215,7 @@ void MasterPathHandlers::HandleStatefulServices(
 
 void MasterPathHandlers::HandleStatefulServicesJson(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  JsonWriter jw(&resp->output, JsonWriter::COMPACT);
+  JsonWriter jw(&resp->output, JsonWriter::COMPACT_ESCAPE_STR);
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
   jw.StartObject();
@@ -3235,6 +3241,20 @@ void MasterPathHandlers::HandleStatefulServicesJson(
     jw.EndArray();
   }
   jw.EndObject();
+}
+
+void MasterPathHandlers::HandleObjectLocksPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto ts_local_lock_manager = master_->catalog_manager_impl()
+                                      ->object_lock_info_manager()
+                                      ->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    output << "<h2>Could not locate the object lock manager...</h2>\n";
+    return;
+  }
+  ts_local_lock_manager->DumpLocksToHtml(output);
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
@@ -3289,6 +3309,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/stateful-services", "Stateful Services",
       &MasterPathHandlers::HandleStatefulServices, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/ObjectLockManager", "Object Lock Manager",
+      &MasterPathHandlers::HandleObjectLocksPage, is_styled);
 
   // JSON Endpoints
   RegisterLeaderOrRedirect(
@@ -3414,7 +3438,7 @@ string MasterPathHandlers::RegistrationToHtml(
 Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
-    if (table->IsColocatedUserTable()) {
+    if (table->IsSecondaryTable()) {
       // will be taken care of by colocated parent table
       continue;
     }
@@ -3458,7 +3482,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   if (max_table_count != -1) {
     int count = 0;
     for (const auto& table : tables) {
-      if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
+      if (!table->IsUserCreated() || table->IsSecondaryTable()) {
         continue;
       }
 
@@ -3471,7 +3495,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   }
 
   for (const auto& table : tables) {
-    if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
+    if (!table->IsUserCreated() || table->IsSecondaryTable()) {
       // only display user created tables that are not colocated.
       continue;
     }
