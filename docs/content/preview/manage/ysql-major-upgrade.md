@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires some additional steps.
+Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
 
 ## Before you begin
 
@@ -20,7 +20,7 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
 v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
 {{< /warning >}}
 
-- DDL statements are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs.
+- All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs.
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
@@ -62,9 +62,11 @@ Checking for invalid "sql_identifier" user columns          ok
 *Clusters are compatible*
 ```
 
-## Prepare the cluster for YSQL major upgrade
+## Upgrade phase
 
-Since the upgrade is fully online, your cluster will temporarily consist of a mix of nodes running both PostgreSQL 11 and 15 ("mixed mode"). These processes need to be able to talk with each other and correctly process your SQL commands. Specifically, the PostgreSQL expressions that are used in the SQL statements get pushed down from the compute layer to the YugabyteDB storage layer. Because the expressions used by PostgreSQL have changed across the major version, you need to disable this optimization during the upgrade. (This will be addressed in the v2025.1 ({{<issue 24730>}}).)
+### Enable mixed mode
+
+Because the upgrade is fully online, your cluster will temporarily consist of a mix of nodes running both PostgreSQL 11 and 15 (mixed mode). These processes need to be able to talk with each other and correctly process your SQL commands. Specifically, the PostgreSQL expressions that are used in the SQL statements get pushed down from the compute layer to the YugabyteDB storage layer. Because the expressions used by PostgreSQL have changed across the major version, you need to disable this optimization during the upgrade. (This will be addressed in v2025.1 (issue {{<issue 24730>}}).)
 
 Set the `ysql_yb_major_version_upgrade_compatibility` flag to `11` on all YB-Master and YB-TServer processes. For example:
 
@@ -80,11 +82,9 @@ $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version
 
 It is recommended to back up the cluster at this time. Refer to [Distributed snapshots for YSQL](../backup-restore/snapshot-ysql/).
 
-## Upgrade phase
-
 ### Upgrade YB-Masters
 
-[Upgrade the YB-Master](../upgrade-deployment/#3-upgrade-yb-masters) processes one at a time.
+[Upgrade the YB-Master](../upgrade-deployment/#3-upgrade-yb-masters) processes one at a time. Make sure `ysql_yb_major_version_upgrade_compatibility` remains set to 11.
 
 ### Upgrade YSQL catalog to the new version
 
@@ -111,9 +111,23 @@ ysql major catalog upgrade completed successfully
 
 ### Upgrade all YB-Tservers
 
-[Upgrade the YB-Tserver processes](../upgrade-deployment/#4-upgrade-yb-tservers) one at a time.
+[Upgrade the YB-Tserver processes](../upgrade-deployment/#4-upgrade-yb-tservers) one at a time. Make sure `ysql_yb_major_version_upgrade_compatibility` remains set to 11.
 
 Closely monitor your applications at this time. If any issues arise, you can [roll back](#rollback-phase) to the previous version. You can then address the issue and then retry the upgrade.
+
+### Disable mixed mode
+
+Now that all the YB-Master and YB-TServer processes are on the same version, you can disable mixed mode by setting the `ysql_yb_major_version_upgrade_compatibility` flag. This allows you to re-enable the pushdown optimizations.
+
+  ```sh
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
+  
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0
+  ```
 
 ## Monitor phase
 
@@ -141,7 +155,7 @@ yb-admin --master_addresses <master_addresses> finalize_upgrade
 
 ### Roll back YB-TServers
 
-[Roll back all YB-Tservers](../upgrade-deployment/#1-roll-back-yb-tservers).
+[Roll back all YB-TServers](../upgrade-deployment/#1-roll-back-yb-tservers).
 
 ### Roll back the catalog
 
@@ -161,30 +175,16 @@ For example:
 Rollback successful
 ```
 
-### Roll back YB-Masters to v2024.2.2.0
+### Roll back YB-Masters
 
 [Roll back all YB-Masters](../upgrade-deployment/#2-roll-back-yb-masters) to v2024.2.2.0.
-
-## Post upgrade
-
-After the upgrade is done, you can re-enable expression pushdowns. For example:
-
-```sh
-$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
-$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
-$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
-
-$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
-$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
-$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0
-```
 
 If you are using the cost based optimizer, run ANALYZE on your databases to get the most optimal query plans.
 
 ## Limitations
 
 - YB-Tservers need to run on all YB-Master nodes. Kubernetes and Docker are not yet supported. {{<issue 24719>}}
-- Temporary tables, refreshing materialized views, and expression pushdown are not available. {{<issue 24731>}}, {{<issue 24732>}}, {{<issue 24730>}}
+- Expression pushdown are not available. {{<issue 24730>}}
 - Upgrading with extensions is not supported. {{<issue 24733>}}
 - If you are using the cost based optimizer, run ANALYZE after the upgrade. {{<issue 25721>}}
 - Any backups that are taken in the monitoring phase can only be restored on a PG15 compatible universe (that is, backups cannot be restored if rollback is performed).
