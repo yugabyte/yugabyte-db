@@ -1026,8 +1026,7 @@ TEST_F(Pg15UpgradeTest, Tablegroup) {
     "CREATE TABLE e(i text) TABLEGROUP test_grant",
     "CREATE INDEX ON e(i)"
   }));
-  ASSERT_OK(UpgradeClusterToMixedMode());
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 
   // After the upgrade, the tablegroup ACL must allow user_1 to create a table in the tablegroup,
   // but not user_2.
@@ -1644,6 +1643,13 @@ TEST_F(Pg15UpgradeTest, DroppedColumnTest) {
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
   ASSERT_OK(run_validations());
+}
+
+TEST_F(Pg15UpgradeTest, YbSuperuserRole) {
+  ASSERT_OK(ExecuteStatements(
+      {"CREATE ROLE \"yb_superuser\" INHERIT CREATEROLE CREATEDB BYPASSRLS",
+       "GRANT \"pg_read_all_stats\" TO \"yb_superuser\""}));
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
 }  // namespace yb
