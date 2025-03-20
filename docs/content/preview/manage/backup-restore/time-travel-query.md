@@ -22,7 +22,7 @@ Use time travel queries to read data as it was at a specific point in time, with
 
 ### Set the history retention interval
 
-As with [point-in-time recovery](../point-in-time-recovery/), the history retention period (that is, the period available for historical queries) is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace.
+The history retention period (that is, the period available for historical queries) is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace.
 
 In addition, you must also set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query.
 
