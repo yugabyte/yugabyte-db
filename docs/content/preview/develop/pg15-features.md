@@ -28,7 +28,7 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 
 | Product | To try it out |
 | :--- | :--- |
-| YugabyteDB | Follow the instructions in [Quick Start](/preview/tutorials/quick-start/macos/). |
+| YugabyteDB | Follow the instructions in [Quick Start](/preview/tutorials/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../manage/ysql-major-upgrade-yugabyted//). |
 | YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
 | YugabyteDB Aeon| [Create a Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
 
@@ -116,6 +116,9 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 | [Sampled logging](../../explore/observability/logging/#log-management)
 | Log a fraction of the statements rather than all statements. |
 
+| [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
+| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command. |
+
 {{%/table%}}
 
 ### Security
@@ -141,9 +144,6 @@ The following PG15 features are not yet implemented but are planned for the futu
 
 | Feature | Description |
 | --------| ----------- |
-
-| [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
-| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command (coming v2.25.1). |
 
 | [Merge command](https://www.postgresql.org/docs/15/sql-merge.html)
 | INSERT, UPDATE or DELETE in one statement. |
