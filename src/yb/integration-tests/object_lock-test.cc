@@ -58,6 +58,7 @@ DECLARE_int32(retrying_rpc_max_jitter_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
+DECLARE_double(TEST_tserver_ysql_lease_refresh_failure_prob);
 DECLARE_bool(enable_load_balancing);
 
 namespace yb {
@@ -91,7 +92,6 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
         kDefaultMasterYSQLLeaseTTLMilli;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_lease_refresher_interval_ms) =
         kDefaultYSQLLeaseRefreshIntervalMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
@@ -388,18 +388,25 @@ Status ReleaseLockGlobally(
   return sync.Wait();
 }
 
-TEST_F(ObjectLockTest, AcquireObjectLocks) {
-  const auto& kSessionHostUuid = TSUuid(0);
-  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
-  ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kObjectId));
-}
+class ObjectLockTestWithMissingResponses : public ObjectLockTest,
+                                           public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob) =
+        GetParam() ? 0.5 : 0.0;
+    ObjectLockTest::SetUp();
+  }
+};
 
-TEST_F(ObjectLockTest, ReleaseObjectLocks) {
+TEST_P(ObjectLockTestWithMissingResponses, AcquireReleaseLockGlobally) {
   const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kObjectId));
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn1));
 }
+
+INSTANTIATE_TEST_CASE_P(
+    CauseMissingResponses, ObjectLockTestWithMissingResponses, ::testing::Bool());
 
 void ObjectLockTest::testAcquireObjectLockWaitsOnTServer(bool do_master_failover) {
   const auto& kSessionHostUuid = TSUuid(0);

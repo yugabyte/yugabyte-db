@@ -530,6 +530,7 @@ TSDescriptor::RefreshYsqlLease() {
     last_ysql_lease_refresh_ = MonoTime::Now();
   }
   if (l->pb.live_client_operation_lease()) {
+    lease_update.lease_epoch = l.data().pb.lease_epoch();
     return std::make_pair(lease_update, std::nullopt);
   }
   l.mutable_data()->pb.set_live_client_operation_lease(true);

@@ -789,6 +789,11 @@ tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
   return ts_local_lock_manager_;
 }
 
+bool TabletServer::HasBootstrappedLocalLockManager() const {
+  auto lock_manager = ts_local_lock_manager();
+  return lock_manager && lock_manager->IsBootstrapped();
+}
+
 Status TabletServer::ProcessLeaseUpdate(
     const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
   VLOG(2) << __func__;

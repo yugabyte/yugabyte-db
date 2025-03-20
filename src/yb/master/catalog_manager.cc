@@ -5823,10 +5823,12 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
       VERIFY_RESULT(master_->ts_manager()->RefreshYsqlLease(epoch, req->instance()));
   *resp->mutable_info() = lease_update.ToPB();
   if (resp->info().new_lease()) {
-    *resp->mutable_info()->mutable_ddl_lock_entries() =
-        object_lock_info_manager()->ExportObjectLockInfo();
     object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
         req->instance().permanent_uuid(), resp->info().lease_epoch());
+  }
+  if (req->needs_bootstrap() || resp->info().new_lease()) {
+    *resp->mutable_info()->mutable_ddl_lock_entries() =
+        object_lock_info_manager()->ExportObjectLockInfo();
   }
   return Status::OK();
 }
