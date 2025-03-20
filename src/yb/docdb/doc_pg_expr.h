@@ -88,7 +88,8 @@ class DocPgExprExecutorBuilder {
   // Where clause expression must return boolean value. Where clause expressions are implicitly
   // AND'ed. If any is evaluated to false, no further evaluation happens and row is considered
   // filtered out. Empty where clause means no rows filtered out.
-  Status AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr);
+  Status AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr,
+                  const std::optional<int> version);
 
   // Add a target expression to the executor.
   // Expression is deserialized and stored in the list of the target expressions. Function prepares
@@ -96,7 +97,7 @@ class DocPgExprExecutorBuilder {
   // Each expression produces single value to be returned to client (like in SELECT), stored to
   // DocDB table (like in UPDATE), or both (like in UPDATE with RETURNING clause). Target
   // expressions are evaluated unless where clause was evaluated to false.
-  Status AddTarget(const PgsqlExpressionPB& expr);
+  Status AddTarget(const PgsqlExpressionPB& expr, const std::optional<int> version);
 
   template<class ColumnRefs>
   Result<DocPgExprExecutor> Build(const ColumnRefs& refs) {

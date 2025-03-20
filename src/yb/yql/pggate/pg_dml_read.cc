@@ -45,6 +45,8 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+#include "ybgate/ybgate_api.h"
+
 namespace yb::pggate {
 namespace {
 

@@ -33,6 +33,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
+#include "ybgate/ybgate_api.h"
+
 namespace yb {
 namespace pggate {
 
@@ -132,6 +134,11 @@ PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool i
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
   read_request_.set_metrics_capture(metrics_capture);
+
+  auto version = yb_major_version_upgrade_compatibility > 0
+    ? yb_major_version_upgrade_compatibility
+    : YbgGetPgVersion();
+  read_request_.set_expression_serialization_version(version);
 }
 
 Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {

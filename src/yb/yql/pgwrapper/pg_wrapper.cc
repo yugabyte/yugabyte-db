@@ -894,13 +894,6 @@ namespace {
 
 constexpr auto kVersionChars = 2;
 
-Result<int32_t> GetCurrentPgVersion() {
-  const char* curr_pg_ver_cstr;
-  PG_RETURN_NOT_OK(YbgGetPgVersion(&curr_pg_ver_cstr));
-  string curr_pg_ver_str = curr_pg_ver_cstr;
-  return CheckedStoi(curr_pg_ver_str.substr(0, kVersionChars));
-}
-
 Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
   std::unique_ptr<SequentialFile> result;
   std::string full_path = JoinPathSegments(data_dir, "PG_VERSION");
@@ -925,7 +918,7 @@ string PgWrapper::MakeVersionedDataDir(int32_t version) {
 // directory.
 // This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  int32_t current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+  int32_t current_pg_version = YbgGetPgVersion();
 
   // One-time migration in case this installation is not yet using a symlink
   if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
