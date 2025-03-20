@@ -13,7 +13,7 @@ yba provider gcp [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update and some instance-type subcommands.
   -h, --help          help for gcp
 ```
 
@@ -37,6 +37,7 @@ yba provider gcp [flags]
 * [yba provider gcp create](yba_provider_gcp_create.md)	 - Create a GCP YugabyteDB Anywhere provider
 * [yba provider gcp delete](yba_provider_gcp_delete.md)	 - Delete a GCP YugabyteDB Anywhere provider
 * [yba provider gcp describe](yba_provider_gcp_describe.md)	 - Describe a GCP YugabyteDB Anywhere provider
+* [yba provider gcp instance-type](yba_provider_gcp_instance-type.md)	 - Manage YugabyteDB Anywhere GCP instance types
 * [yba provider gcp list](yba_provider_gcp_list.md)	 - List GCP YugabyteDB Anywhere providers
 * [yba provider gcp update](yba_provider_gcp_update.md)	 - Update a GCP YugabyteDB Anywhere provider
 

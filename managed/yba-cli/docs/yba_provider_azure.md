@@ -13,7 +13,7 @@ yba provider azure [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update, and some instance-type subcommands.
   -h, --help          help for azure
 ```
 
@@ -37,6 +37,7 @@ yba provider azure [flags]
 * [yba provider azure create](yba_provider_azure_create.md)	 - Create an Azure YugabyteDB Anywhere provider
 * [yba provider azure delete](yba_provider_azure_delete.md)	 - Delete an Azure YugabyteDB Anywhere provider
 * [yba provider azure describe](yba_provider_azure_describe.md)	 - Describe an Azure YugabyteDB Anywhere provider
+* [yba provider azure instance-type](yba_provider_azure_instance-type.md)	 - Manage YugabyteDB Anywhere Azure instance types
 * [yba provider azure list](yba_provider_azure_list.md)	 - List Azure YugabyteDB Anywhere providers
 * [yba provider azure update](yba_provider_azure_update.md)	 - Update an Azure YugabyteDB Anywhere provider
 

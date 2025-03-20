@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package instancetypes
+package instancetype
 
 import (
 	"bytes"
@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	defaultFullInstanceTypesGeneral = "table {{.Name}}\t{{.ProviderUUID}}"
-	details                         = "table {{.Cores}}\t{{.Memory}}"
+	defaultFullInstanceTypesGeneral = "table {{.Name}}\t{{.Provider}}"
+	details                         = "table {{.Cores}}\t{{.Memory}}\t{{.Arch}}\t{{.Tenancy}}"
 )
 
 // FullInstanceTypesContext to render InstanceTypes Details output
@@ -88,14 +88,16 @@ func (fiT *FullInstanceTypesContext) Write() error {
 	// Volume subSection
 	instanceTypeDetails := fiT.iT.GetInstanceTypeDetails()
 
-	logrus.Debugf("Number of Volumes: %d", len(instanceTypeDetails.GetVolumeDetailsList()))
-	fiT.subSection("Volumes")
-	for i, v := range instanceTypeDetails.GetVolumeDetailsList() {
-		volumeContext := *NewVolumeContext()
-		volumeContext.Output = os.Stdout
-		volumeContext.Format = NewFullInstanceTypesFormat(viper.GetString("output"))
-		volumeContext.SetVolume(v)
-		volumeContext.Write(i)
+	if len(instanceTypeDetails.GetVolumeDetailsList()) != 0 {
+		logrus.Debugf("Number of Volumes: %d", len(instanceTypeDetails.GetVolumeDetailsList()))
+		fiT.subSection("Volumes")
+		for i, v := range instanceTypeDetails.GetVolumeDetailsList() {
+			volumeContext := *NewVolumeContext()
+			volumeContext.Output = os.Stdout
+			volumeContext.Format = NewFullInstanceTypesFormat(viper.GetString("output"))
+			volumeContext.SetVolume(v)
+			volumeContext.Write(i)
+		}
 	}
 
 	return nil

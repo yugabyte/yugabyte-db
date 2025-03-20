@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package instancetypes
+package instancetype
 
 import (
 	"bytes"

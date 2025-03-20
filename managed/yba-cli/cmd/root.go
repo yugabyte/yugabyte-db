@@ -114,6 +114,7 @@ func init() {
 	rootCmd.AddCommand(rbac.RBACCmd)
 	rootCmd.AddCommand(user.UserCmd)
 	rootCmd.AddCommand(xcluster.XClusterCmd)
+	rootCmd.AddCommand(tools.TreeCmd)
 	rootCmd.AddCommand(customer.CustomerCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 

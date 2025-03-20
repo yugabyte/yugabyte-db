@@ -13,7 +13,7 @@ yba provider aws [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update, and some instance-type subcommands.
   -h, --help          help for aws
 ```
 
@@ -37,6 +37,7 @@ yba provider aws [flags]
 * [yba provider aws create](yba_provider_aws_create.md)	 - Create an AWS YugabyteDB Anywhere provider
 * [yba provider aws delete](yba_provider_aws_delete.md)	 - Delete an AWS YugabyteDB Anywhere provider
 * [yba provider aws describe](yba_provider_aws_describe.md)	 - Describe an AWS YugabyteDB Anywhere provider
+* [yba provider aws instance-type](yba_provider_aws_instance-type.md)	 - Manage YugabyteDB Anywhere AWS instance types
 * [yba provider aws list](yba_provider_aws_list.md)	 - List AWS YugabyteDB Anywhere providers
 * [yba provider aws update](yba_provider_aws_update.md)	 - Update an AWS YugabyteDB Anywhere provider
 

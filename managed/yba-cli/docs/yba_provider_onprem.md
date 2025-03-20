@@ -13,7 +13,7 @@ yba provider onprem [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
+  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update, instance-type and node.
   -h, --help          help for onprem
 ```
 
@@ -37,7 +37,7 @@ yba provider onprem [flags]
 * [yba provider onprem create](yba_provider_onprem_create.md)	 - Create an On-premises YugabyteDB Anywhere provider
 * [yba provider onprem delete](yba_provider_onprem_delete.md)	 - Delete an On-premises YugabyteDB Anywhere provider
 * [yba provider onprem describe](yba_provider_onprem_describe.md)	 - Describe an On-premises YugabyteDB Anywhere provider
-* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere onprem instance types
+* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere on-premises instance types
 * [yba provider onprem list](yba_provider_onprem_list.md)	 - List On-premises YugabyteDB Anywhere providers
 * [yba provider onprem node](yba_provider_onprem_node.md)	 - Manage YugabyteDB Anywhere onprem node instances
 * [yba provider onprem update](yba_provider_onprem_update.md)	 - Update an On-premises YugabyteDB Anywhere provider

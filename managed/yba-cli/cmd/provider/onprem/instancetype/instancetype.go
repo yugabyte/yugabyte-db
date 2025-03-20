@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package instancetypes
+package instancetype
 
 import (
 	"github.com/spf13/cobra"
@@ -13,7 +13,7 @@ import (
 var InstanceTypesCmd = &cobra.Command{
 	Use:     "instance-type",
 	Aliases: []string{"instance-types", "instancetypes", "instancetype"},
-	Short:   "Manage YugabyteDB Anywhere onprem instance types",
+	Short:   "Manage YugabyteDB Anywhere on-premises instance types",
 	Long:    "Manage YugabyteDB Anywhere on-premises instance types",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()

@@ -390,7 +390,7 @@ func waitForEditClusterTask(
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
-		fmt.Printf("The universe %s (%s) cluster has been edited\n",
+		logrus.Infof("The universe %s (%s) cluster has been edited\n",
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {

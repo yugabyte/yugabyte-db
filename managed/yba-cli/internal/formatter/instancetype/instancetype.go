@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package instancetypes
+package instancetype
 
 import (
 	"encoding/json"
@@ -14,12 +14,17 @@ import (
 )
 
 const (
-	defaultInstanceTypesListing = "table {{.Name}}\t{{.ProviderUUID}}\t{{.Cores}}\t{{.Memory}}"
+	defaultInstanceTypesListing = "table {{.Name}}\t{{.Cores}}\t{{.Memory}}\t{{.Arch}}"
 
-	providerUUIDHeader = "Provider UUID"
-	coresHeader        = "Cores"
-	memoryHeader       = "Memory Size in GB"
+	providerHeader = "Provider"
+	coresHeader    = "Cores"
+	memoryHeader   = "Memory Size in GB"
+	archHeader     = "Architecture"
+	tenancyHeader  = "Tenancy"
 )
+
+// ProviderName is the name of the provider
+var ProviderName string
 
 // Context for instanceType outputs
 type Context struct {
@@ -79,10 +84,12 @@ func Write(ctx formatter.Context, instanceTypes []ybaclient.InstanceTypeResp) er
 func NewInstanceTypesContext() *Context {
 	instanceTypeCtx := Context{}
 	instanceTypeCtx.Header = formatter.SubHeaderContext{
-		"Name":         formatter.NameHeader,
-		"ProviderUUID": providerUUIDHeader,
-		"Cores":        coresHeader,
-		"Memory":       memoryHeader,
+		"Name":     formatter.NameHeader,
+		"Provider": providerHeader,
+		"Cores":    coresHeader,
+		"Memory":   memoryHeader,
+		"Arch":     archHeader,
+		"Tenancy":  tenancyHeader,
 	}
 	return &instanceTypeCtx
 }
@@ -92,21 +99,34 @@ func (c *Context) Name() string {
 	return c.iT.GetInstanceTypeCode()
 }
 
-// ProviderUUID fetched provider UUID
-func (c *Context) ProviderUUID() string {
+// Provider fetched providers associated with the instanceType
+func (c *Context) Provider() string {
+	if len(ProviderName) > 0 {
+		return fmt.Sprintf("%s(%s)", ProviderName, c.iT.GetProviderUuid())
+	}
 	return c.iT.GetProviderUuid()
 }
 
 // Cores fetches the cores associated with the instanceType
 func (c *Context) Cores() string {
 	return fmt.Sprintf("%0.00f", c.iT.GetNumCores())
-
 }
 
 // Memory fetches the memory associated with the instanceType
 func (c *Context) Memory() string {
 	return fmt.Sprintf("%0.00f", c.iT.GetMemSizeGB())
+}
 
+// Arch fetches the architecture associated with the instanceType
+func (c *Context) Arch() string {
+	details := c.iT.GetInstanceTypeDetails()
+	return details.GetArch()
+}
+
+// Tenancy fetches the tenancy associated with the instanceType
+func (c *Context) Tenancy() string {
+	details := c.iT.GetInstanceTypeDetails()
+	return details.GetTenancy()
 }
 
 // MarshalJSON function

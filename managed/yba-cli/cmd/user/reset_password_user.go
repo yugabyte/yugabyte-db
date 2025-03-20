@@ -84,11 +84,10 @@ var resetPasswordUserCmd = &cobra.Command{
 		}
 
 		if !rUpdate.GetSuccess() {
-			logrus.Errorf(
+			logrus.Fatalf(
 				formatter.Colorize(
 					"An error occurred while updating password for current user\n",
 					formatter.RedColor))
-
 		}
 
 		rGet, response, err := authAPI.GetUserDetails(viper.GetString("user-uuid")).Execute()

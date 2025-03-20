@@ -310,7 +310,7 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The read replica for universe %s (%s) has been created\n",
+			logrus.Infof("The read replica for universe %s (%s) has been created\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 			universeData, response, err := authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {

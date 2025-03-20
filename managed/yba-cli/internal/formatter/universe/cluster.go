@@ -362,7 +362,7 @@ func (c *ClusterContext) SpecificGFlags() string {
 	userIntent := c.c.GetUserIntent()
 	jsonBytes, err := json.MarshalIndent(userIntent.GetSpecificGFlags(), "", "  ")
 	if err != nil {
-		fmt.Println("Error converting JSON to string:", err)
+		logrus.Error("Error converting JSON to string:", err)
 		return ""
 	}
 	return string(jsonBytes)

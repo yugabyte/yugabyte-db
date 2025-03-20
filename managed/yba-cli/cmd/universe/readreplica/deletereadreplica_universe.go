@@ -125,7 +125,7 @@ var DeleteReadReplicaUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The read replica from universe %s (%s) has been deleted\n",
+			logrus.Infof("The read replica from universe %s (%s) has been deleted\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 			universeData, response, err := authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
