@@ -35,6 +35,44 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
   @Inject private ConfigHelper configHelper;
   @Inject private StorageUtilFactory storageUtilFactory;
 
+  /**
+   * Validates that a backup directory name is safe for cloud storage. Checks for: - Path traversal
+   * attempts (..) - Directory separators (/) - Special characters - Empty or null values
+   */
+  private void validateBackupDir(String backupDir) {
+    if (backupDir == null || backupDir.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Backup directory cannot be empty");
+    }
+
+    // Check for path traversal
+    if (backupDir.contains("..")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Backup directory cannot contain '..'");
+    }
+
+    // Check for directory separators
+    if (backupDir.contains("/") || backupDir.contains("\\")) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Backup directory cannot contain path separators");
+    }
+
+    // Check for special characters that could cause issues in cloud storage
+    // This includes characters that could be used for path traversal or cause encoding issues
+    String invalidChars = "[\\\\/:*?\"<>|]";
+    if (backupDir.matches(".*" + invalidChars + ".*")) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Backup directory contains invalid characters");
+    }
+
+    // Check for leading/trailing spaces or dots
+    if (backupDir.startsWith(".")
+        || backupDir.endsWith(".")
+        || backupDir.startsWith(" ")
+        || backupDir.endsWith(" ")) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Backup directory cannot start or end with spaces or dots");
+    }
+  }
+
   public ContinuousBackup createContinuousBackup(
       Http.Request request, UUID cUUID, ContinuousBackupSpec continuousBackupCreateSpec)
       throws Exception {
@@ -48,6 +86,14 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     if (customerConfig == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Could not find storage config UUID.");
     }
+    if (customerConfig.getType() != CustomerConfig.ConfigType.STORAGE) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can only use storage config for continuous backup.");
+    }
+
+    // Validate backup directory name
+    validateBackupDir(continuousBackupCreateSpec.getBackupDir());
+
     ContinuousBackupConfig cbConfig =
         ContinuousBackupConfig.create(
             storageConfigUUID,
@@ -57,7 +103,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
             continuousBackupCreateSpec.getBackupDir());
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
     String storageLocation =
-        storageUtil.getStorageLocation(
+        storageUtil.getYbaBackupStorageLocation(
             customerConfig.getDataObject(), continuousBackupCreateSpec.getBackupDir());
     if (storageLocation == null || storageLocation.isBlank()) {
       throw new PlatformServiceException(BAD_REQUEST, "Could not determine storage location.");
@@ -113,9 +159,17 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     if (customerConfig == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Could not find storage config UUID.");
     }
+    if (customerConfig.getType() != CustomerConfig.ConfigType.STORAGE) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can only set storage config for continuous backup.");
+    }
+
+    // Validate backup directory name
+    validateBackupDir(continuousBackupEditSpec.getBackupDir());
+
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
     String storageLocation =
-        storageUtil.getStorageLocation(
+        storageUtil.getYbaBackupStorageLocation(
             customerConfig.getDataObject(), continuousBackupEditSpec.getBackupDir());
     if (storageLocation == null || storageLocation.isBlank()) {
       throw new PlatformServiceException(BAD_REQUEST, "Could not determine storage location.");
