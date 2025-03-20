@@ -1325,6 +1325,10 @@ void Tablet::DoCleanupIntentFiles() {
         << ", max ht: " << best_file_max_ht
         << ", min running transaction start ht: " << min_running_start_ht
         << ", min_start_ht_cdc_unstreamed_txns: " << min_start_ht_cdc_unstreamed_txns;
+    if (TEST_sleep_before_delete_intents_file_) {
+      std::this_thread::sleep_for(TEST_sleep_before_delete_intents_file_.ToSteadyDuration());
+    }
+
     auto flush_status = Flush(
         FlushMode::kSync,
         FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation);
@@ -2248,12 +2252,12 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
   bool flush_intents = intents_db_ && HasFlags(flags, FlushFlags::kIntents);
   if (flush_intents) {
     options.wait = false;
-    WARN_NOT_OK(intents_db_->Flush(options), "Flush intents DB");
+    RETURN_NOT_OK(intents_db_->Flush(options));
   }
 
   if (HasFlags(flags, FlushFlags::kRegular) && regular_db_) {
     options.wait = mode == FlushMode::kSync;
-    WARN_NOT_OK(regular_db_->Flush(options), "Flush regular DB");
+    RETURN_NOT_OK(regular_db_->Flush(options));
   }
 
   if (mode == FlushMode::kSync) {

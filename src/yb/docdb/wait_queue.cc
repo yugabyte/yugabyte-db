@@ -1740,6 +1740,7 @@ class WaitQueue::Impl {
     }
     waiter_runner_.CompleteShutdown();
     rpcs_.Shutdown();
+    thread_pool_token_.reset();
     SharedLock l(mutex_);
     LOG_IF(DFATAL, !shutting_down_)
         << "Called CompleteShutdown() while not in shutting_down_ state.";
@@ -2228,9 +2229,10 @@ WaitQueue::WaitQueue(
     const server::ClockPtr& clock,
     const MetricEntityPtr& metrics,
     std::unique_ptr<ThreadPoolToken> thread_pool_token,
-    rpc::Messenger* messenger):
-  impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
-                 metrics, std::move(thread_pool_token), messenger)) {}
+    rpc::Messenger* messenger)
+    : impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
+                     metrics, std::move(thread_pool_token), messenger)) {
+}
 
 WaitQueue::~WaitQueue() = default;
 
