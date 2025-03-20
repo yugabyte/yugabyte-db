@@ -373,11 +373,12 @@ public class Schedule extends Model {
 
   private void updateNewBackupScheduleTimes() {
     ScheduleTask lastTask = ScheduleTask.getLastTask(this.getScheduleUUID());
-    Date nextScheduleTaskTime = null;
+    // nextScheduleTaskTime should be updated first since
+    // ScheduleUtil.nextExpectedIncrementTaskTime uses it.
     if (lastTask == null || Util.isTimeExpired(nextExpectedTaskTime(lastTask.getScheduledTime()))) {
-      nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
+      this.nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
     } else {
-      nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
+      this.nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
     }
     Date nextExpectedIncrementScheduleTaskTime = null;
     long incrementalBackupFrequency =
@@ -385,7 +386,6 @@ public class Schedule extends Model {
     if (incrementalBackupFrequency != 0L) {
       nextExpectedIncrementScheduleTaskTime = ScheduleUtil.nextExpectedIncrementTaskTime(this);
     }
-    this.nextScheduleTaskTime = nextScheduleTaskTime;
     this.nextIncrementScheduleTaskTime = nextExpectedIncrementScheduleTaskTime;
   }
 
