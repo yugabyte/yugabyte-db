@@ -737,7 +737,7 @@ Default: `1`
 
 ##### --enable_tablet_split_of_pitr_tables
 
-Enables automatic tablet splitting of tables covered by Point In Time Recovery schedules.
+Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
 
 Default: `true`
 
