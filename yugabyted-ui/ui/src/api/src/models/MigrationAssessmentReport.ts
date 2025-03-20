@@ -13,17 +13,17 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
+import type { AssessmentCategoryInfo } from './AssessmentCategoryInfo';
+// eslint-disable-next-line no-duplicate-imports
 import type { AssessmentReportSummary } from './AssessmentReportSummary';
 // eslint-disable-next-line no-duplicate-imports
-import type { RecommendedRefactoringGraph } from './RecommendedRefactoringGraph';
+import type { RefactoringCount } from './RefactoringCount';
 // eslint-disable-next-line no-duplicate-imports
 import type { SourceDatabaseInfo } from './SourceDatabaseInfo';
 // eslint-disable-next-line no-duplicate-imports
 import type { SourceEnvironmentInfo } from './SourceEnvironmentInfo';
 // eslint-disable-next-line no-duplicate-imports
 import type { TargetClusterRecommendationDetails } from './TargetClusterRecommendationDetails';
-// eslint-disable-next-line no-duplicate-imports
-import type { UnsupportedSqlInfo } from './UnsupportedSqlInfo';
 
 
 /**
@@ -32,6 +32,24 @@ import type { UnsupportedSqlInfo } from './UnsupportedSqlInfo';
  * @interface MigrationAssessmentReport
  */
 export interface MigrationAssessmentReport  {
+  /**
+   * 
+   * @type {string}
+   * @memberof MigrationAssessmentReport
+   */
+  operating_system?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof MigrationAssessmentReport
+   */
+  voyager_version?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof MigrationAssessmentReport
+   */
+  target_db_version?: string;
   /**
    * 
    * @type {boolean}
@@ -64,28 +82,16 @@ export interface MigrationAssessmentReport  {
   target_recommendations?: TargetClusterRecommendationDetails;
   /**
    * 
-   * @type {RecommendedRefactoringGraph}
+   * @type {RefactoringCount[]}
    * @memberof MigrationAssessmentReport
    */
-  recommended_refactoring?: RecommendedRefactoringGraph;
+  recommended_refactoring?: RefactoringCount[];
   /**
    * 
-   * @type {UnsupportedSqlInfo[]}
+   * @type {AssessmentCategoryInfo[]}
    * @memberof MigrationAssessmentReport
    */
-  unsupported_data_types?: UnsupportedSqlInfo[];
-  /**
-   * 
-   * @type {UnsupportedSqlInfo[]}
-   * @memberof MigrationAssessmentReport
-   */
-  unsupported_functions?: UnsupportedSqlInfo[];
-  /**
-   * 
-   * @type {UnsupportedSqlInfo[]}
-   * @memberof MigrationAssessmentReport
-   */
-  unsupported_features?: UnsupportedSqlInfo[];
+  assessment_issues?: AssessmentCategoryInfo[];
 }
 
 

@@ -31,6 +31,12 @@ export interface AssessmentReportSummary  {
    * @type {string}
    * @memberof AssessmentReportSummary
    */
+  migration_comlexity_explanation?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof AssessmentReportSummary
+   */
   estimated_migration_time?: string;
   /**
    * 

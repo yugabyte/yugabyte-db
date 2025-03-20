@@ -11,6 +11,8 @@ import RefreshIcon from "@app/assets/refresh.svg";
 import BookIcon from "@app/assets/book.svg";
 import { StepCard } from "../schema/StepCard";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import VoyagerVersionBox from "../../VoyagerVersionBox";
+
 interface MigrationAssessmentProps {
   heading: string;
   migration: Migration | undefined;
@@ -19,6 +21,7 @@ interface MigrationAssessmentProps {
   isFetching?: boolean;
   isNewMigration?: boolean;
   operatingSystem?: string;
+  voyagerVersion?: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -40,7 +43,8 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   onRefetch,
   isFetching = false,
   isNewMigration = false,
-  operatingSystem
+  operatingSystem,
+  voyagerVersion,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -92,7 +96,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     isFetching: isFetchingAPI,
     isError: isErrorMigrationAssessmentInfo,
   } = useGetMigrationAssessmentInfoQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const RHELDistrosList: string[] = ["centos", "almalinux", "rhel"];
@@ -108,7 +112,23 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   return (
     <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-        <Typography variant="h4">{t("clusterDetail.voyager.planAndAssess.heading")}</Typography>
+        <Box display="flex" alignItems="center">
+          <Box sx={{ fontWeight: 600 }}>
+            <Typography variant="h4">
+              {t("clusterDetail.voyager.planAndAssess.heading")}
+            </Typography>
+          </Box>
+
+          {
+            !((isFetching || isFetchingAPI) && !isNewMigration && !isErrorMigrationAssessmentInfo &&
+              !!newMigrationAPI?.voyager_version) &&
+            !!voyagerVersion && (
+              <VoyagerVersionBox voyagerVersion={voyagerVersion} />
+            )
+          }
+
+
+          </Box>
         <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
@@ -183,10 +203,12 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
               newMigrationAPI?.target_recommendations?.target_schema_recommendation
                 ?.total_size_sharded_tables ?? "N/A"
             }
-            sqlObjects={newMigrationAPI?.recommended_refactoring?.refactor_details}
-            unsupportedDataTypes={newMigrationAPI?.unsupported_data_types}
-            unsupportedFeatures={newMigrationAPI?.unsupported_features}
-            unsupportedFunctions={newMigrationAPI?.unsupported_functions}
+            sqlObjects={newMigrationAPI?.recommended_refactoring}
+            assessmentIssues={newMigrationAPI?.assessment_issues}
+            targetDBVersion={newMigrationAPI?.target_db_version}
+            migrationComplexityExplanation={
+              newMigrationAPI?.summary?.migration_comlexity_explanation
+            }
           />
         </>
       )}

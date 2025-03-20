@@ -92,29 +92,24 @@ ERROR:  relation "nonesuch" does not exist
 alter table nonesuch rename to stud_emp;
 ERROR:  relation "nonesuch" does not exist
 -- conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table stud_emp rename to student;
-ERROR:  relation "stud_emp" does not exist
+ERROR:  relation "student" already exists
 -- self-conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table stud_emp rename to stud_emp;
-ERROR:  relation "stud_emp" does not exist
+ERROR:  relation "stud_emp" already exists
 -- attribute renaming
 -- no such relation
 alter table nonesuchrel rename column nonesuchatt to newnonesuchatt;
 ERROR:  relation "nonesuchrel" does not exist
 -- no such attribute
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table emp rename column nonesuchatt to newnonesuchatt;
-ERROR:  relation "emp" does not exist
+ERROR:  column "nonesuchatt" does not exist
 -- conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
 alter table emp rename column salary to manager;
-ERROR:  relation "emp" does not exist
+ERROR:  column "manager" of relation "stud_emp" already exists
 -- conflict
--- TODO(jason): change expected output when issue #1129 is closed or closing.
-alter table emp rename column salary to oid;
-ERROR:  relation "emp" does not exist
+alter table emp rename column salary to ctid;
+ERROR:  column name "ctid" conflicts with a system column name
 --
 -- TRANSACTION STUFF
 -- not in a xact

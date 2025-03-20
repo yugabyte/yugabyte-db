@@ -269,10 +269,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       isNonEmptyArray(updateOptions) &&
       (updateOptions.includes(UpdateActions.SMART_RESIZE) ||
         updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART));
+
+    // Checking if provider code is OnPrem as it is provisioned to fixed size
+    // and cannot be changed on both edit and create mode
     const fixedVolumeSize =
-      [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
-      fieldValue?.storageType === StorageType.Scratch &&
-      ![CloudType.kubernetes, CloudType.azu].includes(provider?.code);
+      (fieldValue?.storageType === StorageType.Scratch && provider?.code === CloudType.gcp) ||
+      provider?.code === CloudType.onprem;
 
     const fixedNumVolumes =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&

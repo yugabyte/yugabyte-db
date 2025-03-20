@@ -13,12 +13,11 @@ CREATE TABLE ctlb (bb TEXT) INHERITS (ctla);
 CREATE TABLE foo (LIKE nonexistent);
 
 CREATE TABLE inhe (ee text, LIKE inhx) inherits (ctlb);
--- Uncomment the following if INHERITS is supported (#5956).
--- INSERT INTO inhe VALUES ('ee-col1', 'ee-col2', DEFAULT, 'ee-col4');
--- SELECT * FROM inhe; /* Columns aa, bb, xx value NULL, ee */
--- SELECT * FROM inhx; /* Empty set since LIKE inherits structure only */
--- SELECT * FROM ctlb; /* Has ee entry */
--- SELECT * FROM ctla; /* Has ee entry */
+INSERT INTO inhe VALUES ('ee-col1', 'ee-col2', DEFAULT, 'ee-col4');
+SELECT * FROM inhe; /* Columns aa, bb, xx value NULL, ee */
+SELECT * FROM inhx; /* Empty set since LIKE inherits structure only */
+SELECT * FROM ctlb; /* Has ee entry */
+SELECT * FROM ctla; /* Has ee entry */
 
 CREATE TABLE inhf (LIKE inhx, LIKE inhx); /* Throw error */
 
@@ -94,6 +93,7 @@ CREATE TABLE test_like_5x (p int CHECK (p > 0),
    q int GENERATED ALWAYS AS (p * 2) STORED);
 CREATE TABLE test_like_5c (LIKE test_like_4 INCLUDING ALL)
   INHERITS (test_like_5, test_like_5x);
+\d test_like_5c
 
 DROP TABLE test_like_4, test_like_4a, test_like_4b, test_like_4c, test_like_4d;
 DROP TABLE test_like_5, test_like_5x, test_like_5c;
@@ -134,21 +134,27 @@ COMMENT ON INDEX ctlt1_pkey IS 'index pkey';
 COMMENT ON INDEX ctlt1_b_key IS 'index b_key';
 ALTER TABLE ctlt1 ALTER COLUMN a SET STORAGE MAIN;
 -- Uncomment the following when ALTER COLUMN is supported (#1200)
-/*
+
 CREATE TABLE ctlt2 (c text);
+/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt2 ALTER COLUMN c SET STORAGE EXTERNAL;
+*/ -- YB
 COMMENT ON COLUMN ctlt2.c IS 'C';
 
 CREATE TABLE ctlt3 (a text CHECK (length(a) < 5), c text CHECK (length(c) < 7));
+/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt3 ALTER COLUMN c SET STORAGE EXTERNAL;
 ALTER TABLE ctlt3 ALTER COLUMN a SET STORAGE MAIN;
+*/ -- YB
 CREATE INDEX ctlt3_fnidx ON ctlt3 ((a || c));
 COMMENT ON COLUMN ctlt3.a IS 'A3';
 COMMENT ON COLUMN ctlt3.c IS 'C';
 COMMENT ON CONSTRAINT ctlt3_a_check ON ctlt3 IS 't3_a_check';
 
 CREATE TABLE ctlt4 (a text, c text);
+/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt4 ALTER COLUMN c SET STORAGE EXTERNAL;
+*/ -- YB
 
 CREATE TABLE ctlt12_storage (LIKE ctlt1 INCLUDING STORAGE, LIKE ctlt2 INCLUDING STORAGE);
 \d+ ctlt12_storage
@@ -162,15 +168,14 @@ CREATE TABLE ctlt13_inh () INHERITS (ctlt1, ctlt3);
 CREATE TABLE ctlt13_like (LIKE ctlt3 INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING COMMENTS INCLUDING STORAGE) INHERITS (ctlt1);
 \d+ ctlt13_like
 SELECT description FROM pg_description, pg_constraint c WHERE classoid = 'pg_constraint'::regclass AND objoid = c.oid AND c.conrelid = 'ctlt13_like'::regclass;
-*/
+
 CREATE TABLE ctlt_all (LIKE ctlt1 INCLUDING ALL);
 \d+ ctlt_all
 SELECT c.relname, objsubid, description FROM pg_description, pg_index i, pg_class c WHERE classoid = 'pg_class'::regclass AND objoid = i.indexrelid AND c.oid = i.indexrelid AND i.indrelid = 'ctlt_all'::regclass ORDER BY c.relname, objsubid;
 SELECT s.stxname, objsubid, description FROM pg_description, pg_statistic_ext s WHERE classoid = 'pg_statistic_ext'::regclass AND objoid = s.oid AND s.stxrelid = 'ctlt_all'::regclass ORDER BY s.stxname, objsubid;
 
 CREATE TABLE inh_error1 () INHERITS (ctlt1, ctlt4);
--- Uncomment when INHERITS #5956 is supported.
--- CREATE TABLE inh_error2 (LIKE ctlt4 INCLUDING STORAGE) INHERITS (ctlt1);
+CREATE TABLE inh_error2 (LIKE ctlt4 INCLUDING STORAGE) INHERITS (ctlt1);
 
 -- Check that LIKE isn't confused by a system catalog of the same name
 CREATE TABLE pg_attrdef (LIKE ctlt1 INCLUDING ALL);
@@ -178,18 +183,30 @@ CREATE TABLE pg_attrdef (LIKE ctlt1 INCLUDING ALL);
 DROP TABLE public.pg_attrdef;
 
 -- Check that LIKE isn't confused when new table masks the old, either
+/* YB: DDL rollback is not supported
 BEGIN;
+*/ -- YB
 CREATE SCHEMA ctl_schema;
-SET LOCAL search_path = ctl_schema, public;
+SET search_path = ctl_schema, public; /* YB: DDL rollback is not supported, s/SET LOCAL/SET */
 CREATE TABLE ctlt1 (LIKE ctlt1 INCLUDING ALL);
 \d+ ctlt1
-ROLLBACK;
+/* YB: DDL rollback is not supported
+ROLLBACK; 
+*/ -- YB
 
--- Remove IF EXISTS in the below line  when ALTER COLUMN is supported and statements above are uncommented.
-DROP TABLE IF EXISTS ctlt1, ctlt2, ctlt3, ctlt4, ctlt12_storage, ctlt12_comments, ctlt1_inh, ctlt13_inh, ctlt13_like, ctlt_all, ctla, ctlb CASCADE;
+DROP TABLE ctlt1, ctlt2, ctlt3, ctlt4, ctlt12_storage, ctlt12_comments, ctlt1_inh, ctlt13_inh, ctlt13_like, ctlt_all, ctla, ctlb CASCADE;
+SET search_path = public; /* YB: DDL rollback is not supported, restore search path */
 
 -- LIKE must respect NO INHERIT property of constraints
 CREATE TABLE noinh_con_copy (a int CHECK (a > 0) NO INHERIT);
+CREATE TABLE noinh_con_copy1 (LIKE noinh_con_copy INCLUDING CONSTRAINTS);
+\d noinh_con_copy1
+
+-- fail, as partitioned tables don't allow NO INHERIT constraints
+CREATE TABLE noinh_con_copy1_parted (LIKE noinh_con_copy INCLUDING ALL)
+  PARTITION BY LIST (a);
+
+DROP TABLE noinh_con_copy, noinh_con_copy1;
 
 
 /* LIKE with other relation kinds */

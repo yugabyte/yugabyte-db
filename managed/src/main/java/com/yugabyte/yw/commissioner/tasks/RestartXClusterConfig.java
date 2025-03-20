@@ -2,6 +2,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
@@ -23,6 +24,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
+@Retryable(enabled = false)
 public class RestartXClusterConfig extends EditXClusterConfig {
 
   @Inject

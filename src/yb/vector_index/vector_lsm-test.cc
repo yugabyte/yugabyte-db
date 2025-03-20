@@ -31,7 +31,7 @@
 using namespace std::literals;
 
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
-DECLARE_bool(TEST_vector_index_skip_update_metadata_during_shutdown);
+DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 
 namespace yb::vector_index {
 
@@ -143,9 +143,9 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
         }) {
   }
 
-  Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+  Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
-  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
   Status InsertCube(
       FloatVectorLSM& lsm, size_t dimensions,
@@ -228,7 +228,7 @@ Status VectorLSMTest::InsertCube(
 }
 
 Status VectorLSMTest::OpenVectorLSM(
-    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
 
   std::string test_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
@@ -243,7 +243,7 @@ Status VectorLSMTest::OpenVectorLSM(
         };
         return factory(hnsw_options);
       },
-    .points_per_chunk = points_per_chunk,
+    .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
   };
@@ -251,9 +251,9 @@ Status VectorLSMTest::OpenVectorLSM(
 }
 
 Status VectorLSMTest::InitVectorLSM(
-    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
-  RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, points_per_chunk));
-  return InsertCube(lsm, dimensions, points_per_chunk);
+    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
+  RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, vectors_per_chunk));
+  return InsertCube(lsm, dimensions, vectors_per_chunk);
 }
 
 void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
@@ -361,7 +361,7 @@ TEST_P(VectorLSMTest, BootstrapWithFlush) {
 
 TEST_P(VectorLSMTest, NotSavedChunk) {
   FLAGS_TEST_vector_index_delay_saving_first_chunk_ms = 1000 * kTimeMultiplier;
-  FLAGS_TEST_vector_index_skip_update_metadata_during_shutdown = true;
+  FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown = true;
   TestBootstrap(/* flush= */ false);
 }
 

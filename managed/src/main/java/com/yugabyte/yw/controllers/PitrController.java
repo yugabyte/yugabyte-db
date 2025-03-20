@@ -163,6 +163,7 @@ public class PitrController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       value = "Update pitr config for a keyspace in a universe",
       nickname = "updatePitrConfig",
       response = YBPTask.class)
@@ -181,6 +182,7 @@ public class PitrController extends AuthenticatedController {
                 action = Action.BACKUP_RESTORE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
   public Result updatePitrConfig(
       UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID, Http.Request request) {
     // Validate customer UUID
@@ -241,7 +243,7 @@ public class PitrController extends AuthenticatedController {
             Audit.ActionType.UpdatePitrConfig,
             Json.toJson(taskParams),
             taskUUID);
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
   }
 
   @ApiOperation(
@@ -393,7 +395,7 @@ public class PitrController extends AuthenticatedController {
             Audit.ActionType.RestoreSnapshotSchedule,
             Json.toJson(taskParams),
             taskUUID);
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
   }
 
   @ApiOperation(
@@ -451,7 +453,7 @@ public class PitrController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.DeletePitrConfig,
             Json.toJson(pitrConfigUUID));
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
   }
 
   private void checkCompatibleYbVersion(String ybVersion) {

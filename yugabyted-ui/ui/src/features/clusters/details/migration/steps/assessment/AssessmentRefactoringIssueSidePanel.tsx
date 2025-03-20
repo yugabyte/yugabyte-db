@@ -10,7 +10,7 @@ import {
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBCodeBlock, YBModal } from "@app/components";
-import type { UnsupportedSqlInfo } from "@app/api/src";
+import type { UnsupportedObjectData } from "./AssessmentRefactoring";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -51,12 +51,10 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-type IssueDetails = UnsupportedSqlInfo & { issue_type?: string, sql_statement?: string };
-
 interface MigrationRefactoringIssueSidePanel {
   open: boolean;
   onClose: () => void;
-  issue: IssueDetails | undefined;
+  issue: UnsupportedObjectData | undefined;
 }
 
 export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSidePanel> = ({
@@ -87,51 +85,60 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
         <Paper>
           <Box p={2} className={classes.grayBg} display="flex" gridGap={20}>
             <Grid container spacing={2}>
-              <Grid item xs={4}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issue")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {issue?.unsupported_type}
-                </Typography>
-              </Grid>
-              <Grid item xs={4}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issueType")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {issue?.issue_type}
-                </Typography>
-              </Grid>
-              <Grid item xs={4}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
-                    "occurrences")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {issue?.count}
-                </Typography>
-              </Grid>
-              {issue?.docs_link ? (
+              {issue?.issue_name && (
+                <Grid item xs={4}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issue")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {issue?.issue_name}
+                  </Typography>
+                </Grid>
+              )}
+
+              {/* {issue?.issue_type && (
+                <Grid item xs={4}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                   {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issueType")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {issue?.issue_type}
+                  </Typography>
+                </Grid>
+              )} */}
+
+              {issue?.count && (
+                <Grid item xs={4}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                 {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.occurrences")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {issue?.count}
+                  </Typography>
+                </Grid>
+              )}
+
+              {issue?.docs_link && (
                 <Grid item xs={12}>
                   <Link href={issue?.docs_link} target="_blank">
-                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
-                      "linkToDocs")}
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.linkToDocs")}
                   </Link>
                 </Grid>
-              ) : null}
+              )}
             </Grid>
           </Box>
         </Paper>
       </Box>
+
       {paginatedObjects?.map(({ object_name, sql_statement }) => (
         (object_name || sql_statement) && (
           <Box key={object_name} className={classes.borderForNameAndSQL}
             sx={{ mb: 2, p: 2, borderRadius: 2 }}>
             {object_name && (
-              <Typography variant="body1">
+              <Typography>
                 {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
-                      "objectName")} <span>{object_name}</span>
+                      "objectName")}
+                {object_name}
               </Typography>
             )}
             {sql_statement && (

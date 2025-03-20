@@ -188,9 +188,9 @@ const LiveQueriesComponent = ({ location }) => {
       </Alert>
     );
   }
-
-  const ybSoftwareVersion = getPrimaryCluster(currentUniverse?.data?.universeDetails?.clusters)
-    ?.userIntent.ybSoftwareVersion;
+  const primaryCluster = getPrimaryCluster(currentUniverse?.data?.universeDetails?.clusters);
+  const ybSoftwareVersion = primaryCluster?.userIntent.ybSoftwareVersion;
+  const isConnectionPoolEnabled = primaryCluster?.userIntent.enableConnectionPooling;
   const isPg15Supported =
     compareYBSoftwareVersionsWithReleaseTrack({
       version: ybSoftwareVersion,
@@ -293,12 +293,16 @@ const LiveQueriesComponent = ({ location }) => {
               <TableHeaderColumn dataField={isYSQL ? 'appName' : 'type'} width="200px" dataSort>
                 {isYSQL ? 'Client Name' : 'Type'}
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="clientHost" width="150px" dataSort>
-                Client Host
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="clientPort" width="100px" dataSort>
-                Client Port
-              </TableHeaderColumn>
+              {!isConnectionPoolEnabled && (
+                <TableHeaderColumn dataField="clientHost" width="150px" dataSort>
+                  Client Host
+                </TableHeaderColumn>
+              )}
+              {!isConnectionPoolEnabled && (
+                <TableHeaderColumn dataField="clientPort" width="100px" dataSort>
+                  Client Port
+                </TableHeaderColumn>
+              )}
             </BootstrapTable>
           </div>
         }
@@ -310,6 +314,7 @@ const LiveQueriesComponent = ({ location }) => {
         queryType={QueryType.LIVE}
         queryApi={isYSQL ? QueryApi.YSQL : QueryApi.YCQL}
         visible={selectedRow.length}
+        isConnectionPoolEnabled={isConnectionPoolEnabled}
       />
     </div>
   );

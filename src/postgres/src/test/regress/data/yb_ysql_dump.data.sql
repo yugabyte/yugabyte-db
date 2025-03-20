@@ -291,6 +291,173 @@ SPLIT INTO 3 TABLETS;
 \endif
 
 --
+-- Name: level0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16621'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16620'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16619'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16619'::pg_catalog.oid);
+
+CREATE TABLE public.level0 (
+    c1 integer,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
+    CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
+    CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level1_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16624'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16623'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16622'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16622'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16625'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16625'::pg_catalog.oid);
+
+CREATE TABLE public.level1_0 (
+    c1 integer NOT NULL,
+    CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
+)
+INHERITS (public.level0);
+
+
+\if :use_roles
+    ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level1_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16629'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16628'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16627'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16627'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16630'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16630'::pg_catalog.oid);
+
+CREATE TABLE public.level1_1 (
+    c2 text,
+    CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
+    CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
+)
+INHERITS (public.level0)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level2_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16635'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16634'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16633'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16633'::pg_catalog.oid);
+
+CREATE TABLE public.level2_0 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL
+)
+INHERITS (public.level1_0)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level2_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16638'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16637'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16636'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16636'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16639'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16639'::pg_catalog.oid);
+
+CREATE TABLE public.level2_1 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL,
+    c4 text NOT NULL,
+    CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
+)
+INHERITS (public.level1_0, public.level1_1)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level2_1 OWNER TO yugabyte_test;
+\endif
+
+--
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -1738,6 +1905,51 @@ COPY public.hash_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) 
 
 
 --
+-- Data for Name: level0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level0 (c1, c2, c3, c4) FROM stdin;
+\N	0	\N	\N
+\.
+
+
+--
+-- Data for Name: level1_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_0 (c1, c2, c3, c4) FROM stdin;
+2	1_0	1_0	\N
+\.
+
+
+--
+-- Data for Name: level1_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_1 (c1, c2, c3, c4) FROM stdin;
+\N	1_1	\N	1_1
+\.
+
+
+--
+-- Data for Name: level2_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_0 (c1, c2, c3, c4) FROM stdin;
+1	2_0	2_0	\N
+\.
+
+
+--
+-- Data for Name: level2_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_1 (c1, c2, c3, c4) FROM stdin;
+2	2_1	2_1	2_1
+\.
+
+
+--
 -- Data for Name: p1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -2182,6 +2394,30 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16552'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16552'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
+
+
+--
+-- Name: level1_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16632'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16632'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC);
+
+
+--
+-- Name: level2_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16641'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16641'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
 
 
 --

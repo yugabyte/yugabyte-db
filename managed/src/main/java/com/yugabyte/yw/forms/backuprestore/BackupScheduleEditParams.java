@@ -21,6 +21,11 @@ public class BackupScheduleEditParams {
   @ApiModelProperty(value = "Frequency of incremental backup schedule")
   public long incrementalBackupFrequency;
 
+  // Specifies the time in millisecs before deleting the backup from the storage
+  // bucket.
+  @ApiModelProperty(value = "Time before deleting the backup from storage, in milliseconds")
+  public long timeBeforeDelete = 0L;
+
   @ApiModelProperty(value = "TimeUnit for incremental Backup Schedule frequency")
   public TimeUnit incrementalBackupFrequencyTimeUnit;
 
@@ -31,5 +36,6 @@ public class BackupScheduleEditParams {
     this.schedulingFrequency = params.schedulingFrequency;
     this.incrementalBackupFrequency = params.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit = params.incrementalBackupFrequencyTimeUnit;
+    this.timeBeforeDelete = params.timeBeforeDelete;
   }
 }

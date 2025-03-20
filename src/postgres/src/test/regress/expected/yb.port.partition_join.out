@@ -26,10 +26,10 @@ CREATE INDEX iprt2_p2_b on prt2_p2(b);
 CREATE INDEX iprt2_p3_b on prt2_p3(b);
 ANALYZE prt2;
 -- inner join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
@@ -40,10 +40,10 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b =
 (4 rows)
 
 -- left outer join, with whole-row reference; partitionwise join does not apply
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1, t2 FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1, t2 FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
       t1      |      t2      
 --------------+--------------
@@ -62,10 +62,10 @@ SELECT t1, t2 FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER
 (12 rows)
 
 -- right outer join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 RIGHT JOIN prt2 t2 ON t1.a = t2.b WHERE t2.a = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 RIGHT JOIN prt2 t2 ON t1.a = t2.b WHERE t2.a = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
@@ -121,20 +121,21 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0)
 (2 rows)
 
 -- Join with pruned partitions from joining relations
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND t2.b > 250 AND t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND t2.b > 250 AND t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
  300 | 0300 | 300 | 0300
 (1 row)
 
-/*
+-- Currently we can't do partitioned join if nullable-side partitions are pruned
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
@@ -149,6 +150,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JO
  400 | 0400 |     | 
 (9 rows)
 
+-- Currently we can't do partitioned join if nullable-side partitions are pruned
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 OR t2.a = 0 ORDER BY t1.a, t2.b;
                      QUERY PLAN                      
@@ -189,10 +191,10 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JO
 (12 rows)
 
 -- Semi-join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t2.b FROM prt2 t2 WHERE t2.a = 0) AND t1.b = 0 ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t2.b FROM prt2 t2 WHERE t2.a = 0) AND t1.b = 0 ORDER BY t1.a;
   a  | b |  c   
 -----+---+------
@@ -203,28 +205,10 @@ SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t2.b FROM prt2 t2 WHERE t2.a = 0)
 (4 rows)
 
 -- Anti-join with aggregates
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS (SELECT 1 FROM prt2 t2 WHERE t1.a = t2.b);
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Aggregate
-   ->  Append
-         ->  Hash Anti Join
-               Hash Cond: (t1_1.a = t2_1.b)
-               ->  Seq Scan on prt1_p1 t1_1
-               ->  Hash
-                     ->  Seq Scan on prt2_p1 t2_1
-         ->  Hash Anti Join
-               Hash Cond: (t1_2.a = t2_2.b)
-               ->  Seq Scan on prt1_p2 t1_2
-               ->  Hash
-                     ->  Seq Scan on prt2_p2 t2_2
-         ->  Nested Loop Anti Join
-               ->  Seq Scan on prt1_p3 t1_3
-               ->  Index Only Scan using iprt2_p3_b on prt2_p3 t2_3
-                     Index Cond: (b = t1_3.a)
-(16 rows)
-
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS (SELECT 1 FROM prt2 t2 WHERE t1.a = t2.b);
   sum  |         avg          | sum  |         avg         
 -------+----------------------+------+---------------------
@@ -286,12 +270,12 @@ SELECT * FROM prt1 t1 LEFT JOIN LATERAL
  550 | 0 | 0550 |     |     |      
 (12 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, ss.t2a, ss.t2c FROM prt1 t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t3.a AS t3a, t2.b t2b, t2.c t2c, least(t1.a,t2.a,t3.b) FROM prt1 t2 JOIN prt2 t3 ON (t2.a = t3.b)) ss
 			  ON t1.c = ss.t2c WHERE (t1.b + coalesce(ss.t2b, 0)) = 0 ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, ss.t2a, ss.t2c FROM prt1 t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t3.a AS t3a, t2.b t2b, t2.c t2c, least(t1.a,t2.a,t3.a) FROM prt1 t2 JOIN prt2 t3 ON (t2.a = t3.b)) ss
 			  ON t1.c = ss.t2c WHERE (t1.b + coalesce(ss.t2b, 0)) = 0 ORDER BY t1.a;
@@ -311,6 +295,38 @@ SELECT t1.a, ss.t2a, ss.t2c FROM prt1 t1 LEFT JOIN LATERAL
  550 |     | 
 (12 rows)
 
+-- bug with inadequate sort key representation
+SET enable_partitionwise_aggregate TO true;
+SET enable_hashjoin TO false;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT a, b FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b)
+  WHERE a BETWEEN 490 AND 510
+  GROUP BY 1, 2 ORDER BY 1, 2;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT a, b FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b)
+  WHERE a BETWEEN 490 AND 510
+  GROUP BY 1, 2 ORDER BY 1, 2;
+  a  | b  
+-----+----
+ 490 | 15
+ 492 | 17
+ 494 | 19
+ 495 | 20
+ 496 | 21
+ 498 | 23
+ 500 |  0
+ 501 |  1
+ 502 |  2
+ 504 |  4
+ 506 |  6
+ 507 |  7
+ 508 |  8
+ 510 | 10
+(14 rows)
+
+RESET enable_partitionwise_aggregate;
+RESET enable_hashjoin;
 --
 -- partitioned by expression
 --
@@ -329,10 +345,10 @@ CREATE TABLE prt2_e_p2 PARTITION OF prt2_e FOR VALUES FROM (250) TO (500);
 CREATE TABLE prt2_e_p3 PARTITION OF prt2_e FOR VALUES FROM (500) TO (600);
 INSERT INTO prt2_e SELECT i, i, i % 25 FROM generate_series(0, 599, 3) i;
 ANALYZE prt2_e;
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_e t1, prt2_e t2 WHERE (t1.a + t1.b)/2 = (t2.b + t2.a)/2 AND t1.c = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_e t1, prt2_e t2 WHERE (t1.a + t1.b)/2 = (t2.b + t2.a)/2 AND t1.c = 0 ORDER BY t1.a, t2.b;
   a  | c |  b  | c 
 -----+---+-----+---
@@ -345,10 +361,10 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_e t1, prt2_e t2 WHERE (t1.a + t1.b)/2 = 
 --
 -- N-way join
 --
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM prt1 t1, prt2 t2, prt1_e t3 WHERE t1.a = t2.b AND t1.a = (t3.a + t3.b)/2 AND t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM prt1 t1, prt2 t2, prt1_e t3 WHERE t1.a = t2.b AND t1.a = (t3.a + t3.b)/2 AND t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   | ?column? | c 
 -----+------+-----+------+----------+---
@@ -358,10 +374,10 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM prt1 t1, prt2 t2, prt1_e t
  450 | 0450 | 450 | 0450 |      900 | 0
 (4 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b) LEFT JOIN prt1_e t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t1.b = 0 ORDER BY t1.a, t2.b, t3.a + t3.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b) LEFT JOIN prt1_e t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t1.b = 0 ORDER BY t1.a, t2.b, t3.a + t3.b;
   a  |  c   |  b  |  c   | ?column? | c 
 -----+------+-----+------+----------+---
@@ -379,10 +395,10 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2
  550 | 0550 |     |      |     1100 | 0
 (12 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b) RIGHT JOIN prt1_e t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t3.c = 0 ORDER BY t1.a, t2.b, t3.a + t3.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b) RIGHT JOIN prt1_e t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t3.c = 0 ORDER BY t1.a, t2.b, t3.a + t3.b;
   a  |  c   |  b  |  c   | ?column? | c 
 -----+------+-----+------+----------+---
@@ -399,6 +415,116 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2
  500 | 0500 |     |      |     1000 | 0
  550 | 0550 |     |      |     1100 | 0
 (12 rows)
+
+--
+-- 3-way full join
+--
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b) FULL JOIN prt2 p3(b,a,c) USING (a, b)
+  WHERE a BETWEEN 490 AND 510;
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE(prt1_1.a, p2_1.a) = p3_1.a) AND (COALESCE(prt1_1.b, p2_1.b) = p3_1.b))
+               Filter: ((COALESCE(COALESCE(prt1_1.a, p2_1.a), p3_1.a) >= 490) AND (COALESCE(COALESCE(prt1_1.a, p2_1.a), p3_1.a) <= 510))
+               ->  Hash Full Join
+                     Hash Cond: ((prt1_1.a = p2_1.a) AND (prt1_1.b = p2_1.b))
+                     ->  Seq Scan on prt1_p1 prt1_1
+                     ->  Hash
+                           ->  Seq Scan on prt2_p1 p2_1
+               ->  Hash
+                     ->  Seq Scan on prt2_p1 p3_1
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE(prt1_2.a, p2_2.a) = p3_2.a) AND (COALESCE(prt1_2.b, p2_2.b) = p3_2.b))
+               Filter: ((COALESCE(COALESCE(prt1_2.a, p2_2.a), p3_2.a) >= 490) AND (COALESCE(COALESCE(prt1_2.a, p2_2.a), p3_2.a) <= 510))
+               ->  Hash Full Join
+                     Hash Cond: ((prt1_2.a = p2_2.a) AND (prt1_2.b = p2_2.b))
+                     ->  Seq Scan on prt1_p2 prt1_2
+                     ->  Hash
+                           ->  Seq Scan on prt2_p2 p2_2
+               ->  Hash
+                     ->  Seq Scan on prt2_p2 p3_2
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE(prt1_3.a, p2_3.a) = p3_3.a) AND (COALESCE(prt1_3.b, p2_3.b) = p3_3.b))
+               Filter: ((COALESCE(COALESCE(prt1_3.a, p2_3.a), p3_3.a) >= 490) AND (COALESCE(COALESCE(prt1_3.a, p2_3.a), p3_3.a) <= 510))
+               ->  Hash Full Join
+                     Hash Cond: ((prt1_3.a = p2_3.a) AND (prt1_3.b = p2_3.b))
+                     ->  Seq Scan on prt1_p3 prt1_3
+                     ->  Hash
+                           ->  Seq Scan on prt2_p3 p2_3
+               ->  Hash
+                     ->  Seq Scan on prt2_p3 p3_3
+(32 rows)
+
+SELECT COUNT(*) FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b) FULL JOIN prt2 p3(b,a,c) USING (a, b)
+  WHERE a BETWEEN 490 AND 510;
+ count 
+-------
+    14
+(1 row)
+
+--
+-- 4-way full join
+--
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b) FULL JOIN prt2 p3(b,a,c) USING (a, b) FULL JOIN prt1 p4 (a,b,c) USING (a, b)
+  WHERE a BETWEEN 490 AND 510;
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE(COALESCE(prt1_1.a, p2_1.a), p3_1.a) = p4_1.a) AND (COALESCE(COALESCE(prt1_1.b, p2_1.b), p3_1.b) = p4_1.b))
+               Filter: ((COALESCE(COALESCE(COALESCE(prt1_1.a, p2_1.a), p3_1.a), p4_1.a) >= 490) AND (COALESCE(COALESCE(COALESCE(prt1_1.a, p2_1.a), p3_1.a), p4_1.a) <= 510))
+               ->  Hash Full Join
+                     Hash Cond: ((COALESCE(prt1_1.a, p2_1.a) = p3_1.a) AND (COALESCE(prt1_1.b, p2_1.b) = p3_1.b))
+                     ->  Hash Full Join
+                           Hash Cond: ((prt1_1.a = p2_1.a) AND (prt1_1.b = p2_1.b))
+                           ->  Seq Scan on prt1_p1 prt1_1
+                           ->  Hash
+                                 ->  Seq Scan on prt2_p1 p2_1
+                     ->  Hash
+                           ->  Seq Scan on prt2_p1 p3_1
+               ->  Hash
+                     ->  Seq Scan on prt1_p1 p4_1
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE(COALESCE(prt1_2.a, p2_2.a), p3_2.a) = p4_2.a) AND (COALESCE(COALESCE(prt1_2.b, p2_2.b), p3_2.b) = p4_2.b))
+               Filter: ((COALESCE(COALESCE(COALESCE(prt1_2.a, p2_2.a), p3_2.a), p4_2.a) >= 490) AND (COALESCE(COALESCE(COALESCE(prt1_2.a, p2_2.a), p3_2.a), p4_2.a) <= 510))
+               ->  Hash Full Join
+                     Hash Cond: ((COALESCE(prt1_2.a, p2_2.a) = p3_2.a) AND (COALESCE(prt1_2.b, p2_2.b) = p3_2.b))
+                     ->  Hash Full Join
+                           Hash Cond: ((prt1_2.a = p2_2.a) AND (prt1_2.b = p2_2.b))
+                           ->  Seq Scan on prt1_p2 prt1_2
+                           ->  Hash
+                                 ->  Seq Scan on prt2_p2 p2_2
+                     ->  Hash
+                           ->  Seq Scan on prt2_p2 p3_2
+               ->  Hash
+                     ->  Seq Scan on prt1_p2 p4_2
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE(COALESCE(prt1_3.a, p2_3.a), p3_3.a) = p4_3.a) AND (COALESCE(COALESCE(prt1_3.b, p2_3.b), p3_3.b) = p4_3.b))
+               Filter: ((COALESCE(COALESCE(COALESCE(prt1_3.a, p2_3.a), p3_3.a), p4_3.a) >= 490) AND (COALESCE(COALESCE(COALESCE(prt1_3.a, p2_3.a), p3_3.a), p4_3.a) <= 510))
+               ->  Hash Full Join
+                     Hash Cond: ((COALESCE(prt1_3.a, p2_3.a) = p3_3.a) AND (COALESCE(prt1_3.b, p2_3.b) = p3_3.b))
+                     ->  Hash Full Join
+                           Hash Cond: ((prt1_3.a = p2_3.a) AND (prt1_3.b = p2_3.b))
+                           ->  Seq Scan on prt1_p3 prt1_3
+                           ->  Hash
+                                 ->  Seq Scan on prt2_p3 p2_3
+                     ->  Hash
+                           ->  Seq Scan on prt2_p3 p3_3
+               ->  Hash
+                     ->  Seq Scan on prt1_p3 p4_3
+(44 rows)
+
+SELECT COUNT(*) FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b) FULL JOIN prt2 p3(b,a,c) USING (a, b) FULL JOIN prt1 p4 (a,b,c) USING (a, b)
+  WHERE a BETWEEN 490 AND 510;
+ count 
+-------
+    14
+(1 row)
 
 -- Cases with non-nullable expressions in subquery results;
 -- make sure these go to null as expected
@@ -458,10 +584,10 @@ SELECT t1.a, t1.phv, t2.b, t2.phv, t3.a + t3.b, t3.phv FROM ((SELECT 50 phv, * F
 (2 rows)
 
 -- Semi-join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1, prt1_e t2 WHERE t1.a = 0 AND t1.b = (t2.a + t2.b)/2) AND t1.b = 0 ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1, prt1_e t2 WHERE t1.a = 0 AND t1.b = (t2.a + t2.b)/2) AND t1.b = 0 ORDER BY t1.a;
   a  | b |  c   
 -----+---+------
@@ -471,10 +597,10 @@ SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1, prt1_e t2 WHER
  450 | 0 | 0450
 (4 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1 WHERE t1.b IN (SELECT (t1.a + t1.b)/2 FROM prt1_e t1 WHERE t1.c = 0)) AND t1.b = 0 ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1 WHERE t1.b IN (SELECT (t1.a + t1.b)/2 FROM prt1_e t1 WHERE t1.c = 0)) AND t1.b = 0 ORDER BY t1.a;
   a  | b |  c   
 -----+---+------
@@ -487,10 +613,10 @@ SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1 WHERE t1.b IN (
 -- test merge joins
 SET enable_hashjoin TO off;
 SET enable_nestloop TO off;
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1 WHERE t1.b IN (SELECT (t1.a + t1.b)/2 FROM prt1_e t1 WHERE t1.c = 0)) AND t1.b = 0 ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1 WHERE t1.b IN (SELECT (t1.a + t1.b)/2 FROM prt1_e t1 WHERE t1.c = 0)) AND t1.b = 0 ORDER BY t1.a;
   a  | b |  c   
 -----+---+------
@@ -500,10 +626,10 @@ SELECT t1.* FROM prt1 t1 WHERE t1.a IN (SELECT t1.b FROM prt2 t1 WHERE t1.b IN (
  450 | 0 | 0450
 (4 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b) RIGHT JOIN prt1_e t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t3.c = 0 ORDER BY t1.a, t2.b, t3.a + t3.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b) RIGHT JOIN prt1_e t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t3.c = 0 ORDER BY t1.a, t2.b, t3.a + t3.b;
   a  |  c   |  b  |  c   | ?column? | c 
 -----+------+-----+------+----------+---
@@ -522,10 +648,11 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2
 (12 rows)
 
 -- MergeAppend on nullable column
-/*
+-- This should generate a partitionwise join, but currently fails to
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  b  
 -----+-----
@@ -542,10 +669,10 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
 
 -- merge join when expression with whole-row reference needs to be sorted;
 -- partitionwise join does not apply
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1::text = t2::text AND t1.a = t2.b ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1::text = t2::text AND t1.a = t2.b ORDER BY t1.a;
  a  | b  
 ----+----
@@ -649,10 +776,10 @@ CREATE TABLE plt1_e_p3 PARTITION OF plt1_e FOR VALUES IN ('0006', '0007', '0008'
 INSERT INTO plt1_e SELECT i, i, 'A' || to_char(i/50, 'FM0000') FROM generate_series(0, 599, 2) i;
 ANALYZE plt1_e;
 -- test partition matching with N-way join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT avg(t1.a), avg(t2.b), avg(t3.a + t3.b), t1.c, t2.c, t3.c FROM plt1 t1, plt2 t2, plt1_e t3 WHERE t1.b = t2.b AND t1.c = t2.c AND ltrim(t3.c, 'A') = t1.c GROUP BY t1.c, t2.c, t3.c ORDER BY t1.c, t2.c, t3.c;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT avg(t1.a), avg(t2.b), avg(t3.a + t3.b), t1.c, t2.c, t3.c FROM plt1 t1, plt2 t2, plt1_e t3 WHERE t1.b = t2.b AND t1.c = t2.c AND ltrim(t3.c, 'A') = t1.c GROUP BY t1.c, t2.c, t3.c ORDER BY t1.c, t2.c, t3.c;
          avg          |         avg          |          avg          |  c   |  c   |   c   
 ----------------------+----------------------+-----------------------+------+------+-------
@@ -687,12 +814,13 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a = 1 AND a = 2) t1
    One-Time Filter: false
 (2 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a = 1 AND a = 2) t1 RIGHT JOIN prt2 t2 ON t1.a = t2.b, prt1 t3 WHERE t2.b = t3.a;
+
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a = 1 AND a = 2) t1 FULL JOIN prt2 t2 ON t1.a = t2.b WHERE t2.a = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 --
 -- tests for hash partitioned tables.
 --
@@ -718,10 +846,10 @@ CREATE TABLE pht1_e_p3 PARTITION OF pht1_e FOR VALUES WITH (MODULUS 3, REMAINDER
 INSERT INTO pht1_e SELECT i, i, 'A' || to_char(i/50, 'FM0000') FROM generate_series(0, 299, 2) i;
 ANALYZE pht1_e;
 -- test partition matching with N-way join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT avg(t1.a), avg(t2.b), avg(t3.a + t3.b), t1.c, t2.c, t3.c FROM pht1 t1, pht2 t2, pht1_e t3 WHERE t1.b = t2.b AND t1.c = t2.c AND ltrim(t3.c, 'A') = t1.c GROUP BY t1.c, t2.c, t3.c ORDER BY t1.c, t2.c, t3.c;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT avg(t1.a), avg(t2.b), avg(t3.a + t3.b), t1.c, t2.c, t3.c FROM pht1 t1, pht2 t2, pht1_e t3 WHERE t1.b = t2.b AND t1.c = t2.c AND ltrim(t3.c, 'A') = t1.c GROUP BY t1.c, t2.c, t3.c ORDER BY t1.c, t2.c, t3.c;
          avg          |         avg          |         avg          |  c   |  c   |   c   
 ----------------------+----------------------+----------------------+------+------+-------
@@ -733,6 +861,28 @@ SELECT avg(t1.a), avg(t2.b), avg(t3.a + t3.b), t1.c, t2.c, t3.c FROM pht1 t1, ph
  273.0000000000000000 | 273.0000000000000000 | 548.0000000000000000 | 0005 | 0005 | A0005
 (6 rows)
 
+-- test default partition behavior for range
+ALTER TABLE prt1 DETACH PARTITION prt1_p3;
+ALTER TABLE prt1 ATTACH PARTITION prt1_p3 DEFAULT;
+ANALYZE prt1;
+ALTER TABLE prt2 DETACH PARTITION prt2_p3;
+ALTER TABLE prt2 ATTACH PARTITION prt2_p3 DEFAULT;
+ANALYZE prt2;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- test default partition behavior for list
+ALTER TABLE plt1 DETACH PARTITION plt1_p3;
+ALTER TABLE plt1 ATTACH PARTITION plt1_p3 DEFAULT;
+ANALYZE plt1;
+ALTER TABLE plt2 DETACH PARTITION plt2_p3;
+ALTER TABLE plt2 ATTACH PARTITION plt2_p3 DEFAULT;
+ANALYZE plt2;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT avg(t1.a), avg(t2.b), t1.c, t2.c FROM plt1 t1 RIGHT JOIN plt2 t2 ON t1.c = t2.c WHERE t1.a % 25 = 0 GROUP BY t1.c, t2.c ORDER BY t1.c, t2.c;
+*/ -- YB: The explain plan changes significantly between PG and YB
 --
 -- multiple levels of partitioning
 --
@@ -757,10 +907,10 @@ CREATE TABLE prt2_l_p3_p2 PARTITION OF prt2_l_p3 FOR VALUES FROM (13) TO (25);
 INSERT INTO prt2_l SELECT i % 25, i, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 3) i;
 ANALYZE prt2_l;
 -- inner join, qual covering only top-level partitions
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1, prt2_l t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1, prt2_l t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
@@ -771,10 +921,10 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1, prt2_l t2 WHERE t1.a = t2.b AND t1
 (4 rows)
 
 -- left join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 LEFT JOIN prt2_l t2 ON t1.a = t2.b AND t1.c = t2.c WHERE t1.b = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 LEFT JOIN prt2_l t2 ON t1.a = t2.b AND t1.c = t2.c WHERE t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
@@ -793,10 +943,10 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 LEFT JOIN prt2_l t2 ON t1.a = t2.b 
 (12 rows)
 
 -- right join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b AND t1.c = t2.c WHERE t2.a = 0 ORDER BY t1.a, t2.b;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b AND t1.c = t2.c WHERE t2.a = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
 -----+------+-----+------
@@ -870,12 +1020,12 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 
 (16 rows)
 
 -- lateral partitionwise join
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM prt1_l t2 JOIN prt2_l t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss
 			  ON t1.a = ss.t2a AND t1.c = ss.t2c WHERE t1.b = 0 ORDER BY t1.a;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM prt1_l t2 JOIN prt2_l t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss
 			  ON t1.a = ss.t2a AND t1.c = ss.t2c WHERE t1.b = 0 ORDER BY t1.a;
@@ -917,7 +1067,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE a = 1 AND a = 2) 
 -- The weird-looking lateral join is just there to force creation of a
 -- nestloop parameter within the subquery, which exposes the problem if the
 -- planner fails to make multiple copies of the subquery as appropriate.
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 DELETE FROM prt1_l
 WHERE EXISTS (
@@ -925,7 +1075,8 @@ WHERE EXISTS (
     FROM int4_tbl,
          LATERAL (SELECT int4_tbl.f1 FROM int8_tbl LIMIT 2) ss
     WHERE prt1_l.c IS NULL);
-*/
+
+*/ -- YB: The explain plan changes significantly between PG and YB
 --
 -- negative testcases
 --
@@ -988,22 +1139,20 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a;
                Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
 (13 rows)
 
-/*
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2, prt2 t3 WHERE t1.a = t2.a and t1.a = t3.b;
-*/
+
 -- partitionwise join can not be applied if there are no equi-join conditions
 -- between partition keys
-/*
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 LEFT JOIN prt2 t2 ON (t1.a < t2.b);
-*/
+
 -- equi-join with join condition on partial keys does not qualify for
 -- partitionwise join
-/*
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_m t1, prt2_m t2 WHERE t1.a = (t2.b + t2.a)/2;
-*/
+*/ -- YB: The explain plan changes significantly between PG and YB
 -- equi-join between out-of-order partition key columns does not qualify for
 -- partitionwise join
 EXPLAIN (COSTS OFF)
@@ -1041,16 +1190,31 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_m t1 LEFT JOIN prt2_m t2 ON t1.c = t2.c;
                ->  Seq Scan on prt2_m_p3 t2_3
 (11 rows)
 
--- partitionwise join can not be applied between tables with different
--- partition lists
-/*
+-- partitionwise join can not be applied for a join between list and range
+-- partitioned tables
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_n t1 LEFT JOIN prt2_n t2 ON (t1.c = t2.c);
+                  QUERY PLAN                  
+----------------------------------------------
+ Hash Right Join
+   Hash Cond: (t2.c = (t1.c)::text)
+   ->  Append
+         ->  Seq Scan on prt2_n_p1 t2_1
+         ->  Seq Scan on prt2_n_p2 t2_2
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on prt1_n_p1 t1_1
+               ->  Seq Scan on prt1_n_p2 t1_2
+(9 rows)
+
+-- partitionwise join can not be applied between tables with different
+-- partition lists
+/* YB: The explain plan changes significantly between PG and YB
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_n t1 JOIN prt2_n t2 ON (t1.c = t2.c) JOIN plt1 t3 ON (t1.c = t3.c);
-*/
--- partitionwise join can not be applied for a join between list and range
--- partitioned table
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- partitionwise join can not be applied for a join between key column and
+-- non-key column
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_n t1 FULL JOIN prt1 t2 ON (t1.c = t2.c);
                   QUERY PLAN                  
@@ -1089,8 +1253,7 @@ create index on prtx2 (b);
 create index on prtx2 (c);
 analyze prtx1;
 analyze prtx2;
-set enable_indexscan = off;
-set enable_bitmapscan = on;
+set enable_indexscan = off; -- YB: force bitmap scan
 explain (costs off)
 select * from prtx1
 where not exists (select 1 from prtx2
@@ -1173,5 +1336,1600 @@ where not exists (select 1 from prtx2
  2 | 91 | 91
 (1 row)
 
-reset enable_indexscan;
-reset enable_bitmapscan;
+--
+-- Test advanced partition-matching algorithm for partitioned join
+--
+-- Tests for range-partitioned tables
+CREATE TABLE prt1_adv (a int, b int, c varchar) PARTITION BY RANGE (a);
+CREATE TABLE prt1_adv_p1 PARTITION OF prt1_adv FOR VALUES FROM (100) TO (200);
+CREATE TABLE prt1_adv_p2 PARTITION OF prt1_adv FOR VALUES FROM (200) TO (300);
+CREATE TABLE prt1_adv_p3 PARTITION OF prt1_adv FOR VALUES FROM (300) TO (400);
+CREATE INDEX prt1_adv_a_idx ON prt1_adv (a);
+INSERT INTO prt1_adv SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(100, 399) i;
+ANALYZE prt1_adv;
+CREATE TABLE prt2_adv (a int, b int, c varchar) PARTITION BY RANGE (b);
+CREATE TABLE prt2_adv_p1 PARTITION OF prt2_adv FOR VALUES FROM (100) TO (150);
+CREATE TABLE prt2_adv_p2 PARTITION OF prt2_adv FOR VALUES FROM (200) TO (300);
+CREATE TABLE prt2_adv_p3 PARTITION OF prt2_adv FOR VALUES FROM (350) TO (500);
+CREATE INDEX prt2_adv_b_idx ON prt2_adv (b);
+INSERT INTO prt2_adv_p1 SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(100, 149) i;
+INSERT INTO prt2_adv_p2 SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(200, 299) i;
+INSERT INTO prt2_adv_p3 SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(350, 499) i;
+ANALYZE prt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+ 350 | 0350 | 350 | 0350
+ 375 | 0375 | 375 | 0375
+(8 rows)
+
+-- semi join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt1_adv t1 WHERE EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Append
+         ->  Hash Semi Join
+               Hash Cond: (t1_1.a = t2_1.b)
+               ->  Seq Scan on prt1_adv_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p1 t2_1
+         ->  Hash Semi Join
+               Hash Cond: (t1_2.a = t2_2.b)
+               ->  Seq Scan on prt1_adv_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p2 t2_2
+         ->  Hash Semi Join
+               Hash Cond: (t1_3.a = t2_3.b)
+               ->  Seq Scan on prt1_adv_p3 t1_3
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p3 t2_3
+(21 rows)
+
+SELECT t1.* FROM prt1_adv t1 WHERE EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+  a  | b |  c   
+-----+---+------
+ 100 | 0 | 0100
+ 125 | 0 | 0125
+ 200 | 0 | 0200
+ 225 | 0 | 0225
+ 250 | 0 | 0250
+ 275 | 0 | 0275
+ 350 | 0 | 0350
+ 375 | 0 | 0375
+(8 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 150 | 0150 |     | 
+ 175 | 0175 |     | 
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+ 300 | 0300 |     | 
+ 325 | 0325 |     | 
+ 350 | 0350 | 350 | 0350
+ 375 | 0375 | 375 | 0375
+(12 rows)
+
+-- anti join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Append
+         ->  Hash Anti Join
+               Hash Cond: (t1_1.a = t2_1.b)
+               ->  Seq Scan on prt1_adv_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p1 t2_1
+         ->  Hash Anti Join
+               Hash Cond: (t1_2.a = t2_2.b)
+               ->  Seq Scan on prt1_adv_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p2 t2_2
+         ->  Hash Anti Join
+               Hash Cond: (t1_3.a = t2_3.b)
+               ->  Seq Scan on prt1_adv_p3 t1_3
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p3 t2_3
+(21 rows)
+
+SELECT t1.* FROM prt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+  a  | b |  c   
+-----+---+------
+ 150 | 0 | 0150
+ 175 | 0 | 0175
+ 300 | 0 | 0300
+ 325 | 0 | 0325
+(4 rows)
+
+-- full join
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 175 phv, * FROM prt1_adv WHERE prt1_adv.b = 0) t1 FULL JOIN (SELECT 425 phv, * FROM prt2_adv WHERE prt2_adv.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Sort
+   Sort Key: prt1_adv.a, prt2_adv.b
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: (prt1_adv_1.a = prt2_adv_1.b)
+               Filter: (((175) = prt1_adv_1.a) OR ((425) = prt2_adv_1.b))
+               ->  Seq Scan on prt1_adv_p1 prt1_adv_1
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p1 prt2_adv_1
+                           Storage Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: (prt1_adv_2.a = prt2_adv_2.b)
+               Filter: (((175) = prt1_adv_2.a) OR ((425) = prt2_adv_2.b))
+               ->  Seq Scan on prt1_adv_p2 prt1_adv_2
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p2 prt2_adv_2
+                           Storage Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: (prt2_adv_3.b = prt1_adv_3.a)
+               Filter: (((175) = prt1_adv_3.a) OR ((425) = prt2_adv_3.b))
+               ->  Seq Scan on prt2_adv_p3 prt2_adv_3
+                     Storage Filter: (a = 0)
+               ->  Hash
+                     ->  Seq Scan on prt1_adv_p3 prt1_adv_3
+                           Storage Filter: (b = 0)
+(27 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 175 phv, * FROM prt1_adv WHERE prt1_adv.b = 0) t1 FULL JOIN (SELECT 425 phv, * FROM prt2_adv WHERE prt2_adv.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 175 | 0175 |     | 
+     |      | 425 | 0425
+(2 rows)
+
+-- Test cases where one side has an extra partition
+CREATE TABLE prt2_adv_extra PARTITION OF prt2_adv FOR VALUES FROM (500) TO (MAXVALUE);
+INSERT INTO prt2_adv SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(500, 599) i;
+ANALYZE prt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+ 350 | 0350 | 350 | 0350
+ 375 | 0375 | 375 | 0375
+(8 rows)
+
+-- semi join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt1_adv t1 WHERE EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Append
+         ->  Hash Semi Join
+               Hash Cond: (t1_1.a = t2_1.b)
+               ->  Seq Scan on prt1_adv_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p1 t2_1
+         ->  Hash Semi Join
+               Hash Cond: (t1_2.a = t2_2.b)
+               ->  Seq Scan on prt1_adv_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p2 t2_2
+         ->  Hash Semi Join
+               Hash Cond: (t1_3.a = t2_3.b)
+               ->  Seq Scan on prt1_adv_p3 t1_3
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p3 t2_3
+(21 rows)
+
+SELECT t1.* FROM prt1_adv t1 WHERE EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+  a  | b |  c   
+-----+---+------
+ 100 | 0 | 0100
+ 125 | 0 | 0125
+ 200 | 0 | 0200
+ 225 | 0 | 0225
+ 250 | 0 | 0250
+ 275 | 0 | 0275
+ 350 | 0 | 0350
+ 375 | 0 | 0375
+(8 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 150 | 0150 |     | 
+ 175 | 0175 |     | 
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+ 300 | 0300 |     | 
+ 325 | 0325 |     | 
+ 350 | 0350 | 350 | 0350
+ 375 | 0375 | 375 | 0375
+(12 rows)
+
+-- left join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.b, t1.c, t2.a, t2.c FROM prt2_adv t1 LEFT JOIN prt1_adv t2 ON (t1.b = t2.a) WHERE t1.a = 0 ORDER BY t1.b, t2.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- anti join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Append
+         ->  Hash Anti Join
+               Hash Cond: (t1_1.a = t2_1.b)
+               ->  Seq Scan on prt1_adv_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p1 t2_1
+         ->  Hash Anti Join
+               Hash Cond: (t1_2.a = t2_2.b)
+               ->  Seq Scan on prt1_adv_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p2 t2_2
+         ->  Hash Anti Join
+               Hash Cond: (t1_3.a = t2_3.b)
+               ->  Seq Scan on prt1_adv_p3 t1_3
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_adv_p3 t2_3
+(21 rows)
+
+SELECT t1.* FROM prt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+  a  | b |  c   
+-----+---+------
+ 150 | 0 | 0150
+ 175 | 0 | 0175
+ 300 | 0 | 0300
+ 325 | 0 | 0325
+(4 rows)
+
+-- anti join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt2_adv t1 WHERE NOT EXISTS (SELECT 1 FROM prt1_adv t2 WHERE t1.b = t2.a) AND t1.a = 0 ORDER BY t1.b;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.b
+   ->  Hash Anti Join
+         Hash Cond: (t1.b = t2.a)
+         ->  Append
+               ->  Seq Scan on prt2_adv_p1 t1_1
+                     Storage Filter: (a = 0)
+               ->  Seq Scan on prt2_adv_p2 t1_2
+                     Storage Filter: (a = 0)
+               ->  Seq Scan on prt2_adv_p3 t1_3
+                     Storage Filter: (a = 0)
+               ->  Seq Scan on prt2_adv_extra t1_4
+                     Storage Filter: (a = 0)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt1_adv_p1 t2_1
+                     ->  Seq Scan on prt1_adv_p2 t2_2
+                     ->  Seq Scan on prt1_adv_p3 t2_3
+(18 rows)
+
+-- full join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 175 phv, * FROM prt1_adv WHERE prt1_adv.b = 0) t1 FULL JOIN (SELECT 425 phv, * FROM prt2_adv WHERE prt2_adv.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Sort
+   Sort Key: prt1_adv.a, prt2_adv.b
+   ->  Hash Full Join
+         Hash Cond: (prt2_adv.b = prt1_adv.a)
+         Filter: (((175) = prt1_adv.a) OR ((425) = prt2_adv.b))
+         ->  Append
+               ->  Seq Scan on prt2_adv_p1 prt2_adv_1
+                     Storage Filter: (a = 0)
+               ->  Seq Scan on prt2_adv_p2 prt2_adv_2
+                     Storage Filter: (a = 0)
+               ->  Seq Scan on prt2_adv_p3 prt2_adv_3
+                     Storage Filter: (a = 0)
+               ->  Seq Scan on prt2_adv_extra prt2_adv_4
+                     Storage Filter: (a = 0)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt1_adv_p1 prt1_adv_1
+                           Storage Filter: (b = 0)
+                     ->  Seq Scan on prt1_adv_p2 prt1_adv_2
+                           Storage Filter: (b = 0)
+                     ->  Seq Scan on prt1_adv_p3 prt1_adv_3
+                           Storage Filter: (b = 0)
+(22 rows)
+
+-- 3-way join where not every pair of relations can do partitioned join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.b, t1.c, t2.a, t2.c, t3.a, t3.c FROM prt2_adv t1 LEFT JOIN prt1_adv t2 ON (t1.b = t2.a) INNER JOIN prt1_adv t3 ON (t1.b = t3.a) WHERE t1.a = 0 ORDER BY t1.b, t2.a, t3.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.b, t1.c, t2.a, t2.c, t3.a, t3.c FROM prt2_adv t1 LEFT JOIN prt1_adv t2 ON (t1.b = t2.a) INNER JOIN prt1_adv t3 ON (t1.b = t3.a) WHERE t1.a = 0 ORDER BY t1.b, t2.a, t3.a;
+  b  |  c   |  a  |  c   |  a  |  c   
+-----+------+-----+------+-----+------
+ 100 | 0100 | 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125 | 125 | 0125
+ 200 | 0200 | 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275 | 275 | 0275
+ 350 | 0350 | 350 | 0350 | 350 | 0350
+ 375 | 0375 | 375 | 0375 | 375 | 0375
+(8 rows)
+
+DROP TABLE prt2_adv_extra;
+-- Test cases where a partition on one side matches multiple partitions on
+-- the other side; we currently can't do partitioned join in such cases
+ALTER TABLE prt2_adv DETACH PARTITION prt2_adv_p3;
+-- Split prt2_adv_p3 into two partitions so that prt1_adv_p3 matches both
+CREATE TABLE prt2_adv_p3_1 PARTITION OF prt2_adv FOR VALUES FROM (350) TO (375);
+CREATE TABLE prt2_adv_p3_2 PARTITION OF prt2_adv FOR VALUES FROM (375) TO (500);
+INSERT INTO prt2_adv SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(350, 499) i;
+ANALYZE prt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+
+-- semi join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt1_adv t1 WHERE EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+
+-- left join
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- anti join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM prt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM prt2_adv t2 WHERE t1.a = t2.b) AND t1.b = 0 ORDER BY t1.a;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Anti Join
+         Hash Cond: (t1.a = t2.b)
+         ->  Append
+               ->  Seq Scan on prt1_adv_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Seq Scan on prt1_adv_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Seq Scan on prt1_adv_p3 t1_3
+                     Storage Filter: (b = 0)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt2_adv_p1 t2_1
+                     ->  Seq Scan on prt2_adv_p2 t2_2
+                     ->  Seq Scan on prt2_adv_p3_1 t2_3
+                     ->  Seq Scan on prt2_adv_p3_2 t2_4
+(17 rows)
+
+-- full join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 175 phv, * FROM prt1_adv WHERE prt1_adv.b = 0) t1 FULL JOIN (SELECT 425 phv, * FROM prt2_adv WHERE prt2_adv.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+DROP TABLE prt2_adv_p3_1;
+DROP TABLE prt2_adv_p3_2;
+ANALYZE prt2_adv;
+-- Test default partitions
+ALTER TABLE prt1_adv DETACH PARTITION prt1_adv_p1;
+-- Change prt1_adv_p1 to the default partition
+ALTER TABLE prt1_adv ATTACH PARTITION prt1_adv_p1 DEFAULT;
+ALTER TABLE prt1_adv DETACH PARTITION prt1_adv_p3;
+ANALYZE prt1_adv;
+-- We can do partitioned join even if only one of relations has the default
+-- partition
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+(6 rows)
+
+-- Restore prt1_adv_p3
+ALTER TABLE prt1_adv ATTACH PARTITION prt1_adv_p3 FOR VALUES FROM (300) TO (400);
+ANALYZE prt1_adv;
+-- Restore prt2_adv_p3
+ALTER TABLE prt2_adv ATTACH PARTITION prt2_adv_p3 FOR VALUES FROM (350) TO (500);
+ANALYZE prt2_adv;
+-- Partitioned join can't be applied because the default partition of prt1_adv
+-- matches prt2_adv_p1 and prt2_adv_p3
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+ALTER TABLE prt2_adv DETACH PARTITION prt2_adv_p3;
+-- Change prt2_adv_p3 to the default partition
+ALTER TABLE prt2_adv ATTACH PARTITION prt2_adv_p3 DEFAULT;
+ANALYZE prt2_adv;
+-- Partitioned join can't be applied because the default partition of prt1_adv
+-- matches prt2_adv_p1 and prt2_adv_p3
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+DROP TABLE prt1_adv_p3;
+ANALYZE prt1_adv;
+DROP TABLE prt2_adv_p3;
+ANALYZE prt2_adv;
+CREATE TABLE prt3_adv (a int, b int, c varchar) PARTITION BY RANGE (a);
+CREATE TABLE prt3_adv_p1 PARTITION OF prt3_adv FOR VALUES FROM (200) TO (300);
+CREATE TABLE prt3_adv_p2 PARTITION OF prt3_adv FOR VALUES FROM (300) TO (400);
+CREATE INDEX prt3_adv_a_idx ON prt3_adv (a);
+INSERT INTO prt3_adv SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(200, 399) i;
+ANALYZE prt3_adv;
+-- 3-way join to test the default partition of a join relation
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c, t3.a, t3.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) LEFT JOIN prt3_adv t3 ON (t1.a = t3.a) WHERE t1.b = 0 ORDER BY t1.a, t2.b, t3.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c, t3.a, t3.c FROM prt1_adv t1 LEFT JOIN prt2_adv t2 ON (t1.a = t2.b) LEFT JOIN prt3_adv t3 ON (t1.a = t3.a) WHERE t1.b = 0 ORDER BY t1.a, t2.b, t3.a;
+  a  |  c   |  b  |  c   |  a  |  c   
+-----+------+-----+------+-----+------
+ 100 | 0100 | 100 | 0100 |     | 
+ 125 | 0125 | 125 | 0125 |     | 
+ 150 | 0150 |     |      |     | 
+ 175 | 0175 |     |      |     | 
+ 200 | 0200 | 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275 | 275 | 0275
+(8 rows)
+
+DROP TABLE prt1_adv;
+DROP TABLE prt2_adv;
+DROP TABLE prt3_adv;
+-- Test interaction of partitioned join with partition pruning
+CREATE TABLE prt1_adv (a int, b int, c varchar) PARTITION BY RANGE (a);
+CREATE TABLE prt1_adv_p1 PARTITION OF prt1_adv FOR VALUES FROM (100) TO (200);
+CREATE TABLE prt1_adv_p2 PARTITION OF prt1_adv FOR VALUES FROM (200) TO (300);
+CREATE TABLE prt1_adv_p3 PARTITION OF prt1_adv FOR VALUES FROM (300) TO (400);
+CREATE INDEX prt1_adv_a_idx ON prt1_adv (a);
+INSERT INTO prt1_adv SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(100, 399) i;
+ANALYZE prt1_adv;
+CREATE TABLE prt2_adv (a int, b int, c varchar) PARTITION BY RANGE (b);
+CREATE TABLE prt2_adv_p1 PARTITION OF prt2_adv FOR VALUES FROM (100) TO (200);
+CREATE TABLE prt2_adv_p2 PARTITION OF prt2_adv FOR VALUES FROM (200) TO (400);
+CREATE INDEX prt2_adv_b_idx ON prt2_adv (b);
+INSERT INTO prt2_adv SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(100, 399) i;
+ANALYZE prt2_adv;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.a < 300 AND t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.a < 300 AND t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 150 | 0150 | 150 | 0150
+ 175 | 0175 | 175 | 0175
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+(8 rows)
+
+DROP TABLE prt1_adv_p3;
+CREATE TABLE prt1_adv_default PARTITION OF prt1_adv DEFAULT;
+ANALYZE prt1_adv;
+CREATE TABLE prt2_adv_default PARTITION OF prt2_adv DEFAULT;
+ANALYZE prt2_adv;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.a >= 100 AND t1.a < 300 AND t1.b = 0 ORDER BY t1.a, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_adv t1 INNER JOIN prt2_adv t2 ON (t1.a = t2.b) WHERE t1.a >= 100 AND t1.a < 300 AND t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+ 100 | 0100 | 100 | 0100
+ 125 | 0125 | 125 | 0125
+ 150 | 0150 | 150 | 0150
+ 175 | 0175 | 175 | 0175
+ 200 | 0200 | 200 | 0200
+ 225 | 0225 | 225 | 0225
+ 250 | 0250 | 250 | 0250
+ 275 | 0275 | 275 | 0275
+(8 rows)
+
+DROP TABLE prt1_adv;
+DROP TABLE prt2_adv;
+-- Tests for list-partitioned tables
+CREATE TABLE plt1_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt1_adv_p1 PARTITION OF plt1_adv FOR VALUES IN ('0001', '0003');
+CREATE TABLE plt1_adv_p2 PARTITION OF plt1_adv FOR VALUES IN ('0004', '0006');
+CREATE TABLE plt1_adv_p3 PARTITION OF plt1_adv FOR VALUES IN ('0008', '0009');
+INSERT INTO plt1_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (1, 3, 4, 6, 8, 9);
+ANALYZE plt1_adv;
+CREATE TABLE plt2_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt2_adv_p1 PARTITION OF plt2_adv FOR VALUES IN ('0002', '0003');
+CREATE TABLE plt2_adv_p2 PARTITION OF plt2_adv FOR VALUES IN ('0004', '0006');
+CREATE TABLE plt2_adv_p3 PARTITION OF plt2_adv FOR VALUES IN ('0007', '0009');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+ANALYZE plt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 9 | 0009 | 9 | 0009
+(4 rows)
+
+-- semi join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+ a | b |  c   
+---+---+------
+ 3 | 3 | 0003
+ 4 | 4 | 0004
+ 6 | 6 | 0006
+ 9 | 9 | 0009
+(4 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 1 | 0001 |   | 
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 8 | 0008 |   | 
+ 9 | 0009 | 9 | 0009
+(6 rows)
+
+-- anti join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+ a | b |  c   
+---+---+------
+ 1 | 1 | 0001
+ 8 | 8 | 0008
+(2 rows)
+
+-- full join
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.a
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((t1_1.a = t2_1.a) AND (t1_1.c = t2_1.c))
+               Filter: ((COALESCE(t1_1.b, 0) < 10) AND (COALESCE(t2_1.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p1 t1_1
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p1 t2_1
+         ->  Hash Full Join
+               Hash Cond: ((t1_2.a = t2_2.a) AND (t1_2.c = t2_2.c))
+               Filter: ((COALESCE(t1_2.b, 0) < 10) AND (COALESCE(t2_2.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p2 t1_2
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p2 t2_2
+         ->  Hash Full Join
+               Hash Cond: ((t1_3.a = t2_3.a) AND (t1_3.c = t2_3.c))
+               Filter: ((COALESCE(t1_3.b, 0) < 10) AND (COALESCE(t2_3.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p3 t1_3
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p3 t2_3
+(21 rows)
+
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 1 | 0001 |   | 
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 8 | 0008 |   | 
+ 9 | 0009 | 9 | 0009
+   |      | 2 | 0002
+   |      | 7 | 0007
+(8 rows)
+
+-- Test cases where one side has an extra partition
+CREATE TABLE plt2_adv_extra PARTITION OF plt2_adv FOR VALUES IN ('0000');
+INSERT INTO plt2_adv_extra VALUES (0, 0, '0000');
+ANALYZE plt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 9 | 0009 | 9 | 0009
+(4 rows)
+
+-- semi join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+ a | b |  c   
+---+---+------
+ 3 | 3 | 0003
+ 4 | 4 | 0004
+ 6 | 6 | 0006
+ 9 | 9 | 0009
+(4 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 1 | 0001 |   | 
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 8 | 0008 |   | 
+ 9 | 0009 | 9 | 0009
+(6 rows)
+
+-- left join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt2_adv t1 LEFT JOIN plt1_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- anti join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+ a | b |  c   
+---+---+------
+ 1 | 1 | 0001
+ 8 | 8 | 0008
+(2 rows)
+
+-- anti join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt2_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt1_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Anti Join
+         Hash Cond: ((t1.a = t2.a) AND (t1.c = t2.c))
+         ->  Append
+               ->  Seq Scan on plt2_adv_extra t1_1
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt2_adv_p1 t1_2
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt2_adv_p2 t1_3
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt2_adv_p3 t1_4
+                     Storage Filter: (b < 10)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt1_adv_p1 t2_1
+                     ->  Seq Scan on plt1_adv_p2 t2_2
+                     ->  Seq Scan on plt1_adv_p3 t2_3
+(18 rows)
+
+-- full join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.a
+   ->  Hash Full Join
+         Hash Cond: ((t2.a = t1.a) AND (t2.c = t1.c))
+         Filter: ((COALESCE(t1.b, 0) < 10) AND (COALESCE(t2.b, 0) < 10))
+         ->  Append
+               ->  Seq Scan on plt2_adv_extra t2_1
+               ->  Seq Scan on plt2_adv_p1 t2_2
+               ->  Seq Scan on plt2_adv_p2 t2_3
+               ->  Seq Scan on plt2_adv_p3 t2_4
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt1_adv_p1 t1_1
+                     ->  Seq Scan on plt1_adv_p2 t1_2
+                     ->  Seq Scan on plt1_adv_p3 t1_3
+(15 rows)
+
+DROP TABLE plt2_adv_extra;
+-- Test cases where a partition on one side matches multiple partitions on
+-- the other side; we currently can't do partitioned join in such cases
+ALTER TABLE plt2_adv DETACH PARTITION plt2_adv_p2;
+-- Split plt2_adv_p2 into two partitions so that plt1_adv_p2 matches both
+CREATE TABLE plt2_adv_p2_1 PARTITION OF plt2_adv FOR VALUES IN ('0004');
+CREATE TABLE plt2_adv_p2_2 PARTITION OF plt2_adv FOR VALUES IN ('0006');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (4, 6);
+ANALYZE plt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- semi join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Semi Join
+         Hash Cond: ((t1.a = t2.a) AND (t1.c = t2.c))
+         ->  Append
+               ->  Seq Scan on plt1_adv_p1 t1_1
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt1_adv_p2 t1_2
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt1_adv_p3 t1_3
+                     Storage Filter: (b < 10)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt2_adv_p1 t2_1
+                     ->  Seq Scan on plt2_adv_p2_1 t2_2
+                     ->  Seq Scan on plt2_adv_p2_2 t2_3
+                     ->  Seq Scan on plt2_adv_p3 t2_4
+(17 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- anti join
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Anti Join
+         Hash Cond: ((t1.a = t2.a) AND (t1.c = t2.c))
+         ->  Append
+               ->  Seq Scan on plt1_adv_p1 t1_1
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt1_adv_p2 t1_2
+                     Storage Filter: (b < 10)
+               ->  Seq Scan on plt1_adv_p3 t1_3
+                     Storage Filter: (b < 10)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt2_adv_p1 t2_1
+                     ->  Seq Scan on plt2_adv_p2_1 t2_2
+                     ->  Seq Scan on plt2_adv_p2_2 t2_3
+                     ->  Seq Scan on plt2_adv_p3 t2_4
+(17 rows)
+
+-- full join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+DROP TABLE plt2_adv_p2_1;
+DROP TABLE plt2_adv_p2_2;
+-- Restore plt2_adv_p2
+ALTER TABLE plt2_adv ATTACH PARTITION plt2_adv_p2 FOR VALUES IN ('0004', '0006');
+-- Test NULL partitions
+ALTER TABLE plt1_adv DETACH PARTITION plt1_adv_p1;
+-- Change plt1_adv_p1 to the NULL partition
+CREATE TABLE plt1_adv_p1_null PARTITION OF plt1_adv FOR VALUES IN (NULL, '0001', '0003');
+INSERT INTO plt1_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (1, 3);
+INSERT INTO plt1_adv VALUES (-1, -1, NULL);
+ANALYZE plt1_adv;
+ALTER TABLE plt2_adv DETACH PARTITION plt2_adv_p3;
+-- Change plt2_adv_p3 to the NULL partition
+CREATE TABLE plt2_adv_p3_null PARTITION OF plt2_adv FOR VALUES IN (NULL, '0007', '0009');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (7, 9);
+INSERT INTO plt2_adv VALUES (-1, -1, NULL);
+ANALYZE plt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 9 | 0009 | 9 | 0009
+(4 rows)
+
+-- semi join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.* FROM plt1_adv t1 WHERE EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+ a | b |  c   
+---+---+------
+ 3 | 3 | 0003
+ 4 | 4 | 0004
+ 6 | 6 | 0006
+ 9 | 9 | 0009
+(4 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a  |  c   | a |  c   
+----+------+---+------
+ -1 |      |   | 
+  1 | 0001 |   | 
+  3 | 0003 | 3 | 0003
+  4 | 0004 | 4 | 0004
+  6 | 0006 | 6 | 0006
+  8 | 0008 |   | 
+  9 | 0009 | 9 | 0009
+(7 rows)
+
+-- anti join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t1.a = t2.a AND t1.c = t2.c) AND t1.b < 10 ORDER BY t1.a;
+ a  | b  |  c   
+----+----+------
+ -1 | -1 | 
+  1 |  1 | 0001
+  8 |  8 | 0008
+(3 rows)
+
+-- full join
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.a
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((t1_1.a = t2_1.a) AND (t1_1.c = t2_1.c))
+               Filter: ((COALESCE(t1_1.b, 0) < 10) AND (COALESCE(t2_1.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p1_null t1_1
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p1 t2_1
+         ->  Hash Full Join
+               Hash Cond: ((t1_2.a = t2_2.a) AND (t1_2.c = t2_2.c))
+               Filter: ((COALESCE(t1_2.b, 0) < 10) AND (COALESCE(t2_2.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p2 t1_2
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p2 t2_2
+         ->  Hash Full Join
+               Hash Cond: ((t2_3.a = t1_3.a) AND (t2_3.c = t1_3.c))
+               Filter: ((COALESCE(t1_3.b, 0) < 10) AND (COALESCE(t2_3.b, 0) < 10))
+               ->  Seq Scan on plt2_adv_p3_null t2_3
+               ->  Hash
+                     ->  Seq Scan on plt1_adv_p3 t1_3
+(21 rows)
+
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+ a  |  c   | a  |  c   
+----+------+----+------
+ -1 |      |    | 
+  1 | 0001 |    | 
+  3 | 0003 |  3 | 0003
+  4 | 0004 |  4 | 0004
+  6 | 0006 |  6 | 0006
+  8 | 0008 |    | 
+  9 | 0009 |  9 | 0009
+    |      | -1 | 
+    |      |  2 | 0002
+    |      |  7 | 0007
+(10 rows)
+
+DROP TABLE plt1_adv_p1_null;
+-- Restore plt1_adv_p1
+ALTER TABLE plt1_adv ATTACH PARTITION plt1_adv_p1 FOR VALUES IN ('0001', '0003');
+-- Add to plt1_adv the extra NULL partition containing only NULL values as the
+-- key values
+CREATE TABLE plt1_adv_extra PARTITION OF plt1_adv FOR VALUES IN (NULL);
+INSERT INTO plt1_adv VALUES (-1, -1, NULL);
+ANALYZE plt1_adv;
+DROP TABLE plt2_adv_p3_null;
+-- Restore plt2_adv_p3
+ALTER TABLE plt2_adv ATTACH PARTITION plt2_adv_p3 FOR VALUES IN ('0007', '0009');
+ANALYZE plt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 9 | 0009 | 9 | 0009
+(4 rows)
+
+-- left join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- full join; currently we can't do partitioned join if there are no matched
+-- partitions on the nullable side
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.a
+   ->  Hash Full Join
+         Hash Cond: ((t1.a = t2.a) AND (t1.c = t2.c))
+         Filter: ((COALESCE(t1.b, 0) < 10) AND (COALESCE(t2.b, 0) < 10))
+         ->  Append
+               ->  Seq Scan on plt1_adv_p1 t1_1
+               ->  Seq Scan on plt1_adv_p2 t1_2
+               ->  Seq Scan on plt1_adv_p3 t1_3
+               ->  Seq Scan on plt1_adv_extra t1_4
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt2_adv_p1 t2_1
+                     ->  Seq Scan on plt2_adv_p2 t2_2
+                     ->  Seq Scan on plt2_adv_p3 t2_3
+(15 rows)
+
+-- Add to plt2_adv the extra NULL partition containing only NULL values as the
+-- key values
+CREATE TABLE plt2_adv_extra PARTITION OF plt2_adv FOR VALUES IN (NULL);
+INSERT INTO plt2_adv VALUES (-1, -1, NULL);
+ANALYZE plt2_adv;
+-- inner join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+ 9 | 0009 | 9 | 0009
+(4 rows)
+
+-- left join
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a  |  c   | a |  c   
+----+------+---+------
+ -1 |      |   | 
+  1 | 0001 |   | 
+  3 | 0003 | 3 | 0003
+  4 | 0004 | 4 | 0004
+  6 | 0006 | 6 | 0006
+  8 | 0008 |   | 
+  9 | 0009 | 9 | 0009
+(7 rows)
+
+-- full join
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.a
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((t1_1.a = t2_1.a) AND (t1_1.c = t2_1.c))
+               Filter: ((COALESCE(t1_1.b, 0) < 10) AND (COALESCE(t2_1.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p1 t1_1
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p1 t2_1
+         ->  Hash Full Join
+               Hash Cond: ((t1_2.a = t2_2.a) AND (t1_2.c = t2_2.c))
+               Filter: ((COALESCE(t1_2.b, 0) < 10) AND (COALESCE(t2_2.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p2 t1_2
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p2 t2_2
+         ->  Hash Full Join
+               Hash Cond: ((t1_3.a = t2_3.a) AND (t1_3.c = t2_3.c))
+               Filter: ((COALESCE(t1_3.b, 0) < 10) AND (COALESCE(t2_3.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_p3 t1_3
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_p3 t2_3
+         ->  Hash Full Join
+               Hash Cond: ((t1_4.a = t2_4.a) AND (t1_4.c = t2_4.c))
+               Filter: ((COALESCE(t1_4.b, 0) < 10) AND (COALESCE(t2_4.b, 0) < 10))
+               ->  Seq Scan on plt1_adv_extra t1_4
+               ->  Hash
+                     ->  Seq Scan on plt2_adv_extra t2_4
+(27 rows)
+
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
+ a  |  c   | a  |  c   
+----+------+----+------
+ -1 |      |    | 
+  1 | 0001 |    | 
+  3 | 0003 |  3 | 0003
+  4 | 0004 |  4 | 0004
+  6 | 0006 |  6 | 0006
+  8 | 0008 |    | 
+  9 | 0009 |  9 | 0009
+    |      | -1 | 
+    |      |  2 | 0002
+    |      |  7 | 0007
+(10 rows)
+
+-- 3-way join to test the NULL partition of a join relation
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) LEFT JOIN plt1_adv t3 ON (t1.a = t3.a AND t1.c = t3.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) LEFT JOIN plt1_adv t3 ON (t1.a = t3.a AND t1.c = t3.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a  |  c   | a |  c   | a |  c   
+----+------+---+------+---+------
+ -1 |      |   |      |   | 
+  1 | 0001 |   |      | 1 | 0001
+  3 | 0003 | 3 | 0003 | 3 | 0003
+  4 | 0004 | 4 | 0004 | 4 | 0004
+  6 | 0006 | 6 | 0006 | 6 | 0006
+  8 | 0008 |   |      | 8 | 0008
+  9 | 0009 | 9 | 0009 | 9 | 0009
+(7 rows)
+
+DROP TABLE plt1_adv_extra;
+DROP TABLE plt2_adv_extra;
+-- Test default partitions
+ALTER TABLE plt1_adv DETACH PARTITION plt1_adv_p1;
+-- Change plt1_adv_p1 to the default partition
+ALTER TABLE plt1_adv ATTACH PARTITION plt1_adv_p1 DEFAULT;
+DROP TABLE plt1_adv_p3;
+ANALYZE plt1_adv;
+DROP TABLE plt2_adv_p3;
+ANALYZE plt2_adv;
+-- We can do partitioned join even if only one of relations has the default
+-- partition
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+(3 rows)
+
+ALTER TABLE plt2_adv DETACH PARTITION plt2_adv_p2;
+-- Change plt2_adv_p2 to contain '0005' in addition to '0004' and '0006' as
+-- the key values
+CREATE TABLE plt2_adv_p2_ext PARTITION OF plt2_adv FOR VALUES IN ('0004', '0005', '0006');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (4, 5, 6);
+ANALYZE plt2_adv;
+-- Partitioned join can't be applied because the default partition of plt1_adv
+-- matches plt2_adv_p1 and plt2_adv_p2_ext
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Join
+         Hash Cond: ((t2.a = t1.a) AND (t2.c = t1.c))
+         ->  Append
+               ->  Seq Scan on plt2_adv_p1 t2_1
+               ->  Seq Scan on plt2_adv_p2_ext t2_2
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt1_adv_p2 t1_1
+                           Storage Filter: (b < 10)
+                     ->  Seq Scan on plt1_adv_p1 t1_2
+                           Storage Filter: (b < 10)
+(13 rows)
+
+ALTER TABLE plt2_adv DETACH PARTITION plt2_adv_p2_ext;
+-- Change plt2_adv_p2_ext to the default partition
+ALTER TABLE plt2_adv ATTACH PARTITION plt2_adv_p2_ext DEFAULT;
+ANALYZE plt2_adv;
+-- Partitioned join can't be applied because the default partition of plt1_adv
+-- matches plt2_adv_p1 and plt2_adv_p2_ext
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Join
+         Hash Cond: ((t2.a = t1.a) AND (t2.c = t1.c))
+         ->  Append
+               ->  Seq Scan on plt2_adv_p1 t2_1
+               ->  Seq Scan on plt2_adv_p2_ext t2_2
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on plt1_adv_p2 t1_1
+                           Storage Filter: (b < 10)
+                     ->  Seq Scan on plt1_adv_p1 t1_2
+                           Storage Filter: (b < 10)
+(13 rows)
+
+DROP TABLE plt2_adv_p2_ext;
+-- Restore plt2_adv_p2
+ALTER TABLE plt2_adv ATTACH PARTITION plt2_adv_p2 FOR VALUES IN ('0004', '0006');
+ANALYZE plt2_adv;
+CREATE TABLE plt3_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt3_adv_p1 PARTITION OF plt3_adv FOR VALUES IN ('0004', '0006');
+CREATE TABLE plt3_adv_p2 PARTITION OF plt3_adv FOR VALUES IN ('0007', '0009');
+INSERT INTO plt3_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (4, 6, 7, 9);
+ANALYZE plt3_adv;
+-- 3-way join to test the default partition of a join relation
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) LEFT JOIN plt3_adv t3 ON (t1.a = t3.a AND t1.c = t3.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) LEFT JOIN plt3_adv t3 ON (t1.a = t3.a AND t1.c = t3.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   | a |  c   
+---+------+---+------+---+------
+ 1 | 0001 |   |      |   | 
+ 3 | 0003 | 3 | 0003 |   | 
+ 4 | 0004 | 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006 | 6 | 0006
+(4 rows)
+
+-- Test cases where one side has the default partition while the other side
+-- has the NULL partition
+DROP TABLE plt2_adv_p1;
+-- Add the NULL partition to plt2_adv
+CREATE TABLE plt2_adv_p1_null PARTITION OF plt2_adv FOR VALUES IN (NULL, '0001', '0003');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (1, 3);
+INSERT INTO plt2_adv VALUES (-1, -1, NULL);
+ANALYZE plt2_adv;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 1 | 0001 | 1 | 0001
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+(4 rows)
+
+DROP TABLE plt2_adv_p1_null;
+-- Add the NULL partition that contains only NULL values as the key values
+CREATE TABLE plt2_adv_p1_null PARTITION OF plt2_adv FOR VALUES IN (NULL);
+INSERT INTO plt2_adv VALUES (-1, -1, NULL);
+ANALYZE plt2_adv;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 4 | 0004 | 4 | 0004
+ 6 | 0006 | 6 | 0006
+(2 rows)
+
+DROP TABLE plt1_adv;
+DROP TABLE plt2_adv;
+DROP TABLE plt3_adv;
+-- Test interaction of partitioned join with partition pruning
+CREATE TABLE plt1_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt1_adv_p1 PARTITION OF plt1_adv FOR VALUES IN ('0001');
+CREATE TABLE plt1_adv_p2 PARTITION OF plt1_adv FOR VALUES IN ('0002');
+CREATE TABLE plt1_adv_p3 PARTITION OF plt1_adv FOR VALUES IN ('0003');
+CREATE TABLE plt1_adv_p4 PARTITION OF plt1_adv FOR VALUES IN (NULL, '0004', '0005');
+INSERT INTO plt1_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (1, 2, 3, 4, 5);
+INSERT INTO plt1_adv VALUES (-1, -1, NULL);
+ANALYZE plt1_adv;
+CREATE TABLE plt2_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt2_adv_p1 PARTITION OF plt2_adv FOR VALUES IN ('0001', '0002');
+CREATE TABLE plt2_adv_p2 PARTITION OF plt2_adv FOR VALUES IN (NULL);
+CREATE TABLE plt2_adv_p3 PARTITION OF plt2_adv FOR VALUES IN ('0003');
+CREATE TABLE plt2_adv_p4 PARTITION OF plt2_adv FOR VALUES IN ('0004', '0005');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 10, 'FM0000') FROM generate_series(1, 299) i WHERE i % 10 IN (1, 2, 3, 4, 5);
+INSERT INTO plt2_adv VALUES (-1, -1, NULL);
+ANALYZE plt2_adv;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IN ('0003', '0004', '0005') AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IN ('0003', '0004', '0005') AND t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 5 | 0005 | 5 | 0005
+(3 rows)
+
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IS NULL AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IS NULL AND t1.b < 10 ORDER BY t1.a;
+ a  | c | a | c 
+----+---+---+---
+ -1 |   |   | 
+(1 row)
+
+CREATE TABLE plt1_adv_default PARTITION OF plt1_adv DEFAULT;
+ANALYZE plt1_adv;
+CREATE TABLE plt2_adv_default PARTITION OF plt2_adv DEFAULT;
+ANALYZE plt2_adv;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IN ('0003', '0004', '0005') AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 INNER JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IN ('0003', '0004', '0005') AND t1.b < 10 ORDER BY t1.a;
+ a |  c   | a |  c   
+---+------+---+------
+ 3 | 0003 | 3 | 0003
+ 4 | 0004 | 4 | 0004
+ 5 | 0005 | 5 | 0005
+(3 rows)
+
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IS NULL AND t1.b < 10 ORDER BY t1.a;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE t1.c IS NULL AND t1.b < 10 ORDER BY t1.a;
+ a  | c | a | c 
+----+---+---+---
+ -1 |   |   | 
+(1 row)
+
+DROP TABLE plt1_adv;
+DROP TABLE plt2_adv;
+-- Test the process_outer_partition() code path
+CREATE TABLE plt1_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt1_adv_p1 PARTITION OF plt1_adv FOR VALUES IN ('0000', '0001', '0002');
+CREATE TABLE plt1_adv_p2 PARTITION OF plt1_adv FOR VALUES IN ('0003', '0004');
+INSERT INTO plt1_adv SELECT i, i, to_char(i % 5, 'FM0000') FROM generate_series(0, 24) i;
+ANALYZE plt1_adv;
+CREATE TABLE plt2_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt2_adv_p1 PARTITION OF plt2_adv FOR VALUES IN ('0002');
+CREATE TABLE plt2_adv_p2 PARTITION OF plt2_adv FOR VALUES IN ('0003', '0004');
+INSERT INTO plt2_adv SELECT i, i, to_char(i % 5, 'FM0000') FROM generate_series(0, 24) i WHERE i % 5 IN (2, 3, 4);
+ANALYZE plt2_adv;
+CREATE TABLE plt3_adv (a int, b int, c text) PARTITION BY LIST (c);
+CREATE TABLE plt3_adv_p1 PARTITION OF plt3_adv FOR VALUES IN ('0001');
+CREATE TABLE plt3_adv_p2 PARTITION OF plt3_adv FOR VALUES IN ('0003', '0004');
+INSERT INTO plt3_adv SELECT i, i, to_char(i % 5, 'FM0000') FROM generate_series(0, 24) i WHERE i % 5 IN (1, 3, 4);
+ANALYZE plt3_adv;
+-- This tests that when merging partitions from plt1_adv and plt2_adv in
+-- merge_list_bounds(), process_outer_partition() returns an already-assigned
+-- merged partition when re-called with plt1_adv_p1 for the second list value
+-- '0001' of that partition
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM (plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.c = t2.c)) FULL JOIN plt3_adv t3 ON (t1.c = t3.c) WHERE coalesce(t1.a, 0) % 5 != 3 AND coalesce(t1.a, 0) % 5 != 4 ORDER BY t1.c, t1.a, t2.a, t3.a;
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.c, t1.a, t2.a, t3.a
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: (t1_1.c = t3_1.c)
+               Filter: (((COALESCE(t1_1.a, 0) % 5) <> 3) AND ((COALESCE(t1_1.a, 0) % 5) <> 4))
+               ->  Hash Left Join
+                     Hash Cond: (t1_1.c = t2_1.c)
+                     ->  Seq Scan on plt1_adv_p1 t1_1
+                     ->  Hash
+                           ->  Seq Scan on plt2_adv_p1 t2_1
+               ->  Hash
+                     ->  Seq Scan on plt3_adv_p1 t3_1
+         ->  Hash Full Join
+               Hash Cond: (t1_2.c = t3_2.c)
+               Filter: (((COALESCE(t1_2.a, 0) % 5) <> 3) AND ((COALESCE(t1_2.a, 0) % 5) <> 4))
+               ->  Hash Left Join
+                     Hash Cond: (t1_2.c = t2_2.c)
+                     ->  Seq Scan on plt1_adv_p2 t1_2
+                     ->  Hash
+                           ->  Seq Scan on plt2_adv_p2 t2_2
+               ->  Hash
+                     ->  Seq Scan on plt3_adv_p2 t3_2
+(23 rows)
+
+SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM (plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.c = t2.c)) FULL JOIN plt3_adv t3 ON (t1.c = t3.c) WHERE coalesce(t1.a, 0) % 5 != 3 AND coalesce(t1.a, 0) % 5 != 4 ORDER BY t1.c, t1.a, t2.a, t3.a;
+ a  |  c   | a  |  c   | a  |  c   
+----+------+----+------+----+------
+  0 | 0000 |    |      |    | 
+  5 | 0000 |    |      |    | 
+ 10 | 0000 |    |      |    | 
+ 15 | 0000 |    |      |    | 
+ 20 | 0000 |    |      |    | 
+  1 | 0001 |    |      |  1 | 0001
+  1 | 0001 |    |      |  6 | 0001
+  1 | 0001 |    |      | 11 | 0001
+  1 | 0001 |    |      | 16 | 0001
+  1 | 0001 |    |      | 21 | 0001
+  6 | 0001 |    |      |  1 | 0001
+  6 | 0001 |    |      |  6 | 0001
+  6 | 0001 |    |      | 11 | 0001
+  6 | 0001 |    |      | 16 | 0001
+  6 | 0001 |    |      | 21 | 0001
+ 11 | 0001 |    |      |  1 | 0001
+ 11 | 0001 |    |      |  6 | 0001
+ 11 | 0001 |    |      | 11 | 0001
+ 11 | 0001 |    |      | 16 | 0001
+ 11 | 0001 |    |      | 21 | 0001
+ 16 | 0001 |    |      |  1 | 0001
+ 16 | 0001 |    |      |  6 | 0001
+ 16 | 0001 |    |      | 11 | 0001
+ 16 | 0001 |    |      | 16 | 0001
+ 16 | 0001 |    |      | 21 | 0001
+ 21 | 0001 |    |      |  1 | 0001
+ 21 | 0001 |    |      |  6 | 0001
+ 21 | 0001 |    |      | 11 | 0001
+ 21 | 0001 |    |      | 16 | 0001
+ 21 | 0001 |    |      | 21 | 0001
+  2 | 0002 |  2 | 0002 |    | 
+  2 | 0002 |  7 | 0002 |    | 
+  2 | 0002 | 12 | 0002 |    | 
+  2 | 0002 | 17 | 0002 |    | 
+  2 | 0002 | 22 | 0002 |    | 
+  7 | 0002 |  2 | 0002 |    | 
+  7 | 0002 |  7 | 0002 |    | 
+  7 | 0002 | 12 | 0002 |    | 
+  7 | 0002 | 17 | 0002 |    | 
+  7 | 0002 | 22 | 0002 |    | 
+ 12 | 0002 |  2 | 0002 |    | 
+ 12 | 0002 |  7 | 0002 |    | 
+ 12 | 0002 | 12 | 0002 |    | 
+ 12 | 0002 | 17 | 0002 |    | 
+ 12 | 0002 | 22 | 0002 |    | 
+ 17 | 0002 |  2 | 0002 |    | 
+ 17 | 0002 |  7 | 0002 |    | 
+ 17 | 0002 | 12 | 0002 |    | 
+ 17 | 0002 | 17 | 0002 |    | 
+ 17 | 0002 | 22 | 0002 |    | 
+ 22 | 0002 |  2 | 0002 |    | 
+ 22 | 0002 |  7 | 0002 |    | 
+ 22 | 0002 | 12 | 0002 |    | 
+ 22 | 0002 | 17 | 0002 |    | 
+ 22 | 0002 | 22 | 0002 |    | 
+(55 rows)
+
+DROP TABLE plt1_adv;
+DROP TABLE plt2_adv;
+DROP TABLE plt3_adv;
+-- Tests for multi-level partitioned tables
+CREATE TABLE alpha (a double precision, b int, c text) PARTITION BY RANGE (a);
+CREATE TABLE alpha_neg PARTITION OF alpha FOR VALUES FROM ('-Infinity') TO (0) PARTITION BY RANGE (b);
+CREATE TABLE alpha_pos PARTITION OF alpha FOR VALUES FROM (0) TO (10.0) PARTITION BY LIST (c);
+CREATE TABLE alpha_neg_p1 PARTITION OF alpha_neg FOR VALUES FROM (100) TO (200);
+CREATE TABLE alpha_neg_p2 PARTITION OF alpha_neg FOR VALUES FROM (200) TO (300);
+CREATE TABLE alpha_neg_p3 PARTITION OF alpha_neg FOR VALUES FROM (300) TO (400);
+CREATE TABLE alpha_pos_p1 PARTITION OF alpha_pos FOR VALUES IN ('0001', '0003');
+CREATE TABLE alpha_pos_p2 PARTITION OF alpha_pos FOR VALUES IN ('0004', '0006');
+CREATE TABLE alpha_pos_p3 PARTITION OF alpha_pos FOR VALUES IN ('0008', '0009');
+INSERT INTO alpha_neg SELECT -1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(100, 399) i WHERE i % 10 IN (1, 3, 4, 6, 8, 9);
+INSERT INTO alpha_pos SELECT  1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(100, 399) i WHERE i % 10 IN (1, 3, 4, 6, 8, 9);
+ANALYZE alpha;
+CREATE TABLE beta (a double precision, b int, c text) PARTITION BY RANGE (a);
+CREATE TABLE beta_neg PARTITION OF beta FOR VALUES FROM (-10.0) TO (0) PARTITION BY RANGE (b);
+CREATE TABLE beta_pos PARTITION OF beta FOR VALUES FROM (0) TO ('Infinity') PARTITION BY LIST (c);
+CREATE TABLE beta_neg_p1 PARTITION OF beta_neg FOR VALUES FROM (100) TO (150);
+CREATE TABLE beta_neg_p2 PARTITION OF beta_neg FOR VALUES FROM (200) TO (300);
+CREATE TABLE beta_neg_p3 PARTITION OF beta_neg FOR VALUES FROM (350) TO (500);
+CREATE TABLE beta_pos_p1 PARTITION OF beta_pos FOR VALUES IN ('0002', '0003');
+CREATE TABLE beta_pos_p2 PARTITION OF beta_pos FOR VALUES IN ('0004', '0006');
+CREATE TABLE beta_pos_p3 PARTITION OF beta_pos FOR VALUES IN ('0007', '0009');
+INSERT INTO beta_neg SELECT -1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(100, 149) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+INSERT INTO beta_neg SELECT -1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(200, 299) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+INSERT INTO beta_neg SELECT -1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(350, 499) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+INSERT INTO beta_pos SELECT  1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(100, 149) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+INSERT INTO beta_pos SELECT  1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(200, 299) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+INSERT INTO beta_pos SELECT  1.0, i, to_char(i % 10, 'FM0000') FROM generate_series(350, 499) i WHERE i % 10 IN (2, 3, 4, 6, 7, 9);
+ANALYZE beta;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.*, t2.* FROM alpha t1 INNER JOIN beta t2 ON (t1.a = t2.a AND t1.b = t2.b) WHERE t1.b >= 125 AND t1.b < 225 ORDER BY t1.a, t1.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.*, t2.* FROM alpha t1 INNER JOIN beta t2 ON (t1.a = t2.a AND t1.b = t2.b) WHERE t1.b >= 125 AND t1.b < 225 ORDER BY t1.a, t1.b;
+ a  |  b  |  c   | a  |  b  |  c   
+----+-----+------+----+-----+------
+ -1 | 126 | 0006 | -1 | 126 | 0006
+ -1 | 129 | 0009 | -1 | 129 | 0009
+ -1 | 133 | 0003 | -1 | 133 | 0003
+ -1 | 134 | 0004 | -1 | 134 | 0004
+ -1 | 136 | 0006 | -1 | 136 | 0006
+ -1 | 139 | 0009 | -1 | 139 | 0009
+ -1 | 143 | 0003 | -1 | 143 | 0003
+ -1 | 144 | 0004 | -1 | 144 | 0004
+ -1 | 146 | 0006 | -1 | 146 | 0006
+ -1 | 149 | 0009 | -1 | 149 | 0009
+ -1 | 203 | 0003 | -1 | 203 | 0003
+ -1 | 204 | 0004 | -1 | 204 | 0004
+ -1 | 206 | 0006 | -1 | 206 | 0006
+ -1 | 209 | 0009 | -1 | 209 | 0009
+ -1 | 213 | 0003 | -1 | 213 | 0003
+ -1 | 214 | 0004 | -1 | 214 | 0004
+ -1 | 216 | 0006 | -1 | 216 | 0006
+ -1 | 219 | 0009 | -1 | 219 | 0009
+ -1 | 223 | 0003 | -1 | 223 | 0003
+ -1 | 224 | 0004 | -1 | 224 | 0004
+  1 | 126 | 0006 |  1 | 126 | 0006
+  1 | 129 | 0009 |  1 | 129 | 0009
+  1 | 133 | 0003 |  1 | 133 | 0003
+  1 | 134 | 0004 |  1 | 134 | 0004
+  1 | 136 | 0006 |  1 | 136 | 0006
+  1 | 139 | 0009 |  1 | 139 | 0009
+  1 | 143 | 0003 |  1 | 143 | 0003
+  1 | 144 | 0004 |  1 | 144 | 0004
+  1 | 146 | 0006 |  1 | 146 | 0006
+  1 | 149 | 0009 |  1 | 149 | 0009
+  1 | 203 | 0003 |  1 | 203 | 0003
+  1 | 204 | 0004 |  1 | 204 | 0004
+  1 | 206 | 0006 |  1 | 206 | 0006
+  1 | 209 | 0009 |  1 | 209 | 0009
+  1 | 213 | 0003 |  1 | 213 | 0003
+  1 | 214 | 0004 |  1 | 214 | 0004
+  1 | 216 | 0006 |  1 | 216 | 0006
+  1 | 219 | 0009 |  1 | 219 | 0009
+  1 | 223 | 0003 |  1 | 223 | 0003
+  1 | 224 | 0004 |  1 | 224 | 0004
+(40 rows)
+
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.*, t2.* FROM alpha t1 INNER JOIN beta t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE ((t1.b >= 100 AND t1.b < 110) OR (t1.b >= 200 AND t1.b < 210)) AND ((t2.b >= 100 AND t2.b < 110) OR (t2.b >= 200 AND t2.b < 210)) AND t1.c IN ('0004', '0009') ORDER BY t1.a, t1.b, t2.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.*, t2.* FROM alpha t1 INNER JOIN beta t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE ((t1.b >= 100 AND t1.b < 110) OR (t1.b >= 200 AND t1.b < 210)) AND ((t2.b >= 100 AND t2.b < 110) OR (t2.b >= 200 AND t2.b < 210)) AND t1.c IN ('0004', '0009') ORDER BY t1.a, t1.b, t2.b;
+ a  |  b  |  c   | a  |  b  |  c   
+----+-----+------+----+-----+------
+ -1 | 104 | 0004 | -1 | 104 | 0004
+ -1 | 104 | 0004 | -1 | 204 | 0004
+ -1 | 109 | 0009 | -1 | 109 | 0009
+ -1 | 109 | 0009 | -1 | 209 | 0009
+ -1 | 204 | 0004 | -1 | 104 | 0004
+ -1 | 204 | 0004 | -1 | 204 | 0004
+ -1 | 209 | 0009 | -1 | 109 | 0009
+ -1 | 209 | 0009 | -1 | 209 | 0009
+  1 | 104 | 0004 |  1 | 104 | 0004
+  1 | 104 | 0004 |  1 | 204 | 0004
+  1 | 109 | 0009 |  1 | 109 | 0009
+  1 | 109 | 0009 |  1 | 209 | 0009
+  1 | 204 | 0004 |  1 | 104 | 0004
+  1 | 204 | 0004 |  1 | 204 | 0004
+  1 | 209 | 0009 |  1 | 109 | 0009
+  1 | 209 | 0009 |  1 | 209 | 0009
+(16 rows)
+
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT t1.*, t2.* FROM alpha t1 INNER JOIN beta t2 ON (t1.a = t2.a AND t1.b = t2.b AND t1.c = t2.c) WHERE ((t1.b >= 100 AND t1.b < 110) OR (t1.b >= 200 AND t1.b < 210)) AND ((t2.b >= 100 AND t2.b < 110) OR (t2.b >= 200 AND t2.b < 210)) AND t1.c IN ('0004', '0009') ORDER BY t1.a, t1.b;
+*/ -- YB: The explain plan changes significantly between PG and YB
+SELECT t1.*, t2.* FROM alpha t1 INNER JOIN beta t2 ON (t1.a = t2.a AND t1.b = t2.b AND t1.c = t2.c) WHERE ((t1.b >= 100 AND t1.b < 110) OR (t1.b >= 200 AND t1.b < 210)) AND ((t2.b >= 100 AND t2.b < 110) OR (t2.b >= 200 AND t2.b < 210)) AND t1.c IN ('0004', '0009') ORDER BY t1.a, t1.b;
+ a  |  b  |  c   | a  |  b  |  c   
+----+-----+------+----+-----+------
+ -1 | 104 | 0004 | -1 | 104 | 0004
+ -1 | 109 | 0009 | -1 | 109 | 0009
+ -1 | 204 | 0004 | -1 | 204 | 0004
+ -1 | 209 | 0009 | -1 | 209 | 0009
+  1 | 104 | 0004 |  1 | 104 | 0004
+  1 | 109 | 0009 |  1 | 109 | 0009
+  1 | 204 | 0004 |  1 | 204 | 0004
+  1 | 209 | 0009 |  1 | 209 | 0009
+(8 rows)
+
+-- partitionwise join with fractional paths
+CREATE TABLE fract_t (id BIGINT, PRIMARY KEY (id)) PARTITION BY RANGE (id);
+CREATE TABLE fract_t0 PARTITION OF fract_t FOR VALUES FROM ('0') TO ('1000');
+CREATE TABLE fract_t1 PARTITION OF fract_t FOR VALUES FROM ('1000') TO ('2000');
+-- insert data
+INSERT INTO fract_t (id) (SELECT generate_series(0, 1999));
+ANALYZE fract_t;
+-- verify plan; nested index only scans
+SET max_parallel_workers_per_gather = 0;
+SET enable_partitionwise_join = on;
+/* YB: The explain plan changes significantly between PG and YB
+EXPLAIN (COSTS OFF)
+SELECT * FROM fract_t x LEFT JOIN fract_t y USING (id) ORDER BY id ASC LIMIT 10;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM fract_t x LEFT JOIN fract_t y USING (id) ORDER BY id DESC LIMIT 10;
+*/ -- YB: The explain plan changes significantly between PG and YB
+-- cleanup
+DROP TABLE fract_t;
+RESET max_parallel_workers_per_gather;
+RESET enable_partitionwise_join;

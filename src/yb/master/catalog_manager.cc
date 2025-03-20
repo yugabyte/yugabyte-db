@@ -7677,6 +7677,17 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
+namespace {
+
+std::string AsDebugHexString(const PartitionPB& partition) {
+  return Format(
+      "partition_key_start: $0, partition_key_end: $1",
+      Slice(partition.partition_key_start()).PrefixNoLongerThan(64).ToDebugHexString(),
+      Slice(partition.partition_key_end()).PrefixNoLongerThan(64).ToDebugHexString());
+}
+
+} // namespace
+
 Status CatalogManager::RegisterNewTabletsForSplit(
     TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
     const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
@@ -7714,16 +7725,14 @@ Status CatalogManager::RegisterNewTabletsForSplit(
   // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
   // committed TabletInfo from the `table` ?
   for (auto& new_tablet : new_tablets) {
-    const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
-    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
-              << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
-              << ", partition_key_end: "
-              << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
-              << ", split_depth: " << new_split_depth << ") to split the tablet "
-              << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
-              << ") for table " << table->ToString()
-              << ", new partition_list_version: " << new_partition_list_version;
     new_tablet->mutable_metadata()->CommitMutation();
+    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " ("
+              << AsDebugHexString(new_tablet->LockForRead()->pb.partition())
+              << ", split_depth: " << new_split_depth << ") to split the tablet "
+              << source_tablet_info->tablet_id() << " ("
+              << AsDebugHexString(source_tablet_meta.partition()) << ") for table "
+              << table->ToString()
+              << ", new partition_list_version: " << new_partition_list_version;
   }
   return Status::OK();
 }

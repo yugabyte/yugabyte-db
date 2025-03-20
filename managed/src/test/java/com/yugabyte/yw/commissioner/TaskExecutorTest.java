@@ -152,8 +152,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.EditDrConfig,
           TaskType.SetDatabasesDrConfig,
           TaskType.SetTablesDrConfig,
-          TaskType.RestartXClusterConfig,
-          TaskType.RestartDrConfig,
           TaskType.DecommissionNode);
 
   @Override

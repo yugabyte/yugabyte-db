@@ -49,7 +49,7 @@ public class RestorePreflightValidate extends AbstractTaskBase {
 
     if (taskParams().category.equals(BackupCategory.YB_CONTROLLER)) {
       Set<String> backupLocations =
-          taskParams().backupStorageInfoList.parallelStream()
+          taskParams().backupStorageInfoList.stream()
               .map(bSI -> bSI.storageLocation)
               .collect(Collectors.toSet());
       // Validate NFS mount path + bucket is matching backup location provided.
@@ -81,7 +81,7 @@ public class RestorePreflightValidate extends AbstractTaskBase {
     preflightParams.setUniverseUUID(taskParams().getUniverseUUID());
     preflightParams.setStorageConfigUUID(taskParams().storageConfigUUID);
     Set<String> backupLocations =
-        taskParams().backupStorageInfoList.parallelStream()
+        taskParams().backupStorageInfoList.stream()
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
     preflightParams.setBackupLocations(backupLocations);

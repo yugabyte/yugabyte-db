@@ -347,7 +347,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     }
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
-    QLRocksDBStorage ql_storage(/* log_prefix = */ "", doc_db());
+    QLRocksDBStorage ql_storage(/* log_prefix = */ "", doc_db(), EncodedPartitionBounds{});
     const qlexpr::QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
     WriteBuffer rows_data(1024);
     qlexpr::QLResultSet resultset(&rsrow_desc, &rows_data);

@@ -324,9 +324,9 @@ od_frontend_attach(od_client_t *client, char *context,
 
 			/* YB: check auth failure status codes to update OID status */
 			if (yb_frontend_error_is_db_does_not_exist(client))
-				((od_route_t *)server->route)->yb_database_entry->status = YB_OID_DROPPED;
+				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1);
 			else if (yb_frontend_error_is_role_does_not_exist(client))
-				((od_route_t *)server->route)->yb_user_entry->status = YB_OID_DROPPED;
+				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid);
 
 			return OD_ESERVER_CONNECT;
 		}
@@ -906,7 +906,7 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		od_backend_error(server, "main", data, size);
 		break;
 	/* fallthrough */
-	case YB_ROLE_OID_PARAMETER_STATUS:
+	case YB_CONN_MGR_PARAMETER_STATUS:
 	case KIWI_BE_PARAMETER_STATUS:
 		rc = od_backend_update_parameter(server, "main", data, size, 0);
 		if (rc == -1)
@@ -2262,7 +2262,7 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		/* close both client and server connection */
 		/* backend connection is not in a usable state */ 
 		od_error(&instance->logger, context, client, server,
-				"deploy error: %s, status %s", client->deploy_err,
+				"deploy error: %s, status %s", client->deploy_err->message,
 				od_frontend_status_to_str(status));
 		od_frontend_fatal(client, client->deploy_err->code, client->deploy_err->message);
 		/* close backend connection */
@@ -2549,8 +2549,8 @@ void od_frontend(void *arg)
 			&instance->logger, "auth backend", client, NULL,
 			"invalidate all existing active and idle backends of the route"
 			", with user = %s, db = %s, having %d idle backends and %d active backends",
-			(char *)route->yb_user_entry->name,
-			(char *)route->yb_database_entry->name,
+			(char *)route->yb_user_name,
+			(char *)route->yb_database_name,
 			route->server_pool.count_idle,
 			route->server_pool.count_active);
 		route->max_logical_client_version =

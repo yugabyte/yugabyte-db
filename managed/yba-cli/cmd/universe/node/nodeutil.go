@@ -60,7 +60,20 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			"No clusters found in universe " + universeName + " (" + universeUUID + ")")
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	primaryCluster := clusters[0]
+	var primaryCluster ybaclient.Cluster
+	for _, c := range clusters {
+		if strings.EqualFold(c.GetClusterType(), util.PrimaryClusterType) {
+			primaryCluster = c
+			break
+		}
+	}
+
+	if primaryCluster == (ybaclient.Cluster{}) {
+		err := fmt.Errorf(
+			"No primary cluster found in universe " + universeName + " (" + universeUUID + ")")
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+
 	userIntent := primaryCluster.GetUserIntent()
 	if userIntent.GetProviderType() == util.K8sProviderType {
 		errMessage := "Node operations are blocked for Kubernetes universe"

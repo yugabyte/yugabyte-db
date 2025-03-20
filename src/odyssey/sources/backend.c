@@ -112,7 +112,8 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
 		{
 			/* Reset the route and close the client */
-			((od_route_t*)server->route)->yb_database_entry->status = YB_OID_DROPPED;
+			yb_mark_routes_inactive(server->global->router,
+							  ((od_route_t*)server->route)->id.yb_db_oid, -1);
 
 			if (yb_external_client != NULL &&
 			    ((od_client_t *)yb_external_client)->type ==
@@ -132,7 +133,8 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 
 	if (strstr(error.message, "invalid role OID")) {
 		/* Reset the route and close the client */
-		((od_route_t*)server->route)->yb_user_entry->status = YB_OID_DROPPED;
+		yb_mark_routes_inactive(server->global->router, -1,
+						  ((od_route_t*)server->route)->id.yb_user_oid);
 
 		if (yb_external_client != NULL &&
 			((od_client_t *)yb_external_client)->type == OD_POOL_CLIENT_EXTERNAL)
@@ -258,11 +260,11 @@ static inline int od_backend_startup(od_server_t *server,
 	}
 	else
 	{
-		strcpy(db_name, (char *)route->yb_database_entry->name);
-		db_name_len = route->yb_database_entry->name_len + 1;
+		strcpy(db_name, (char *)route->yb_database_name);
+		db_name_len = route->yb_database_name_len + 1;
 
-		strcpy(user_name, (char *)route->yb_user_entry->name);
-		user_name_len = route->yb_user_entry->name_len + 1;
+		strcpy(user_name, (char *)route->yb_user_name);
+		user_name_len = route->yb_user_name_len + 1;
 
 		/*
 		 * The connection between connection manager and the backend is always
@@ -376,7 +378,7 @@ static inline int od_backend_startup(od_server_t *server,
 			}
 			break;
 		/* fallthrough */
-		case YB_ROLE_OID_PARAMETER_STATUS:
+		case YB_CONN_MGR_PARAMETER_STATUS:
 		case KIWI_BE_PARAMETER_STATUS: {
 			char *name;
 			uint32_t name_len;
@@ -986,7 +988,7 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 		od_debug(&instance->logger, context, server->client, server,
 			 "%s", kiwi_be_type_to_string(type));
 
-		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_ROLE_OID_PARAMETER_STATUS) {
+		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_CONN_MGR_PARAMETER_STATUS) {
 			/* update server parameter */
 			int rc;
 			rc = od_backend_update_parameter(server, context,

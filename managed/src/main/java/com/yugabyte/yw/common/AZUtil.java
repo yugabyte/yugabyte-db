@@ -17,8 +17,11 @@ import com.azure.resourcemanager.monitor.fluent.models.EventDataInner;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
+import com.azure.storage.blob.batch.BlobBatchClient;
+import com.azure.storage.blob.batch.BlobBatchClientBuilder;
 import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
+import com.azure.storage.blob.models.DeleteSnapshotsOptionType;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -328,7 +331,7 @@ public class AZUtil implements CloudUtil {
                 pagedIterable.iterableByPage().iterator();
             log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
             retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
-          } catch (BlobStorageException e) {
+          } catch (RuntimeException e) {
             log.error(
                 "Error occured while deleting objects at location {}. Error {}",
                 backupLocation,
@@ -345,22 +348,47 @@ public class AZUtil implements CloudUtil {
   }
 
   public static void retrieveAndDeleteObjects(
-      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient) {
-    while (pagedResponse.hasNext()) {
-      PagedResponse<BlobItem> response = pagedResponse.next();
-      BlobClient blobClient;
-      for (BlobItem blobItem : response.getValue()) {
-        if (blobItem.getSnapshot() != null) {
-          blobClient =
-              blobContainerClient.getBlobClient(blobItem.getName(), blobItem.getSnapshot());
-        } else {
-          blobClient = blobContainerClient.getBlobClient(blobItem.getName());
-        }
-        if (blobClient.exists()) {
-          blobClient.delete();
+      Iterator<PagedResponse<BlobItem>> pagedResponseIter,
+      BlobContainerClient blobContainerClient) {
+    BlobBatchClient batchClient = new BlobBatchClientBuilder(blobContainerClient).buildClient();
+    List<String> blobUrls = new ArrayList<>();
+    String baseUrl = blobContainerClient.getBlobContainerUrl();
+    // blobClient.getBlobUrl() requires decoding the url, this method should be marginally better.
+    while (pagedResponseIter.hasNext()) {
+      PagedResponse<BlobItem> pagedResponse = pagedResponseIter.next();
+      for (BlobItem blobItem : pagedResponse.getValue()) {
+        blobUrls.add(baseUrl + "/" + blobItem.getName());
+        if (blobUrls.size() == 256) {
+          batchDeleteBlobs(batchClient, blobUrls);
+          // Reset blob url list
+          blobUrls.clear();
         }
       }
     }
+    // Delete final set of blobs
+    batchDeleteBlobs(batchClient, blobUrls);
+  }
+
+  private static void batchDeleteBlobs(BlobBatchClient batchClient, List<String> blobUrls) {
+    if (blobUrls.isEmpty()) {
+      log.info("No blobs found to delete");
+      return;
+    }
+    log.info("batch deleting {} blobs", blobUrls.size());
+    log.trace("blob urls to delete: {}", blobUrls);
+    batchClient
+        .deleteBlobs(blobUrls, DeleteSnapshotsOptionType.INCLUDE)
+        .forEach(
+            response -> {
+              if (response.getStatusCode() >= 300) {
+                log.error(
+                    "status code {} deleting blob {}: {}",
+                    response.getStatusCode(),
+                    response.getRequest().getUrl(),
+                    response.getValue());
+                throw new RuntimeException("Error deleting blob: " + response.getStatusCode());
+              }
+            });
   }
 
   @Override

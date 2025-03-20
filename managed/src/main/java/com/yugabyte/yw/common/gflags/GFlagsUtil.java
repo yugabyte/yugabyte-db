@@ -395,6 +395,14 @@ public class GFlagsUtil {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
+    // This flag needs to be set during major version upgrade to being compatible with the old
+    // postgres version.
+    if (taskParam.enableYSQL
+        && taskParam.ysqlMajorVersionUpgradeState != null
+        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+            taskParam.ysqlMajorVersionUpgradeState)) {
+      extra_gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
+    }
 
     return extra_gflags;
   }
@@ -674,14 +682,6 @@ public class GFlagsUtil {
       gflags.put(
           TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
           Long.toString(timestampHistoryRetentionForPITR.toSeconds() + historyRetentionBufferSecs));
-    }
-    // This flag needs to be set during major version upgrade to being compatible with the old
-    // postgres version.
-    if (taskParam.enableYSQL
-        && taskParam.ysqlMajorVersionUpgradeState != null
-        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
-            taskParam.ysqlMajorVersionUpgradeState)) {
-      gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
     }
     return gflags;
   }

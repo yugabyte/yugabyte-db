@@ -133,7 +133,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
               node,
               universe,
               ImmutableList.of(
-                  "rm", "-f", ybSoftwareDir + packageName, ybSoftwareDir + versionName),
+                  "rm", "-rf", ybSoftwareDir + packageName, ybSoftwareDir + versionName),
               ShellProcessContext.builder().logCmdOutput(true).build())
           .processErrors();
     }

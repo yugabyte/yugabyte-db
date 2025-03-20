@@ -577,7 +577,8 @@ TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
 
 TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
   // Test when a table is created and dropped multiple times.
-  const int kNumIterations = 10;
+  // Decrease number of iterations for slower build types.
+  const int kNumIterations = (IsSanitizer() || kIsMac) ? 3 : 10;
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());

@@ -77,7 +77,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
-  tserver::TSLocalLockManager* lock_manager_;
+  tserver::TSLocalLockManagerPtr lock_manager_;
 };
 
 TEST_F(PgObjectLocksTestRF1, TestSanity) {

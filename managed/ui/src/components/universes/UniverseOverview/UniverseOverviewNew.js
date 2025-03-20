@@ -566,9 +566,6 @@ export default class UniverseOverviewNew extends Component {
             <FlexGrow>
               <YBResourceCount size={numCassandraTables} kind="YCQL" />
             </FlexGrow>
-            <FlexGrow>
-              <YBResourceCount size={numRedisTables} kind="YEDIS" />
-            </FlexGrow>
           </FlexContainer>
         }
       />

@@ -36,10 +36,15 @@ using YbctidBounds = std::pair<Slice, Slice>;
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
  public:
-  struct SampleBlocksData {
-    std::vector<std::pair<KeyBuffer, KeyBuffer>> boundaries;
-    size_t num_total_blocks;
+  struct BlocksSamplingState {
+    size_t num_blocks_processed;
+    size_t num_blocks_collected;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(num_blocks_processed, num_blocks_collected);
+    }
   };
+  using SampleBlocksReservoir = std::vector<std::pair<KeyBuffer, KeyBuffer>>;
 
   typedef std::unique_ptr<YQLStorageIf> UniPtr;
   typedef std::shared_ptr<YQLStorageIf> SharedPtr;
@@ -117,11 +122,11 @@ class YQLStorageIf {
 
   // Returns up to num_blocks_for_sample number of sample blocks boundaries.
   // Each boundary is an encoded doc key or its prefix.
-  // Lower bound is exclusive, upper bound is inclusive.
-  virtual Result<SampleBlocksData> GetSampleBlocks(
+  // Lower bound is inclusive, upper bound is exclusive.
+  virtual Result<SampleBlocksReservoir> GetSampleBlocks(
       std::reference_wrapper<const DocReadContext> doc_read_context,
       DocDbBlocksSamplingMethod blocks_sampling_method,
-      size_t num_blocks_for_sample) const = 0;
+      size_t num_blocks_for_sample, BlocksSamplingState* state) const = 0;
 
   virtual std::string ToString() const = 0;
 };

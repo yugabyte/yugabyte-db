@@ -1592,13 +1592,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		preprocess_targetlist(root);
 
 		/*
-		 * YB_TODO(Deepthi@yugabyte)
-		 * Need to reintroduce the following code
-		 * for PG13 which reimplement this function.
-		 * root->yb_num_referenced_relations++;
-		 */
-
-		/*
 		 * Mark all the aggregates with resolved aggtranstypes, and detect
 		 * aggregates that are duplicates or can share transition state.  We
 		 * must do this before slicing and dicing the tlist into various
@@ -1975,6 +1968,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					 */
 					if (IS_DUMMY_REL(this_result_rel))
 						continue;
+
+					root->yb_num_referenced_relations++;
 
 					/* Build per-target-rel lists needed by ModifyTable */
 					resultRelations = lappend_int(resultRelations,

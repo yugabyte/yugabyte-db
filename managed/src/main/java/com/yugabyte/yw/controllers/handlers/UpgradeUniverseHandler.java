@@ -492,6 +492,12 @@ public class UpgradeUniverseHandler {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
 
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot modify audit log config while YSQL major version upgrade is in progress.");
+    }
+
     // Verify if exporter config is set to export active.
     if (requestParams.auditLogConfig.isExportActive()) {
       // If exporter config is set to export active, verify if any exporter is configured.

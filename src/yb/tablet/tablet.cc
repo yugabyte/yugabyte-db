@@ -1023,6 +1023,7 @@ Result<rocksdb::Options> Tablet::CommonRocksDBOptions() {
       &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), std::move(table_options));
 
   key_bounds_ = metadata()->MakeKeyBounds();
+  encoded_partition_bounds_ = VERIFY_RESULT(metadata()->MakeEncodedPartitionBounds());
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -1866,7 +1867,8 @@ Status Tablet::HandleQLReadRequest(
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics_scope.metrics(), TabletEventStats::kQlReadLatency);
 
-  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics_scope.metrics())};
+  docdb::QLRocksDBStorage storage{
+      LogPrefix(), doc_db(metrics_scope.metrics()), encoded_partition_bounds_};
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
       metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
@@ -1985,7 +1987,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics, TabletEventStats::kQlReadLatency);
 
-  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics)};
+  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics), encoded_partition_bounds_};
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
@@ -5393,8 +5395,8 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = key_bounds_.lower;
     partition_upper_bound_key = key_bounds_.upper;
   } else {
-    const auto& partition_schema = metadata_->partition_schema();
-    const auto& partition = metadata_->partition();
+    const auto partition_schema = metadata_->partition_schema();
+    const auto partition = metadata_->partition();
     encoded_partition_key_start =
         VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_start()));
     encoded_partition_key_end =

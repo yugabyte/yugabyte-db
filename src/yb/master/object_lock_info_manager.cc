@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -43,6 +44,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 namespace yb {
 namespace master {
 
@@ -82,7 +84,8 @@ class ObjectLockInfoManager::Impl {
       : master_(master),
         catalog_manager_(catalog_manager),
         clock_(master->clock()),
-        local_lock_manager_(std::make_shared<tserver::TSLocalLockManager>(clock_)) {}
+        local_lock_manager_(
+            std::make_shared<tserver::TSLocalLockManager>(clock_, master_->tablet_server())) {}
 
   void LockObject(
       AcquireObjectLockRequestPB req, AcquireObjectLocksGlobalResponsePB* resp,
@@ -144,7 +147,7 @@ class ObjectLockInfoManager::Impl {
   when the master assumes leadership. This will be done by clearing the TSLocalManager and
   replaying the DDL lock requests
   */
-  std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager() EXCLUDES(mutex_) {
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager() EXCLUDES(mutex_) {
     catalog_manager_->AssertLeaderLockAcquiredForReading();
     LockGuard lock(mutex_);
     return local_lock_manager_;
@@ -425,9 +428,13 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   auto lock = object_lock_info->LockForWrite();
   auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[lease_epoch];
   auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
-  auto& db_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
+  auto& object_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   for (const auto& object_lock : req.object_locks()) {
-    auto& object_map = (*db_map.mutable_dbs())[object_lock.database_oid()];
+    RSTATUS_DCHECK(
+        !subtxns_map.has_db_id() || subtxns_map.db_id() == object_lock.database_oid(),
+        IllegalState, "Multiple db ids found for a txn: $0 vs $1",
+        subtxns_map.db_id(), object_lock.database_oid());
+    subtxns_map.set_db_id(object_lock.database_oid());
     auto& types = (*object_map.mutable_objects())[object_lock.object_oid()];
     types.add_lock_type(object_lock.lock_type());
   }
@@ -468,16 +475,15 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
 namespace {
 
 void ExportObjectLocksForTxn(
-    const master::SysObjectLockEntryPB_DBObjectsMapPB& dbs_map,
+    uint64_t db_id,
+    const master::SysObjectLockEntryPB_ObjectLocksMapPB& objects_map,
     tserver::AcquireObjectLockRequestPB* req) {
-  for (const auto& [db_id, objects_map] : dbs_map.dbs()) {
-    for (const auto& [object_id, lock_types] : objects_map.objects()) {
-      for (const auto& type : lock_types.lock_type()) {
-        auto* lock = req->add_object_locks();
-        lock->set_database_oid(db_id);
-        lock->set_object_oid(object_id);
-        lock->set_lock_type(TableLockType(type));
-      }
+  for (const auto& [object_id, lock_types] : objects_map.objects()) {
+    for (const auto& type : lock_types.lock_type()) {
+      auto* lock = req->add_object_locks();
+      lock->set_database_oid(db_id);
+      lock->set_object_oid(object_id);
+      lock->set_lock_type(TableLockType(type));
     }
   }
 }
@@ -518,12 +524,13 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfo() {
       }
       for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
         auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
-        for (const auto& [subtxn_id, dbs_map] : subtxns_map.subtxns()) {
+        const auto db_id = subtxns_map.db_id();
+        for (const auto& [subtxn_id, objects_map] : subtxns_map.subtxns()) {
           auto* lock_entries_pb = entries.add_lock_entries();
           lock_entries_pb->set_session_host_uuid(host_uuid);
           lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
           lock_entries_pb->set_subtxn_id(subtxn_id);
-          ExportObjectLocksForTxn(dbs_map, lock_entries_pb);
+          ExportObjectLocksForTxn(db_id, objects_map, lock_entries_pb);
         }
       }
     }
@@ -616,8 +623,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(
   unlock_objects->Launch();
 }
 
-void ObjectLockInfoManager::Impl::UnlockObject(
-    const TransactionId& txn_id) {
+void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
   ReleaseObjectLockRequestPB req;
   req.set_txn_id(txn_id.data(), txn_id.size());
   {
@@ -629,6 +635,27 @@ void ObjectLockInfoManager::Impl::UnlockObject(
     req.set_session_host_uuid(it->second.host_session_uuid);
     req.set_lease_epoch(it->second.lease_epoch);
   }
+
+  // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
+  // logic on the tserver side expects a full report. Fix it and then optimize the below to only
+  // send the catalog version of the db being operated on by the txn.
+  DbOidToCatalogVersionMap versions;
+  uint64_t fingerprint;
+  auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
+      FLAGS_enable_heartbeat_pg_catalog_versions_cache, &versions, &fingerprint);
+  if (s.ok()) {
+    auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
+    for (const auto& it : versions) {
+      auto* const catalog_version_pb = db_catalog_version_data->add_db_catalog_versions();
+      catalog_version_pb->set_db_oid(it.first);
+      catalog_version_pb->set_current_version(it.second.current_version);
+      catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
+    }
+  } else {
+    // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
+    LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
+  }
+
   return UnlockObject(
       std::move(req), std::nullopt /* context */, std::nullopt /* leader epoch */,
       [txn_id](Status s) {
@@ -721,7 +748,7 @@ void ObjectLockInfoManager::Impl::Clear() {
   catalog_manager_->AssertLeaderLockAcquiredForWriting();
   LockGuard lock(mutex_);
   object_lock_infos_map_.clear();
-  local_lock_manager_.reset(new tserver::TSLocalLockManager(clock_));
+  local_lock_manager_.reset(new tserver::TSLocalLockManager(clock_, master_->tablet_server()));
 }
 
 void ObjectLockInfoManager::Impl::UpdateTabletServerLeaseEpoch(

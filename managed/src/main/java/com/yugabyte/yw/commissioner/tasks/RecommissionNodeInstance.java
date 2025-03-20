@@ -6,7 +6,6 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.NodeInstance;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -41,10 +40,9 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
     if (!nodeInstance.isManuallyDecommissioned()) {
       log.debug("Cleaning up node instance {}", nodeInstance.getNodeUuid());
       try {
-        ShellResponse response =
-            nodeManager
-                .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
-                .processErrors();
+        nodeManager
+            .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
+            .processErrors();
       } catch (Exception e) {
         log.error("Clean up failed for node instance: {}", nodeInstance.getNodeUuid(), e);
         throw e;

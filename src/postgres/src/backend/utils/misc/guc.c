@@ -3194,6 +3194,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_separate_requests_for_sampling_stages", PGC_SUSET,
+			CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to allow using separate requests for "
+						 "block-based sampling stages. Not to be touched by "
+						 "users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_separate_requests_for_sampling_stages,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_refresh_matview_in_place", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Refresh materialized views in place."),
 			NULL,
@@ -5128,6 +5142,16 @@ static struct config_int ConfigureNamesInt[] =
 	 NULL,
 	 assign_tcmalloc_sample_period,
 	 show_tcmalloc_sample_period},
+
+	{
+		{"yb_test_delay_after_applying_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay after applying invalidation messages."),
+			NULL
+		},
+		&yb_test_delay_after_applying_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -8710,18 +8734,41 @@ ReportChangedGUCOptions(void)
  *
  * We need not transmit the value if it's the same as what we last
  * transmitted.  However, clear the NEEDS_REPORT flag in any case.
+ *
+ * YB: Always send back a ParameterStatus packet back, atleast to
+ * Connection Manager for full correctness. If the value is the same
+ * as what was previously transmitted, do not send the packet to the
+ * client from Connection Manager.
  */
 static void
 ReportGUCOption(struct config_generic *record)
 {
 	char	   *val = _ShowOption(record, false);
 
-	if (record->last_reported == NULL ||
+	if (YbIsClientYsqlConnMgr() ||
+		record->last_reported == NULL ||
 		strcmp(val, record->last_reported) != 0)
 	{
 		StringInfoData msgbuf;
 
-		pq_beginmessage(&msgbuf, 'S');
+		/*
+		 * YB: Do not bombard the client with ParameterStatus packets.
+		 * Send a specialized ParameterStatus packet to instruct Connection
+		 * Manager to not forward the packet to the client.
+		 *
+		 * 1. If GUC_REPORT is not enabled for the variable.
+		 * 2. If GUC_REPORT is enabled, but the previous value is the
+		 * same as the current value.
+		 */
+		bool guc_report_not_enabled = !(record->flags & GUC_REPORT);
+		bool guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
+			record->last_reported &&
+			strcmp(val, record->last_reported) == 0;
+
+		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
+			pq_beginmessage(&msgbuf, 'r');
+		else
+			pq_beginmessage(&msgbuf, 'S');
 		pq_sendstring(&msgbuf, record->name);
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);

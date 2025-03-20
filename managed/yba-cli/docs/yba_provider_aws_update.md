@@ -14,7 +14,7 @@ yba provider aws update [flags]
 
 ```
 yba provider aws update --name <provider-name> \
-	--remove-region <region-1> --remove-region <region-2>
+	 --remove-region <region-1> --remove-region <region-2>
 ```
 
 ### Options

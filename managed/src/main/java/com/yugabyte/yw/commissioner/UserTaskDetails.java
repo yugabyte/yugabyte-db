@@ -22,7 +22,7 @@ public class UserTaskDetails {
     // purposes, not stored in DB.
     Preparation,
 
-    // Perform preflight checks to determine if the node is ready to be configured or provisioned.
+    // Perform preflight checks to determine if the task target is healthy.
     PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
@@ -319,9 +319,7 @@ public class UserTaskDetails {
         break;
       case PreflightChecks:
         title = "Preflight Checks";
-        description =
-            "Perform preflight checks to determine if node is ready"
-                + " to be provisioned/configured.";
+        description = "Perform preflight checks to determine if the task target is healthy.";
         break;
       case Provisioning:
         title = "Provisioning";

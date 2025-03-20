@@ -106,7 +106,7 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
                     const PgsqlOp& op) {
   std::vector<int64_t> orders;
   if (op_row_order.empty()) {
-    VLOG(1) << "Unordered results";
+    VLOG_WITH_FUNC(1) << "Unordered results";
     return orders;
   }
   const auto& batch_orders = response.batch_orders();
@@ -253,25 +253,15 @@ Status PgDocResult::ProcessSystemColumns() {
   return Status::OK();
 }
 
-Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
-  // Process block sampling result returned from DocDB.
-  // Results come as (index, ybctid) tuples where index is the position in the reservoir of
-  // predetermined size. DocDB returns ybctids with sequential indexes first, starting from 0 and
-  // until reservoir is full. Then it returns ybctids with random indexes, so they replace previous
-  // ybctids.
+Status PgDocResult::ProcessIndexedEntries(
+    std::function<Status(int32_t index, Slice* data)> processor) {
   for (int i = 0; i < row_count_; i++) {
-    // Read index column
-    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
-           "Reservoir index cannot be NULL");
-    auto index = PgDocData::ReadNumber<int32_t>(&row_iterator_);
-    // Read ybctid column
-    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
-           "System column ybctid cannot be NULL");
-    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
-
-    // Copy ybctid data to the reservoir
-    reservoir[index].assign(reinterpret_cast<const char *>(row_iterator_.data()), data_size);
-    row_iterator_.remove_prefix(data_size);
+    SCHECK(
+        !VERIFY_RESULT(PgDocData::CheckedReadHeaderIsNull(&row_iterator_)), InternalError,
+        "Entry index cannot be NULL");
+    const auto index = VERIFY_RESULT(PgDocData::CheckedReadNumber<int32_t>(&row_iterator_));
+    SCHECK_GE(index, 0, IllegalState, "Unexpected negative index");
+    RETURN_NOT_OK(processor(index, &row_iterator_));
   }
   return Status::OK();
 }

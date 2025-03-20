@@ -538,7 +538,7 @@ export interface InstanceConfigFormValue {
   enableYCQLAuth: boolean;
   ycqlPassword?: string;
   ycqlConfirmPassword?: string;
-  enableYEDIS: boolean;
+  enableYEDIS?: boolean;
   kmsConfig: string | null;
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;

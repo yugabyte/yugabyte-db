@@ -121,7 +121,8 @@ public class SetupYNP extends AbstractTaskBase {
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     NodeAgent nodeAgent = createNodeAgent(universe, node);
-    InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, ynpStagingDir);
+    InstallerFiles installerFiles =
+        nodeAgentManager.getInstallerFiles(nodeAgent, ynpStagingDir, false /* certsOnly */);
     Set<String> dirs =
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())

@@ -253,6 +253,9 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.frequencyTimeUnit = editScheduleParams.frequencyTimeUnit;
     this.incrementalBackupFrequency = editScheduleParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit = editScheduleParams.incrementalBackupFrequencyTimeUnit;
+    if (editScheduleParams.timeBeforeDelete > 0L) {
+      this.timeBeforeDelete = editScheduleParams.timeBeforeDelete;
+    }
   }
 
   // Verify Schedule backup params

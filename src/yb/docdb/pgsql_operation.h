@@ -219,6 +219,10 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Result<std::tuple<size_t, bool>> ExecuteSampleBlockBased();
 
+  // Only for backward compatibility with older releases which expect ExecuteSampleBlockBased
+  // to perform both stages for colocated tables in one run.
+  Result<std::tuple<size_t, bool>> DEPRECATED_ExecuteSampleBlockBasedColocated();
+
   void BindReadTimeToPagingState(const ReadHybridTime& read_time);
 
   Status PopulateResultSet(const dockv::PgTableRow& table_row,

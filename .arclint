@@ -49,7 +49,8 @@
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
      "(^yb_release_manifest.json$)",
-     "(^managed/client/java/.*/pom.xml)"
+     "(^managed/client/java/.*/pom.xml)",
+     "(^yugabyted-ui/ui/package-lock.json)"
   ],
   "linters": {
     "go-files": {

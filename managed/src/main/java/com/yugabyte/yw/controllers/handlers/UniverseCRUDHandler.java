@@ -1637,6 +1637,11 @@ public class UniverseCRUDHandler {
   public static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
     checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
     checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
+    checkEquals(
+        c -> c.userIntent.enableConnectionPooling,
+        primaryCluster,
+        cluster,
+        "Connection Pooling setting");
     checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
     checkEquals(c -> c.userIntent.enableYCQLAuth, primaryCluster, cluster, "Ycql auth setting");
     checkEquals(c -> c.userIntent.enableYEDIS, primaryCluster, cluster, "Yedis setting");

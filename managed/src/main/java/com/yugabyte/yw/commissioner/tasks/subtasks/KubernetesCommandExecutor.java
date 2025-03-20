@@ -1247,6 +1247,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             false);
         masterGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
       }
+      if (taskParams().ysqlMajorVersionUpgradeState != null
+          && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+              taskParams().ysqlMajorVersionUpgradeState)) {
+        masterGFlags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
+      }
     }
     if (!masterGFlags.isEmpty()) {
       gflagOverrides.put("master", masterGFlags);

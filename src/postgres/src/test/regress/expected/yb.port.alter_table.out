@@ -263,32 +263,112 @@ Check constraints:
     "con1" CHECK (a > 0)
 
 CREATE TABLE constraint_rename_test2 (a int CONSTRAINT con1 CHECK (a > 0), d int) INHERITS (constraint_rename_test);
-ERROR:  INHERITS not supported yet
-LINE 1: ...est2 (a int CONSTRAINT con1 CHECK (a > 0), d int) INHERITS (...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-/*
-TODO: Uncomment when inheritance is supported (https://github.com/yugabyte/yugabyte-db/issues/1129).
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging constraint "con1" with inherited definition
 \d constraint_rename_test2
+      Table "public.constraint_rename_test2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+ d      | integer |           |          | 
+Check constraints:
+    "con1" CHECK (a > 0)
+Inherits: constraint_rename_test
+
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
+ERROR:  cannot rename inherited constraint "con1"
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- fail
+ERROR:  inherited constraint "con1" must be renamed in child tables too
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- ok
 \d constraint_rename_test
+       Table "public.constraint_rename_test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Check constraints:
+    "con1foo" CHECK (a > 0)
+Number of child tables: 1 (Use \d+ to list them.)
+
 \d constraint_rename_test2
+      Table "public.constraint_rename_test2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+ d      | integer |           |          | 
+Check constraints:
+    "con1foo" CHECK (a > 0)
+Inherits: constraint_rename_test
+
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK (b > 0) NO INHERIT;
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con2 TO con2foo; -- ok
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con2foo TO con2bar; -- ok
 \d constraint_rename_test
+       Table "public.constraint_rename_test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Check constraints:
+    "con1foo" CHECK (a > 0)
+    "con2bar" CHECK (b > 0) NO INHERIT
+Number of child tables: 1 (Use \d+ to list them.)
+
 \d constraint_rename_test2
+      Table "public.constraint_rename_test2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+ d      | integer |           |          | 
+Check constraints:
+    "con1foo" CHECK (a > 0)
+Inherits: constraint_rename_test
+
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con3 PRIMARY KEY (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con3 TO con3foo; -- ok
 \d constraint_rename_test
+       Table "public.constraint_rename_test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Indexes:
+    "con3foo" PRIMARY KEY, lsm (a ASC)
+Check constraints:
+    "con1foo" CHECK (a > 0)
+    "con2bar" CHECK (b > 0) NO INHERIT
+Number of child tables: 1 (Use \d+ to list them.)
+
 \d constraint_rename_test2
+      Table "public.constraint_rename_test2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+ d      | integer |           |          | 
+Check constraints:
+    "con1foo" CHECK (a > 0)
+Inherits: constraint_rename_test
+
 DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
 ALTER TABLE IF EXISTS constraint_not_exist RENAME CONSTRAINT con3 TO con3foo; -- ok
+NOTICE:  relation "constraint_not_exist" does not exist, skipping
 ALTER TABLE IF EXISTS constraint_rename_test ADD CONSTRAINT con4 UNIQUE (a);
-*/
+NOTICE:  relation "constraint_rename_test" does not exist, skipping
 -- renaming constraints with cache reset of target relation
 CREATE TABLE constraint_rename_cache (a int,
   CONSTRAINT chk_a CHECK (a > 0),
@@ -360,26 +440,1209 @@ ERROR:  check constraint "b_greater_than_ten" of relation "attmp3" is violated b
 DELETE FROM attmp3 WHERE NOT b > 10;
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
+-- Test inherited NOT VALID CHECK constraints
+select * from attmp3;
+ a | b  
+---+----
+ 1 | 20
+(1 row)
+
+CREATE TABLE attmp6 () INHERITS (attmp3);
+CREATE TABLE attmp7 () INHERITS (attmp3);
+INSERT INTO attmp6 VALUES (6, 30), (7, 16);
+ALTER TABLE attmp3 ADD CONSTRAINT b_le_20 CHECK (b <= 20) NOT VALID;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_le_20;	-- fails
+ERROR:  check constraint "b_le_20" of relation "attmp6" is violated by some row
+DELETE FROM attmp6 WHERE b > 20;
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_le_20;	-- succeeds
+-- An already validated constraint must not be revalidated
+CREATE FUNCTION boo(int) RETURNS int IMMUTABLE STRICT LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'boo: %', $1; RETURN $1; END; $$;
+INSERT INTO attmp7 VALUES (8, 18);
+ALTER TABLE attmp7 ADD CONSTRAINT identity CHECK (b = boo(b));
+NOTICE:  boo: 18
+ALTER TABLE attmp3 ADD CONSTRAINT IDENTITY check (b = boo(b)) NOT VALID;
+NOTICE:  merging constraint "identity" with inherited definition
+ALTER TABLE attmp3 VALIDATE CONSTRAINT identity;
+NOTICE:  boo: 20
+NOTICE:  boo: 16
+-- A NO INHERIT constraint should not be looked for in children during VALIDATE CONSTRAINT
+create table parent_noinh_convalid (a int);
+create table child_noinh_convalid () inherits (parent_noinh_convalid);
+insert into parent_noinh_convalid values (1);
+insert into child_noinh_convalid values (1);
+alter table parent_noinh_convalid add constraint check_a_is_2 check (a = 2) no inherit not valid;
+-- fail, because of the row in parent
+alter table parent_noinh_convalid validate constraint check_a_is_2;
+ERROR:  check constraint "check_a_is_2" of relation "parent_noinh_convalid" is violated by some row
+delete from only parent_noinh_convalid;
+-- ok (parent itself contains no violating rows)
+alter table parent_noinh_convalid validate constraint check_a_is_2;
+select convalidated from pg_constraint where conrelid = 'parent_noinh_convalid'::regclass and conname = 'check_a_is_2';
+ convalidated 
+--------------
+ t
+(1 row)
+
+-- cleanup
+drop table parent_noinh_convalid, child_noinh_convalid;
+-- Try (and fail) to create constraint from attmp5(a) to attmp4(a) - unique constraint on
+-- attmp4 is a,b
+ALTER TABLE attmp5 add constraint attmpconstr foreign key(a) references attmp4(a) match full;
+ERROR:  there is no unique constraint matching given keys for referenced table "attmp4"
+DROP TABLE attmp7;
+DROP TABLE attmp6;
+DROP TABLE attmp5;
+DROP TABLE attmp4;
+DROP TABLE attmp3;
+DROP TABLE attmp2;
+-- NOT VALID with plan invalidation -- ensure we don't use a constraint for
+-- exclusion until validated
+set constraint_exclusion TO 'partition';
+create table nv_parent (d date, check (false) no inherit not valid);
+-- not valid constraint added at creation time should automatically become valid
+\d nv_parent
+            Table "public.nv_parent"
+ Column | Type | Collation | Nullable | Default 
+--------+------+-----------+----------+---------
+ d      | date |           |          | 
+Check constraints:
+    "nv_parent_check" CHECK (false) NO INHERIT
+
+create table nv_child_2010 () inherits (nv_parent);
+create table nv_child_2011 () inherits (nv_parent);
+alter table nv_child_2010 add check (d between '2010-01-01'::date and '2010-12-31'::date) not valid;
+alter table nv_child_2011 add check (d between '2011-01-01'::date and '2011-12-31'::date) not valid;
+explain (costs off) select * from nv_parent where d between '2011-08-01' and '2011-08-31';
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on nv_parent nv_parent_1
+         Storage Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+   ->  Seq Scan on nv_child_2010 nv_parent_2
+         Storage Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+   ->  Seq Scan on nv_child_2011 nv_parent_3
+         Storage Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+(7 rows)
+
+create table nv_child_2009 (check (d between '2009-01-01'::date and '2009-12-31'::date)) inherits (nv_parent);
+explain (costs off) select * from nv_parent where d between '2011-08-01'::date and '2011-08-31'::date;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on nv_parent nv_parent_1
+         Storage Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+   ->  Seq Scan on nv_child_2010 nv_parent_2
+         Storage Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+   ->  Seq Scan on nv_child_2011 nv_parent_3
+         Storage Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+(7 rows)
+
+explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on nv_parent nv_parent_1
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+   ->  Seq Scan on nv_child_2010 nv_parent_2
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+   ->  Seq Scan on nv_child_2011 nv_parent_3
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+   ->  Seq Scan on nv_child_2009 nv_parent_4
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+(9 rows)
+
+-- after validation, the constraint should be used
+alter table nv_child_2011 VALIDATE CONSTRAINT nv_child_2011_d_check;
+explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on nv_parent nv_parent_1
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+   ->  Seq Scan on nv_child_2010 nv_parent_2
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+   ->  Seq Scan on nv_child_2009 nv_parent_3
+         Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+(7 rows)
+
+-- add an inherited NOT VALID constraint
+alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::date) not valid;
+\d nv_child_2009
+          Table "public.nv_child_2009"
+ Column | Type | Collation | Nullable | Default 
+--------+------+-----------+----------+---------
+ d      | date |           |          | 
+Check constraints:
+    "nv_child_2009_d_check" CHECK (d >= '01-01-2009'::date AND d <= '12-31-2009'::date)
+    "nv_parent_d_check" CHECK (d >= '01-01-2001'::date AND d <= '12-31-2099'::date) NOT VALID
+Inherits: nv_parent
+
+-- we leave nv_parent and children around to help test pg_dump logic
+-- Foreign key adding test with mixed types
+-- Note: these tables are TEMP to avoid name conflicts when this test
+-- is run in parallel with foreign_key.sql.
+CREATE TEMP TABLE PKTABLE (ptest1 int PRIMARY KEY);
+INSERT INTO PKTABLE VALUES(42);
+CREATE TEMP TABLE FKTABLE (ftest1 inet);
+-- This next should fail, because int=inet does not exist
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+-- This should also fail for the same reason, but here we
+-- give the column name
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable(ptest1);
+ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DROP TABLE FKTABLE;
+-- This should succeed, even though they are different types,
+-- because int=int8 exists and is a member of the integer opfamily
+CREATE TEMP TABLE FKTABLE (ftest1 int8);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+-- Check it actually works
+INSERT INTO FKTABLE VALUES(42);		-- should succeed
+INSERT INTO FKTABLE VALUES(43);		-- should fail
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_ftest1_fkey"
+DETAIL:  Key (ftest1)=(43) is not present in table "pktable".
+DROP TABLE FKTABLE;
+-- This should fail, because we'd have to cast numeric to int which is
+-- not an implicit coercion (or use numeric=numeric, but that's not part
+-- of the integer opfamily)
+CREATE TEMP TABLE FKTABLE (ftest1 numeric);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+-- On the other hand, this should work because int implicitly promotes to
+-- numeric, and we allow promotion on the FK side
+CREATE TEMP TABLE PKTABLE (ptest1 numeric PRIMARY KEY);
+INSERT INTO PKTABLE VALUES(42);
+CREATE TEMP TABLE FKTABLE (ftest1 int);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
+-- Check it actually works
+INSERT INTO FKTABLE VALUES(42);		-- should succeed
+INSERT INTO FKTABLE VALUES(43);		-- should fail
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_ftest1_fkey"
+DETAIL:  Key (ftest1)=(43) is not present in table "pktable".
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
+                           PRIMARY KEY(ptest1, ptest2));
+-- This should fail, because we just chose really odd types
+CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
+ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DROP TABLE FKTABLE;
+-- Again, so should this...
+CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
+     references pktable(ptest1, ptest2);
+ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DROP TABLE FKTABLE;
+-- This fails because we mixed up the column ordering
+CREATE TEMP TABLE FKTABLE (ftest1 int, ftest2 inet);
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
+     references pktable(ptest2, ptest1);
+ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+-- As does this...
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
+     references pktable(ptest1, ptest2);
+ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
+DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+-- Test that ALTER CONSTRAINT updates trigger deferrability properly
+CREATE TEMP TABLE PKTABLE (ptest1 int primary key);
+CREATE TEMP TABLE FKTABLE (ftest1 int);
+ALTER TABLE FKTABLE ADD CONSTRAINT fknd FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION NOT DEFERRABLE;
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdd FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdi FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION DEFERRABLE INITIALLY IMMEDIATE;
+ALTER TABLE FKTABLE ADD CONSTRAINT fknd2 FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION DEFERRABLE INITIALLY DEFERRED;
+/* YB: ALTER CONSTRAINT is not supported #3945
+ALTER TABLE FKTABLE ALTER CONSTRAINT fknd2 NOT DEFERRABLE;
+*/ -- YB
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdd2 FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION NOT DEFERRABLE;
+/* YB: ALTER CONSTRAINT is not supported #3945
+ALTER TABLE FKTABLE ALTER CONSTRAINT fkdd2 DEFERRABLE INITIALLY DEFERRED;
+*/ -- YB
+ALTER TABLE FKTABLE ADD CONSTRAINT fkdi2 FOREIGN KEY(ftest1) REFERENCES pktable
+  ON DELETE CASCADE ON UPDATE NO ACTION NOT DEFERRABLE;
+/* YB: ALTER CONSTRAINT is not supported #3945
+ALTER TABLE FKTABLE ALTER CONSTRAINT fkdi2 DEFERRABLE INITIALLY IMMEDIATE;
+*/ -- YB
+SELECT conname, tgfoid::regproc, tgtype, tgdeferrable, tginitdeferred
+FROM pg_trigger JOIN pg_constraint con ON con.oid = tgconstraint
+WHERE tgrelid = 'pktable'::regclass
+ORDER BY 1,2,3;
+ conname |         tgfoid         | tgtype | tgdeferrable | tginitdeferred 
+---------+------------------------+--------+--------------+----------------
+ fkdd    | "RI_FKey_cascade_del"  |      9 | f            | f
+ fkdd    | "RI_FKey_noaction_upd" |     17 | t            | t
+ fkdd2   | "RI_FKey_cascade_del"  |      9 | f            | f
+ fkdd2   | "RI_FKey_noaction_upd" |     17 | f            | f
+ fkdi    | "RI_FKey_cascade_del"  |      9 | f            | f
+ fkdi    | "RI_FKey_noaction_upd" |     17 | t            | f
+ fkdi2   | "RI_FKey_cascade_del"  |      9 | f            | f
+ fkdi2   | "RI_FKey_noaction_upd" |     17 | f            | f
+ fknd    | "RI_FKey_cascade_del"  |      9 | f            | f
+ fknd    | "RI_FKey_noaction_upd" |     17 | f            | f
+ fknd2   | "RI_FKey_cascade_del"  |      9 | f            | f
+ fknd2   | "RI_FKey_noaction_upd" |     17 | t            | t
+(12 rows)
+
+SELECT conname, tgfoid::regproc, tgtype, tgdeferrable, tginitdeferred
+FROM pg_trigger JOIN pg_constraint con ON con.oid = tgconstraint
+WHERE tgrelid = 'fktable'::regclass
+ORDER BY 1,2,3;
+ conname |       tgfoid        | tgtype | tgdeferrable | tginitdeferred 
+---------+---------------------+--------+--------------+----------------
+ fkdd    | "RI_FKey_check_ins" |      5 | t            | t
+ fkdd    | "RI_FKey_check_upd" |     17 | t            | t
+ fkdd2   | "RI_FKey_check_ins" |      5 | f            | f
+ fkdd2   | "RI_FKey_check_upd" |     17 | f            | f
+ fkdi    | "RI_FKey_check_ins" |      5 | t            | f
+ fkdi    | "RI_FKey_check_upd" |     17 | t            | f
+ fkdi2   | "RI_FKey_check_ins" |      5 | f            | f
+ fkdi2   | "RI_FKey_check_upd" |     17 | f            | f
+ fknd    | "RI_FKey_check_ins" |      5 | f            | f
+ fknd    | "RI_FKey_check_upd" |     17 | f            | f
+ fknd2   | "RI_FKey_check_ins" |      5 | t            | t
+ fknd2   | "RI_FKey_check_upd" |     17 | t            | t
+(12 rows)
+
+-- temp tables should go away by themselves, need not drop them.
+-- test check constraint adding
+create table atacc1 ( test int );
+-- add a check constraint
+alter table atacc1 add constraint atacc_test1 check (test>3);
+-- should fail
+insert into atacc1 (test) values (2);
+ERROR:  new row for relation "atacc1" violates check constraint "atacc_test1"
+DETAIL:  Failing row contains (2).
+-- should succeed
+insert into atacc1 (test) values (4);
+drop table atacc1;
+-- let's do one where the check fails when added
+create table atacc1 ( test int );
+-- insert a soon to be failing row
+insert into atacc1 (test) values (2);
+-- add a check constraint (fails)
+alter table atacc1 add constraint atacc_test1 check (test>3);
+ERROR:  check constraint "atacc_test1" of relation "atacc1" is violated by some row
+insert into atacc1 (test) values (4);
+drop table atacc1;
+-- let's do one where the check fails because the column doesn't exist
+create table atacc1 ( test int );
+-- add a check constraint (fails)
+alter table atacc1 add constraint atacc_test1 check (test1>3);
+ERROR:  column "test1" does not exist
+HINT:  Perhaps you meant to reference the column "atacc1.test".
+drop table atacc1;
+-- something a little more complicated
+create table atacc1 ( test int, test2 int, test3 int);
+-- add a check constraint (fails)
+alter table atacc1 add constraint atacc_test1 check (test+test2<test3*4);
+-- should fail
+insert into atacc1 (test,test2,test3) values (4,4,2);
+ERROR:  new row for relation "atacc1" violates check constraint "atacc_test1"
+DETAIL:  Failing row contains (4, 4, 2).
+-- should succeed
+insert into atacc1 (test,test2,test3) values (4,4,5);
+drop table atacc1;
+-- lets do some naming tests
+create table atacc1 (test int check (test>3), test2 int);
+alter table atacc1 add check (test2>test);
+-- should fail for $2
+insert into atacc1 (test2, test) values (3, 4);
+ERROR:  new row for relation "atacc1" violates check constraint "atacc1_check"
+DETAIL:  Failing row contains (4, 3).
+drop table atacc1;
+-- inheritance related tests
+create table atacc1 (test int);
+create table atacc2 (test2 int);
+create table atacc3 (test3 int) inherits (atacc1, atacc2);
+alter table atacc2 add constraint foo check (test2>0);
+-- fail and then succeed on atacc2
+insert into atacc2 (test2) values (-3);
+ERROR:  new row for relation "atacc2" violates check constraint "foo"
+DETAIL:  Failing row contains (-3).
+insert into atacc2 (test2) values (3);
+-- fail and then succeed on atacc3
+insert into atacc3 (test2) values (-3);
+ERROR:  new row for relation "atacc3" violates check constraint "foo"
+DETAIL:  Failing row contains (null, -3, null).
+insert into atacc3 (test2) values (3);
+drop table atacc3;
+drop table atacc2;
+drop table atacc1;
+-- same things with one created with INHERIT
+create table atacc1 (test int);
+create table atacc2 (test2 int);
+create table atacc3 (test3 int) inherits (atacc1, atacc2);
+alter table atacc3 no inherit atacc2;
+-- fail
+alter table atacc3 no inherit atacc2;
+ERROR:  relation "atacc2" is not a parent of relation "atacc3"
+-- make sure it really isn't a child
+insert into atacc3 (test2) values (3);
+select test2 from atacc2;
+ test2 
+-------
+(0 rows)
+
+-- fail due to missing constraint
+alter table atacc2 add constraint foo check (test2>0);
+alter table atacc3 inherit atacc2;
+ERROR:  child table is missing constraint "foo"
+-- fail due to missing column
+alter table atacc3 rename test2 to testx;
+alter table atacc3 inherit atacc2;
+ERROR:  child table is missing column "test2"
+-- fail due to mismatched data type
+alter table atacc3 add test2 bool;
+alter table atacc3 inherit atacc2;
+ERROR:  child table "atacc3" has different type for column "test2"
+alter table atacc3 drop test2;
+-- succeed
+alter table atacc3 add test2 int;
+update atacc3 set test2 = 4 where test2 is null;
+alter table atacc3 add constraint foo check (test2>0);
+alter table atacc3 inherit atacc2;
+-- fail due to duplicates and circular inheritance
+alter table atacc3 inherit atacc2;
+ERROR:  relation "atacc2" would be inherited from more than once
+alter table atacc2 inherit atacc3;
+ERROR:  circular inheritance not allowed
+DETAIL:  "atacc3" is already a child of "atacc2".
+alter table atacc2 inherit atacc2;
+ERROR:  circular inheritance not allowed
+DETAIL:  "atacc2" is already a child of "atacc2".
+-- test that we really are a child now (should see 4 not 3 and cascade should go through)
+select test2 from atacc2;
+ test2 
+-------
+     4
+(1 row)
+
+drop table atacc2 cascade;
+NOTICE:  drop cascades to table atacc3
+drop table atacc1;
+-- adding only to a parent is allowed as of 9.2
+create table atacc1 (test int);
+create table atacc2 (test2 int) inherits (atacc1);
+-- ok:
+alter table atacc1 add constraint foo check (test>0) no inherit;
+-- check constraint is not there on child
+insert into atacc2 (test) values (-3);
+-- check constraint is there on parent
+insert into atacc1 (test) values (-3);
+ERROR:  new row for relation "atacc1" violates check constraint "foo"
+DETAIL:  Failing row contains (-3).
+insert into atacc1 (test) values (3);
+-- fail, violating row:
+alter table atacc2 add constraint foo check (test>0) no inherit;
+ERROR:  check constraint "foo" of relation "atacc2" is violated by some row
+drop table atacc2;
+drop table atacc1;
+-- test unique constraint adding
+create table atacc1 ( test int ) ;
+-- add a unique constraint
+alter table atacc1 add constraint atacc_test1 unique (test);
+-- insert first value
+insert into atacc1 (test) values (2);
+-- should fail
+insert into atacc1 (test) values (2);
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
+-- should succeed
+insert into atacc1 (test) values (4);
+-- try to create duplicates via alter table using - should fail
+alter table atacc1 alter column test type integer using 0;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
+drop table atacc1;
+-- let's do one where the unique constraint fails when added
+create table atacc1 ( test int );
+-- insert soon to be failing rows
+insert into atacc1 (test) values (2);
+insert into atacc1 (test) values (2);
+-- add a unique constraint (fails)
+alter table atacc1 add constraint atacc_test1 unique (test);
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
+insert into atacc1 (test) values (3);
+drop table atacc1;
+-- let's do one where the unique constraint fails
+-- because the column doesn't exist
+create table atacc1 ( test int );
+-- add a unique constraint (fails)
+alter table atacc1 add constraint atacc_test1 unique (test1);
+ERROR:  column "test1" named in key does not exist
+drop table atacc1;
+-- something a little more complicated
+create table atacc1 ( test int, test2 int);
+-- add a unique constraint
+alter table atacc1 add constraint atacc_test1 unique (test, test2);
+-- insert initial value
+insert into atacc1 (test,test2) values (4,4);
+-- should fail
+insert into atacc1 (test,test2) values (4,4);
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
+-- should all succeed
+insert into atacc1 (test,test2) values (4,5);
+insert into atacc1 (test,test2) values (5,4);
+insert into atacc1 (test,test2) values (5,5);
+drop table atacc1;
+-- lets do some naming tests
+create table atacc1 (test int, test2 int, unique(test));
+alter table atacc1 add unique (test2);
+-- should fail for @@ second one @@
+insert into atacc1 (test2, test) values (3, 3);
+insert into atacc1 (test2, test) values (2, 3);
+ERROR:  duplicate key value violates unique constraint "atacc1_test_key"
+drop table atacc1;
+-- test primary key constraint adding
+create table atacc1 ( id serial, test int) ;
+-- add a primary key constraint
+alter table atacc1 add constraint atacc_test1 primary key (test);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+-- insert first value
+insert into atacc1 (test) values (2);
+-- should fail
+insert into atacc1 (test) values (2);
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
+-- should succeed
+insert into atacc1 (test) values (4);
+-- inserting NULL should fail
+insert into atacc1 (test) values(NULL);
+ERROR:  null value in column "test" of relation "atacc1" violates not-null constraint
+DETAIL:  Failing row contains (4, null).
+-- try adding a second primary key (should fail)
+alter table atacc1 add constraint atacc_oid1 primary key(id);
+ERROR:  multiple primary keys for table "atacc1" are not allowed
+-- drop first primary key constraint
+alter table atacc1 drop constraint atacc_test1 restrict;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+-- try adding a primary key on oid (should succeed)
+alter table atacc1 add constraint atacc_oid1 primary key(id);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+drop table atacc1;
+-- let's do one where the primary key constraint fails when added
+create table atacc1 ( test int );
+-- insert soon to be failing rows
+insert into atacc1 (test) values (2);
+insert into atacc1 (test) values (2);
+-- add a primary key (fails)
+alter table atacc1 add constraint atacc_test1 primary key (test);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  duplicate key value violates unique constraint "atacc1"
+insert into atacc1 (test) values (3);
+drop table atacc1;
+-- let's do another one where the primary key constraint fails when added
+create table atacc1 ( test int );
+-- insert soon to be failing row
+insert into atacc1 (test) values (NULL);
+-- add a primary key (fails)
+alter table atacc1 add constraint atacc_test1 primary key (test);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  column "test" of relation "atacc1" contains null values
+insert into atacc1 (test) values (3);
+drop table atacc1;
+-- let's do one where the primary key constraint fails
+-- because the column doesn't exist
+create table atacc1 ( test int );
+-- add a primary key constraint (fails)
+alter table atacc1 add constraint atacc_test1 primary key (test1);
+ERROR:  column "test1" of relation "atacc1" does not exist
+drop table atacc1;
+-- adding a new column as primary key to a non-empty table.
+-- should fail unless the column has a non-null default value.
+create table atacc1 ( test int );
+insert into atacc1 (test) values (0);
+-- add a primary key column without a default (fails).
+alter table atacc1 add column test2 int primary key;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  column "test2" of relation "atacc1" contains null values
+-- now add a primary key column with a default (succeeds).
+alter table atacc1 add column test2 int default 0 primary key;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+drop table atacc1;
+-- this combination used to have order-of-execution problems (bug #15580)
+create table atacc1 (a int);
+insert into atacc1 values(1);
+alter table atacc1
+  add column b float8 not null default random(),
+  add primary key(a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+drop table atacc1;
+-- additionally, we've seen issues with foreign key validation not being
+-- properly delayed until after a table rewrite.  Check that works ok.
+create table atacc1 (a int primary key);
+alter table atacc1 add constraint atacc1_fkey foreign key (a) references atacc1 (a) not valid;
+alter table atacc1 validate constraint atacc1_fkey, alter a type bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+drop table atacc1;
+-- we've also seen issues with check constraints being validated at the wrong
+-- time when there's a pending table rewrite.
+create table atacc1 (a bigint, b int);
+insert into atacc1 values(1,1);
+alter table atacc1 add constraint atacc1_chk check(b = 1) not valid;
+alter table atacc1 validate constraint atacc1_chk, alter a type int;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+drop table atacc1;
+-- same as above, but ensure the constraint violation is detected
+create table atacc1 (a bigint, b int);
+insert into atacc1 values(1,2);
+alter table atacc1 add constraint atacc1_chk check(b = 1) not valid;
+alter table atacc1 validate constraint atacc1_chk, alter a type int;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  check constraint "atacc1_chk" of relation "atacc1" is violated by some row
+drop table atacc1;
+-- something a little more complicated
+create table atacc1 ( test int, test2 int);
+-- add a primary key constraint
+alter table atacc1 add constraint atacc_test1 primary key (test, test2);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+-- try adding a second primary key - should fail
+alter table atacc1 add constraint atacc_test2 primary key (test);
+ERROR:  multiple primary keys for table "atacc1" are not allowed
+-- insert initial value
+insert into atacc1 (test,test2) values (4,4);
+-- should fail
+insert into atacc1 (test,test2) values (4,4);
+ERROR:  duplicate key value violates unique constraint "atacc_test1"
+insert into atacc1 (test,test2) values (NULL,3);
+ERROR:  null value in column "test" of relation "atacc1" violates not-null constraint
+DETAIL:  Failing row contains (null, 3).
+insert into atacc1 (test,test2) values (3, NULL);
+ERROR:  null value in column "test2" of relation "atacc1" violates not-null constraint
+DETAIL:  Failing row contains (3, null).
+insert into atacc1 (test,test2) values (NULL,NULL);
+ERROR:  null value in column "test" of relation "atacc1" violates not-null constraint
+DETAIL:  Failing row contains (null, null).
+-- should all succeed
+insert into atacc1 (test,test2) values (4,5);
+insert into atacc1 (test,test2) values (5,4);
+insert into atacc1 (test,test2) values (5,5);
+drop table atacc1;
+-- lets do some naming tests
+create table atacc1 (test int, test2 int, primary key(test));
+-- only first should succeed
+insert into atacc1 (test2, test) values (3, 3);
+insert into atacc1 (test2, test) values (2, 3);
+ERROR:  duplicate key value violates unique constraint "atacc1_pkey"
+insert into atacc1 (test2, test) values (1, NULL);
+ERROR:  null value in column "test" of relation "atacc1" violates not-null constraint
+DETAIL:  Failing row contains (null, 1).
+drop table atacc1;
+-- alter table / alter column [set/drop] not null tests
+-- try altering system catalogs, should fail
+alter table pg_class alter column relname drop not null;
+ERROR:  permission denied: "pg_class" is a system catalog
+alter table pg_class alter relname set not null;
+ERROR:  permission denied: "pg_class" is a system catalog
+-- try altering non-existent table, should fail
+alter table non_existent alter column bar set not null;
+ERROR:  relation "non_existent" does not exist
+alter table non_existent alter column bar drop not null;
+ERROR:  relation "non_existent" does not exist
+-- test setting columns to null and not null and vice versa
+-- test checking for null values and primary key
+create table atacc1 (test int not null);
+alter table atacc1 add constraint "atacc1_pkey" primary key (test);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+alter table atacc1 alter column test drop not null;
+ERROR:  column "test" is in a primary key
+alter table atacc1 drop constraint "atacc1_pkey";
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+alter table atacc1 alter column test drop not null;
+insert into atacc1 values (null);
+alter table atacc1 alter test set not null;
+ERROR:  column "test" of relation "atacc1" contains null values
+delete from atacc1;
+alter table atacc1 alter test set not null;
+-- try altering a non-existent column, should fail
+alter table atacc1 alter bar set not null;
+ERROR:  column "bar" of relation "atacc1" does not exist
+alter table atacc1 alter bar drop not null;
+ERROR:  column "bar" of relation "atacc1" does not exist
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+alter table myview alter column test drop not null;
+ERROR:  ALTER action ALTER COLUMN ... DROP NOT NULL cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
+alter table myview alter column test set not null;
+ERROR:  ALTER action ALTER COLUMN ... SET NOT NULL cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
+drop view myview;
+drop table atacc1;
+-- set not null verified by constraints
+create table atacc1 (test_a int, test_b int);
+insert into atacc1 values (null, 1);
+-- constraint not cover all values, should fail
+alter table atacc1 add constraint atacc1_constr_or check(test_a is not null or test_b < 10);
+alter table atacc1 alter test_a set not null;
+ERROR:  column "test_a" of relation "atacc1" contains null values
+alter table atacc1 drop constraint atacc1_constr_or;
+-- not valid constraint, should fail
+alter table atacc1 add constraint atacc1_constr_invalid check(test_a is not null) not valid;
+alter table atacc1 alter test_a set not null;
+ERROR:  column "test_a" of relation "atacc1" contains null values
+alter table atacc1 drop constraint atacc1_constr_invalid;
+-- with valid constraint
+update atacc1 set test_a = 1;
+alter table atacc1 add constraint atacc1_constr_a_valid check(test_a is not null);
+alter table atacc1 alter test_a set not null;
+delete from atacc1;
+insert into atacc1 values (2, null);
+alter table atacc1 alter test_a drop not null;
+-- test multiple set not null at same time
+-- test_a checked by atacc1_constr_a_valid, test_b should fail by table scan
+alter table atacc1 alter test_a set not null, alter test_b set not null;
+ERROR:  column "test_b" of relation "atacc1" contains null values
+-- commands order has no importance
+alter table atacc1 alter test_b set not null, alter test_a set not null;
+ERROR:  column "test_b" of relation "atacc1" contains null values
+-- valid one by table scan, one by check constraints
+update atacc1 set test_b = 1;
+alter table atacc1 alter test_b set not null, alter test_a set not null;
+alter table atacc1 alter test_a drop not null, alter test_b drop not null;
+-- both column has check constraints
+alter table atacc1 add constraint atacc1_constr_b_valid check(test_b is not null);
+alter table atacc1 alter test_b set not null, alter test_a set not null;
+drop table atacc1;
 -- test inheritance
+create table parent (a int);
+create table child (b varchar(255)) inherits (parent);
+alter table parent alter a set not null;
+insert into parent values (NULL);
+ERROR:  null value in column "a" of relation "parent" violates not-null constraint
+DETAIL:  Failing row contains (null).
+insert into child (a, b) values (NULL, 'foo');
+ERROR:  null value in column "a" of relation "child" violates not-null constraint
+DETAIL:  Failing row contains (null, foo).
+alter table parent alter a drop not null;
+insert into parent values (NULL);
+insert into child (a, b) values (NULL, 'foo');
+alter table only parent alter a set not null;
+ERROR:  column "a" of relation "parent" contains null values
+alter table child alter a set not null;
+ERROR:  column "a" of relation "child" contains null values
+delete from parent;
+alter table only parent alter a set not null;
+insert into parent values (NULL);
+ERROR:  null value in column "a" of relation "parent" violates not-null constraint
+DETAIL:  Failing row contains (null).
+alter table child alter a set not null;
+insert into child (a, b) values (NULL, 'foo');
+ERROR:  null value in column "a" of relation "child" violates not-null constraint
+DETAIL:  Failing row contains (null, foo).
+delete from child;
+alter table child alter a set not null;
+insert into child (a, b) values (NULL, 'foo');
+ERROR:  null value in column "a" of relation "child" violates not-null constraint
+DETAIL:  Failing row contains (null, foo).
+drop table child;
+drop table parent;
+-- test setting and removing default values
+create table def_test (
+	c1	int4 default 5,
+	c2	text default 'initial_default'
+);
+insert into def_test default values;
+alter table def_test alter column c1 drop default;
+insert into def_test default values;
+alter table def_test alter column c2 drop default;
+insert into def_test default values;
+alter table def_test alter column c1 set default 10;
+alter table def_test alter column c2 set default 'new_default';
+insert into def_test default values;
+select * from def_test;
+ c1 |       c2        
+----+-----------------
+  5 | initial_default
+    | initial_default
+    | 
+ 10 | new_default
+(4 rows)
+
+-- set defaults to an incorrect type: this should fail
+alter table def_test alter column c1 set default 'wrong_datatype';
+ERROR:  invalid input syntax for type integer: "wrong_datatype"
+alter table def_test alter column c2 set default 20;
+-- set defaults on a non-existent column: this should fail
+alter table def_test alter column c3 set default 30;
+ERROR:  column "c3" of relation "def_test" does not exist
+-- set defaults on views: we need to create a view, add a rule
+-- to allow insertions into it, and then alter the view to add
+-- a default
+create view def_view_test as select * from def_test;
+create rule def_view_test_ins as
+	on insert to def_view_test
+	do instead insert into def_test select new.*;
+insert into def_view_test default values;
+alter table def_view_test alter column c1 set default 45;
+insert into def_view_test default values;
+alter table def_view_test alter column c2 set default 'view_default';
+insert into def_view_test default values;
+select * from def_view_test;
+ c1 |       c2        
+----+-----------------
+  5 | initial_default
+    | initial_default
+    | 
+ 10 | new_default
+    | 
+ 45 | 
+ 45 | view_default
+(7 rows)
+
+drop rule def_view_test_ins on def_view_test;
+drop view def_view_test;
+drop table def_test;
+-- alter table / drop column tests
+-- try altering system catalogs, should fail
+alter table pg_class drop column relname;
+ERROR:  permission denied: "pg_class" is a system catalog
+-- try altering non-existent table, should fail
+alter table nosuchtable drop column bar;
+ERROR:  relation "nosuchtable" does not exist
+-- test dropping columns
+create table atacc1 (a int4 not null, b int4, c int4 not null, d int4);
+insert into atacc1 values (1, 2, 3, 4);
+alter table atacc1 drop a;
+alter table atacc1 drop a;
+ERROR:  column "a" of relation "atacc1" does not exist
+-- SELECTs
+select * from atacc1;
+ b | c | d 
+---+---+---
+ 2 | 3 | 4
+(1 row)
+
+select * from atacc1 order by a;
+ERROR:  column "a" does not exist
+LINE 1: select * from atacc1 order by a;
+                                      ^
+select * from atacc1 order by "........pg.dropped.1........";
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select * from atacc1 order by "........pg.dropped.1........"...
+                                      ^
+select * from atacc1 group by a;
+ERROR:  column "a" does not exist
+LINE 1: select * from atacc1 group by a;
+                                      ^
+select * from atacc1 group by "........pg.dropped.1........";
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select * from atacc1 group by "........pg.dropped.1........"...
+                                      ^
+select atacc1.* from atacc1;
+ b | c | d 
+---+---+---
+ 2 | 3 | 4
+(1 row)
+
+select a from atacc1;
+ERROR:  column "a" does not exist
+LINE 1: select a from atacc1;
+               ^
+select atacc1.a from atacc1;
+ERROR:  column atacc1.a does not exist
+LINE 1: select atacc1.a from atacc1;
+               ^
+select b,c,d from atacc1;
+ b | c | d 
+---+---+---
+ 2 | 3 | 4
+(1 row)
+
+select a,b,c,d from atacc1;
+ERROR:  column "a" does not exist
+LINE 1: select a,b,c,d from atacc1;
+               ^
+select * from atacc1 where a = 1;
+ERROR:  column "a" does not exist
+LINE 1: select * from atacc1 where a = 1;
+                                   ^
+select "........pg.dropped.1........" from atacc1;
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select "........pg.dropped.1........" from atacc1;
+               ^
+select atacc1."........pg.dropped.1........" from atacc1;
+ERROR:  column atacc1.........pg.dropped.1........ does not exist
+LINE 1: select atacc1."........pg.dropped.1........" from atacc1;
+               ^
+select "........pg.dropped.1........",b,c,d from atacc1;
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select "........pg.dropped.1........",b,c,d from atacc1;
+               ^
+select * from atacc1 where "........pg.dropped.1........" = 1;
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: select * from atacc1 where "........pg.dropped.1........" = ...
+                                   ^
+-- UPDATEs
+update atacc1 set a = 3;
+ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: update atacc1 set a = 3;
+                          ^
+update atacc1 set b = 2 where a = 3;
+ERROR:  column "a" does not exist
+LINE 1: update atacc1 set b = 2 where a = 3;
+                                      ^
+update atacc1 set "........pg.dropped.1........" = 3;
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: update atacc1 set "........pg.dropped.1........" = 3;
+                          ^
+update atacc1 set b = 2 where "........pg.dropped.1........" = 3;
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: update atacc1 set b = 2 where "........pg.dropped.1........"...
+                                      ^
+-- INSERTs
+insert into atacc1 values (10, 11, 12, 13);
+ERROR:  INSERT has more expressions than target columns
+LINE 1: insert into atacc1 values (10, 11, 12, 13);
+                                               ^
+insert into atacc1 values (default, 11, 12, 13);
+ERROR:  INSERT has more expressions than target columns
+LINE 1: insert into atacc1 values (default, 11, 12, 13);
+                                                    ^
+insert into atacc1 values (11, 12, 13);
+insert into atacc1 (a) values (10);
+ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a) values (10);
+                            ^
+insert into atacc1 (a) values (default);
+ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a) values (default);
+                            ^
+insert into atacc1 (a,b,c,d) values (10,11,12,13);
+ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a,b,c,d) values (10,11,12,13);
+                            ^
+insert into atacc1 (a,b,c,d) values (default,11,12,13);
+ERROR:  column "a" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 (a,b,c,d) values (default,11,12,13);
+                            ^
+insert into atacc1 (b,c,d) values (11,12,13);
+insert into atacc1 ("........pg.dropped.1........") values (10);
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........") values (...
+                            ^
+insert into atacc1 ("........pg.dropped.1........") values (default);
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........") values (...
+                            ^
+insert into atacc1 ("........pg.dropped.1........",b,c,d) values (10,11,12,13);
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........",b,c,d) va...
+                            ^
+insert into atacc1 ("........pg.dropped.1........",b,c,d) values (default,11,12,13);
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+LINE 1: insert into atacc1 ("........pg.dropped.1........",b,c,d) va...
+                            ^
+-- DELETEs
+delete from atacc1 where a = 3;
+ERROR:  column "a" does not exist
+LINE 1: delete from atacc1 where a = 3;
+                                 ^
+delete from atacc1 where "........pg.dropped.1........" = 3;
+ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: delete from atacc1 where "........pg.dropped.1........" = 3;
+                                 ^
+delete from atacc1;
+-- try dropping a non-existent column, should fail
+alter table atacc1 drop bar;
+ERROR:  column "bar" of relation "atacc1" does not exist
+-- try removing an oid column, should succeed (as it's nonexistent)
+alter table atacc1 SET WITHOUT OIDS;
+-- try adding an oid column, should fail (not supported)
+alter table atacc1 SET WITH OIDS;
+ERROR:  syntax error at or near "WITH"
+LINE 1: alter table atacc1 SET WITH OIDS;
+                               ^
+-- try dropping the xmin column, should fail
+alter table atacc1 drop xmin;
+ERROR:  cannot drop system column "xmin"
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+select * from myview;
+ b | c | d 
+---+---+---
+(0 rows)
+
+alter table myview drop d;
+ERROR:  ALTER action DROP COLUMN cannot be performed on relation "myview"
+DETAIL:  This operation is not supported for views.
+drop view myview;
+-- test some commands to make sure they fail on the dropped column
+analyze atacc1(a);
+ERROR:  column "a" of relation "atacc1" does not exist
+analyze atacc1("........pg.dropped.1........");
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+vacuum analyze atacc1(a);
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
+ERROR:  column "a" of relation "atacc1" does not exist
+vacuum analyze atacc1("........pg.dropped.1........");
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+comment on column atacc1.a is 'testing';
+ERROR:  column "a" of relation "atacc1" does not exist
+comment on column atacc1."........pg.dropped.1........" is 'testing';
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+/* YB: set storage for column not supported #1124
+alter table atacc1 alter a set storage plain;
+alter table atacc1 alter "........pg.dropped.1........" set storage plain;
+*/ -- YB
+alter table atacc1 alter a set statistics 0;
+ERROR:  column "a" of relation "atacc1" does not exist
+alter table atacc1 alter "........pg.dropped.1........" set statistics 0;
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+alter table atacc1 alter a set default 3;
+ERROR:  column "a" of relation "atacc1" does not exist
+alter table atacc1 alter "........pg.dropped.1........" set default 3;
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+alter table atacc1 alter a drop default;
+ERROR:  column "a" of relation "atacc1" does not exist
+alter table atacc1 alter "........pg.dropped.1........" drop default;
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+alter table atacc1 alter a set not null;
+ERROR:  column "a" of relation "atacc1" does not exist
+alter table atacc1 alter "........pg.dropped.1........" set not null;
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+alter table atacc1 alter a drop not null;
+ERROR:  column "a" of relation "atacc1" does not exist
+alter table atacc1 alter "........pg.dropped.1........" drop not null;
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+alter table atacc1 rename a to x;
+ERROR:  column "a" does not exist
+alter table atacc1 rename "........pg.dropped.1........" to x;
+ERROR:  column "........pg.dropped.1........" does not exist
+alter table atacc1 add primary key(a);
+ERROR:  column "a" of relation "atacc1" does not exist
+alter table atacc1 add primary key("........pg.dropped.1........");
+ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exist
+alter table atacc1 add unique(a);
+ERROR:  column "a" named in key does not exist
+alter table atacc1 add unique("........pg.dropped.1........");
+ERROR:  column "........pg.dropped.1........" named in key does not exist
+alter table atacc1 add check (a > 3);
+ERROR:  column "a" does not exist
+alter table atacc1 add check ("........pg.dropped.1........" > 3);
+ERROR:  column "........pg.dropped.1........" does not exist
+create table atacc2 (id int4 unique);
+alter table atacc1 add foreign key (a) references atacc2(id);
+ERROR:  column "a" referenced in foreign key constraint does not exist
+alter table atacc1 add foreign key ("........pg.dropped.1........") references atacc2(id);
+ERROR:  column "........pg.dropped.1........" referenced in foreign key constraint does not exist
+alter table atacc2 add foreign key (id) references atacc1(a);
+ERROR:  column "a" referenced in foreign key constraint does not exist
+alter table atacc2 add foreign key (id) references atacc1("........pg.dropped.1........");
+ERROR:  column "........pg.dropped.1........" referenced in foreign key constraint does not exist
+drop table atacc2;
+create index "testing_idx" on atacc1(a);
+ERROR:  column "a" does not exist
+create index "testing_idx" on atacc1("........pg.dropped.1........");
+ERROR:  column "........pg.dropped.1........" does not exist
+-- test create as and select into
+insert into atacc1 values (21, 22, 23);
+create table attest1 as select * from atacc1;
+select * from attest1;
+ b  | c  | d  
+----+----+----
+ 21 | 22 | 23
+(1 row)
+
+drop table attest1;
+select * into attest2 from atacc1;
+select * from attest2;
+ b  | c  | d  
+----+----+----
+ 21 | 22 | 23
+(1 row)
+
+drop table attest2;
+-- try dropping all columns
+alter table atacc1 drop c;
+alter table atacc1 drop d;
+alter table atacc1 drop b;
+select * from atacc1;
+--
+(1 row)
+
+drop table atacc1;
+-- test constraint error reporting in presence of dropped columns
+create table atacc1 (id serial primary key, value int check (value < 10));
+insert into atacc1(value) values (100);
+ERROR:  new row for relation "atacc1" violates check constraint "atacc1_value_check"
+DETAIL:  Failing row contains (1, 100).
+alter table atacc1 drop column value;
+alter table atacc1 add column value int check (value < 10);
+insert into atacc1(value) values (100);
+ERROR:  new row for relation "atacc1" violates check constraint "atacc1_value_check"
+DETAIL:  Failing row contains (2, 100).
+insert into atacc1(id, value) values (null, 0);
+ERROR:  null value in column "id" of relation "atacc1" violates not-null constraint
+DETAIL:  Failing row contains (null, 0).
+drop table atacc1;
+-- test inheritance
+create table parent (a int, b int, c int);
+insert into parent values (1, 2, 3);
+alter table parent drop a;
+create table child (d varchar(255)) inherits (parent);
+insert into child values (12, 13, 'testing');
+select * from parent;
+ b  | c  
+----+----
+  2 |  3
+ 12 | 13
+(2 rows)
+
+select * from child;
+ b  | c  |    d    
+----+----+---------
+ 12 | 13 | testing
+(1 row)
+
+alter table parent drop c;
+select * from parent;
+ b  
+----
+  2
+ 12
+(2 rows)
+
+select * from child;
+ b  |    d    
+----+---------
+ 12 | testing
+(1 row)
+
+drop table child;
+drop table parent;
+-- check error cases for inheritance column merging
+create table parent (a float8, b numeric(10,4), c text collate "C");
+create table child (a float4) inherits (parent); -- fail
+NOTICE:  merging column "a" with inherited definition
+ERROR:  column "a" has a type conflict
+DETAIL:  double precision versus real
+create table child (b decimal(10,7)) inherits (parent); -- fail
+NOTICE:  moving and merging column "b" with inherited definition
+DETAIL:  User-specified column moved to the position of the inherited column.
+ERROR:  column "b" has a type conflict
+DETAIL:  numeric(10,4) versus numeric(10,7)
+create table child (c text collate "POSIX") inherits (parent); -- fail
+NOTICE:  moving and merging column "c" with inherited definition
+DETAIL:  User-specified column moved to the position of the inherited column.
+ERROR:  column "c" has a collation conflict
+DETAIL:  "C" versus "POSIX"
+create table child (a double precision, b decimal(10,4)) inherits (parent);
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging column "b" with inherited definition
+drop table child;
+drop table parent;
+-- test copy in/out
+create table attest (a int4, b int4, c int4);
+insert into attest values (1,2,3);
+alter table attest drop a;
+copy attest to stdout;
+2	3
+copy attest(a) to stdout;
+ERROR:  column "a" of relation "attest" does not exist
+copy attest("........pg.dropped.1........") to stdout;
+ERROR:  column "........pg.dropped.1........" of relation "attest" does not exist
+copy attest from stdin;
+ERROR:  extra data after last expected column
+CONTEXT:  COPY attest, line 1: "10	11	12"
+select * from attest;
+ b | c 
+---+---
+ 2 | 3
+(1 row)
+
+copy attest from stdin;
+select * from attest;
+ b  | c  
+----+----
+  2 |  3
+ 21 | 22
+(2 rows)
+
+copy attest(a) from stdin;
+ERROR:  column "a" of relation "attest" does not exist
+copy attest("........pg.dropped.1........") from stdin;
+ERROR:  column "........pg.dropped.1........" of relation "attest" does not exist
+copy attest(b,c) from stdin;
+select * from attest;
+ b  | c  
+----+----
+  2 |  3
+ 21 | 22
+ 31 | 32
+(3 rows)
+
+drop table attest;
+-- test inheritance
+create table dropColumn (a int, b int, e int);
+create table dropColumnChild (c int) inherits (dropColumn);
+create table dropColumnAnother (d int) inherits (dropColumnChild);
+-- these two should fail
+alter table dropColumnchild drop column a;
+ERROR:  cannot drop inherited column "a"
+alter table only dropColumnChild drop column b;
+ERROR:  cannot drop inherited column "b"
+-- these three should work
+alter table only dropColumn drop column e;
+alter table dropColumnChild drop column c;
+alter table dropColumn drop column a;
 create table renameColumn (a int);
 create table renameColumnChild (b int) inherits (renameColumn);
-ERROR:  INHERITS not supported yet
-LINE 1: create table renameColumnChild (b int) inherits (renameColum...
-                                               ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-/* YB: uncomment when INHERITS is supported
 create table renameColumnAnother (c int) inherits (renameColumnChild);
-
 -- these three should fail
 alter table renameColumnChild rename column a to d;
+ERROR:  cannot rename inherited column "a"
 alter table only renameColumnChild rename column a to d;
+ERROR:  inherited column "a" must be renamed in child tables too
 alter table only renameColumn rename column a to d;
-*/ -- YB
+ERROR:  inherited column "a" must be renamed in child tables too
 -- these should work
 alter table renameColumn rename column a to d;
-/* YB: uncomment when INHERITS is supported
 alter table renameColumnChild rename column b to a;
-*/ -- YB
 -- these should work
 alter table if exists doesnt_exist_tab rename column a to d;
 NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
@@ -387,6 +1650,954 @@ alter table if exists doesnt_exist_tab rename column b to a;
 NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
 -- this should work
 alter table renameColumn add column w int;
+-- this should fail
+alter table only renameColumn add column x int;
+ERROR:  column must be added to child tables too
+-- Test corner cases in dropping of inherited columns
+create table p1 (f1 int, f2 int);
+create table c1 (f1 int not null) inherits(p1);
+NOTICE:  merging column "f1" with inherited definition
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+ERROR:  cannot drop inherited column "f1"
+/* YB: #26094 issue with inherits
+-- should work
+alter table p1 drop column f1;
+-- c1.f1 is still there, but no longer inherited
+select f1 from c1;
+alter table c1 drop column f1;
+select f1 from c1;
+
+drop table p1 cascade;
+
+create table p1 (f1 int, f2 int);
+create table c1 () inherits(p1);
+
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+alter table p1 drop column f1;
+-- c1.f1 is dropped now, since there is no local definition for it
+select f1 from c1;
+*/ -- YB
+drop table p1 cascade;
+NOTICE:  drop cascades to table c1
+create table p1 (f1 int, f2 int);
+create table c1 () inherits(p1);
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+ERROR:  cannot drop inherited column "f1"
+alter table only p1 drop column f1;
+-- c1.f1 is NOT dropped, but must now be considered non-inherited
+alter table c1 drop column f1;
+drop table p1 cascade;
+NOTICE:  drop cascades to table c1
+create table p1 (f1 int, f2 int);
+create table c1 (f1 int not null) inherits(p1);
+NOTICE:  merging column "f1" with inherited definition
+-- should be rejected since c1.f1 is inherited
+alter table c1 drop column f1;
+ERROR:  cannot drop inherited column "f1"
+alter table only p1 drop column f1;
+-- c1.f1 is still there, but no longer inherited
+alter table c1 drop column f1;
+drop table p1 cascade;
+NOTICE:  drop cascades to table c1
+create table p1(id int, name text);
+create table p2(id2 int, name text, height int);
+create table c1(age int) inherits(p1,p2);
+NOTICE:  merging multiple inherited definitions of column "name"
+create table gc1() inherits (c1);
+select relname, attname, attinhcount, attislocal
+from pg_class join pg_attribute on (pg_class.oid = pg_attribute.attrelid)
+where relname in ('p1','p2','c1','gc1') and attnum > 0 and not attisdropped
+order by relname, attnum;
+ relname | attname | attinhcount | attislocal 
+---------+---------+-------------+------------
+ c1      | id      |           1 | f
+ c1      | name    |           2 | f
+ c1      | id2     |           1 | f
+ c1      | height  |           1 | f
+ c1      | age     |           0 | t
+ gc1     | id      |           1 | f
+ gc1     | name    |           1 | f
+ gc1     | id2     |           1 | f
+ gc1     | height  |           1 | f
+ gc1     | age     |           1 | f
+ p1      | id      |           0 | t
+ p1      | name    |           0 | t
+ p2      | id2     |           0 | t
+ p2      | name    |           0 | t
+ p2      | height  |           0 | t
+(15 rows)
+
+-- should work
+alter table only p1 drop column name;
+-- should work. Now c1.name is local and inhcount is 0.
+/* YB: #26094 issue with inherit
+alter table p2 drop column name;
+*/ -- YB
+-- should be rejected since its inherited
+alter table gc1 drop column name;
+ERROR:  cannot drop inherited column "name"
+/* YB: #26094 issue with inherits
+-- should work, and drop gc1.name along
+alter table c1 drop column name;
+-- should fail: column does not exist
+alter table gc1 drop column name;
+*/ -- YB
+-- should work and drop the attribute in all tables
+alter table p2 drop column height;
+-- IF EXISTS test
+create table dropColumnExists ();
+alter table dropColumnExists drop column non_existing; --fail
+ERROR:  column "non_existing" of relation "dropcolumnexists" does not exist
+alter table dropColumnExists drop column if exists non_existing; --succeed
+NOTICE:  column "non_existing" of relation "dropcolumnexists" does not exist, skipping
+select relname, attname, attinhcount, attislocal
+from pg_class join pg_attribute on (pg_class.oid = pg_attribute.attrelid)
+where relname in ('p1','p2','c1','gc1') and attnum > 0 and not attisdropped
+order by relname, attnum; -- YB output differs due to commented lines above
+ relname | attname | attinhcount | attislocal 
+---------+---------+-------------+------------
+ c1      | id      |           1 | f
+ c1      | name    |           1 | t
+ c1      | id2     |           1 | f
+ c1      | age     |           0 | t
+ gc1     | id      |           1 | f
+ gc1     | name    |           1 | f
+ gc1     | id2     |           1 | f
+ gc1     | age     |           1 | f
+ p1      | id      |           0 | t
+ p2      | id2     |           0 | t
+ p2      | name    |           0 | t
+(11 rows)
+
+drop table p1, p2 cascade;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table c1
+drop cascades to table gc1
+-- test attinhcount tracking with merged columns
+create table depth0();
+create table depth1(c text) inherits (depth0);
+create table depth2() inherits (depth1);
+/* YB: #26094 issue with inherits
+alter table depth0 add c text;
+
+select attrelid::regclass, attname, attinhcount, attislocal
+from pg_attribute
+where attnum > 0 and attrelid::regclass in ('depth0', 'depth1', 'depth2')
+order by attrelid::regclass::text, attnum;
+
+-- test renumbering of child-table columns in inherited operations
+
+create table p1 (f1 int);
+create table c1 (f2 text, f3 int) inherits (p1);
+
+alter table p1 add column a1 int check (a1 > 0);
+alter table p1 add column f2 text;
+
+insert into p1 values (1,2,'abc');
+insert into c1 values(11,'xyz',33,0); -- should fail
+insert into c1 values(11,'xyz',33,22);
+
+select * from p1;
+update p1 set a1 = a1 + 1, f2 = upper(f2);
+select * from p1;
+*/ -- YB
+drop table p1 cascade;
+ERROR:  table "p1" does not exist
+-- test that operations with a dropped column do not try to reference
+-- its datatype
+create domain mytype as text;
+create temp table foo (f1 text, f2 mytype, f3 text);
+insert into foo values('bb','cc','dd');
+select * from foo;
+ f1 | f2 | f3 
+----+----+----
+ bb | cc | dd
+(1 row)
+
+drop domain mytype cascade;
+NOTICE:  drop cascades to column f2 of table foo
+select * from foo;
+ f1 | f3 
+----+----
+ bb | dd
+(1 row)
+
+insert into foo values('qq','rr');
+select * from foo;
+ f1 | f3 
+----+----
+ bb | dd
+ qq | rr
+(2 rows)
+
+update foo set f3 = 'zz';
+select * from foo;
+ f1 | f3 
+----+----
+ bb | zz
+ qq | zz
+(2 rows)
+
+select f3,max(f1) from foo group by f3;
+ f3 | max 
+----+-----
+ zz | qq
+(1 row)
+
+-- Simple tests for alter table column type
+alter table foo alter f1 TYPE integer; -- fails
+ERROR:  column "f1" cannot be cast automatically to type integer
+HINT:  You might need to specify "USING f1::integer".
+alter table foo alter f1 TYPE varchar(10);
+create table anothertab (atcol1 serial8, atcol2 boolean,
+	constraint anothertab_chk check (atcol1 <= 3));
+insert into anothertab (atcol1, atcol2) values (default, true);
+insert into anothertab (atcol1, atcol2) values (default, false);
+select * from anothertab;
+ atcol1 | atcol2 
+--------+--------
+      1 | t
+      2 | f
+(2 rows)
+
+alter table anothertab alter column atcol1 type boolean; -- fails
+ERROR:  column "atcol1" cannot be cast automatically to type boolean
+HINT:  You might need to specify "USING atcol1::boolean".
+alter table anothertab alter column atcol1 type boolean using atcol1::int; -- fails
+ERROR:  result of USING clause for column "atcol1" cannot be cast automatically to type boolean
+HINT:  You might need to add an explicit cast.
+alter table anothertab alter column atcol1 type integer;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+select * from anothertab order by atcol1; /* YB order changes due to rewrite */
+ atcol1 | atcol2 
+--------+--------
+      1 | t
+      2 | f
+(2 rows)
+
+insert into anothertab (atcol1, atcol2) values (45, null); -- fails
+ERROR:  new row for relation "anothertab" violates check constraint "anothertab_chk"
+DETAIL:  Failing row contains (45, null).
+insert into anothertab (atcol1, atcol2) values (default, null);
+select * from anothertab order by atcol1; /* YB order changes due to rewrite */
+ atcol1 | atcol2 
+--------+--------
+      1 | t
+      2 | f
+      3 | 
+(3 rows)
+
+alter table anothertab alter column atcol2 type text
+      using case when atcol2 is true then 'IT WAS TRUE'
+                 when atcol2 is false then 'IT WAS FALSE'
+                 else 'IT WAS NULL!' end;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+select * from anothertab order by atcol1; /* YB order changes due to rewrite */
+ atcol1 |    atcol2    
+--------+--------------
+      1 | IT WAS TRUE
+      2 | IT WAS FALSE
+      3 | IT WAS NULL!
+(3 rows)
+
+alter table anothertab alter column atcol1 type boolean
+        using case when atcol1 % 2 = 0 then true else false end; -- fails
+ERROR:  default for column "atcol1" cannot be cast automatically to type boolean
+alter table anothertab alter column atcol1 drop default;
+alter table anothertab alter column atcol1 type boolean
+        using case when atcol1 % 2 = 0 then true else false end; -- fails
+ERROR:  operator does not exist: boolean <= integer
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+alter table anothertab drop constraint anothertab_chk;
+alter table anothertab drop constraint anothertab_chk; -- fails
+ERROR:  constraint "anothertab_chk" for table "anothertab" does not exist
+alter table anothertab drop constraint IF EXISTS anothertab_chk; -- succeeds
+NOTICE:  constraint "anothertab_chk" of relation "anothertab" does not exist, skipping
+alter table anothertab alter column atcol1 type boolean
+        using case when atcol1 % 2 = 0 then true else false end;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+select * from anothertab order by atcol2; /* YB order changes due to rewrite */
+ atcol1 |    atcol2    
+--------+--------------
+ t      | IT WAS FALSE
+ f      | IT WAS NULL!
+ f      | IT WAS TRUE
+(3 rows)
+
+drop table anothertab;
+-- Test index handling in alter table column type (cf. bugs #15835, #15865)
+/* YB: not supported exclude using
+create table anothertab(f1 int primary key, f2 int unique,
+                        f3 int, f4 int, f5 int);
+alter table anothertab
+  add exclude using btree (f3 with =);
+alter table anothertab
+  add exclude using btree (f4 with =) where (f4 is not null);
+alter table anothertab
+  add exclude using btree (f4 with =) where (f5 > 0);
+alter table anothertab
+  add unique(f1,f4);
+create index on anothertab(f2,f3);
+create unique index on anothertab(f4);
+
+\d anothertab
+alter table anothertab alter column f1 type bigint;
+alter table anothertab
+  alter column f2 type bigint,
+  alter column f3 type bigint,
+  alter column f4 type bigint;
+alter table anothertab alter column f5 type bigint;
+\d anothertab
+
+drop table anothertab;
+*/ -- YB
+-- test that USING expressions are parsed before column alter type / drop steps
+create table another (f1 int, f2 text, f3 text);
+insert into another values(1, 'one', 'uno');
+insert into another values(2, 'two', 'due');
+insert into another values(3, 'three', 'tre');
+select * from another;
+ f1 |  f2   | f3  
+----+-------+-----
+  1 | one   | uno
+  2 | two   | due
+  3 | three | tre
+(3 rows)
+
+/* YB: #26195
+alter table another
+  alter f1 type text using f2 || ' and ' || f3 || ' more',
+  alter f2 type bigint using f1 * 10,
+  drop column f3;
+
+select * from another;
+*/ -- YB
+drop table another;
+-- Create an index that skips WAL, then perform a SET DATA TYPE that skips
+-- rewriting the index.
+begin;
+create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
+alter table skip_wal_skip_rewrite_index alter c type varchar(20);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+commit;
+-- We disallow changing table's row type if it's used for storage
+create table at_tab1 (a int, b text);
+create table at_tab2 (x int, y at_tab1);
+alter table at_tab1 alter column b type varchar; -- fails
+ERROR:  cannot alter table "at_tab1" because column "at_tab2.y" uses its row type
+drop table at_tab2;
+-- Use of row type in an expression is defended differently
+create table at_tab2 (x int, y text, check((x,y)::at_tab1 = (1,'42')::at_tab1));
+alter table at_tab1 alter column b type varchar; -- allowed, but ...
+insert into at_tab2 values(1,'42'); -- ... this will fail
+ERROR:  ROW() column has type text instead of type character varying
+drop table at_tab1, at_tab2;
+-- Check it for a partitioned table, too
+create table at_tab1 (a int, b text) partition by list(a);
+create table at_tab2 (x int, y at_tab1);
+alter table at_tab1 alter column b type varchar; -- fails
+ERROR:  cannot alter table "at_tab1" because column "at_tab2.y" uses its row type
+drop table at_tab1, at_tab2;
+-- Alter column type that's part of a partitioned index
+create table at_partitioned (a int, b text) partition by range (a);
+create table at_part_1 partition of at_partitioned for values from (0) to (1000);
+insert into at_partitioned values (512, '0.123');
+create table at_part_2 (b text, a int);
+insert into at_part_2 values ('1.234', 1024);
+create index on at_partitioned (b);
+create index on at_partitioned (a);
+\d at_part_1
+             Table "public.at_part_1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Partition of: at_partitioned FOR VALUES FROM (0) TO (1000)
+Indexes:
+    "at_part_1_a_idx" lsm (a ASC)
+    "at_part_1_b_idx" lsm (b ASC)
+
+\d at_part_2
+             Table "public.at_part_2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ b      | text    |           |          | 
+ a      | integer |           |          | 
+
+alter table at_partitioned attach partition at_part_2 for values from (1000) to (2000);
+\d at_part_2
+             Table "public.at_part_2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ b      | text    |           |          | 
+ a      | integer |           |          | 
+Partition of: at_partitioned FOR VALUES FROM (1000) TO (2000)
+Indexes:
+    "at_part_2_a_idx" lsm (a ASC)
+    "at_part_2_b_idx" lsm (b ASC)
+
+alter table at_partitioned alter column b type numeric using b::numeric;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d at_part_1
+             Table "public.at_part_1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | numeric |           |          | 
+Partition of: at_partitioned FOR VALUES FROM (0) TO (1000)
+Indexes:
+    "at_part_1_a_idx" lsm (a ASC)
+    "at_part_1_b_idx" lsm (b ASC)
+
+\d at_part_2
+             Table "public.at_part_2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ b      | numeric |           |          | 
+ a      | integer |           |          | 
+Partition of: at_partitioned FOR VALUES FROM (1000) TO (2000)
+Indexes:
+    "at_part_2_a_idx" lsm (a ASC)
+    "at_part_2_b_idx" lsm (b ASC)
+
+drop table at_partitioned;
+-- Alter column type when no table rewrite is required
+-- Also check that comments are preserved
+create table at_partitioned(id int, name varchar(64), unique (id, name))
+  partition by hash(id);
+comment on constraint at_partitioned_id_name_key on at_partitioned is 'parent constraint';
+comment on index at_partitioned_id_name_key is 'parent index';
+create table at_partitioned_0 partition of at_partitioned
+  for values with (modulus 2, remainder 0);
+comment on constraint at_partitioned_0_id_name_key on at_partitioned_0 is 'child 0 constraint';
+comment on index at_partitioned_0_id_name_key is 'child 0 index';
+create table at_partitioned_1 partition of at_partitioned
+  for values with (modulus 2, remainder 1);
+comment on constraint at_partitioned_1_id_name_key on at_partitioned_1 is 'child 1 constraint';
+comment on index at_partitioned_1_id_name_key is 'child 1 index';
+insert into at_partitioned values(1, 'foo');
+insert into at_partitioned values(3, 'bar');
+create temp table old_oids as
+  select relname, oid as oldoid, relfilenode as oldfilenode
+  from pg_class where relname like 'at_partitioned%';
+select relname,
+  c.oid = oldoid as orig_oid,
+  case relfilenode
+    when 0 then 'none'
+    when c.oid then 'own'
+    when oldfilenode then 'orig'
+    else 'OTHER'
+    end as storage,
+  obj_description(c.oid, 'pg_class') as desc
+  from pg_class c left join old_oids using (relname)
+  where relname like 'at_partitioned%'
+  order by relname;
+           relname            | orig_oid | storage |     desc      
+------------------------------+----------+---------+---------------
+ at_partitioned               | t        | own     | 
+ at_partitioned_0             | t        | own     | 
+ at_partitioned_0_id_name_key | t        | own     | child 0 index
+ at_partitioned_1             | t        | own     | 
+ at_partitioned_1_id_name_key | t        | own     | child 1 index
+ at_partitioned_id_name_key   | t        | own     | parent index
+(6 rows)
+
+select conname, obj_description(oid, 'pg_constraint') as desc
+  from pg_constraint where conname like 'at_partitioned%'
+  order by conname;
+           conname            |        desc        
+------------------------------+--------------------
+ at_partitioned_0_id_name_key | child 0 constraint
+ at_partitioned_1_id_name_key | child 1 constraint
+ at_partitioned_id_name_key   | parent constraint
+(3 rows)
+
+alter table at_partitioned alter column name type varchar(127);
+-- Note: these tests currently show the wrong behavior for comments :-(
+select relname,
+  c.oid = oldoid as orig_oid,
+  case relfilenode
+    when 0 then 'none'
+    when c.oid then 'own'
+    when oldfilenode then 'orig'
+    else 'OTHER'
+    end as storage,
+  obj_description(c.oid, 'pg_class') as desc
+  from pg_class c left join old_oids using (relname)
+  where relname like 'at_partitioned%'
+  order by relname;
+           relname            | orig_oid | storage |     desc     
+------------------------------+----------+---------+--------------
+ at_partitioned               | t        | own     | 
+ at_partitioned_0             | t        | own     | 
+ at_partitioned_0_id_name_key | f        | own     | parent index
+ at_partitioned_1             | t        | own     | 
+ at_partitioned_1_id_name_key | f        | own     | parent index
+ at_partitioned_id_name_key   | f        | own     | parent index
+(6 rows)
+
+select conname, obj_description(oid, 'pg_constraint') as desc
+  from pg_constraint where conname like 'at_partitioned%'
+  order by conname;
+           conname            |       desc        
+------------------------------+-------------------
+ at_partitioned_0_id_name_key | 
+ at_partitioned_1_id_name_key | 
+ at_partitioned_id_name_key   | parent constraint
+(3 rows)
+
+-- Don't remove this DROP, it exposes bug #15672
+drop table at_partitioned;
+-- disallow recursive containment of row types
+create temp table recur1 (f1 int);
+alter table recur1 add column f2 recur1; -- fails
+ERROR:  composite type recur1 cannot be made a member of itself
+alter table recur1 add column f2 recur1[]; -- fails
+ERROR:  composite type recur1 cannot be made a member of itself
+create domain array_of_recur1 as recur1[];
+alter table recur1 add column f2 array_of_recur1; -- fails
+ERROR:  composite type recur1 cannot be made a member of itself
+create temp table recur2 (f1 int, f2 recur1);
+alter table recur1 add column f2 recur2; -- fails
+ERROR:  composite type recur1 cannot be made a member of itself
+alter table recur1 add column f2 int;
+alter table recur1 alter column f2 type recur2; -- fails
+ERROR:  composite type recur1 cannot be made a member of itself
+-- SET STORAGE may need to add a TOAST table
+/* YB: storage semantics does not match PG
+create table test_storage (a text);
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+alter table test_storage alter a set storage plain;
+-- rewrite table to remove its TOAST table; need a non-constant column default
+alter table test_storage add b int default random()::int;
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+alter table test_storage alter a set storage extended; -- re-add TOAST table
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+
+-- test that SET STORAGE propagates to index correctly
+create index test_storage_idx on test_storage (b, a);
+alter table test_storage alter column a set storage external;
+\d+ test_storage
+\d+ test_storage_idx
+*/ -- YB
+-- ALTER COLUMN TYPE with a check constraint and a child table (bug #13779)
+CREATE TABLE test_inh_check (a float check (a > 10.2), b float);
+CREATE TABLE test_inh_check_child() INHERITS(test_inh_check);
+\d test_inh_check
+               Table "public.test_inh_check"
+ Column |       Type       | Collation | Nullable | Default 
+--------+------------------+-----------+----------+---------
+ a      | double precision |           |          | 
+ b      | double precision |           |          | 
+Check constraints:
+    "test_inh_check_a_check" CHECK (a > 10.2::double precision)
+Number of child tables: 1 (Use \d+ to list them.)
+
+\d test_inh_check_child
+            Table "public.test_inh_check_child"
+ Column |       Type       | Collation | Nullable | Default 
+--------+------------------+-----------+----------+---------
+ a      | double precision |           |          | 
+ b      | double precision |           |          | 
+Check constraints:
+    "test_inh_check_a_check" CHECK (a > 10.2::double precision)
+Inherits: test_inh_check
+
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+       relname        |        conname         | coninhcount | conislocal | connoinherit 
+----------------------+------------------------+-------------+------------+--------------
+ test_inh_check       | test_inh_check_a_check |           0 | t          | f
+ test_inh_check_child | test_inh_check_a_check |           1 | f          | f
+(2 rows)
+
+ALTER TABLE test_inh_check ALTER COLUMN a TYPE numeric;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d test_inh_check
+               Table "public.test_inh_check"
+ Column |       Type       | Collation | Nullable | Default 
+--------+------------------+-----------+----------+---------
+ a      | numeric          |           |          | 
+ b      | double precision |           |          | 
+Check constraints:
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Number of child tables: 1 (Use \d+ to list them.)
+
+\d test_inh_check_child
+            Table "public.test_inh_check_child"
+ Column |       Type       | Collation | Nullable | Default 
+--------+------------------+-----------+----------+---------
+ a      | numeric          |           |          | 
+ b      | double precision |           |          | 
+Check constraints:
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Inherits: test_inh_check
+
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+       relname        |        conname         | coninhcount | conislocal | connoinherit 
+----------------------+------------------------+-------------+------------+--------------
+ test_inh_check       | test_inh_check_a_check |           0 | t          | f
+ test_inh_check_child | test_inh_check_a_check |           1 | f          | f
+(2 rows)
+
+-- also try noinherit, local, and local+inherited cases
+ALTER TABLE test_inh_check ADD CONSTRAINT bnoinherit CHECK (b > 100) NO INHERIT;
+ALTER TABLE test_inh_check_child ADD CONSTRAINT blocal CHECK (b < 1000);
+ALTER TABLE test_inh_check_child ADD CONSTRAINT bmerged CHECK (b > 1);
+ALTER TABLE test_inh_check ADD CONSTRAINT bmerged CHECK (b > 1);
+NOTICE:  merging constraint "bmerged" with inherited definition
+\d test_inh_check
+               Table "public.test_inh_check"
+ Column |       Type       | Collation | Nullable | Default 
+--------+------------------+-----------+----------+---------
+ a      | numeric          |           |          | 
+ b      | double precision |           |          | 
+Check constraints:
+    "bmerged" CHECK (b > 1::double precision)
+    "bnoinherit" CHECK (b > 100::double precision) NO INHERIT
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Number of child tables: 1 (Use \d+ to list them.)
+
+\d test_inh_check_child
+            Table "public.test_inh_check_child"
+ Column |       Type       | Collation | Nullable | Default 
+--------+------------------+-----------+----------+---------
+ a      | numeric          |           |          | 
+ b      | double precision |           |          | 
+Check constraints:
+    "blocal" CHECK (b < 1000::double precision)
+    "bmerged" CHECK (b > 1::double precision)
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Inherits: test_inh_check
+
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+       relname        |        conname         | coninhcount | conislocal | connoinherit 
+----------------------+------------------------+-------------+------------+--------------
+ test_inh_check       | bmerged                |           0 | t          | f
+ test_inh_check       | bnoinherit             |           0 | t          | t
+ test_inh_check       | test_inh_check_a_check |           0 | t          | f
+ test_inh_check_child | blocal                 |           0 | t          | f
+ test_inh_check_child | bmerged                |           1 | t          | f
+ test_inh_check_child | test_inh_check_a_check |           1 | f          | f
+(6 rows)
+
+ALTER TABLE test_inh_check ALTER COLUMN b TYPE numeric;
+NOTICE:  merging constraint "bmerged" with inherited definition
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d test_inh_check
+           Table "public.test_inh_check"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | numeric |           |          | 
+ b      | numeric |           |          | 
+Check constraints:
+    "bmerged" CHECK (b::double precision > 1::double precision)
+    "bnoinherit" CHECK (b::double precision > 100::double precision) NO INHERIT
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Number of child tables: 1 (Use \d+ to list them.)
+
+\d test_inh_check_child
+        Table "public.test_inh_check_child"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | numeric |           |          | 
+ b      | numeric |           |          | 
+Check constraints:
+    "blocal" CHECK (b::double precision < 1000::double precision)
+    "bmerged" CHECK (b::double precision > 1::double precision)
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Inherits: test_inh_check
+
+select relname, conname, coninhcount, conislocal, connoinherit
+  from pg_constraint c, pg_class r
+  where relname like 'test_inh_check%' and c.conrelid = r.oid
+  order by 1, 2;
+       relname        |        conname         | coninhcount | conislocal | connoinherit 
+----------------------+------------------------+-------------+------------+--------------
+ test_inh_check       | bmerged                |           0 | t          | f
+ test_inh_check       | bnoinherit             |           0 | t          | t
+ test_inh_check       | test_inh_check_a_check |           0 | t          | f
+ test_inh_check_child | blocal                 |           0 | t          | f
+ test_inh_check_child | bmerged                |           1 | t          | f
+ test_inh_check_child | test_inh_check_a_check |           1 | f          | f
+(6 rows)
+
+-- ALTER COLUMN TYPE with different schema in children
+-- Bug at https://postgr.es/m/20170102225618.GA10071@telsasoft.com
+CREATE TABLE test_type_diff (f1 int);
+CREATE TABLE test_type_diff_c (extra smallint) INHERITS (test_type_diff);
+ALTER TABLE test_type_diff ADD COLUMN f2 int;
+INSERT INTO test_type_diff_c VALUES (1, 2, 3);
+ALTER TABLE test_type_diff ALTER COLUMN f2 TYPE bigint USING f2::bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+CREATE TABLE test_type_diff2 (int_two int2, int_four int4, int_eight int8);
+CREATE TABLE test_type_diff2_c1 (int_four int4, int_eight int8, int_two int2);
+CREATE TABLE test_type_diff2_c2 (int_eight int8, int_two int2, int_four int4);
+CREATE TABLE test_type_diff2_c3 (int_two int2, int_four int4, int_eight int8);
+ALTER TABLE test_type_diff2_c1 INHERIT test_type_diff2;
+ALTER TABLE test_type_diff2_c2 INHERIT test_type_diff2;
+ALTER TABLE test_type_diff2_c3 INHERIT test_type_diff2;
+INSERT INTO test_type_diff2_c1 VALUES (1, 2, 3);
+INSERT INTO test_type_diff2_c2 VALUES (4, 5, 6);
+INSERT INTO test_type_diff2_c3 VALUES (7, 8, 9);
+ALTER TABLE test_type_diff2 ALTER COLUMN int_four TYPE int8 USING int_four::int8;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+-- whole-row references are disallowed
+ALTER TABLE test_type_diff2 ALTER COLUMN int_four TYPE int4 USING (pg_column_size(test_type_diff2));
+ERROR:  cannot convert whole-row table reference
+DETAIL:  USING expression contains a whole-row table reference.
+-- check for rollback of ANALYZE corrupting table property flags (bug #11638)
+/* YB: DDL rollback is not supported
+CREATE TABLE check_fk_presence_1 (id int PRIMARY KEY, t text);
+CREATE TABLE check_fk_presence_2 (id int REFERENCES check_fk_presence_1, t text);
+BEGIN;
+ALTER TABLE check_fk_presence_2 DROP CONSTRAINT check_fk_presence_2_id_fkey;
+ANALYZE check_fk_presence_2;
+ROLLBACK;
+\d check_fk_presence_2
+DROP TABLE check_fk_presence_1, check_fk_presence_2;
+*/ -- YB
+-- check column addition within a view (bug #14876)
+create table at_base_table(id int, stuff text);
+insert into at_base_table values (23, 'skidoo');
+create view at_view_1 as select * from at_base_table bt;
+create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
+\d+ at_view_1
+                          View "public.at_view_1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Description 
+--------+---------+-----------+----------+---------+----------+-------------
+ id     | integer |           |          |         | plain    | 
+ stuff  | text    |           |          |         | extended | 
+View definition:
+ SELECT bt.id,
+    bt.stuff
+   FROM at_base_table bt;
+
+\d+ at_view_2
+                          View "public.at_view_2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Description 
+--------+---------+-----------+----------+---------+----------+-------------
+ id     | integer |           |          |         | plain    | 
+ stuff  | text    |           |          |         | extended | 
+ j      | json    |           |          |         | extended | 
+View definition:
+ SELECT v1.id,
+    v1.stuff,
+    to_json(v1.*) AS j
+   FROM at_view_1 v1;
+
+explain (verbose, costs off) select * from at_view_2;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Seq Scan on public.at_base_table bt
+   Output: bt.id, bt.stuff, to_json(ROW(bt.id, bt.stuff))
+(2 rows)
+
+select * from at_view_2;
+ id | stuff  |             j              
+----+--------+----------------------------
+ 23 | skidoo | {"id":23,"stuff":"skidoo"}
+(1 row)
+
+create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
+\d+ at_view_1
+                          View "public.at_view_1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Description 
+--------+---------+-----------+----------+---------+----------+-------------
+ id     | integer |           |          |         | plain    | 
+ stuff  | text    |           |          |         | extended | 
+ more   | integer |           |          |         | plain    | 
+View definition:
+ SELECT bt.id,
+    bt.stuff,
+    2 + 2 AS more
+   FROM at_base_table bt;
+
+\d+ at_view_2
+                          View "public.at_view_2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Description 
+--------+---------+-----------+----------+---------+----------+-------------
+ id     | integer |           |          |         | plain    | 
+ stuff  | text    |           |          |         | extended | 
+ j      | json    |           |          |         | extended | 
+View definition:
+ SELECT v1.id,
+    v1.stuff,
+    to_json(v1.*) AS j
+   FROM at_view_1 v1;
+
+explain (verbose, costs off) select * from at_view_2;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Seq Scan on public.at_base_table bt
+   Output: bt.id, bt.stuff, to_json(ROW(bt.id, bt.stuff, NULL))
+(2 rows)
+
+select * from at_view_2;
+ id | stuff  |                   j                    
+----+--------+----------------------------------------
+ 23 | skidoo | {"id":23,"stuff":"skidoo","more":null}
+(1 row)
+
+drop view at_view_2;
+drop view at_view_1;
+drop table at_base_table;
+-- check adding a column not iself requiring a rewrite, together with
+-- a column requiring a default (bug #16038)
+-- ensure that rewrites aren't silently optimized away, removing the
+-- value of the test
+CREATE FUNCTION check_ddl_rewrite(p_tablename regclass, p_ddl text)
+RETURNS boolean
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_relfilenode oid;
+BEGIN
+    v_relfilenode := relfilenode FROM pg_class WHERE oid = p_tablename;
+
+    EXECUTE p_ddl;
+
+    RETURN v_relfilenode <> (SELECT relfilenode FROM pg_class WHERE oid = p_tablename);
+END;
+$$;
+CREATE TABLE rewrite_test(col text);
+INSERT INTO rewrite_test VALUES ('something');
+INSERT INTO rewrite_test VALUES (NULL);
+-- empty[12] don't need rewrite, but notempty[12]_rewrite will force one
+SELECT check_ddl_rewrite('rewrite_test', $$
+  ALTER TABLE rewrite_test
+      ADD COLUMN empty1 text,
+      ADD COLUMN notempty1_rewrite serial;
+$$);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ check_ddl_rewrite 
+-------------------
+ t
+(1 row)
+
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN notempty2_rewrite serial,
+        ADD COLUMN empty2 text;
+$$);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ check_ddl_rewrite 
+-------------------
+ t
+(1 row)
+
+-- also check that fast defaults cause no problem, first without rewrite
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN empty3 text,
+        ADD COLUMN notempty3_norewrite int default 42;
+$$);
+ check_ddl_rewrite 
+-------------------
+ f
+(1 row)
+
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN notempty4_norewrite int default 42,
+        ADD COLUMN empty4 text;
+$$);
+ check_ddl_rewrite 
+-------------------
+ f
+(1 row)
+
+-- then with rewrite
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN empty5 text,
+        ADD COLUMN notempty5_norewrite int default 42,
+        ADD COLUMN notempty5_rewrite serial;
+$$);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ check_ddl_rewrite 
+-------------------
+ t
+(1 row)
+
+SELECT check_ddl_rewrite('rewrite_test', $$
+    ALTER TABLE rewrite_test
+        ADD COLUMN notempty6_rewrite serial,
+        ADD COLUMN empty6 text,
+        ADD COLUMN notempty6_norewrite int default 42;
+$$);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ check_ddl_rewrite 
+-------------------
+ t
+(1 row)
+
+-- cleanup
+DROP FUNCTION check_ddl_rewrite(regclass, text);
+DROP TABLE rewrite_test;
 --
 -- lock levels
 --
@@ -544,10 +2755,6 @@ CREATE TABLE tt3 (y numeric(8,2), x int);			-- wrong column order
 CREATE TABLE tt4 (x int);							-- too few columns
 CREATE TABLE tt5 (x int, y numeric(8,2), z int);	-- too few columns
 CREATE TABLE tt6 () INHERITS (tt0);					-- can't have a parent
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE tt6 () INHERITS (tt0);
-                            ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE TABLE tt7 (x int, q text, y numeric(8,2));
 ALTER TABLE tt7 DROP q;								-- OK
 ALTER TABLE tt0 OF tt_t0;
@@ -562,7 +2769,7 @@ ERROR:  table is missing column "y"
 ALTER TABLE tt5 OF tt_t0;
 ERROR:  table has extra column "z"
 ALTER TABLE tt6 OF tt_t0;
-ERROR:  relation "tt6" does not exist
+ERROR:  typed tables cannot inherit
 ALTER TABLE tt7 OF tt_t0;
 CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
@@ -574,6 +2781,591 @@ ALTER TABLE tt7 NOT OF;
  x      | integer      |           |          | 
  y      | numeric(8,2) |           |          | 
 
+/* YB: fails in debug build due to #26227
+-- make sure we can drop a constraint on the parent but it remains on the child
+CREATE TABLE test_drop_constr_parent (c text CHECK (c IS NOT NULL));
+CREATE TABLE test_drop_constr_child () INHERITS (test_drop_constr_parent);
+ALTER TABLE ONLY test_drop_constr_parent DROP CONSTRAINT "test_drop_constr_parent_c_check";
+-- should fail
+INSERT INTO test_drop_constr_child (c) VALUES (NULL);
+DROP TABLE test_drop_constr_parent CASCADE;
+*/ -- YB
+--
+-- IF EXISTS test
+--
+ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
+NOTICE:  relation "tt8" does not exist, skipping
+ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
+NOTICE:  relation "tt8" does not exist, skipping
+ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
+NOTICE:  relation "tt8" does not exist, skipping
+ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
+NOTICE:  relation "tt8" does not exist, skipping
+ALTER TABLE IF EXISTS tt8 RENAME COLUMN f TO f1;
+NOTICE:  relation "tt8" does not exist, skipping
+ALTER TABLE IF EXISTS tt8 SET SCHEMA alter2;
+NOTICE:  relation "tt8" does not exist, skipping
+CREATE TABLE tt8(a int);
+CREATE SCHEMA alter2;
+ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
+ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
+ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
+ALTER TABLE IF EXISTS tt8 RENAME COLUMN f TO f1;
+ALTER TABLE IF EXISTS tt8 SET SCHEMA alter2;
+\d alter2.tt8
+                Table "alter2.tt8"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ f1     | integer |           | not null | 0
+Indexes:
+    "xxx" PRIMARY KEY, lsm (f1 ASC)
+Check constraints:
+    "tt8_f_check" CHECK (f1 >= 0 AND f1 <= 10)
+
+DROP TABLE alter2.tt8;
+DROP SCHEMA alter2;
+--
+-- Check conflicts between index and CHECK constraint names
+--
+CREATE TABLE tt9(c integer);
+ALTER TABLE tt9 ADD CHECK(c > 1);
+ALTER TABLE tt9 ADD CHECK(c > 2);  -- picks nonconflicting name
+ALTER TABLE tt9 ADD CONSTRAINT foo CHECK(c > 3);
+ALTER TABLE tt9 ADD CONSTRAINT foo CHECK(c > 4);  -- fail, dup name
+ERROR:  constraint "foo" for relation "tt9" already exists
+ALTER TABLE tt9 ADD UNIQUE(c);
+ALTER TABLE tt9 ADD UNIQUE(c);  -- picks nonconflicting name
+ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key UNIQUE(c);  -- fail, dup name
+ERROR:  relation "tt9_c_key" already exists
+ALTER TABLE tt9 ADD CONSTRAINT foo UNIQUE(c);  -- fail, dup name
+ERROR:  constraint "foo" for relation "tt9" already exists
+ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key CHECK(c > 5);  -- fail, dup name
+ERROR:  constraint "tt9_c_key" for relation "tt9" already exists
+ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key2 CHECK(c > 6);
+ALTER TABLE tt9 ADD UNIQUE(c);  -- picks nonconflicting name
+\d tt9
+                Table "public.tt9"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c      | integer |           |          | 
+Indexes:
+    "tt9_c_key" UNIQUE CONSTRAINT, lsm (c ASC)
+    "tt9_c_key1" UNIQUE CONSTRAINT, lsm (c ASC)
+    "tt9_c_key3" UNIQUE CONSTRAINT, lsm (c ASC)
+Check constraints:
+    "foo" CHECK (c > 3)
+    "tt9_c_check" CHECK (c > 1)
+    "tt9_c_check1" CHECK (c > 2)
+    "tt9_c_key2" CHECK (c > 6)
+
+DROP TABLE tt9;
+-- Check that comments on constraints and indexes are not lost at ALTER TABLE.
+CREATE TABLE comment_test (
+  id int,
+  positive_col int CHECK (positive_col > 0),
+  indexed_col int,
+  CONSTRAINT comment_test_pk PRIMARY KEY (id));
+CREATE INDEX comment_test_index ON comment_test(indexed_col);
+COMMENT ON COLUMN comment_test.id IS 'Column ''id'' on comment_test';
+COMMENT ON INDEX comment_test_index IS 'Simple index on comment_test';
+COMMENT ON CONSTRAINT comment_test_positive_col_check ON comment_test IS 'CHECK constraint on comment_test.positive_col';
+COMMENT ON CONSTRAINT comment_test_pk ON comment_test IS 'PRIMARY KEY constraint of comment_test';
+COMMENT ON INDEX comment_test_pk IS 'Index backing the PRIMARY KEY of comment_test';
+SELECT col_description('comment_test'::regclass, 1) as comment;
+           comment           
+-----------------------------
+ Column 'id' on comment_test
+(1 row)
+
+SELECT indexrelid::regclass::text as index, obj_description(indexrelid, 'pg_class') as comment FROM pg_index where indrelid = 'comment_test'::regclass ORDER BY 1, 2;
+       index        |                    comment                    
+--------------------+-----------------------------------------------
+ comment_test_index | Simple index on comment_test
+ comment_test_pk    | Index backing the PRIMARY KEY of comment_test
+(2 rows)
+
+SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment FROM pg_constraint where conrelid = 'comment_test'::regclass ORDER BY 1, 2;
+           constraint            |                    comment                    
+---------------------------------+-----------------------------------------------
+ comment_test_pk                 | PRIMARY KEY constraint of comment_test
+ comment_test_positive_col_check | CHECK constraint on comment_test.positive_col
+(2 rows)
+
+-- Change the datatype of all the columns. ALTER TABLE is optimized to not
+-- rebuild an index if the new data type is binary compatible with the old
+-- one. Check do a dummy ALTER TABLE that doesn't change the datatype
+-- first, to test that no-op codepath, and another one that does.
+ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE int;
+ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE int;
+ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+-- Check that the comments are intact.
+SELECT col_description('comment_test'::regclass, 1) as comment;
+           comment           
+-----------------------------
+ Column 'id' on comment_test
+(1 row)
+
+SELECT indexrelid::regclass::text as index, obj_description(indexrelid, 'pg_class') as comment FROM pg_index where indrelid = 'comment_test'::regclass ORDER BY 1, 2;
+       index        |                    comment                    
+--------------------+-----------------------------------------------
+ comment_test_index | Simple index on comment_test
+ comment_test_pk    | Index backing the PRIMARY KEY of comment_test
+(2 rows)
+
+SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment FROM pg_constraint where conrelid = 'comment_test'::regclass ORDER BY 1, 2;
+           constraint            |                    comment                    
+---------------------------------+-----------------------------------------------
+ comment_test_pk                 | PRIMARY KEY constraint of comment_test
+ comment_test_positive_col_check | CHECK constraint on comment_test.positive_col
+(2 rows)
+
+-- Check compatibility for foreign keys and comments. This is done
+-- separately as rebuilding the column type of the parent leads
+-- to an error and would reduce the test scope.
+CREATE TABLE comment_test_child (
+  id text CONSTRAINT comment_test_child_fk REFERENCES comment_test);
+CREATE INDEX comment_test_child_fk ON comment_test_child(id);
+COMMENT ON COLUMN comment_test_child.id IS 'Column ''id'' on comment_test_child';
+COMMENT ON INDEX comment_test_child_fk IS 'Index backing the FOREIGN KEY of comment_test_child';
+COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KEY constraint of comment_test_child';
+-- Change column type of parent
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
+ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
+DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.
+-- Comments should be intact
+SELECT col_description('comment_test_child'::regclass, 1) as comment;
+              comment              
+-----------------------------------
+ Column 'id' on comment_test_child
+(1 row)
+
+SELECT indexrelid::regclass::text as index, obj_description(indexrelid, 'pg_class') as comment FROM pg_index where indrelid = 'comment_test_child'::regclass ORDER BY 1, 2;
+         index         |                       comment                       
+-----------------------+-----------------------------------------------------
+ comment_test_child_fk | Index backing the FOREIGN KEY of comment_test_child
+(1 row)
+
+SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment FROM pg_constraint where conrelid = 'comment_test_child'::regclass ORDER BY 1, 2;
+      constraint       |                   comment                    
+-----------------------+----------------------------------------------
+ comment_test_child_fk | FOREIGN KEY constraint of comment_test_child
+(1 row)
+
+-- Check that we map relation oids to filenodes and back correctly.  Only
+-- display bad mappings so the test output doesn't change all the time.  A
+-- filenode function call can return NULL for a relation dropped concurrently
+-- with the call's surrounding query, so ignore a NULL mapped_oid for
+-- relations that no longer exist after all calls finish.
+CREATE TEMP TABLE filenode_mapping AS
+SELECT
+    oid, mapped_oid, reltablespace, relfilenode, relname
+FROM pg_class,
+    pg_filenode_relation(reltablespace, pg_relation_filenode(oid)) AS mapped_oid
+WHERE relkind IN ('r', 'i', 'S', 't', 'm') AND mapped_oid IS DISTINCT FROM oid AND relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
+SELECT m.* FROM filenode_mapping m LEFT JOIN pg_class c ON c.oid = m.oid
+WHERE (c.oid IS NOT NULL OR m.mapped_oid IS NOT NULL) AND m.relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
+ oid | mapped_oid | reltablespace | relfilenode | relname 
+-----+------------+---------------+-------------+---------
+(0 rows)
+
+-- Checks on creating and manipulation of user defined relations in
+-- pg_catalog.
+/* YB: creating user tables in system catalog doesn't work
+SHOW allow_system_table_mods;
+-- disallowed because of search_path issues with pg_dump
+CREATE TABLE pg_catalog.new_system_table();
+-- instead create in public first, move to catalog
+CREATE TABLE new_system_table(id serial primary key, othercol text);
+ALTER TABLE new_system_table SET SCHEMA pg_catalog;
+ALTER TABLE new_system_table SET SCHEMA public;
+ALTER TABLE new_system_table SET SCHEMA pg_catalog;
+-- will be ignored -- already there:
+ALTER TABLE new_system_table SET SCHEMA pg_catalog;
+ALTER TABLE new_system_table RENAME TO old_system_table;
+CREATE INDEX old_system_table__othercol ON old_system_table (othercol);
+INSERT INTO old_system_table(othercol) VALUES ('somedata'), ('otherdata');
+UPDATE old_system_table SET id = -id;
+DELETE FROM old_system_table WHERE othercol = 'somedata';
+TRUNCATE old_system_table;
+ALTER TABLE old_system_table DROP CONSTRAINT new_system_table_pkey;
+ALTER TABLE old_system_table DROP COLUMN othercol;
+DROP TABLE old_system_table;
+*/ -- YB
+-- set logged
+CREATE UNLOGGED TABLE unlogged1(f1 SERIAL PRIMARY KEY, f2 TEXT); -- has sequence, toast
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+-- check relpersistence of an unlogged table
+/* YB: LOGGED is only supported syntactically
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
+ORDER BY relname;
+*/ -- YB
+CREATE UNLOGGED TABLE unlogged2(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES unlogged1); -- foreign key
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+CREATE UNLOGGED TABLE unlogged3(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES unlogged3); -- self-referencing foreign key
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+ALTER TABLE unlogged3 SET LOGGED; -- skip self-referencing foreign key
+/* YB: LOGGED is only supported syntactically
+ALTER TABLE unlogged2 SET LOGGED; -- fails because a foreign key to an unlogged table exists
+*/ -- YB
+ALTER TABLE unlogged1 SET LOGGED;
+/* YB: LOGGED is only supported syntactically
+-- check relpersistence of an unlogged table after changing to permanent
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
+UNION ALL
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
+ORDER BY relname;
+*/ -- YB
+ALTER TABLE unlogged1 SET LOGGED; -- silently do nothing
+DROP TABLE unlogged3;
+DROP TABLE unlogged2;
+DROP TABLE unlogged1;
+-- set unlogged
+CREATE TABLE logged1(f1 SERIAL PRIMARY KEY, f2 TEXT); -- has sequence, toast
+/* YB: LOGGED is only supported syntactically
+-- check relpersistence of a permanent table
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^logged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
+UNION ALL
+SELECT r.relname ||' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
+ORDER BY relname;
+*/ -- YB
+CREATE TABLE logged2(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES logged1); -- foreign key
+CREATE TABLE logged3(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES logged3); -- self-referencing foreign key
+ALTER TABLE logged1 SET UNLOGGED; -- fails because a foreign key from a permanent table exists
+ERROR:  could not change table "logged1" to unlogged because it references logged table "logged2"
+ALTER TABLE logged3 SET UNLOGGED; -- skip self-referencing foreign key
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+ALTER TABLE logged2 SET UNLOGGED;
+NOTICE:  unlogged option is currently ignored in YugabyteDB, all non-temp relations will be logged
+ALTER TABLE logged1 SET UNLOGGED;
+ERROR:  could not change table "logged1" to unlogged because it references logged table "logged2"
+/* YB: LOGGED is only supported syntactically
+-- check relpersistence of a permanent table after changing to unlogged
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^logged1'
+UNION ALL
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
+UNION ALL
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
+ORDER BY relname;
+ALTER TABLE logged1 SET UNLOGGED; -- silently do nothing
+*/ -- YB
+DROP TABLE logged3;
+DROP TABLE logged2;
+DROP TABLE logged1;
+-- test ADD COLUMN IF NOT EXISTS
+CREATE TABLE test_add_column(c1 integer);
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer;
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ERROR:  column "c2" of relation "test_add_column" already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ERROR:  column "c2" of relation "test_add_column" already exists
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer, -- fail because c2 already exists
+	ADD COLUMN c3 integer primary key;
+ERROR:  column "c2" of relation "test_add_column" already exists
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN c3 integer primary key;
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           | not null | 
+Indexes:
+    "test_add_column_pkey" PRIMARY KEY, lsm (c3 ASC)
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer primary key; -- skipping because c3 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           | not null | 
+Indexes:
+    "test_add_column_pkey" PRIMARY KEY, lsm (c3 ASC)
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
+	ADD COLUMN c4 integer REFERENCES test_add_column;
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           | not null | 
+ c4     | integer |           |          | 
+Indexes:
+    "test_add_column_pkey" PRIMARY KEY, lsm (c3 ASC)
+Foreign-key constraints:
+    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+Referenced by:
+    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c4 integer REFERENCES test_add_column;
+NOTICE:  column "c4" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           | not null | 
+ c4     | integer |           |          | 
+Indexes:
+    "test_add_column_pkey" PRIMARY KEY, lsm (c3 ASC)
+Foreign-key constraints:
+    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+Referenced by:
+    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 8);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d test_add_column
+                            Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable |                   Default                   
+--------+---------+-----------+----------+---------------------------------------------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           | not null | 
+ c4     | integer |           |          | 
+ c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
+Indexes:
+    "test_add_column_pkey" PRIMARY KEY, lsm (c3 ASC)
+Check constraints:
+    "test_add_column_c5_check" CHECK (c5 > 8)
+Foreign-key constraints:
+    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+Referenced by:
+    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 10);
+NOTICE:  column "c5" of relation "test_add_column" already exists, skipping
+\d test_add_column*
+                            Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable |                   Default                   
+--------+---------+-----------+----------+---------------------------------------------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           | not null | 
+ c4     | integer |           |          | 
+ c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
+Indexes:
+    "test_add_column_pkey" PRIMARY KEY, lsm (c3 ASC)
+Check constraints:
+    "test_add_column_c5_check" CHECK (c5 > 8)
+Foreign-key constraints:
+    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+Referenced by:
+    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
+
+               Sequence "public.test_add_column_c5_seq"
+  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
+---------+-------+---------+------------+-----------+---------+-------
+ integer |     1 |       1 | 2147483647 |         1 | no      |   100
+Owned by: public.test_add_column.c5
+
+ Index "public.test_add_column_pkey"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ c3     | integer | yes  | c3
+primary key, lsm, for table "public.test_add_column"
+
+DROP TABLE test_add_column;
+\d test_add_column*
+-- assorted cases with multiple ALTER TABLE steps
+CREATE TABLE ataddindex(f1 INT);
+INSERT INTO ataddindex VALUES (42), (43);
+CREATE UNIQUE INDEX ataddindexi0 ON ataddindex(f1);
+ALTER TABLE ataddindex
+  ADD PRIMARY KEY USING INDEX ataddindexi0,
+  ALTER f1 TYPE BIGINT;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d ataddindex
+            Table "public.ataddindex"
+ Column |  Type  | Collation | Nullable | Default 
+--------+--------+-----------+----------+---------
+ f1     | bigint |           | not null | 
+Indexes:
+    "ataddindexi0" PRIMARY KEY, lsm (f1 ASC)
+
+DROP TABLE ataddindex;
+/* YB: exclude constraint is not supported
+CREATE TABLE ataddindex(f1 VARCHAR(10));
+INSERT INTO ataddindex(f1) VALUES ('foo'), ('a');
+ALTER TABLE ataddindex
+  ALTER f1 SET DATA TYPE TEXT,
+  ADD EXCLUDE ((f1 LIKE 'a') WITH =);
+\d ataddindex
+DROP TABLE ataddindex;
+*/ -- YB
+CREATE TABLE ataddindex(id int, ref_id int);
+ALTER TABLE ataddindex
+  ADD PRIMARY KEY (id),
+  ADD FOREIGN KEY (ref_id) REFERENCES ataddindex;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d ataddindex
+             Table "public.ataddindex"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null | 
+ ref_id | integer |           |          | 
+Indexes:
+    "ataddindex_pkey" PRIMARY KEY, lsm (id ASC)
+Foreign-key constraints:
+    "ataddindex_ref_id_fkey" FOREIGN KEY (ref_id) REFERENCES ataddindex(id)
+Referenced by:
+    TABLE "ataddindex" CONSTRAINT "ataddindex_ref_id_fkey" FOREIGN KEY (ref_id) REFERENCES ataddindex(id)
+
+DROP TABLE ataddindex;
+CREATE TABLE ataddindex(id int, ref_id int);
+ALTER TABLE ataddindex
+  ADD UNIQUE (id),
+  ADD FOREIGN KEY (ref_id) REFERENCES ataddindex (id);
+\d ataddindex
+             Table "public.ataddindex"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ ref_id | integer |           |          | 
+Indexes:
+    "ataddindex_id_key" UNIQUE CONSTRAINT, lsm (id ASC)
+Foreign-key constraints:
+    "ataddindex_ref_id_fkey" FOREIGN KEY (ref_id) REFERENCES ataddindex(id)
+Referenced by:
+    TABLE "ataddindex" CONSTRAINT "ataddindex_ref_id_fkey" FOREIGN KEY (ref_id) REFERENCES ataddindex(id)
+
+DROP TABLE ataddindex;
+-- unsupported constraint types for partitioned tables
+CREATE TABLE partitioned (
+	a int,
+	b int
+) PARTITION BY RANGE (a, (a+b+1));
+/* YB does not support exclusion constraints
+ALTER TABLE partitioned ADD EXCLUDE USING gist (a WITH &&);
+*/ -- YB
+-- cannot drop column that is part of the partition key
+ALTER TABLE partitioned DROP COLUMN a;
+ERROR:  cannot drop column "a" because it is part of the partition key of relation "partitioned"
+ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
+ERROR:  cannot alter column "a" because it is part of the partition key of relation "partitioned"
+ALTER TABLE partitioned DROP COLUMN b;
+ERROR:  cannot drop column "b" because it is part of the partition key of relation "partitioned"
+ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
+ERROR:  cannot alter column "b" because it is part of the partition key of relation "partitioned"
+-- partitioned table cannot participate in regular inheritance
+CREATE TABLE nonpartitioned (
+	a int,
+	b int
+);
+ALTER TABLE partitioned INHERIT nonpartitioned;
+ERROR:  cannot change inheritance of partitioned table
+ALTER TABLE nonpartitioned INHERIT partitioned;
+ERROR:  cannot inherit from partitioned table "partitioned"
+-- cannot add NO INHERIT constraint to partitioned tables
+ALTER TABLE partitioned ADD CONSTRAINT chk_a CHECK (a > 0) NO INHERIT;
+ERROR:  cannot add NO INHERIT constraint to partitioned table "partitioned"
+DROP TABLE partitioned, nonpartitioned;
 --
 -- ATTACH PARTITION
 --
@@ -618,16 +3410,13 @@ DROP ROLE regress_test_me;
 -- check that the table being attached is not part of regular inheritance
 CREATE TABLE parent (LIKE list_parted);
 CREATE TABLE child () INHERITS (parent);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE child () INHERITS (parent);
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 -- Uncomment the following when INHERITS is supported #5956.
 /*
 ALTER TABLE list_parted ATTACH PARTITION child FOR VALUES IN (1);
 ALTER TABLE list_parted ATTACH PARTITION parent FOR VALUES IN (1);
 */
 DROP TABLE parent CASCADE;
+NOTICE:  drop cascades to table child
 -- check any TEMP-ness
 CREATE TEMP TABLE temp_parted (a int) PARTITION BY LIST (a);
 CREATE TABLE perm_part (a int);
@@ -1054,16 +3843,12 @@ ALTER TABLE list_parted2 add constraint check_b2 check (b <> 'zz') NO INHERIT;
 ERROR:  cannot add NO INHERIT constraint to partitioned table "list_parted2"
 -- check that a partition cannot participate in regular inheritance
 CREATE TABLE inh_test () INHERITS (part_2);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE inh_test () INHERITS (part_2);
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
--- Uncomment if INHERITS is supported (#5956).
-/*
+ERROR:  cannot inherit from partition "part_2"
 CREATE TABLE inh_test (LIKE part_2);
 ALTER TABLE inh_test INHERIT part_2;
+ERROR:  cannot inherit from a partition
 ALTER TABLE part_2 INHERIT inh_test;
-*/
+ERROR:  cannot change inheritance of a partition
 -- cannot drop or alter type of partition key columns of lower level
 -- partitioned tables; for example, part_5, which is list_parted2's
 -- partition, is partitioned on b;

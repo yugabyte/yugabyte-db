@@ -83,13 +83,13 @@ namespace consensus {
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
 struct ConsensusBootstrapInfo {
-  ConsensusBootstrapInfo();
+  ConsensusBootstrapInfo() = default;
 
   // The id of the last operation in the log
-  OpIdPB last_id;
+  OpId last_id = OpId::Min();
 
   // The id of the last committed operation in the log.
-  OpIdPB last_committed_id;
+  OpId last_committed_id = OpId::Min();
 
   // REPLICATE messages which were in the log with no accompanying
   // COMMIT. These need to be passed along to consensus init in order

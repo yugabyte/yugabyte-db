@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
@@ -251,6 +252,16 @@ public class GFlagsValidation {
       Universe universe, Map<UUID, SpecificGFlags> connectionPoolingGflags) {
     if (connectionPoolingGflags == null || connectionPoolingGflags.isEmpty()) {
       return;
+    }
+
+    // Check if the UUIDs are valid cluster UUIDs.
+    Set<UUID> clusterUUIDs = connectionPoolingGflags.keySet();
+    for (UUID clusterUUID : clusterUUIDs) {
+      Cluster cluster = universe.getCluster(clusterUUID);
+      if (cluster == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Cluster with UUID '%s' does not exist.", clusterUUID));
+      }
     }
 
     // Get the right connection pooling gflags list for preview vs stable version.

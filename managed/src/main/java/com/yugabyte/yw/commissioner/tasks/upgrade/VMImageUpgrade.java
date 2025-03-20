@@ -99,7 +99,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     Set<NodeDetails> nodeSet = fetchNodesForCluster();
     String newVersion = taskParams().ybSoftwareVersion;
     if (taskParams().isSoftwareUpdateViaVm) {
-      createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+      createCheckUpgradeTask(newVersion);
       if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
           && CommonUtils.isAutoFlagSupported(newVersion)) {
         createCheckSoftwareVersionTask(nodeSet, newVersion)

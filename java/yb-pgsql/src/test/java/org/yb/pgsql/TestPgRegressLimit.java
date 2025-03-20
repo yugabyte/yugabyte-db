@@ -15,6 +15,7 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import java.util.Map;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -24,6 +25,13 @@ public class TestPgRegressLimit extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_enable_inheritance", "true");
+    return flags;
   }
 
   @Test

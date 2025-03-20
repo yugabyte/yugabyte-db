@@ -2449,4 +2449,15 @@ docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
   return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
 }
 
+Result<docdb::EncodedPartitionBounds> RaftGroupMetadata::MakeEncodedPartitionBounds() const {
+  const auto partition_schema = RaftGroupMetadata::partition_schema();
+  const auto partition = RaftGroupMetadata::partition();
+  return docdb::EncodedPartitionBounds{
+      .start_key = KeyBuffer(VERIFY_RESULT(
+          partition_schema->GetEncodedPartitionKey(partition->partition_key_start()))),
+      .end_key = KeyBuffer(
+          VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_end()))),
+  };
+}
+
 } // namespace yb::tablet

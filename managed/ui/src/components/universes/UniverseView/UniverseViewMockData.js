@@ -74,7 +74,6 @@ export const mockProps = {
                   enableYSQLAuth: false,
                   enableYCQLAuth: false,
                   enableYSQL: true,
-                  enableYEDIS: false,
                   enableNodeToNodeEncrypt: true,
                   enableClientToNodeEncrypt: true,
                   enableVolumeEncryption: false,

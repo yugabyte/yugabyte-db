@@ -12,8 +12,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -135,6 +137,28 @@ public class UniverseTaskParams extends AbstractTaskParams {
       ports.internalYsqlServerRpcPort = params.communicationPorts.internalYsqlServerRpcPort;
       ports.yqlServerHttpPort = params.communicationPorts.yqlServerHttpPort;
       ports.yqlServerRpcPort = params.communicationPorts.yqlServerRpcPort;
+    }
+
+    public static boolean hasDuplicatePorts(CommunicationPorts ports) {
+      Set<Integer> portSet = new HashSet<>();
+      Field[] fields = CommunicationPorts.class.getDeclaredFields();
+      for (Field field : fields) {
+        field.setAccessible(true); // Access private fields if needed
+        // Check if the field is of type int
+        if (field.getType() == int.class) {
+          int value = 0;
+          try {
+            value = (int) field.getInt(ports);
+          } catch (Exception e) {
+            // Do nothing and continue.
+          }
+          // If value already exists, we found a duplicate
+          if (value != 0 && !portSet.add(value)) {
+            return true;
+          }
+        }
+      }
+      return false;
     }
 
     @Override
