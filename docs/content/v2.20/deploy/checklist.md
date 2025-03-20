@@ -134,7 +134,7 @@ Note that for YugabyteDB Anywhere, the SSH port is changed for added security.
 
 ## Clock synchronization
 
-For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/). The following are some recommendations on how to configure clock synchronization.
+For YugabyteDB to maintain strict data consistency, clock drift and clock skew across all nodes _must_ be tightly controlled and kept within defined bounds. Any deviation can impact node availability, as YugabyteDB prioritizes consistency over availability and will shut down servers if necessary to maintain integrity. Clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/), allows you to reduce clock skew and drift by continuously synchronizing system clocks across nodes in a distributed system like YugabyteDB. The following are some recommendations on how to configure clock synchronization.
 
 ### Clock skew
 
