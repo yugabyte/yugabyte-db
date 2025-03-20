@@ -111,7 +111,7 @@ func (fiT *FullInstanceTypesContext) startSubsection(format string) (*template.T
 }
 
 func (fiT *FullInstanceTypesContext) subSection(name string) {
-	fiT.Output.Write([]byte("\n\n"))
+	fiT.Output.Write([]byte("\n"))
 	fiT.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fiT.Output.Write([]byte("\n"))
 }

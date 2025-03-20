@@ -99,7 +99,7 @@ func (r *RegionContext) startSubsection(format string) (*template.Template, erro
 }
 
 func (r *RegionContext) subSection(name string) {
-	r.Output.Write([]byte("\n\n"))
+	r.Output.Write([]byte("\n"))
 	r.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	r.Output.Write([]byte("\n"))
 }

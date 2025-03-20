@@ -91,7 +91,7 @@ func (fki *FullKeyInfoContext) startSubsection(format string) (*template.Templat
 }
 
 func (fki *FullKeyInfoContext) subSection(name string) {
-	fki.Output.Write([]byte("\n\n"))
+	fki.Output.Write([]byte("\n"))
 	fki.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fki.Output.Write([]byte("\n"))
 }

@@ -92,7 +92,7 @@ func (ft *FullTablespaceContext) startSubsection(format string) (*template.Templ
 }
 
 func (ft *FullTablespaceContext) subSection(name string) {
-	ft.Output.Write([]byte("\n\n"))
+	ft.Output.Write([]byte("\n"))
 	ft.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	ft.Output.Write([]byte("\n"))
 }
