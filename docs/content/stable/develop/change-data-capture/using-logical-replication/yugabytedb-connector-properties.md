@@ -715,51 +715,27 @@ If `snapshot.mode` is set to `initial` or `initial_only`, the user also needs to
 
 ##### slot.names
 
-A list of comma separated values of different slot names to be used by each task when using the `streaming.mode=parallel`.
+A list of comma separated values of different slot names to be used by each task when using the `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
 
 No default.
-
-{{< warning title="Warning" >}}
-
-The configuration `slot.names` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
-
-{{< /warning >}}
 
 ##### publication.names
 
-A list of comma separated values of different publication names to be used by each task when using the `streaming.mode=parallel`.
+A list of comma separated values of different publication names to be used by each task when using the `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
 
 No default.
-
-{{< warning title="Warning" >}}
-
-The configuration `publication.names` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
-
-{{< /warning >}}
 
 ##### slot.ranges
 
-A list of semi-colon separated values of different hash code ranges to be used by each task when using the `streaming.mode=parallel`.
+A list of semi-colon separated values of different hash code ranges to be used by each task when using the `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
 
 No default.
-
-{{< warning title="Warning" >}}
-
-The configuration `slot.ranges` is only supposed to be used when `streaming.mode` is set to `parallel`, it won't have any effect otherwise.
-
-{{< /warning >}}
 
 For example, suppose we have a table with 3 tablets where the tablets have hash ranges as `[0,21845)`, `[21845,43690)` and `[43690,65536)` then the value for this configuration would be `slot.ranges=0,21845;21845,43690;43690,65536`.
 
 ##### primary.key.hash.columns
 
-The columns of the table which consitute the hash part of the primary key.
-
-{{< note title="Use only with parallel streaming mode" >}}
-
-This configuration is only supposed to be used when `streaming.mode` is set to `parallel`.
-
-{{< /note >}}
+The columns of the table which consitute the hash part of the primary key. This property is only valid when `streaming.mode` is set to `parallel`.
 
 ## Pass-through configuration properties
 
