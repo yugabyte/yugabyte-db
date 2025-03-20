@@ -21,7 +21,7 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-To enable the anon extension, add `anon` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+To enable the Anonymizer extension, add `anon` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
 --ysql_pg_conf_csv=shared_preload_libraries=anon
@@ -41,7 +41,9 @@ You can customize the following anon parameters:
 | anon.salt | The salt used by pseudonymizing functions. | (empty) |
 | anon.sourceschema | The schema (that is, the namespace) where the tables are masked by the dynamic masking engine. | public |
 
-## Create the extension
+For more information, refer to [Configuration](https://postgresql-anonymizer.readthedocs.io/en/stable/configure/) in the Anonymizer documentation.
+
+## Create the anon extension
 
 To enable the extension:
 
@@ -49,7 +51,7 @@ To enable the extension:
 CREATE EXTENSION anon;
 ```
 
-If you want to use the `anon.fake_*` functions, you need to load the fake data (see [Declare masking rules](#masking-functions)).
+If you want to use the `anon.fake_*` functions, you need to load the fake data (see [Declare masking rules](#declare-masking-rules)).
 
 ```sql
 BEGIN;
@@ -82,7 +84,7 @@ SECURITY LABEL FOR anon ON COLUMN player.id
 
 Anonymizer provides many different functions that you can use to declare the masking rules. For a list of masking functions, refer to [Masking functions](https://postgresql-anonymizer.readthedocs.io/en/stable/masking_functions/) in the Anonymizer documentation.
 
-YugabyteDB does not currently support the `anon.dummy_` functions.
+Note that YugabyteDB does not currently support the `anon.dummy_` functions.
 
 Refer to [Declare masking rules](https://postgresql-anonymizer.readthedocs.io/en/stable/declare_masking_rules/) in the Anonymizer documentation for more information.
 
@@ -159,6 +161,8 @@ SELECT * FROM people;
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
+
+Note how, as we have not yet started dynamic masking, the data is not masked for the masked user.
 
 ```sql
 \c yugabyte yugabyte
@@ -292,8 +296,8 @@ SELECT * FROM people;
 
 ## Limitations
 
-- Altering the data type of a masked column, or dropping a masked table may not work while dynamic masking is enabled. Refer to [Legacy Dynamic Masking](https://postgresql-anonymizer.readthedocs.io/en/stable/legacy_dynamic_masking) in the Anonymizer documentation for information on how work around this.
 - Masking views and materialized views are not supported.
 - The SECURITY LABEL commands on tables and databases are not supported.
+- YugabyteDB does not currently support the `anon.dummy_` functions.
 
-Refer to [Masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/declare_masking_rules/#limitations) and [Legacy masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/legacy_dynamic_masking/#limitations) in the Anonymizer documentation for infomration on the Anonymizer extension limitations.
+Refer to [Masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/declare_masking_rules/#limitations) and [Legacy masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/legacy_dynamic_masking/#limitations) in the Anonymizer documentation for information on the Anonymizer extension limitations.
