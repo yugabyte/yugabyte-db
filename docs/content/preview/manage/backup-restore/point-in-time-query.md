@@ -42,19 +42,18 @@ SET yb_read_time TO 1741909726000000;
 
 All subsequent queries in the session will read data as of `Mar-13-2025 09:48:46`.
 
-`yb_read_time` is defined on a YSQL session level. This means that all the read queries in the current session will read the data as of `yb_read_time`. Other YSQL sessions are not affected.
+When setting `yb_read_time`, keep in mind the following:
 
-To reset the session to normal behavior (current time), set `yb_read_time` to 0.
-
-Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
-
-Currently, point-in-time queries can only read old data without schema changes. In other words, do not set the read time to a timestamp prior to a DDL operation.
+- `yb_read_time` is defined on a YSQL session level. This means that all the read queries in the current session will read the data as of `yb_read_time`. Other YSQL sessions are not affected.
+- To reset the session to normal behavior (current time), set `yb_read_time` to 0.
+- Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
+- Currently, point-in-time queries can only read old data without schema changes. In other words, do not set the read time to a time earlier than the most recent DDL operation.
 
 ## Example
 
 The following example shows how you can use point-in-time queries to recover accidentally deleted rows from a table.
 
-1. Create a simple table with 10 rows and insert data as follows:
+1. Create a basic table with 10 rows and insert data as follows:
 
     ```sql
     CREATE TABLE t(k int primary key, v int);
@@ -188,4 +187,4 @@ The following example shows how you can use point-in-time queries to recover acc
     (10 rows)
     ```
 
-In cases where the deletion affected many tables in the database, you can use point-in-time queries to read the deleted rows for every table. Alternatively, you can use [database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.
+In cases where the deletion affected many tables in the database, you can use point-in-time queries to read the deleted rows for every table. Alternatively, you can use [instant database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.

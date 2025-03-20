@@ -1046,7 +1046,7 @@ Default: `900` (15 minutes)
 
 The time interval, in seconds, to retain history/older versions of the system catalog.
 
-Default: `900` (15 minutes)
+Default: `4 * 3600` (4 hours)
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
@@ -1783,7 +1783,7 @@ Default: `1GB`
 
 PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
-Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
 
 Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
 
@@ -1903,7 +1903,7 @@ Default: true
 
 ##### yb_read_time
 
-Enables [point-in-time queries](../../../manage/backup-restore/point-in-time-query/) by sepcifying a unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. When set, all the read queries in the current session will read the data as of `yb_read_time`. Other YSQL sessions are not affected.
+Enables [point-in-time queries](../../../manage/backup-restore/point-in-time-query/) by specifying a unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
 
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
