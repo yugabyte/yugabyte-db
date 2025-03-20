@@ -1903,7 +1903,7 @@ Default: true
 
 ##### yb_read_time
 
-Enables [point-in-time queries](../../../manage/backup-restore/point-in-time-query/) by specifying a unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
 
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 

@@ -67,7 +67,7 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     icon="fa-light fa-clone">}}
 
   {{<index/item
-    title="Point-in-time query"
+    title="Time travel query"
     body="Query data as at a specific point in time."
     href="point-in-time-query/"
     icon="fa-light fa-clock-rotate-left">}}
