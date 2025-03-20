@@ -32,9 +32,9 @@ The default retention period is 900 seconds (15 minutes).
 
 ### Set the read time
 
-To enable point-in-time queries, set the `yb_read_time` YSQL configuration parameter to specify the timestamp at which you want to read your queries. `yb_read_time` takes a unix timestamp in microseconds, which allows you to read data at up to microsecond precision. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session.
+To enable point-in-time queries, set the `yb_read_time` YSQL configuration parameter to specify the timestamp at which you want to read your queries. `yb_read_time` takes a Unix timestamp in microseconds, which allows you to read data at up to microsecond precision. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session.
 
-Suppose the current point in time is `Mar-13-2025 13:00:00`, and you want to read the data as of timestamp `Mar-13-2025 09:48:46` (which corresponds to unix timestamp `1741909726000000`). Set the read time as follows:
+Suppose the current point in time is `Mar-13-2025 13:00:00`, and you want to read the data as of timestamp `Mar-13-2025 09:48:46` (which corresponds to Unix timestamp `1741909726000000`). Set the read time as follows:
 
 ```sql
 SET yb_read_time TO 1741909726000000;
@@ -80,7 +80,7 @@ The following example shows how you can use point-in-time queries to recover acc
     (10 rows)
     ```
 
-1. Determine the exact time when your database is in the correct state. You will use this timestamp as the read timestamp for the point-in-time query. Use the following query to retrieve the current time in UNIX timestamp format:
+1. Determine the exact time when your database is in the correct state. You will use this timestamp as the read timestamp for the point-in-time query. Use the following query to retrieve the current time in Unix timestamp format:
 
     ```sql
     SELECT (EXTRACT (EPOCH FROM CURRENT_TIMESTAMP)*1000000)::decimal(38,0);
