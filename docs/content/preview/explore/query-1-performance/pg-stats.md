@@ -172,14 +172,14 @@ For the employed column, there are 2 distinct values. If an index is created on 
 
 ## Skewed data
 
-Ideally, your index/table should be reasonably distributed so that the nodes in the cluster process a similar amount of queries. Using pg_stats, you can quickly determine that empty names are about 30% of the dataset. If you create an index on this `name` that includes empty values, all the empty values will be one single node. Any queries for empty names will go to that one node. Depending on your usecase, this may or may not be ideal. In such scenarios you can consider a composite index involving more than one column, so that the index for the same `name` gets distributed across multiple nodes like:
+Ideally, your index/table should be reasonably distributed so that the nodes in the cluster process a similar amount of queries. Using pg_stats, you can quickly determine that empty names are about 30% of the dataset. If you create an index on this `name` that includes empty values, all the empty values will be one single node. Any queries for empty names will go to that one node. Depending on your use case, this may or may not be ideal. In such scenarios you can consider a composite index involving more than one column, so that the index for the same `name` gets distributed across multiple nodes like:
 
 ```sql
 CREATE INDEX idx_users_name_employed
     ON users ((name, employed));
 ```
 
-This will ensure that the index on the same value of `name` will be distributed across atleast 2 nodes (as employed has only 2 distinct values). Although we have added a [low cardinality](#cardinality) value, `employed` onto the index, it is advisable to have higher cardinality values in the index.
+This will ensure that the index on the same value of `name` will be distributed across at least 2 nodes (as employed has only 2 distinct values). Although we have added a [low cardinality](#cardinality) value, `employed` onto the index, it is advisable to have higher cardinality values in the index.
 
 ## Composition of arrays
 
