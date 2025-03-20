@@ -233,5 +233,5 @@ Now that all the YB-Master and YB-TServer processes are on the same version, you
 ## Limitations
 
 - Expression pushdown is not available. {{<issue 24730>}}
-- Upgrading with extensions is not supported. {{<issue 24733>}}
+- Upgrading with extensions is not yet supported. {{<issue 24733>}}
 - Any backups that are taken in the monitoring phase can only be restored on a PG15 compatible universe (that is, backups cannot be restored if rollback is performed).
