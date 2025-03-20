@@ -13,6 +13,7 @@ allowlisting
 allowlists
 anonymization
 anonymized
+Anonymizer
 Ansible
 Anthos
 Apdex
