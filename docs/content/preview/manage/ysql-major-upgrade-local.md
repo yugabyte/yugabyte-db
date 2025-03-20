@@ -6,13 +6,30 @@ description: Upgrade YugabyteDB to PostgreSQL 15
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
 menu:
   preview:
-    identifier: ysql-major-upgrade
+    identifier: ysql-major-upgrade-2
     parent: manage-upgrade-deployment
     weight: 706
 type: docs
 ---
 
 Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-major-upgrade-yugabyted/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Yugabyted
+    </a>
+  </li>
+
+  <li>
+    <a href="../ysql-major-upgrade-local/" class="nav-link active">
+      <i class="icon-shell"></i>
+      Local
+    </a>
+  </li>
+
+</ul>
 
 ## Before you begin
 
@@ -32,7 +49,7 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
 
-Use the [pg_upgrade](https://www.postgresql.org/docs/15/pgupgrade.html) tool provided with v2.25.1.0 to make sure your cluster is compatible with v2.25.1.0.
+Use the [pg_upgrade](https://www.postgresql.org/docs/15/pgupgrade.html) tool provided with v2.25.1.0 to make sure your cluster is compatible with the new version.
 
 Use the `--check` option as follows:
 
@@ -43,7 +60,7 @@ pg_upgrade --check -U <superuser_name> --old-host <any_yb_node_address>  --old-p
 For example:
 
 ```sh
-$ ./yugabyte-2.25.1.0/postgres/bin/pg_upgrade --check -U yugabyte --old-host 127.0.0.1 --old-port 5433 --old-datadir ~/yugabyte-data/node-1/disk-1/pg_data_11
+$ ./path_to_new_version/postgres/bin/pg_upgrade --check -U yugabyte --old-host 127.0.0.1 --old-port 5433 --old-datadir ~/yugabyte-data/node-1/disk-1/pg_data_11
 ```
 
 ```output
@@ -109,9 +126,9 @@ ysql major catalog upgrade started
 ysql major catalog upgrade completed successfully
 ```
 
-### Upgrade all YB-Tservers
+### Upgrade all YB-TServers
 
-[Upgrade the YB-Tserver processes](../upgrade-deployment/#4-upgrade-yb-tservers) one at a time. Make sure `ysql_yb_major_version_upgrade_compatibility` remains set to 11.
+[Upgrade the YB-TServer processes](../upgrade-deployment/#4-upgrade-yb-tservers) one at a time. Make sure `ysql_yb_major_version_upgrade_compatibility` remains set to 11.
 
 Closely monitor your applications at this time. If any issues arise, you can [roll back](#rollback-phase) to the previous version. You can then address the issue and then retry the upgrade.
 
@@ -153,6 +170,20 @@ yb-admin --master_addresses <master_addresses> finalize_upgrade
 
 ## Rollback phase
 
+### Enable mixed mode
+
+Set the `ysql_yb_major_version_upgrade_compatibility` flag to `11` on all YB-Master and YB-TServer processes. For example:
+
+```sh
+$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 11
+$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 11
+$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 11
+
+$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 11
+$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 11
+$ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 11
+```
+
 ### Roll back YB-TServers
 
 [Roll back all YB-TServers](../upgrade-deployment/#1-roll-back-yb-tservers).
@@ -181,10 +212,26 @@ Rollback successful
 
 If you are using the cost based optimizer, run ANALYZE on your databases to get the most optimal query plans.
 
+### Disable mixed mode
+
+Now that all the YB-Master and YB-TServer processes are on the same version, you can disable mixed mode by setting the `ysql_yb_major_version_upgrade_compatibility` flag.
+
+  ```sh
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
+  
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
+  $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0
+  ```
+
+## Post upgrade phase
+
+- If you are using the cost based optimizer, run ANALYZE after the upgrade. {{<issue 25721>}}
+
 ## Limitations
 
-- YB-Tservers need to run on all YB-Master nodes. Kubernetes and Docker are not yet supported. {{<issue 24719>}}
-- Expression pushdown are not available. {{<issue 24730>}}
+- Expression pushdown is not available. {{<issue 24730>}}
 - Upgrading with extensions is not supported. {{<issue 24733>}}
-- If you are using the cost based optimizer, run ANALYZE after the upgrade. {{<issue 25721>}}
 - Any backups that are taken in the monitoring phase can only be restored on a PG15 compatible universe (that is, backups cannot be restored if rollback is performed).
