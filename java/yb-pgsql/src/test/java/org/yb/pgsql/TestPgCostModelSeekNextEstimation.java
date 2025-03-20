@@ -7,6 +7,7 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_OR;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BITMAP_TABLE_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
 
@@ -315,6 +316,41 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     }
   }
 
+  private void testSeekAndNextEstimationJoinHelper_IgnoreActualResults(
+      Statement stmt, String query,
+      String join_type,
+      String outer_table_name, String outer_table_scan_type,
+      double outer_expected_seeks, double outer_expected_nexts,
+      String inner_table_name, String inner_table_scan_type,
+      double inner_expected_seeks, double inner_expected_nexts) throws Exception {
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(join_type)
+                  .plans(
+                      makePlanBuilder()
+                          .relationName(outer_table_name)
+                          .nodeType(outer_table_scan_type)
+                          .estimatedSeeks(expectedSeeksRange(outer_expected_seeks))
+                          .estimatedNexts(expectedNextsRange(outer_expected_nexts))
+                          .build(),
+                      makePlanBuilder()
+                          .relationName(inner_table_name)
+                          .nodeType(inner_table_scan_type)
+                          .estimatedSeeks(expectedSeeksRange(inner_expected_seeks))
+                          .estimatedNexts(expectedNextsRange(inner_expected_nexts))
+                          .build())
+                      .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
+  }
+
   @Before
   public void setUp() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -331,16 +367,21 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                                  + "ASC))", T2_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT s1, s2 FROM generate_series(1, 20) s1, "
                                  + "generate_series(1, 20) s2", T2_NAME));
+      stmt.execute(String.format("CREATE STATISTICS %s_stx ON k1, k2 FROM %s", T2_NAME, T2_NAME));
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, k3 INT,"
                                  + "PRIMARY KEY (k1 ASC, k2 ASC, k3 ASC))", T3_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT s1, s2, s3 FROM "
         + "generate_series(1, 20) s1, generate_series(1, 20) s2, generate_series(1, 20) s3"
                                  , T3_NAME));
+      stmt.execute(String.format("CREATE STATISTICS %s_stx ON k1, k2, k3 FROM %s",
+        T3_NAME, T3_NAME));
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, k3 INT, k4 INT, "
         + "PRIMARY KEY (k1 ASC, k2 ASC, k3 ASC, k4 ASC))", T4_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT s1, s2, s3, s4 FROM "
         + "generate_series(1, 20) s1, generate_series(1, 20) s2, generate_series(1, 20) s3, "
         + "generate_series(1, 20) s4", T4_NAME));
+      stmt.execute(String.format("CREATE STATISTICS %s_stx ON k1, k2, k3, k4 FROM %s",
+        T4_NAME, T4_NAME));
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT)",
         T2_NO_PKEY_NAME));
       stmt.execute(String.format("CREATE INDEX %s on %s (k1 ASC)",
@@ -349,6 +390,8 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT s1, s2 FROM "
         + "generate_series(1, 20) s1, generate_series(1, 20) s2", T2_NO_PKEY_NAME));
+      stmt.execute(String.format("CREATE STATISTICS %s_stx ON k1, k2 FROM %s",
+        T2_NO_PKEY_NAME, T2_NO_PKEY_NAME));
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, k3 INT, k4 INT)",
         T4_NO_PKEY_NAME));
       stmt.execute(String.format("CREATE INDEX %s on %s (k1 ASC, k2 ASC, k3 ASC)",
@@ -356,6 +399,8 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       stmt.execute(String.format("INSERT INTO %s SELECT s1, s2, s3, s4 FROM "
         + "generate_series(1, 20) s1, generate_series(1, 20) s2, generate_series(1, 20) s3, "
         + "generate_series(1, 20) s4", T4_NO_PKEY_NAME));
+      stmt.execute(String.format("CREATE STATISTICS %s_stx ON k1, k2, k3, k4 FROM %s",
+        T4_NO_PKEY_NAME, T4_NO_PKEY_NAME));
       stmt.execute(String.format("ANALYZE %s, %s, %s, %s, %s, %s;",
         T1_NAME, T2_NAME, T3_NAME, T4_NAME, T4_NO_PKEY_NAME, T2_NO_PKEY_NAME));
       stmt.execute("SET yb_enable_optimizer_statistics = true");
@@ -1095,6 +1140,50 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
         "/*+ IndexOnlyScan(t_25862 t_25862_idx) */ SELECT v1 FROM t_25862 WHERE v1 > 0",
         "t_25862", "t_25862_idx", 1302084.0, 1333333334.0, 1);
+    }
+  }
+
+  @Test
+  public void test26462SeekNextEstimationForInnerTableInBNL() throws Exception {
+    /*
+     * #26462 : Seeks and nexts are misestimated for Batched Nested Loop Joins
+     *
+     * This test checks the seek and next estimations for inner tables in
+     * Batched Nested Loop Join.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t1_26462 (k1 INT, k2 INT, PRIMARY KEY (k1 ASC))");
+      stmt.execute("CREATE INDEX t1_26462_idx ON t1_26462 (k1 ASC, k2 ASC)");
+      stmt.execute("CREATE TABLE t2_26462 (k1 INT, k2 INT, PRIMARY KEY (k1 ASC))");
+      stmt.execute("CREATE INDEX t2_26462_idx ON t2_26462 (k1 ASC, k2 ASC)");
+      stmt.execute("INSERT INTO t1_26462 (SELECT s, s FROM generate_series(1, 10000) s)");
+      stmt.execute("INSERT INTO t2_26462 (SELECT s, s FROM generate_series(1, 10000) s)");
+      stmt.execute("ANALYZE t1_26462, t2_26462");
+
+      stmt.execute("SET yb_enable_base_scans_cost_model=on");
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ YbBatchedNL(t1_26462 t2_26462) */ SELECT * "
+        + "FROM t1_26462 JOIN t2_26462 ON t1_26462.k1 = t2_26462.k1;",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t1_26462", NODE_INDEX_SCAN, 10.0, 10000.0,
+        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ YbBatchedNL(t1_26462 t2_26462) IndexScan(t1_26462 t1_26462_idx) "
+        + "IndexScan(t2_26462 t2_26462_idx) */ SELECT * FROM t1_26462 JOIN t2_26462 "
+        + "ON t1_26462.k1 = t2_26462.k1 AND t1_26462.k2 = t2_26462.k2;",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t1_26462", NODE_INDEX_SCAN, 10010.0, 10000.0,
+        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ YbBatchedNL(t1_26462 t2_26462) IndexScan(t1_26462 t1_26462_idx) "
+        + "IndexScan(t2_26462 t2_26462_idx) */ SELECT * FROM t1_26462 JOIN t2_26462 "
+        + "ON ROW(t1_26462.k1, t1_26462.k2) = ROW(t2_26462.k1, t2_26462.k2);",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t1_26462", NODE_INDEX_SCAN, 10010.0, 10000.0,
+        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
     }
   }
 }

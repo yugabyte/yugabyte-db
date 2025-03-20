@@ -7437,7 +7437,7 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 		Oid clause_op = InvalidOid;
 		Node *other_operand = NULL;
 
-		if (IsA(clause, OpExpr) && !IsA(clause, ScalarArrayOpExpr))
+		if (IsA(clause, OpExpr))
 		{
 			OpExpr	   *op = (OpExpr *) clause;
 			clause_op = op->opno;
@@ -7448,9 +7448,30 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 			other_operand = get_rightop(clause);
 			if (op_strategy == BTEqualStrategyNumber)
 			{
-				equality_expr = true;
-				/* Strictest form of condition, so no need to check further */
-				break;
+				if (IsA(other_operand, YbBatchedExpr))
+				{
+					in_expr = true;
+					ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+
+					clause_op = saop->opno;
+					other_operand = (Node *) lsecond(saop->args);
+
+					int			in_expr_array_length;
+					in_expr_array_length = yb_batch_expr_size(root,
+																baserel->relid,
+																other_operand);
+
+					if (*strictest_in_expr_array_length > in_expr_array_length)
+					{
+						*strictest_in_expr_array_length = in_expr_array_length;
+					}
+				}
+				else
+				{
+					equality_expr = true;
+					/* Strictest form of condition, so no need to check further */
+					break;
+				}
 			}
 			else if (op_strategy == BTLessEqualStrategyNumber ||
 					 op_strategy == BTLessStrategyNumber)
@@ -7466,30 +7487,9 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 		}
 		else if (IsA(clause, RowCompareExpr))
 		{
-			if (IsA(other_operand, YbBatchedExpr))
-			{
-				in_expr = true;
-				ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
-
-				clause_op = saop->opno;
-				other_operand = (Node *) lsecond(saop->args);
-
-				int			in_expr_array_length;
-				in_expr_array_length = yb_batch_expr_size(root,
-															baserel->relid,
-															other_operand);
-
-				if (*strictest_in_expr_array_length > in_expr_array_length)
-				{
-					*strictest_in_expr_array_length = in_expr_array_length;
-				}
-			}
-			else
-			{
-				equality_expr = true;
-				/* Strictest form of condition, so no need to check further */
-				break;
-			}
+			equality_expr = true;
+			/* Strictest form of condition, so no need to check further */
+			break;
 		}
 		else if (IsA(clause, ScalarArrayOpExpr))
 		{
@@ -7658,15 +7658,50 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 			{
 				/*
 				 * We assume that a seek will be needed for each value in the
-				 * IN array and seek-forward optimization will not help.
-				 *
-				 * Additionally, nexts will be needed for all the rows.
+				 * IN array and seek-forward optimization will not help. However
+				 * we cap the number of seeks by the number of unique values
+				 * of current key for each group of prefix keys. Otherwise we
+				 * may absurdbly over-estimate seeks for IN filters.
 				 */
-				*num_seeks += strictest_in_expr_array_length;
-				*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
+				if (index_col > 0)
+				{
+					int num_unique_values_per_prefix_group =
+						num_groups_of_index_key_prefixes[index_col] /
+						num_groups_of_index_key_prefixes[index_col - 1];
+					if (num_unique_values_per_prefix_group <
+						strictest_in_expr_array_length)
+					{
+						*num_seeks += num_unique_values_per_prefix_group;
+						*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
+									  num_unique_values_per_prefix_group;
+					}
+					else
+					{
+						*num_seeks += strictest_in_expr_array_length;
+						*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
+									  strictest_in_expr_array_length;
+					}
+				}
+				else
+				{
+					*num_seeks += strictest_in_expr_array_length;
+					*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
+									strictest_in_expr_array_length;
+				}
+
+				/*
+				 * A filter like `k in (1, 2, 3, 4)` may result in more rows
+				 * than the number of values in the IN list. The number of
+				 * results this filter will select is estimated in
+				 * `out_rows_per_prefix_key_group`. We must estimate additional
+				 * nexts for these rows.
+				 */
+				if (out_rows_per_prefix_key_group >
+					strictest_in_expr_array_length)
+				{
+					*num_nexts += out_rows_per_prefix_key_group -
 							  strictest_in_expr_array_length;
-				*num_nexts += out_rows_per_prefix_key_group -
-							  strictest_in_expr_array_length;
+				}
 			}
 			else if (current_column_strictest_cond_type &
 					 (EQUALITY_EXPR | LOWER_BOUND_INEQUALITY_EXPR))
