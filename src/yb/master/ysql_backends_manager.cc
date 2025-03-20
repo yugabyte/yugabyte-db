@@ -766,10 +766,6 @@ MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
   return MonoTime::Earliest(timeout, deadline_);
 }
 
-TabletServerId BackendsCatalogVersionTS::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
 bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   tserver::WaitForYsqlBackendsCatalogVersionRequestPB req;
   if (auto job = job_.lock()) {
@@ -794,7 +790,7 @@ void BackendsCatalogVersionTS::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << resp_.ShortDebugString();
 
   // First, check if the tserver's lease expired.
-  if (!target_ts_desc_->HasYsqlCatalogLease()) {
+  if (!target_ts_desc()->HasYsqlCatalogLease()) {
     // A similar check is done in RetryingTSRpcTask::DoRpcCallback.  That check is hit when this RPC
     // failed and tserver's leaes expired.  This check is hit when this RPC succeeded and tserver's
     // lease expired.
@@ -918,7 +914,7 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   if (auto job = job_.lock()) {
     if (indirectly_resolved) {
       // There are four cases of indirectly resolved tservers, outlined in a comment above.
-      if (found_lease_expired_ || !target_ts_desc_->HasYsqlCatalogLease()) {
+      if (found_lease_expired_ || !target_ts_desc()->HasYsqlCatalogLease()) {
         // The two tserver-lease-expired cases.
         LOG_WITH_PREFIX(INFO)
             << "tserver catalog lease expired, so assuming its backends are at latest catalog"

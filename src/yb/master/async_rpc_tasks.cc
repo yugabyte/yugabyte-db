@@ -441,7 +441,7 @@ void RetryingRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime st
 
 Status RetryingRpcTask::Failed(const Status& status) {
   LOG_WITH_PREFIX(WARNING) << "Async task failed: " << status;
-  Finished(status);
+  SaveFinalStatusAndCallFinished(status);
   UnregisterAsyncTask();
   return status;
 }
@@ -474,6 +474,19 @@ void RetryingRpcTask::AbortIfScheduled() {
   }
 }
 
+Status RetryingRpcTask::GetStatus() const {
+  std::lock_guard<simple_spinlock> l(status_mutex_);
+  return final_status_;
+}
+
+void RetryingRpcTask::SaveFinalStatusAndCallFinished(const Status& status) {
+  {
+    std::lock_guard<simple_spinlock> l(status_mutex_);
+    final_status_ = status;
+  }
+  Finished(status);
+}
+
 void RetryingRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
                                                   MonitoredTaskState terminal_state,
                                                   const Status& status) {
@@ -489,7 +502,7 @@ void RetryingRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
     return;
   }
 
-  Finished(status);
+  SaveFinalStatusAndCallFinished(status);
 }
 
 void RetryingRpcTask::TransitionToFailedState(server::MonitoredTaskState expected,
@@ -575,44 +588,56 @@ RetryingTSRpcTask::RetryingTSRpcTask(
       replica_picker_(std::move(replica_picker)) {}
 
 Status RetryingTSRpcTask::PickReplica() {
+  std::lock_guard l(target_ts_mutex_);
   target_ts_desc_ = VERIFY_RESULT(replica_picker_->PickReplica());
   return Status::OK();
+}
+
+TSDescriptorPtr RetryingTSRpcTask::target_ts_desc() const {
+  std::lock_guard l(target_ts_mutex_);
+  return target_ts_desc_;
+}
+
+TabletServerId RetryingTSRpcTask::permanent_uuid() const {
+  auto target_ts = target_ts_desc();
+  return target_ts ? target_ts->id() : "";
 }
 
 // Handle the actual work of the RPC callback. This is run on the master's worker
 // pool, rather than a reactor thread, so it may do blocking IO operations.
 void RetryingTSRpcTask::DoRpcCallback() {
   VLOG_WITH_PREFIX_AND_FUNC(3) << "Rpc status: " << rpc_.status();
+  auto target_ts = target_ts_desc();
 
   if (!rpc_.status().ok()) {
     // TODO: Move this implementation-specific handling out of the base class.
-    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->id() << ": "
+    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts->id() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
     if (type() == MonitoredTaskType::kBackendsCatalogVersionTs && rpc_.status().IsRemoteError() &&
         rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
       LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->id() << " is on an older version that doesn't"
+          << "TS " << target_ts->id() << " is on an older version that doesn't"
           << " support backends catalog version RPC. Ignoring.";
       TransitionToCompleteState();
-    } else if (type() == MonitoredTaskType::kDeleteReplica && !target_ts_desc_->IsLive()) {
+    } else if (type() == MonitoredTaskType::kDeleteReplica && !target_ts->IsLive()) {
       LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->id() << ": delete failed for tablet "
+          << "TS " << target_ts->id() << ": delete failed for tablet "
           << tablet_id() << ". TS is DEAD. No further retry.";
       TransitionToCompleteState();
     } else if (type() == MonitoredTaskType::kBackendsCatalogVersionTs &&
-               !target_ts_desc_->HasYsqlCatalogLease()) {
+               !target_ts->HasYsqlCatalogLease()) {
       // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
       // when this RPC failed and tserver's lease expired.  That check is hit when this RPC
       // succeeded and tserver's lease is expired.
       LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->id() << " catalog lease expired. Assume backends"
+          << "TS " << target_ts->id() << " catalog lease expired. Assume backends"
           << " on that TS will be resolved to sufficient catalog version";
       TransitionToCompleteState();
     } else if (
         type() == MonitoredTaskType::kObjectLock &&
-        !target_ts_desc_->HasLiveYsqlOperationLease()) {
-      LOG(WARNING) << "TS " << target_ts_desc_->id()
+        !target_ts->HasLiveYsqlOperationLease()) {
+      LOG(WARNING) << "TS " << target_ts->id()
                    << " no longer has a live lease. Ignoring this tserver for object lock task "
                    << description() << ", rpc status: " << rpc_.status();
       TransitionToCompleteState();
@@ -637,10 +662,11 @@ Status RetryingTSRpcTask::ResetProxies() {
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
   shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy;
 
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_admin_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&consensus_proxy));
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_backup_proxy));
+  auto target_ts = target_ts_desc();
+  RETURN_NOT_OK(target_ts->GetProxy(&ts_proxy));
+  RETURN_NOT_OK(target_ts->GetProxy(&ts_admin_proxy));
+  RETURN_NOT_OK(target_ts->GetProxy(&consensus_proxy));
+  RETURN_NOT_OK(target_ts->GetProxy(&ts_backup_proxy));
 
   ts_proxy_.swap(ts_proxy);
   ts_admin_proxy_.swap(ts_admin_proxy);
@@ -705,10 +731,6 @@ std::string AsyncTabletLeaderTask::description() const {
 
 TabletId AsyncTabletLeaderTask::tablet_id() const {
   return tablet_->tablet_id();
-}
-
-TabletServerId AsyncTabletLeaderTask::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->id() : "";
 }
 
 // ============================================================================
@@ -1348,17 +1370,13 @@ TabletId CommonInfoForRaftTask::tablet_id() const {
   return tablet_->tablet_id();
 }
 
-TabletServerId CommonInfoForRaftTask::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
 // ============================================================================
 //  Class AsyncChangeConfigTask.
 // ============================================================================
 string AsyncChangeConfigTask::description() const {
   return Format(
-      "$0 RPC for tablet $1 ($2) on peer $3 with cas_config_opid_index $4", type_name(),
-      tablet_->tablet_id(), table_name(), permanent_uuid(), cstate_.config().opid_index());
+      "$0 RPC for tablet $1 ($2) on peer $3 with cas_config_opid_index $4. Reason: $5", type_name(),
+      tablet_->tablet_id(), table_name(), permanent_uuid(), cstate_.config().opid_index(), reason_);
 }
 
 bool AsyncChangeConfigTask::SendRequest(int attempt) {
@@ -1516,6 +1534,12 @@ Status AsyncRemoveServerTask::PrepareRequest(int attempt) {
 // ============================================================================
 //  Class AsyncTryStepDown.
 // ============================================================================
+std::string AsyncTryStepDown::description() const {
+  return Format(
+      "$0 RPC for tablet $1 ($2) on peer $3. Reason: $4", type_name(), tablet_->tablet_id(),
+      table_name(), permanent_uuid(), reason_);
+}
+
 Status AsyncTryStepDown::PrepareRequest(int attempt) {
   LOG_WITH_PREFIX(INFO) << Substitute("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
                                       attempt, permanent_uuid(), change_config_ts_uuid_);
@@ -1550,8 +1574,9 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
     return false;
   }
 
-  LOG_WITH_PREFIX(INFO) << Substitute("Stepping down leader $0 for tablet $1",
-                                      change_config_ts_uuid_, tablet_->tablet_id());
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Stepping down leader $0 for tablet $1$2", change_config_ts_uuid_, tablet_->tablet_id(),
+      new_leader_uuid_.empty() ? "" : " with new leader " + new_leader_uuid_);
   consensus_proxy_->LeaderStepDownAsync(
       stepdown_req_, &stepdown_resp_, &rpc_, BindRpcCallback());
 
@@ -1585,7 +1610,8 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 
   if (should_remove_) {
     auto task = std::make_shared<AsyncRemoveServerTask>(
-        master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_, epoch());
+        master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_, epoch(),
+        Format("Done stepping down leader. Now removing replica as requested: $0", reason_));
     tablet_->table()->AddTask(task);
     Status status = task->Run();
     WARN_NOT_OK(status, "Failed to send new RemoveServer request");

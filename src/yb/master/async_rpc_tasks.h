@@ -137,6 +137,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   server::MonitoredTaskState AbortAndReturnPrevState(
       const Status& status, bool call_task_finisher = true) override;
 
+  Status GetStatus() const;
+
  protected:
   // Send an RPC request and register a callback.
   // The implementation must return true if the callback was registered, and
@@ -232,6 +234,9 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   // Clean up request and release resources. May call 'delete this'.
   void UnregisterAsyncTask();
 
+  mutable simple_spinlock status_mutex_;
+  Status final_status_ GUARDED_BY(status_mutex_);
+
  private:
   // Returns true if we should impose a limit in the number of retries for this task type.
   bool RetryLimitTaskType() {
@@ -253,6 +258,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 
   // Only abort this task on reactor if it has been scheduled.
   void AbortIfScheduled();
+
+  void SaveFinalStatusAndCallFinished(const Status& status);
 
   virtual int num_max_retries();
   virtual int max_delay_ms();
@@ -304,8 +311,12 @@ class RetryingTSRpcTask : public RetryingRpcTask {
 
   virtual Status PickReplica() override;
 
+  TSDescriptorPtr target_ts_desc() const;
+  TabletServerId permanent_uuid() const;
+
   const std::unique_ptr<TSPicker> replica_picker_;
-  TSDescriptorPtr target_ts_desc_ = nullptr;
+  mutable simple_spinlock target_ts_mutex_;
+  TSDescriptorPtr target_ts_desc_ GUARDED_BY(target_ts_mutex_) = nullptr;
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
@@ -399,8 +410,6 @@ class AsyncTabletLeaderTask : public RetryingTSRpcTaskWithTable {
   TabletId tablet_id() const override;
 
  protected:
-  TabletServerId permanent_uuid() const;
-
   TabletInfoPtr tablet_;
 };
 
@@ -565,13 +574,13 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
       const scoped_refptr<TableInfo>& table, TabletId tablet_id,
       tablet::TabletDataState delete_type,
       boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
-      AsyncTaskThrottlerBase* async_task_throttler, std::string reason)
+      AsyncTaskThrottlerBase* async_task_throttler, const std::string& reason)
       : RetrySpecificTSRpcTaskWithTable(
             master, callback_pool, permanent_uuid, table, std::move(epoch), async_task_throttler),
         tablet_id_(std::move(tablet_id)),
         delete_type_(delete_type),
         cas_config_opid_index_less_or_equal_(std::move(cas_config_opid_index_less_or_equal)),
-        reason_(std::move(reason)) {}
+        reason_(reason) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kDeleteReplica;
@@ -743,8 +752,6 @@ class CommonInfoForRaftTask : public RetryingTSRpcTaskWithTable {
   // Used by SendOrReceiveData. Return's false if RPC should not be sent.
   virtual Status PrepareRequest(int attempt) = 0;
 
-  TabletServerId permanent_uuid() const;
-
   const TabletInfoPtr tablet_;
   const consensus::ConsensusStatePB cstate_;
 
@@ -762,9 +769,10 @@ class AsyncChangeConfigTask : public CommonInfoForRaftTask {
   AsyncChangeConfigTask(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
-      LeaderEpoch epoch)
+      LeaderEpoch epoch, const std::string& reason)
       : CommonInfoForRaftTask(
-            master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)) {}
+            master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)),
+        reason_(reason) {}
 
   std::string type_name() const override { return "ChangeConfig"; }
 
@@ -776,6 +784,9 @@ class AsyncChangeConfigTask : public CommonInfoForRaftTask {
 
   consensus::ChangeConfigRequestPB req_;
   consensus::ChangeConfigResponsePB resp_;
+
+ private:
+  std::string reason_;
 };
 
 class AsyncAddServerTask : public AsyncChangeConfigTask {
@@ -783,9 +794,9 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
   AsyncAddServerTask(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       consensus::PeerMemberType member_type, const consensus::ConsensusStatePB& cstate,
-      const std::string& change_config_ts_uuid, LeaderEpoch epoch)
+      const std::string& change_config_ts_uuid, LeaderEpoch epoch, const std::string& reason)
       : AsyncChangeConfigTask(
-            master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)),
+            master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch), reason),
         member_type_(member_type) {}
 
   server::MonitoredTaskType type() const override {
@@ -810,9 +821,10 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
   AsyncRemoveServerTask(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
-      LeaderEpoch epoch)
+      LeaderEpoch epoch, const std::string& reason)
       : AsyncChangeConfigTask(
-            master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)) {}
+            master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch), reason)
+        {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kRemoveServer;
@@ -838,11 +850,13 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
       const std::string& change_config_ts_uuid,
       bool should_remove,
       LeaderEpoch epoch,
+      const std::string& reason,
       const std::string& new_leader_uuid = "")
       : CommonInfoForRaftTask(
             master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)),
         should_remove_(should_remove),
-        new_leader_uuid_(new_leader_uuid) {}
+        new_leader_uuid_(new_leader_uuid),
+        reason_(reason) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kTryStepDown;
@@ -850,9 +864,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
 
   std::string type_name() const override { return "Stepdown Leader"; }
 
-  std::string description() const override {
-    return "Async Leader Stepdown";
-  }
+  std::string description() const override;
 
   std::string new_leader_uuid() const { return new_leader_uuid_; }
 
@@ -865,6 +877,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
 
   const bool should_remove_;
   const std::string new_leader_uuid_;
+  const std::string reason_;
   consensus::LeaderStepDownRequestPB stepdown_req_;
   consensus::LeaderStepDownResponsePB stepdown_resp_;
 };
@@ -995,7 +1008,6 @@ class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
 
  private:
   TabletId tablet_id() const override { return TabletId(); }
-  TabletServerId permanent_uuid() const;
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;

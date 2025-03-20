@@ -351,8 +351,6 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
 
   void UnregisterAsyncTaskCallback() override;
 
-  TabletServerId permanent_uuid();
-
   tserver::GetSafeTimeResponsePB resp_;
   const std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
@@ -387,8 +385,6 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
   bool SendRequest(int attempt) override;
 
   void UnregisterAsyncTaskCallback() override;
-
-  TabletServerId permanent_uuid();
 
   int num_max_retries() override;
   int max_delay_ms() override;

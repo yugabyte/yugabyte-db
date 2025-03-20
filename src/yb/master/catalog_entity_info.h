@@ -68,6 +68,8 @@ DECLARE_bool(use_parent_table_id_field);
 namespace yb {
 namespace master {
 
+class RetryingRpcTask;
+
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Per table structure for external cluster snapshot importing to this cluster.
@@ -818,8 +820,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Get the Status of the last error from the current CreateTable.
   Status GetCreateTableErrorStatus() const;
-
-  std::size_t NumLBTasks() const;
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.

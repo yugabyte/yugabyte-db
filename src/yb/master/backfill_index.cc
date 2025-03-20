@@ -1430,10 +1430,6 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
     "Could not UpdateSafeTime");
 }
 
-TabletServerId GetSafeTimeForTablet::permanent_uuid() {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                              const std::string& start_key,
                              LeaderEpoch epoch)
@@ -1616,10 +1612,6 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
         backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes),
         "Failed marking BackfillTablet as done.");
   }
-}
-
-TabletServerId BackfillChunk::permanent_uuid() {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
 }  // namespace master
