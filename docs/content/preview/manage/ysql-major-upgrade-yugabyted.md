@@ -90,20 +90,20 @@ Starting yugabyted...
 ✅ UI ready         
 ✅ Data placement constraint successfully verified                 
 
-+--------------------------------------------------------------------------------------------------------+
-|                                               yugabyted                                                |
-+--------------------------------------------------------------------------------------------------------+
-| Status              : Running.                                                                         |
-| YSQL Status         : Ready                                                                            |
-| Replication Factor  : 3                                                                                |
-| YugabyteDB UI       : http://127.0.0.1:15433                                                           |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte        |
-| YSQL                : bin/ysqlsh -h 127.0.0.1  -U yugabyte -d yugabyte                                 |
-| YCQL                : bin/ycqlsh 127.0.0.1 9042 -u cassandra                                           |
-| Data Dir            : /net/dev-server-hsunder/share/yugabyte-data/node1/data                          |
-| Log Dir             : /net/dev-server-hsunder/share/yugabyte-data/node1/logs                          |
-| Universe UUID       : 5dd3bda3-43a9-48fd-9c16-8399378fed12                                             |
-+--------------------------------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------------------+
+|                                               yugabyted                                           |
++---------------------------------------------------------------------------------------------------+
+| Status              : Running.                                                                    |
+| YSQL Status         : Ready                                                                       |
+| Replication Factor  : 3                                                                           |
+| YugabyteDB UI       : http://127.0.0.1:15433                                                      |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte   |
+| YSQL                : bin/ysqlsh -h 127.0.0.1  -U yugabyte -d yugabyte                            |
+| YCQL                : bin/ycqlsh 127.0.0.1 9042 -u cassandra                                      |
+| Data Dir            : /net/dev-server-hsunder/share/yugabyte-data/node1/data                      |
+| Log Dir             : /net/dev-server-hsunder/share/yugabyte-data/node1/logs                      |
+| Universe UUID       : 5dd3bda3-43a9-48fd-9c16-8399378fed12                                        |
++---------------------------------------------------------------------------------------------------+
 ```
 
 ### Upgrade YSQL catalog to the new version
@@ -153,20 +153,20 @@ Starting yugabyted...
 ✅ UI ready         
 ✅ Data placement constraint successfully verified                 
 
-+--------------------------------------------------------------------------------------------------------+
-|                                               yugabyted                                                |
-+--------------------------------------------------------------------------------------------------------+
-| Status              : Running.                                                                         |
-| YSQL Status         : Ready                                                                            |
-| Replication Factor  : 3                                                                                |
-| YugabyteDB UI       : http://127.0.0.1:15433                                                           |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte        |
-| YSQL                : bin/ysqlsh -h 127.0.0.1  -U yugabyte -d yugabyte                                 |
-| YCQL                : bin/ycqlsh 127.0.0.1 9042 -u cassandra                                           |
-| Data Dir            : /net/dev-server-hsunder/share/yugabyte-data/node1/data                          |
-| Log Dir             : /net/dev-server-hsunder/share/yugabyte-data/node1/logs                          |
-| Universe UUID       : 5dd3bda3-43a9-48fd-9c16-8399378fed12                                             |
-+--------------------------------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------------------+
+|                                               yugabyted                                           |
++---------------------------------------------------------------------------------------------------+
+| Status              : Running.                                                                    |
+| YSQL Status         : Ready                                                                       |
+| Replication Factor  : 3                                                                           |
+| YugabyteDB UI       : http://127.0.0.1:15433                                                      |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte   |
+| YSQL                : bin/ysqlsh -h 127.0.0.1  -U yugabyte -d yugabyte                            |
+| YCQL                : bin/ycqlsh 127.0.0.1 9042 -u cassandra                                      |
+| Data Dir            : /net/dev-server-hsunder/share/yugabyte-data/node1/data                      |
+| Log Dir             : /net/dev-server-hsunder/share/yugabyte-data/node1/logs                      |
+| Universe UUID       : 5dd3bda3-43a9-48fd-9c16-8399378fed12                                        |
++---------------------------------------------------------------------------------------------------+
 ```
 
 Closely monitor your applications at this time. If any issues arise, you can [roll back](#rollback-phase) to the previous version. You can then address the issue and then retry the upgrade.
