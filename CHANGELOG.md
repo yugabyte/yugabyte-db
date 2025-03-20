@@ -21,6 +21,7 @@
 * Top level aggregate command `let` variables support for `$geoNear` stage *[Feature]*
 * Enable Backend Command support for Statement Timeout *[Feature]*
 * Support type aggregation operator `$toUUID`. *[Feature]* 
+* Support the $dateFromString operator with full functionality *[Feature]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

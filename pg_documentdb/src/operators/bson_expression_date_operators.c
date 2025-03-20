@@ -22,6 +22,7 @@
 #include "utils/date_utils.h"
 #include "utils/documentdb_errors.h"
 #include "utils/fmgrprotos.h"
+#include "utils/timestamp.h"
 #include "metadata/metadata_cache.h"
 
 #define SECONDS_IN_MINUTE 60
@@ -40,6 +41,18 @@
 	if (!isOnErrorPresent) { \
 		ereportCall; \
 	}
+
+/* This flag is used while parsing as we cannot supply timezone in string and in timezone field together. */
+#define FLAG_TIMEZONE_SPECIFIED (1 << 0)
+
+/* This flag is used to handle the case format is not specified and use preset formats to parse */
+#define FLAG_FORMAT_SPECIFIED (1 << 1)
+
+/* This flag is used to handle the case when onError is specified but not a normal value */
+#define FLAG_ON_ERROR_SPECIFIED (1 << 2)
+
+/* This flag is used to handle the case when onNull is specified*/
+#define FLAG_ON_NULL_SPECIFIED (1 << 3)
 
 /* --------------------------------------------------------- */
 /* Type declaration */
@@ -62,7 +75,10 @@ typedef enum DatePart
 	DatePart_IsoWeek = 11,
 	DatePart_IsoDayOfWeek = 12,
 	DatePart_Str_Month = 13,
-	DatePart_Str_Month_Abbr = 14
+	DatePart_Str_Month_Abbr = 14,
+	DatePart_Str_Timezone_Offset = 15,
+	DatePart_Str_Minutes_Offset = 16,
+	DataPart_Placeholder_Percent = 17,
 } DatePart;
 
 
@@ -233,15 +249,24 @@ typedef struct DollarDateFromStringArgumentState
 	/*Optional: To handle errors while parsing given dateString*/
 	AggregationExpressionData onError;
 
-	/* This flag is being while parsing as we cannot supply timezone in string and in timezone field together. */
-	bool isTimezoneProvided;
+	uint8_t flags;
 } DollarDateFromStringArgumentState;
+
+/* forward declaration so that it can be a parameter of ValidateAndParseDatePartFunc */
+struct DateFormatMap;
+
+typedef bool (*ValidateAndParseDatePartFunc)(char *rawString, const struct
+											 DateFormatMap *dateFormatMap,
+											 DollarDateFromPartsBsonValue *dateFromParts);
 
 /* This is a struct for defining a map between postgres and mongo format and it's length in string and range of acceptible values. */
 typedef struct DateFormatMap
 {
 	/* Mongo format specifier */
 	const char *mongoFormat;
+
+	/* Is the format an ISO format */
+	const bool isIsoFormat;
 
 	/* Postgres format specifier*/
 	const char *postgresFormat;
@@ -260,8 +285,43 @@ typedef struct DateFormatMap
 
 	/* maxRange for the date part */
 	const int maxRangeValue;
+
+	/* Func to validate and parse date part */
+	ValidateAndParseDatePartFunc validateAndParseFunc;
 } DateFormatMap;
 
+/* This is a struct for storing the splitted date part which contains raw string and its DateFormatMap */
+typedef struct RawDatePart
+{
+	/* the DateFormatMap for this date part */
+	const DateFormatMap *formatMap;
+
+	/* the raw string for this date part */
+	char *rawString;
+} RawDatePart;
+
+/* date string parser for a specific format representation */
+typedef struct DateFormatParser
+{
+	/* format represented in string */
+	char *format;
+
+	/* min length allowed by this format parser */
+	int minLen;
+
+	/* max length allowed by this format parser */
+	int maxLen;
+} DateFormatParser;
+
+/* a mapping struct from abbreviation to offset for timezone */
+typedef struct TimezoneMap
+{
+	/* timezone abbreviation */
+	char *abbreviation;
+
+	/* timezone offset for this abbreviation represented in [+/-][hh]:[mm]*/
+	char *offset;
+} TimezoneMap;
 
 static const char *monthNamesCamelCase[12] = {
 	"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -290,23 +350,6 @@ static const char *weekDaysAbbreviated[7] = {
 	"mon", "tue", "wed", "thu", "fri", "sat", "sun"
 };
 
-/* static mapping for mongo format specifiers to postgres format specifiers. These are sorted on mongo format specifier(index 0) and should be kept sorted */
-static const DateFormatMap dateFormats[] = {
-	{ "%B", "month", DatePart_Str_Month, 4, 9, -1, -1 },
-	{ "%G", "IYYY", DatePart_IsoWeekYear, 1, 4, 0, 9999 },
-	{ "%H", "HH24", DatePart_Hour, 2, 2, 0, 23 },
-	{ "%L", "MS", DatePart_Millisecond, 1, 3, 0, 999 },
-	{ "%M", "MI", DatePart_Minute, 2, 2, 0, 59 },
-	{ "%S", "SS", DatePart_Second, 2, 2, 0, 59 },
-	{ "%V", "IW", DatePart_IsoWeek, 1, 2, 1, 53 },
-	{ "%Y", "YYYY", DatePart_Year, 1, 4, 0, 9999 },
-	{ "%b", "mon", DatePart_Str_Month_Abbr, 3, 3, -1, -1 },
-	{ "%d", "DD", DatePart_DayOfMonth, 1, 2, 1, 31 },
-	{ "%j", "DDD", DatePart_DayOfYear, 1, 3, 1, 999 },
-	{ "%m", "MM", DatePart_Month, 1, 2, 1, 12 },
-	{ "%u", "ID", DatePart_IsoDayOfWeek, 1, 1, 1, 7 }
-};
-
 /*
  * Using these values in the rangeforDateUnit array
  * The order is same as the enum DateUnit
@@ -324,12 +367,60 @@ const int64 rangeforDateUnit[] = {
 	18446744073744000L,     /* DateUnit_Second */
 };
 
+/* This is a static preset mapping for timezone offset to timezone abbreviation. */
+const TimezoneMap timezoneMap[] = {
+	{ "A", "+01:00" }, { "B", "+02:00" }, { "BST", "+01:00" }, { "C", "+03:00" },
+	{ "CEST", "+02:00" }, { "CET", "+01:00" }, { "D", "+04:00" }, { "E", "+05:00" },
+	{ "EST", "-05:00" }, { "F", "+06:00" }, { "G", "+07:00" }, { "GMT", "+00:00" },
+	{ "H", "+08:00" }, { "I", "+09:00" }, { "K", "+10:00" }, { "L", "+11:00" },
+	{ "M", "+12:00" }, { "N", "-01:00" }, { "O", "-02:00" }, { "P", "-03:00" },
+	{ "PDT", "-07:00" }, { "PST", "-08:00" }, { "Q", "-04:00" }, { "R", "-05:00" },
+	{ "S", "-06:00" }, { "T", "-07:00" }, { "U", "-08:00" }, { "UTC", "+00:00" },
+	{ "V", "-09:00" }, { "W", "-10:00" }, { "X", "-11:00" }, { "Y", "-12:00" },
+	{ "Z", "+00:00" }
+};
+
+/* default preset supported format for the case that format is not specified */
+const DateFormatParser presetDateFormatParser[] = {
+	{ "%Y-%m-%dT%H:%M:%S.%LZ", 22, 24 },
+
+	{ "%Y-%m-%dT%H:%M:%S.%L", 21, 23 },
+	{ "%Y-%m-%dT%H:%M:%S", 19, 19 },
+	{ "%Y-%m-%dT%H:%M.%S.%LZ", 22, 24 },
+
+	{ "%Y-%m-%dT%H:%M.%S.%L", 21, 23 },
+	{ "%Y-%m-%dT%H:%M.%S", 19, 19 },
+
+	{ "%Y-%m-%d %H:%M:%S", 19, 19 },
+	{ "%Y-%m-%d", 10, 10 },
+
+	{ "%Y-%m-%dT%H:%M:%S.%L%z", 23, 33 },
+	{ "%Y-%m-%dT%H:%M.%S%z", 20, 26 },
+	{ "%Y-%m-%dT%H:%M:%S%z", 20, 29 },
+
+	/* Wacky formats */
+	{ "%B %D, %Y", 13, 20 },
+	{ "%B %D, %Y %H:%M:%S%z", 24, 39 },
+	{ "%B %D, %Y %h", 17, 25 },
+	{ "%m/%d/%y", 6, 10 },
+	{ "%d-%m-%Y", 10, 10 },
+	{ "%Y-%b-%d %h", 15, 16 },
+	{ "%Y-%m-%d %H:%M:%S%z", 21, 29 },
+
+	/* invalid formats */
+	{ "%B %D", 7, 16 },
+	{ "%H:%M:%S", 8, 8 },
+
+	/* last format which is used to trigger error */
+	{ "%Y-%m-%dT%H:%M:%S.%LZ", 0, 99 },
+};
+
 static const char *IsoDateFormat = "IYYY-IW-ID";
 static const char *DefaultTimezone = "UTC";
-static const char *DefaultFormatForDateFromString = "%Y-%m-%dT%H:%M:%S.%LZ";
+
 static const char *DefaultPostgresFormatForDateString = "YYYY-MM-DD HH24:MI:SS.MS";
 static const char *DefaultIsoPostgresFormatForDateString = "IYYY-IW-ID HH24:MI:SS.MS";
-static const int DefaultFormatLenForDateFromString = 21;
+
 static const int QuartersPerYear = 4;
 static const int MonthsPerQuarter = 3;
 static const int MaxMinsRepresentedByUTCOffset = 6039;
@@ -339,6 +430,7 @@ static const int MaxMinsRepresentedByUTCOffset = 6039;
 /* --------------------------------------------------------- */
 static Datum AddIntervalToTimestampWithPgTry(Datum timestamp, Datum interval,
 											 bool *isResultOverflow);
+static inline bool CheckFlag(uint8_t flags, uint8_t flag);
 static inline int CompareDateFormatMap(const void *a, const void *b);
 static inline void ConstructDateStringFromParts(
 	DollarDateFromPartsBsonValue *dateFromParts,
@@ -361,7 +453,7 @@ static inline bool IsArgumentForDateFromStringNull(bson_value_t *dateString,
 												   bson_value_t *format,
 												   bson_value_t *timezone,
 												   bool *isDateStringNull,
-												   bool isTimezoneProvided);
+												   uint8_t flags);
 static inline bool IsArgumentForDateTruncNull(bson_value_t *date, bson_value_t *unit,
 											  bson_value_t *binSize,
 											  bson_value_t *timezone,
@@ -418,18 +510,13 @@ static void ParseInputForDateFromString(const bson_value_t *argument,
 										bson_value_t *dateString, bson_value_t *format,
 										bson_value_t *timezone,
 										bson_value_t *onNull, bson_value_t *onError,
-										bool *isTimezoneProvided);
+										uint8_t *flags);
 static void ParseInputForDollarDateAddSubtract(const bson_value_t *inputArgument,
 											   char *opName,
 											   bson_value_t *startDate,
 											   bson_value_t *unit,
 											   bson_value_t *amount,
 											   bson_value_t *timezone);
-static void ParseDateStringWithFormat(StringView dateString, char **elements, int
-									  sizeOfSplitFormat,
-									  DollarDateFromPartsBsonValue *dateFromParts,
-									  bool *isInputValid, bool isOnErrorPresent,
-									  bool *isOnErrorExpressionKindPath);
 static ExtensionTimezone ParseTimezone(StringView timezone);
 static int64_t ParseUtcOffset(StringView offset);
 static inline void ParseUtcOffsetForDateString(char *dateString, int sizeOfDateString,
@@ -466,6 +553,7 @@ static float8 GetEpochDiffForDateDiff(DateUnit dateUnitEnum, ExtensionTimezone
 									  endDateEpoch);
 static Datum GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit);
 static int GetIsoWeeksForYear(int64 year);
+static inline int GetCurrentCentury();
 static inline int GetMonthIndexFromString(char *monthName, bool isAbbreviated);
 static Datum GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
 											  timezoneToApply);
@@ -524,8 +612,6 @@ static void SetResultValueForYearUnitDateTrunc(Datum pgTimestamp, ExtensionTimez
 											   timezoneToApply, int64 binSize,
 											   DateTruncUnit dateTruncUnit,
 											   bson_value_t *result);
-static void SplitFormatString(StringView formatStrview, char **elements,
-							  int *numElements);
 static bool TryParseTwoDigitNumber(StringView str, uint32_t *result);
 static Datum TruncateTimestampToPrecision(Datum timestamp, const char *precisionUnit);
 static void ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
@@ -535,23 +621,20 @@ static void ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *d
 										  WeekDay *weekDay,
 										  ExtensionTimezone *timezoneToApply,
 										  ExtensionTimezone resultTimezone);
-static void ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
-										   datStringLen, int *indexOfDateStringIter,
-										   DollarDateFromPartsBsonValue *dateFromParts,
-										   bool *isInputValid, int *isIsoWeekDateFmt,
-										   bool isOnErrorPresent);
 static void ValidateInputArgumentForDateDiff(bson_value_t *startDate,
 											 bson_value_t *endDate,
 											 bson_value_t *unit, bson_value_t *timezone,
 											 bson_value_t *startOfWeek,
 											 DateUnit *dateUnitEnum,
 											 WeekDay *weekDayEnum);
-static void ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
-										   bson_value_t *timezone, bson_value_t *onError,
+static void ValidateInputForDateFromString(bson_value_t *dateString,
+										   bson_value_t *format,
+										   bson_value_t *timezone,
+										   bson_value_t *onError,
+										   uint8_t flags,
 										   DollarDateFromPartsBsonValue *dateFromParts,
 										   ExtensionTimezone *timezoneToApply,
-										   bool *isInputValid,
-										   bool *isOnErrorExpressionKindPath);
+										   bool *isInputValid);
 static void ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey);
 static void ValidateInputForDateFromParts(
 	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
@@ -560,23 +643,12 @@ static void ValidateInputForDollarDateAddSubtract(char *opName, bool isDateAdd,
 												  bson_value_t *unit,
 												  bson_value_t *amount,
 												  bson_value_t *timezone);
-static void ValidateOffsetMinutes(char *dateString, int sizeOfDateString,
-								  int *indexOfDateStringIter,
-								  DollarDateFromPartsBsonValue *dateFromParts,
-								  bool *isInputValid, bool isOnErrorPresent);
-static void ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
-												int *indexOfDateStringIter,
-												DollarDateFromPartsBsonValue *
-												dateFromParts,
-												bool *isInputValid, bool
-												isOnErrorPresent);
-static void VerifyAndParseFormatStringForDateString(bson_value_t *dateString,
-													bson_value_t *format,
-													DollarDateFromPartsBsonValue *
-													dateFromParts,
-													bool *isInputValid, bool
-													isOnErrorPresent,
-													bool *isOnErrorExpressionKindPath);
+static void VerifyAndParseFormatStringToParts(bson_value_t *dateString,
+											  char *format,
+											  DollarDateFromPartsBsonValue *dateFromParts,
+											  bool *isInputValid,
+											  bool isOnErrorPresent,
+											  bool tryWithPresetFormat);
 static DateUnit GetDateUnitFromString(char *unit);
 static void SetResultForDollarDateAddSubtract(bson_value_t *startDate, DateUnit unitEum,
 											  int64 amount,
@@ -595,6 +667,59 @@ static int WriteInt32AndAdvanceBuffer(char **buffer, const char *end, int32_t va
 static void WritePaddedUInt32AndAdvanceBuffer(char **buffer, const char *end, int padding,
 											  uint32_t value);
 
+/* These methods are used for validating and parsing date part */
+static bool ValidateAndParseDigits(char *rawString, const DateFormatMap *map,
+								   DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseStrMonth(char *rawString, const DateFormatMap *map,
+									 DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParsePlaceholderPercent(char *rawString, const DateFormatMap *map,
+											   DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseAbbrStrMonth(char *rawString, const DateFormatMap *map,
+										 DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseStrHour(char *rawString, const DateFormatMap *map,
+									DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseMinOffset(char *rawString, const DateFormatMap *map,
+									  DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseTwoDigitsYear(char *rawString, const DateFormatMap *map,
+										  DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseStrDayOfMonth(char *rawString, const DateFormatMap *map,
+										  DollarDateFromPartsBsonValue *dateFromParts);
+static bool ValidateAndParseTimezoneOffset(char *rawString, const DateFormatMap *map,
+										   DollarDateFromPartsBsonValue *dateFromParts);
+
+/* static mapping for mongo format specifiers to postgres format specifiers. These are sorted on mongo format specifier(index 0) and should be kept sorted */
+static const DateFormatMap dateFormats[] = {
+	{ "%%", false, "%", DataPart_Placeholder_Percent, 1, 1, -1, -1,
+	  ValidateAndParsePlaceholderPercent },
+	{ "%B", false, "month", DatePart_Str_Month, 4, 9, -1, -1, ValidateAndParseStrMonth },
+
+	/* customized day represented format like 1st, 2nd, 3rd, 10th and etc. */
+	{ "%D", false, "DD", DatePart_DayOfMonth, 3, 4, -1, -1,
+	  ValidateAndParseStrDayOfMonth },
+	{ "%G", true, "IYYY", DatePart_IsoWeekYear, 1, 4, 0, 9999, ValidateAndParseDigits },
+	{ "%H", false, "HH24", DatePart_Hour, 2, 2, 0, 23, ValidateAndParseDigits },
+	{ "%L", false, "MS", DatePart_Millisecond, 1, 3, 0, 999, ValidateAndParseDigits },
+	{ "%M", false, "MI", DatePart_Minute, 2, 2, 0, 59, ValidateAndParseDigits },
+	{ "%S", false, "SS", DatePart_Second, 2, 2, 0, 59, ValidateAndParseDigits },
+	{ "%V", true, "IW", DatePart_IsoWeek, 1, 2, 1, 53, ValidateAndParseDigits },
+	{ "%Y", false, "YYYY", DatePart_Year, 1, 4, 0, 9999, ValidateAndParseDigits },
+	{ "%Z", false, "TZ", DatePart_Str_Timezone_Offset, 1, 4, -1, -1,
+	  ValidateAndParseMinOffset },
+	{ "%b", false, "mon", DatePart_Str_Month_Abbr, 3, 3, -1, -1,
+	  ValidateAndParseAbbrStrMonth },
+	{ "%d", false, "DD", DatePart_DayOfMonth, 1, 2, 1, 31, ValidateAndParseDigits },
+
+	/* customized parser for string represented hour like 10am, 11pm, noon */
+	{ "%h", false, "HH12", DatePart_Hour, 3, 4, -1, -1, ValidateAndParseStrHour },
+	{ "%j", false, "DDD", DatePart_DayOfYear, 1, 3, 1, 999, ValidateAndParseDigits },
+	{ "%m", false, "MM", DatePart_Month, 1, 2, 1, 12, ValidateAndParseDigits },
+	{ "%u", true, "ID", DatePart_IsoDayOfWeek, 1, 1, 1, 7, ValidateAndParseDigits },
+
+	/* customized parser for 2-digits represented year */
+	{ "%y", false, "YYYY", DatePart_Year, 2, 2, 0, 99, ValidateAndParseTwoDigitsYear },
+	{ "%z", false, "TZ", DatePart_Str_Timezone_Offset, 1, 30, -1, -1,
+	  ValidateAndParseTimezoneOffset },
+};
 
 /* Helper method that throws the error for an invalid timezone argument. */
 static inline void
@@ -5725,39 +5850,27 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 
 	bson_value_t result = { .value_type = BSON_TYPE_NULL };
 	bool isDateStringNull = false;
-	if (IsArgumentForDateFromStringNull(&dateString, &format, &timezone,
+	if (IsArgumentForDateFromStringNull(&dateString,
+										&format,
+										&timezone,
 										&isDateStringNull,
-										dateFromStringState->isTimezoneProvided))
+										dateFromStringState->flags))
 	{
 		/* Set the result to onNull expression if dateString is null otherwise set null. */
-		if (isDateStringNull)
+		if (CheckFlag(dateFromStringState->flags, FLAG_ON_NULL_SPECIFIED) &&
+			isDateStringNull)
 		{
 			result = onNull;
-
-			/* Return directly if onNull type is BSON_TYPE_EOD */
-			if (onNull.value_type == BSON_TYPE_EOD)
-			{
-				return;
-			}
 		}
-		else
+		if (result.value_type != BSON_TYPE_EOD)
 		{
-			if (dateFromStringState->dateString.value.value_type != BSON_TYPE_UTF8)
-			{
-				result = onError;
-			}
+			ExpressionResultSetValue(expressionResult, &result);
 		}
-
-		ExpressionResultSetValue(expressionResult, &result);
 		return;
 	}
 
 	/* This flag is used to set context that error has occurred but we still need to set the result as onError is specified. */
 	bool isInputValid = true;
-
-	bool isOnErrorExpressionKindPath = dateFromStringState->onError.kind ==
-									   AggregationExpressionKind_Path;
-
 	ExtensionTimezone timezoneToApply = {
 		.offsetInMs = 0,
 		.isUtcOffset = true
@@ -5767,26 +5880,25 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
 	DollarDateFromPartsBsonValue *dateFromParts = palloc0(
 		sizeof(DollarDateFromPartsBsonValue));
 
-	ValidateInputForDateFromString(&dateString, &format, &timezone, &onError,
+	ValidateInputForDateFromString(&dateString,
+								   &format, &timezone, &onError,
+								   dateFromStringState->flags,
 								   dateFromParts,
-								   &timezoneToApply, &isInputValid,
-								   &isOnErrorExpressionKindPath);
+								   &timezoneToApply, &isInputValid);
 
-	/* If isInputValid is false then we set the result as onError otherwise we would have already thrown error. */
-	if (!isInputValid)
-	{
-		result = onError;
-	}
-	else
+	if (isInputValid)
 	{
 		SetResultValueForDateFromString(dateFromParts, timezoneToApply, &result);
 	}
-	pfree(dateFromParts);
-	if (result.value_type == BSON_TYPE_EOD)
+	else if (CheckFlag(dateFromStringState->flags, FLAG_ON_ERROR_SPECIFIED))
 	{
-		return;
+		result = onError;
 	}
-	ExpressionResultSetValue(expressionResult, &result);
+	pfree(dateFromParts);
+	if (result.value_type != BSON_TYPE_EOD)
+	{
+		ExpressionResultSetValue(expressionResult, &result);
+	}
 }
 
 
@@ -5822,14 +5934,18 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 	bson_value_t onNull = { 0 };
 	bson_value_t onError = { 0 };
 
-	bool isTimezoneProvided = false;
+	/* bool isTimezoneProvided = false; */
+	/* bool isFormatSpecified = false; */
+	/* bool isOnErrorSpecified = false; */
+	/* bool isOnNullSpecified = false; */
+	uint8_t flags = 0;
 	ParseInputForDateFromString(argument, &dateString, &format, &timezone, &onNull,
-								&onError, &isTimezoneProvided);
+								&onError, &flags);
 	DollarDateFromStringArgumentState *dateFromStringArguments = palloc0(
 		sizeof(DollarDateFromStringArgumentState));
 
 	/* We need to set this flag as true because we need to identify a way if input timezone was provided or not. */
-	dateFromStringArguments->isTimezoneProvided = isTimezoneProvided;
+	dateFromStringArguments->flags = flags;
 
 	ParseAggregationExpressionData(&dateFromStringArguments->dateString, &dateString,
 								   context);
@@ -5848,20 +5964,12 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 											&dateFromStringArguments->format.value,
 											&dateFromStringArguments->timezone.value,
 											&isDateStringNull,
-											isTimezoneProvided))
+											flags))
 		{
-			/* Set the result to onNull expression if dateString is null otherwise set null. */
-			if (isDateStringNull)
+			/* Only in the case that dateString is nullish and onNull is specified, onNull will be returned. */
+			if (CheckFlag(flags, FLAG_ON_NULL_SPECIFIED) && isDateStringNull)
 			{
 				result = dateFromStringArguments->onNull.value;
-			}
-			else
-			{
-				if (dateFromStringArguments->dateString.value.value_type !=
-					BSON_TYPE_UTF8)
-				{
-					result = dateFromStringArguments->onError.value;
-				}
 			}
 
 			data->value = result;
@@ -5872,7 +5980,6 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 
 		/* This flag is used to set context that error has occurred but we still need to set the result as onError is specified. */
 		bool isInputValid = true;
-		bool isOnErrorExpressionKindPath = false;
 		ExtensionTimezone timezoneToApply = {
 			.offsetInMs = 0,
 			.isUtcOffset = true
@@ -5885,18 +5992,19 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 									   &dateFromStringArguments->format.value,
 									   &dateFromStringArguments->timezone.value,
 									   &dateFromStringArguments->onError.value,
+									   dateFromStringArguments->flags,
 									   dateFromParts,
 									   &timezoneToApply,
-									   &isInputValid, &isOnErrorExpressionKindPath);
+									   &isInputValid);
 
 		/* If isInputValid is false then we set the result as onError otherwise we would have already thrown error. */
-		if (!isInputValid)
-		{
-			result = dateFromStringArguments->onError.value;
-		}
-		else
+		if (isInputValid)
 		{
 			SetResultValueForDateFromString(dateFromParts, timezoneToApply, &result);
+		}
+		else if (CheckFlag(flags, FLAG_ON_ERROR_SPECIFIED))
+		{
+			result = dateFromStringArguments->onError.value;
 		}
 
 		data->value = result;
@@ -5957,21 +6065,32 @@ ConstructDateStringFromParts(DollarDateFromPartsBsonValue *dateFromParts,
 
 /**
  * Checks if the argument for the `dateFromString` function is null.
+ * The principles for handling null arguments are as follows:
+ *   1) If the `dateString` argument is null and onNull is specified, the result is onNull.
+ *   2) If the `dateString` argument is null and onNull is not specified, the result is null.
+ *   3) If the `dateString` argument is string and either `format` or `timezone` is null, the result is null.
+ *
+ * For the other cases, the result should be handled by parse stage. If the parse stage fails, the result will
+ * be set to onError if it is specified; otherwise, the error should be thrown.
  */
 static inline bool
 IsArgumentForDateFromStringNull(bson_value_t *dateString,
 								bson_value_t *format,
 								bson_value_t *timezone,
 								bool *isDateStringNull,
-								bool isTimezoneProvided)
+								uint8_t flags)
 {
 	*isDateStringNull = IsExpressionResultNullOrUndefined(dateString);
 	if (*isDateStringNull)
 	{
 		return true;
 	}
-	return IsExpressionResultNullOrUndefined(format) ||
-		   (isTimezoneProvided && IsExpressionResultNullOrUndefined(timezone));
+
+	return ((CheckFlag(flags, FLAG_FORMAT_SPECIFIED) && IsExpressionResultNullOrUndefined(
+				 format)) ||
+			(CheckFlag(flags, FLAG_TIMEZONE_SPECIFIED) &&
+			 IsExpressionResultNullOrUndefined(timezone))) &&
+		   dateString->value_type == BSON_TYPE_UTF8;
 }
 
 
@@ -5995,6 +6114,13 @@ IsDateFromStringArgumentConstant(DollarDateFromStringArgumentState *
 }
 
 
+static inline bool
+CheckFlag(uint8_t flags, uint8_t flag)
+{
+	return (flags & flag) != 0;
+}
+
+
 /*
  * This function is used to compare format strings during binary search
  */
@@ -6004,6 +6130,15 @@ CompareDateFormatMap(const void *a, const void *b)
 	const DateFormatMap *mapA = (const DateFormatMap *) a;
 	const DateFormatMap *mapB = (const DateFormatMap *) b;
 	return strcmp(mapA->mongoFormat, mapB->mongoFormat);
+}
+
+
+static inline int
+CompareTimezoneMap(const void *a, const void *b)
+{
+	const TimezoneMap *mapA = (const TimezoneMap *) a;
+	const TimezoneMap *mapB = (const TimezoneMap *) b;
+	return strcmp(mapA->abbreviation, mapB->abbreviation);
 }
 
 
@@ -6100,6 +6235,22 @@ IsFormatSpecifierExist(char *formatSpecifier)
 }
 
 
+static inline char *
+GetOffsetFromTimezoneAbbr(char *timezoneAbbr)
+{
+	TimezoneMap key;
+	key.abbreviation = timezoneAbbr;
+	TimezoneMap *result = bsearch(&key, timezoneMap, sizeof(timezoneMap) /
+								  sizeof(TimezoneMap), sizeof(TimezoneMap),
+								  CompareTimezoneMap);
+	if (result != NULL)
+	{
+		return result->offset;
+	}
+	return NULL;
+}
+
+
 /**
  * Parses the given input document and sets the result in respective variables.
  */
@@ -6107,7 +6258,7 @@ void
 ParseInputForDateFromString(const bson_value_t *inputArgument, bson_value_t *dateString,
 							bson_value_t *format, bson_value_t *timezone,
 							bson_value_t *onNull, bson_value_t *onError,
-							bool *isTimezoneProvided)
+							uint8_t *flags)
 {
 	bson_iter_t docIter;
 	BsonValueInitIterator(inputArgument, &docIter);
@@ -6122,19 +6273,22 @@ ParseInputForDateFromString(const bson_value_t *inputArgument, bson_value_t *dat
 		else if (strcmp(key, "format") == 0)
 		{
 			*format = *bson_iter_value(&docIter);
+			*flags |= FLAG_FORMAT_SPECIFIED;
 		}
 		else if (strcmp(key, "onNull") == 0)
 		{
 			*onNull = *bson_iter_value(&docIter);
+			*flags |= FLAG_ON_NULL_SPECIFIED;
 		}
 		else if (strcmp(key, "timezone") == 0)
 		{
 			*timezone = *bson_iter_value(&docIter);
-			*isTimezoneProvided = true;
+			*flags |= FLAG_TIMEZONE_SPECIFIED;
 		}
 		else if (strcmp(key, "onError") == 0)
 		{
 			*onError = *bson_iter_value(&docIter);
+			*flags |= FLAG_ON_ERROR_SPECIFIED;
 		}
 		else
 		{
@@ -6162,199 +6316,12 @@ ParseInputForDateFromString(const bson_value_t *inputArgument, bson_value_t *dat
 	}
 
 	/* Setting the default value for format in case of absent */
-	if (format->value_type == BSON_TYPE_EOD)
-	{
-		format->value_type = BSON_TYPE_UTF8;
-		format->value.v_utf8.str = (char *) DefaultFormatForDateFromString;
-		format->value.v_utf8.len = DefaultFormatLenForDateFromString;
-	}
-}
-
-
-/*
- * This function parses the dateString based on the formatElements array and writes the pgFormatString and corresponding dateString for postgres to convert.
- */
-static void
-ParseDateStringWithFormat(StringView dateStringView, char **elements, int
-						  sizeOfSplitFormat,
-						  DollarDateFromPartsBsonValue *dateFromParts, bool *isInputValid,
-						  bool isOnErrorPresent, bool *isOnErrorExpressionKindPath)
-{
-	char *dateString = (char *) dateStringView.string;
-	int sizeOfDateString = dateStringView.length;
-
-	/* This is to iterate over the dateString char by char. */
-	int indexOfDateStringIter = 0;
-
-	/* This is to iterate over the elements of format array. */
-	int indexOfElementIter = 0;
-
-	/* We have to error in case of formatStr contains iso and non-iso parts together. */
-	int isIsoWeekDateFmt = -1;
-
-	/* This will be used to check if the iso format variable was ever changed*/
-	int prevIsoFormat = -1;
-
-	/* Iterate over the format elements and dateString. */
-	while ((indexOfElementIter < sizeOfSplitFormat) &&
-		   (indexOfDateStringIter < sizeOfDateString))
-	{
-		char *elementAtIndex = elements[indexOfElementIter];
-
-
-		/* Parsing offset minutes. */
-		if (elementAtIndex[0] == '%' && elementAtIndex[1] == 'Z')
-		{
-			ValidateOffsetMinutes(dateString, sizeOfDateString, &indexOfDateStringIter,
-								  dateFromParts, isInputValid, isOnErrorPresent);
-			if (!(*isInputValid))
-			{
-				return;
-			}
-		}
-		/* Parsing utc offset */
-		else if (elementAtIndex[0] == '%' && elementAtIndex[1] == 'z')
-		{
-			/* Skip the space after the date string if any. */
-			while (dateString[indexOfDateStringIter] == ' ')
-			{
-				indexOfDateStringIter++;
-			}
-			ValidateTimezoneOffsetForDateString(dateString, sizeOfDateString,
-												&indexOfDateStringIter, dateFromParts,
-												isInputValid, isOnErrorPresent);
-			if (!(*isInputValid))
-			{
-				return;
-			}
-		}
-		/* If elementAtIndex is a format specifier */
-		else if (elementAtIndex[0] == '%' && elementAtIndex[1] != '%')
-		{
-			/* Get the index of the format specifier in the list of supported format specifiers. */
-			int fmtSpecifierIndex = IsFormatSpecifierExist(elementAtIndex);
-
-			/* Format specifier is not found in the list of supported format specifiers. */
-			if (fmtSpecifierIndex == -1)
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION18536), errmsg(
-									"Invalid format character '%s' in format string",
-									elementAtIndex),
-								errdetail_log(
-									"Invalid format character in format string")));
-			}
-
-			/* Validate the date part and extract the value from dateString */
-			ValidateDatePartFromDateString(fmtSpecifierIndex,
-										   dateString, sizeOfDateString,
-										   &indexOfDateStringIter,
-										   dateFromParts, isInputValid,
-										   &isIsoWeekDateFmt, isOnErrorPresent);
-
-			/* This is to break if the input is invalid as this would mean isOnError is present. */
-			if (!isInputValid)
-			{
-				break;
-			}
-
-			/* Mixing of iso and non-iso parts is not allowed. */
-
-			if (prevIsoFormat != -1 && prevIsoFormat != isIsoWeekDateFmt)
-			{
-				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																	  errmsg(
-																		  "Error parsing date string '%s'; %d: Mixing of ISO dates with natural dates is not allowed",
-																		  dateString,
-																		  sizeOfDateString),
-																	  errdetail_log(
-																		  "Error parsing date string; Mixing of ISO dates with natural dates is not allowed"))));
-				*isInputValid = false;
-				return;
-			}
-
-			/* On successful parsing of the date part, set the prevIsoFormat to isIsoWeekDateFmt and we know that what sort of format we are dealing with. */
-			prevIsoFormat = isIsoWeekDateFmt;
-		}
-		else
-		{
-			/* %% is a escape for literal %, so modify the element at index to be % only for comparison in dateString */
-			if (strcmp(elementAtIndex, "%%") == 0)
-			{
-				elementAtIndex = "%";
-			}
-
-			/* Mismatch in the element at index. */
-			if (elementAtIndex[0] != dateString[indexOfDateStringIter])
-			{
-				if (!*isOnErrorExpressionKindPath)
-				{
-					CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																			  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																		  errmsg(
-																			  "Error parsing date string '%s'; %d: Format literal not found '%c'",
-																			  dateString,
-																			  indexOfDateStringIter,
-																			  dateString[
-																				  indexOfDateStringIter
-																			  ]),
-																		  errdetail_log(
-																			  "Error parsing date string. Mismatch in element at index %d ",
-																			  indexOfDateStringIter))));
-				}
-				*isInputValid = false;
-				return;
-			}
-			indexOfDateStringIter++;
-		}
-
-		/* increment the format specifier index */
-		indexOfElementIter++;
-	}
-
-	/* Date String is left but format is over */
-	if ((indexOfDateStringIter < sizeOfDateString) && (indexOfElementIter >=
-													   sizeOfSplitFormat))
-	{
-		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-															  errmsg(
-																  "Error parsing date string %s'; %d: Trailing data '%c'",
-																  dateString,
-																  indexOfDateStringIter,
-																  dateString[
-																	  indexOfDateStringIter
-																  ]),
-															  errdetail_log(
-																  "Error parsing date string %s'; %d: Trailing data '%c'",
-																  dateString,
-																  indexOfDateStringIter,
-																  dateString[
-																	  indexOfDateStringIter
-																  ]))));
-		*isInputValid = false;
-		return;
-	}
-
-	/* Format is left but dateString is over. */
-	if ((indexOfElementIter < sizeOfSplitFormat) && (indexOfDateStringIter >=
-													 sizeOfDateString))
-	{
-		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-															  errmsg(
-																  "Error parsing date string %s'; %d: Not enough data available to satisfy format ''",
-																  dateString,
-																  sizeOfDateString),
-															  errdetail_log(
-																  "Error parsing date string. Not enough data available to satisfy format"))));
-		*isInputValid = false;
-		return;
-	}
-	dateFromParts->isIsoFormat = isIsoWeekDateFmt;
-
-	CheckIfRequiredPartsArePresent(dateFromParts, dateString, isInputValid,
-								   isOnErrorPresent);
+	/* if (format->value_type == BSON_TYPE_EOD) */
+	/* { */
+	/*  format->value_type = BSON_TYPE_UTF8; */
+	/*  format->value.v_utf8.str = (char *) DefaultFormatForDateFromString; */
+	/*  format->value.v_utf8.len = DefaultFormatLenForDateFromString; */
+	/* } */
 }
 
 
@@ -6535,64 +6502,19 @@ SetResultValueForDateFromStringInputDayOfYear(DollarDateFromPartsBsonValue *date
 
 
 /*
- * This function takes in the format and splits into array of elements.
- * This is required as we need to first understand the format string and then convert it to the postgres format string.
- * This breakdown also would be used to parse dateString char by char.
- */
-static void
-SplitFormatString(StringView formatStrview, char **elements, int *numElements)
-{
-	int length = formatStrview.length;
-	char *formatString = (char *) formatStrview.string;
-	int count = 0;
-	int i = 0;
-
-	while (i < length)
-	{
-		if (formatString[i] == '%')
-		{
-			if ((i + 1) < length)
-			{
-				char *formatSpecifier = (char *) palloc0(3 * sizeof(char));
-				formatSpecifier[0] = formatString[i];
-				formatSpecifier[1] = formatString[i + 1];
-				formatSpecifier[2] = '\0';
-				elements[count] = formatSpecifier;
-				count++;
-				i += 2;
-			}
-			else
-			{
-				DeepFreeFormatArray(elements, count);
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION18535), errmsg(
-									"Unmatched '%%' at end of format string")));
-			}
-		}
-		else
-		{
-			char *splitter = (char *) palloc0(2 * sizeof(char));
-			splitter[0] = formatString[i];
-			splitter[1] = '\0';
-			elements[count] = splitter;
-			count++;
-			i++;
-		}
-	}
-	*numElements = count;
-}
-
-
-/*
  * This function validates the input and sets the isInputValid flag to false if the input is invalid.
  */
 static void
-ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
+ValidateInputForDateFromString(bson_value_t *dateString,
+							   bson_value_t *format,
 							   bson_value_t *timezone, bson_value_t *onError,
+							   uint8_t flags,
 							   DollarDateFromPartsBsonValue *dateFromParts,
-							   ExtensionTimezone *timezoneToApply, bool *isInputValid,
-							   bool *isOnErrorExpressionKindPath)
+							   ExtensionTimezone *timezoneToApply, bool *isInputValid)
 {
-	bool isOnErrorPresent = onError->value_type != BSON_TYPE_EOD;
+	/* Even if the value of onError is null or EOD, we will use it as it is rather than throwing error. */
+	bool isOnErrorPresent = CheckFlag(flags, FLAG_ON_ERROR_SPECIFIED);
+	bool isFormatSpecified = CheckFlag(flags, FLAG_FORMAT_SPECIFIED);
 
 	/* If dateString is not a string */
 	if (dateString->value_type != BSON_TYPE_UTF8)
@@ -6610,7 +6532,7 @@ ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 		return;
 	}
 
-	if (format->value_type != BSON_TYPE_UTF8)
+	if (isFormatSpecified && format->value_type != BSON_TYPE_UTF8)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40684), errmsg(
 							"$dateFromString requires that 'format' be a string, found: %s with value %s",
@@ -6631,15 +6553,53 @@ ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 	dateFromParts->timezone.value = timezone->value;
 	dateFromParts->timezone.value_type = timezone->value_type;
 
-	VerifyAndParseFormatStringForDateString(dateString, format, dateFromParts,
-											isInputValid,
-											isOnErrorPresent,
-											isOnErrorExpressionKindPath);
+	if (isFormatSpecified)
+	{
+		VerifyAndParseFormatStringToParts(dateString, format->value.v_utf8.str,
+										  dateFromParts,
+										  isInputValid,
+										  isOnErrorPresent, false);
+	}
+	else
+	{
+		/* try with preset format */
+		int presetDateFormatParserSize = sizeof(presetDateFormatParser) /
+										 sizeof(DateFormatParser);
+		for (int i = 0; i < presetDateFormatParserSize; i++)
+		{
+			/* use date string length to filter out unnecessary attampts */
+			int dateStrLen = strlen(dateString->value.v_utf8.str);
+			if (dateStrLen < presetDateFormatParser[i].minLen ||
+				dateStrLen > presetDateFormatParser[i].maxLen)
+			{
+				continue;
+			}
+
+			/* If it is not the last try, we won't throw error */
+			bool isNotLastTry = i != presetDateFormatParserSize - 1;
+			*isInputValid = true;
+			DollarDateFromPartsBsonValue *tmpDateFromParts = palloc0(
+				sizeof(DollarDateFromPartsBsonValue));
+			tmpDateFromParts->timezone = dateFromParts->timezone;
+			VerifyAndParseFormatStringToParts(dateString,
+											  presetDateFormatParser[i].format,
+											  tmpDateFromParts, isInputValid,
+											  isOnErrorPresent, isNotLastTry);
+			if (*isInputValid)
+			{
+				*dateFromParts = *tmpDateFromParts;
+				pfree(tmpDateFromParts);
+				break;
+			}
+			pfree(tmpDateFromParts);
+		}
+	}
 
 	if (!(*isInputValid))
 	{
 		return;
 	}
+
 	StringView timezoneToParse = {
 		.string = dateFromParts->timezone.value.v_utf8.str,
 		.length = dateFromParts->timezone.value.v_utf8.len
@@ -6656,183 +6616,20 @@ ValidateInputForDateFromString(bson_value_t *dateString, bson_value_t *format,
 }
 
 
-/*
- * This function takes in the datepart and extracts the particular values from date String based on indexOfDateStringIter.
- * In case the datePart is isoWeekDateFmt then it sets the isIsoWeekDateFmt flag to true.
- * In case of any error in validating it also changes the isInputValid and sets it to false instead of throwing error.
- */
-static void
-ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
-							   dateStringLen, int *indexOfDateStringIter,
-							   DollarDateFromPartsBsonValue *dateFromParts,
-							   bool *isInputValid, int *isIsoWeekDateFmt, bool
-							   isOnErrorPresent)
+static inline int
+GetCurrentCentury()
 {
-	DatePart datePart = dateFormats[indexOfDateFormatMap].datePart;
+	TimestampTz now = GetCurrentTimestamp();
+	struct pg_tm tm;
+	fsec_t fsec;
 
-	int minCharsToRead = dateFormats[indexOfDateFormatMap].minLen;
-	int maxCharsToRead = dateFormats[indexOfDateFormatMap].maxLen;
-	int minRangeVal = dateFormats[indexOfDateFormatMap].minRangeValue;
-	int maxRangeVal = dateFormats[indexOfDateFormatMap].maxRangeValue;
-	char *dateElement = (char *) palloc0((maxCharsToRead + 1) * sizeof(char));
-
-	/* When Str parts are supplied then areAllNumbers are false otherwise true. */
-	bool areAllNumbers = !(datePart == DatePart_Str_Month || datePart ==
-						   DatePart_Str_Month_Abbr);
-	ReadThroughDatePart(dateString, indexOfDateStringIter, maxCharsToRead, dateElement,
-						areAllNumbers);
-	int lenDateElement = strlen(dateElement);
-
-	/*
-	 * Check if the length of the dateElement is less than the minimum characters required to read.
-	 * We, don't error out as since during parsing we will get the error.
-	 */
-	if (lenDateElement < minCharsToRead)
+	if (timestamp2tm(now, NULL, &tm, &fsec, NULL, NULL) == 0)
 	{
-		pfree(dateElement);
-		*isInputValid = false;
-		return;
+		return (tm.tm_year / 100) * 100;
 	}
 
-	bson_value_t dateElementBsonValue = { .value_type = BSON_TYPE_INT32 };
-
-	/* In case all parts are numbers in mongo format then we can parse them upront*/
-	if (areAllNumbers)
-	{
-		/* Converting to integer and checking if the value is in the range. */
-		int dateElementValue = atoi(dateElement);
-		pfree(dateElement);
-
-		if (dateElementValue < minRangeVal || dateElementValue > maxRangeVal)
-		{
-			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																  errmsg(
-																	  "Error parsing date string '%s'; %d: Value %d is out of range",
-																	  dateString,
-																	  *
-																	  indexOfDateStringIter,
-																	  dateElementValue),
-																  errdetail_log(
-																	  "Error parsing date string. Value %d is out of range",
-																	  dateElementValue))));
-			*isInputValid = false;
-			return;
-		}
-		dateElementBsonValue.value.v_int32 = dateElementValue;
-		dateElementBsonValue.value_type = BSON_TYPE_INT32;
-	}
-
-	switch (datePart)
-	{
-		case DatePart_Year:
-		{
-			*isIsoWeekDateFmt = 0;
-			dateFromParts->year = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_Month:
-		{
-			*isIsoWeekDateFmt = 0;
-			dateFromParts->month = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_DayOfMonth:
-		{
-			*isIsoWeekDateFmt = 0;
-			dateFromParts->day = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_Hour:
-		{
-			dateFromParts->hour = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_Minute:
-		{
-			dateFromParts->minute = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_Second:
-		{
-			dateFromParts->second = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_Millisecond:
-		{
-			dateFromParts->millisecond = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_IsoWeek:
-		{
-			*isIsoWeekDateFmt = 1;
-			dateFromParts->isoWeek = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_IsoWeekYear:
-		{
-			*isIsoWeekDateFmt = 1;
-			dateFromParts->isoWeekYear = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_IsoDayOfWeek:
-		{
-			*isIsoWeekDateFmt = 1;
-			dateFromParts->isoDayOfWeek = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_DayOfYear:
-		{
-			*isIsoWeekDateFmt = 0;
-			dateFromParts->dayOfYear = dateElementBsonValue;
-			break;
-		}
-
-		case DatePart_Str_Month:
-		case DatePart_Str_Month_Abbr:
-		{
-			*isIsoWeekDateFmt = 0;
-			bool isAbbreviated = datePart == DatePart_Str_Month_Abbr;
-			int month = GetMonthIndexFromString(dateElement, isAbbreviated);
-			pfree(dateElement);
-
-			/* In case the name of month is wrong we return error.*/
-			if (month == -1)
-			{
-				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																	  errmsg(
-																		  "Error parsing date string '%s'; %d: Textual month cannot be found",
-																		  dateString,
-																		  *
-																		  indexOfDateStringIter),
-																	  errdetail_log(
-																		  "Error parsing date string. Textual month cannot be found for input month"))));
-				*isInputValid = false;
-				return;
-			}
-			dateElementBsonValue.value.v_int32 = month;
-			dateFromParts->month = dateElementBsonValue;
-			break;
-		}
-
-		default:
-		{
-			/* Invalid date part */
-			*isInputValid = false;
-			break;
-		}
-	}
+	/* If we can't get the current year, return a default value. */
+	return 2000;
 }
 
 
@@ -6867,74 +6664,501 @@ GetMonthIndexFromString(char *monthName, bool isAbbreviated)
 }
 
 
-/*
- * This function validates the timezone minutes offset in dateString and sets the value in dateFromParts.
- * It is of the format +/-mmm
- */
 static void
-ValidateOffsetMinutes(char *dateString, int sizeOfDateString, int *indexOfDateStringIter,
-					  DollarDateFromPartsBsonValue *dateFromParts, bool *isInputValid,
-					  bool isOnErrorPresent)
+VerifyAndParseFormatStringToParts(bson_value_t *dateString, char *format,
+								  DollarDateFromPartsBsonValue *dateFromParts,
+								  bool *isInputValid, bool isOnErrorPresent, bool
+								  tryWithPresetFormat)
 {
-	if ((dateString[*indexOfDateStringIter] != '+') &&
-		(dateString[*indexOfDateStringIter] != '-'))
+	char *rawDateString = dateString->value.v_utf8.str;
+	char *date = dateString->value.v_utf8.str;
+
+	/* at most N parts is needed where N = strlen(format) / 2 */
+	RawDatePart *parts = (RawDatePart *) palloc0(sizeof(RawDatePart) * (strlen(format) /
+																		2));
+	int partsCount = 0;
+	bool dateStrIsEnough = true;
+
+	while (*format != '\0')
 	{
-		CONDITIONAL_EREPORT(isOnErrorPresent,
-							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-											errmsg(
-												"Error parsing date string '%s'; %d: Invalid timezone offset in minutes '%c'",
-												dateString,
-												sizeOfDateString,
-												dateString[*indexOfDateStringIter]),
-											errdetail_log(
-												"Error parsing date string. Invalid timezone offset in minutes '%c'",
-												dateString[*indexOfDateStringIter]))));
+		if (*date == '\0')
+		{
+			dateStrIsEnough = false;
+			break;
+		}
+		if (*format == '%')
+		{
+			/* If the format string ends with % */
+			if (*(format + 1) == '\0')
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION18536), errmsg(
+									"End with '%%' in format string"),
+								errdetail_log(
+									"Invalid format character in format string")));
+			}
+
+			char specifier[3] = { *format, *(format + 1), '\0' };
+			int fmtSpecifierIndex = IsFormatSpecifierExist(specifier);
+
+			/* Format specifier is not found in the list of supported format specifiers. */
+			if (fmtSpecifierIndex == -1)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION18536), errmsg(
+									"Invalid format character '%s' in format string",
+									specifier),
+								errdetail_log(
+									"Invalid format character in format string")));
+			}
+
+			int minCharsToRead = dateFormats[fmtSpecifierIndex].minLen;
+			int maxCharsToRead = dateFormats[fmtSpecifierIndex].maxLen;
+
+			/* read date snip */
+			char *rawDateElement = (char *) palloc0((maxCharsToRead + 1) * sizeof(char));
+			char stopChar = *(format + 2);
+
+			int readLength = 0;
+			while (*date != '\0' && readLength < maxCharsToRead)
+			{
+				if (*date == stopChar)
+				{
+					break;
+				}
+				rawDateElement[readLength] = *date;
+				readLength++;
+				date++;
+			}
+			rawDateElement[readLength] = '\0';
+
+			parts[partsCount].formatMap = &dateFormats[fmtSpecifierIndex];
+			parts[partsCount].rawString = rawDateElement;
+			partsCount++;
+
+			format += 2;
+
+			/* we put this check here to ensure that rawDateElement has been assigned to parts */
+			/* so that its memory could be released at the end of this func */
+			if (readLength < minCharsToRead)
+			{
+				dateStrIsEnough = false;
+				break;
+			}
+		}
+		else
+		{
+			if (*date != *format)
+			{
+				CONDITIONAL_EREPORT(isOnErrorPresent && !tryWithPresetFormat, ereport(
+										ERROR, (errcode(
+													ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+												errmsg(
+													"Error parsing date string '%s'. Format literal not found '%c'",
+													rawDateString, *date),
+												errdetail_log(
+													"Error parsing date string '%s'. Format literal not found '%c'",
+													rawDateString, *date))));
+				*isInputValid = false;
+				return;
+			}
+			date++;
+			format++;
+		}
+	}
+
+	/* date used up but format has more characters*/
+	if (!dateStrIsEnough)
+	{
+		CONDITIONAL_EREPORT(isOnErrorPresent && !tryWithPresetFormat, ereport(ERROR,
+																			  (errcode(
+																				   ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+																			   errmsg(
+																				   "Error parsing date string '%s': Not enough data available to satisfy format",
+																				   rawDateString),
+																			   errdetail_log(
+																				   "Error parsing date string. Not enough data available to satisfy format"))));
 		*isInputValid = false;
 		return;
 	}
 
-	char sign = dateString[*indexOfDateStringIter];
-
-	/* Incrementing as 1 char +/- has been read. */
-	(*indexOfDateStringIter)++;
-
-	/* todo : optimise if this can be better */
-	char *timezoneOffset = (char *) palloc0(sizeOfDateString * sizeof(char));
-
-	bool areAllNumbers = true;
-	ReadThroughDatePart(dateString, indexOfDateStringIter, sizeOfDateString,
-						timezoneOffset, areAllNumbers);
-
-	if (dateFromParts->timezone.value_type != BSON_TYPE_EOD)
+	/* format used up but date has more characters */
+	if (*date != '\0')
 	{
-		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-															  errmsg(
-																  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
-
+		CONDITIONAL_EREPORT(isOnErrorPresent && !tryWithPresetFormat, ereport(ERROR,
+																			  (errcode(
+																				   ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+																			   errmsg(
+																				   "Error parsing date string '%s'. Trailing data '%c'",
+																				   rawDateString,
+																				   *date),
+																			   errdetail_log(
+																				   "Error parsing date string '%s'. Trailing data '%c'",
+																				   rawDateString,
+																				   *date))));
 		*isInputValid = false;
-		pfree(timezoneOffset);
 		return;
 	}
 
-	/* Pointer to store the address of the first character after the converted number */
+	/* validate format itself */
+	if (partsCount == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION18536), errmsg(
+							"format is invalid"), errdetail_log("format is invalid")));
+	}
+
+	/* validate whether format is mixed */
+	bool isIsoFormat = parts[0].formatMap->isIsoFormat;
+	for (int i = 1; i < partsCount; i++)
+	{
+		if (parts[i].formatMap->isIsoFormat != isIsoFormat)
+		{
+			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																	  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+																  errmsg(
+																	  "Error parsing date string '%s'; Mixing of ISO dates with natural dates is not allowed",
+																	  rawDateString),
+																  errdetail_log(
+																	  "Error parsing date string; Mixing of ISO dates with natural dates is not allowed"))));
+			*isInputValid = false;
+			return;
+		}
+	}
+
+	/* validate timezone conflict */
+	bool isTimezonePresent = dateFromParts->timezone.value_type != BSON_TYPE_EOD;
+	if (isTimezonePresent)
+	{
+		for (int i = 0; i < partsCount; i++)
+		{
+			if (parts[i].formatMap->datePart == DatePart_Str_Timezone_Offset ||
+				parts[i].formatMap->datePart == DatePart_Str_Minutes_Offset)
+			{
+				bool isGMTOffset = parts[i].formatMap->datePart ==
+								   DatePart_Str_Minutes_Offset || strchr(
+					parts[i].rawString, '+') || strchr(
+					parts[i].rawString, '-');
+
+				if (isGMTOffset)
+				{
+					CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																			  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+																		  errmsg(
+																			  "you cannot pass in a date/time string with GMT offset together with a timezone argument"),
+																		  errdetail_log(
+																			  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
+				}
+				else
+				{
+					CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																			  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
+																		  errmsg(
+																			  "you cannot pass in a date/time string with time zone information ('%s') together with a timezone argument",
+																			  parts[i].
+																			  rawString),
+																		  errdetail_log(
+																			  "you cannot pass in a date/time string with time zone information together with a timezone argument"))));
+				}
+
+				*isInputValid = false;
+				return;
+			}
+		}
+	}
+
+	/* parse each part into dateFromParts */
+	for (int i = 0; i < partsCount; i++)
+	{
+		bool isPartValid = parts[i].formatMap->validateAndParseFunc(parts[i].rawString,
+																	parts[i].formatMap,
+																	dateFromParts);
+		if (!isPartValid)
+		{
+			*isInputValid = false;
+		}
+	}
+
+	/* check required parts are present */
+	CheckIfRequiredPartsArePresent(dateFromParts, dateString->value.v_utf8.str,
+								   isInputValid, isOnErrorPresent);
+
+	/* free parts */
+	for (int i = 0; i < partsCount; i++)
+	{
+		pfree(parts[i].rawString);
+	}
+	pfree(parts);
+}
+
+
+static bool
+ValidateAndParseDigits(char *rawString, const DateFormatMap *map,
+					   DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	int len = strlen(rawString);
+
+	if (len < map->minLen || len > map->maxLen)
+	{
+		return false;
+	}
+
+	for (int i = 0; i < len; i++)
+	{
+		if (!isdigit(rawString[i]))
+		{
+			return false;
+		}
+	}
+
+	int value = atoi(rawString);
+	if (value < map->minRangeValue || value > map->maxRangeValue)
+	{
+		return false;
+	}
+
+	bson_value_t dateElementBsonValue;
+	dateElementBsonValue.value_type = BSON_TYPE_INT32;
+	dateElementBsonValue.value.v_int32 = value;
+
+	switch (map->datePart)
+	{
+		case DatePart_Year:
+		{
+			dateFromParts->year = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_Month:
+		{
+			dateFromParts->month = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_DayOfMonth:
+		{
+			dateFromParts->day = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_Hour:
+		{
+			dateFromParts->hour = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_Minute:
+		{
+			dateFromParts->minute = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_Second:
+		{
+			dateFromParts->second = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_Millisecond:
+		{
+			dateFromParts->millisecond = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_IsoWeek:
+		{
+			dateFromParts->isoWeek = dateElementBsonValue;
+			dateFromParts->isIsoFormat = true;
+			break;
+		}
+
+		case DatePart_IsoWeekYear:
+		{
+			dateFromParts->isoWeekYear = dateElementBsonValue;
+			dateFromParts->isIsoFormat = true;
+			break;
+		}
+
+		case DatePart_IsoDayOfWeek:
+		{
+			dateFromParts->isoDayOfWeek = dateElementBsonValue;
+			dateFromParts->isIsoFormat = true;
+			break;
+		}
+
+		case DatePart_DayOfYear:
+		{
+			dateFromParts->dayOfYear = dateElementBsonValue;
+			break;
+		}
+
+		default:
+		{
+			break;
+		}
+	}
+
+	return true;
+}
+
+
+static bool
+ValidateAndParseStrMonth(char *rawString, const DateFormatMap *map,
+						 DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	int month = GetMonthIndexFromString(rawString, false);
+	if (month == -1)
+	{
+		return false;
+	}
+	dateFromParts->month.value.v_int32 = month;
+	dateFromParts->month.value_type = BSON_TYPE_INT32;
+	return true;
+}
+
+
+static bool
+ValidateAndParsePlaceholderPercent(char *rawString, const DateFormatMap *map,
+								   DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	int len = strlen(rawString);
+	if (len != 1 || *rawString != '%')
+	{
+		return false;
+	}
+	return true;
+}
+
+
+static bool
+ValidateAndParseAbbrStrMonth(char *rawString, const DateFormatMap *map,
+							 DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	int month = GetMonthIndexFromString(rawString, true);
+	if (month == -1)
+	{
+		return false;
+	}
+	dateFromParts->month.value.v_int32 = month;
+	dateFromParts->month.value_type = BSON_TYPE_INT32;
+	return true;
+}
+
+
+static bool
+ValidateAndParseStrHour(char *rawString, const DateFormatMap *map,
+						DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	int len = strlen(rawString);
+	if (len < map->minLen || len > map->maxLen)
+	{
+		return false;
+	}
+
+	if (strcasecmp(rawString, "noon") == 0)
+	{
+		dateFromParts->hour.value.v_int32 = 12;
+		dateFromParts->hour.value_type = BSON_TYPE_INT32;
+		return true;
+	}
+
+	int hour = 0;
+	if (len == 3)
+	{
+		if (isdigit(rawString[0]))
+		{
+			hour = rawString[0] - '0';
+		}
+		else
+		{
+			return false;
+		}
+	}
+	else
+	{
+		if (isdigit(rawString[0]) && isdigit(rawString[1]))
+		{
+			hour = (rawString[0] - '0') * 10 + (rawString[1] - '0');
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	if (hour < 1 || hour > 12)
+	{
+		return false;
+	}
+
+
+	const char *suffix = rawString + len - 2;
+	if (strcasecmp(suffix, "am") != 0 && strcasecmp(suffix, "pm") != 0)
+	{
+		return false;
+	}
+	if (strcasecmp(suffix, "pm") == 0 && hour < 12)
+	{
+		hour += 12;
+	}
+
+	dateFromParts->hour.value.v_int32 = hour;
+	dateFromParts->hour.value_type = BSON_TYPE_INT32;
+	return true;
+}
+
+
+static bool
+ValidateAndParseMinOffset(char *rawString, const DateFormatMap *map,
+						  DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	if (*rawString != '+' && *rawString != '-')
+	{
+		return false;
+	}
+	char sign = *rawString;
+	rawString++;
+
 	char *endptr;
-
-	/* Converting to int */
-	long totalMins = strtol(timezoneOffset, &endptr, 10);
+	long totalMins = strtol(rawString, &endptr, 10);
 
 	if (*endptr != '\0')
 	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
-							"Out of range Utc minutes offset provided for $dateFromString")));
+		return false;
 	}
 
-	/* Since we now support only hh:mm format for utc offset parsing so converting to this format and max mins are 99 hours and 99 mins in this format. */
 	if (totalMins > MaxMinsRepresentedByUTCOffset)
 	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
-							"UTC Minutes Offset provided cannot be parsed into UTC offset form for $dateFromString")));
+		return false;
 	}
+
 	int hours = totalMins / 60;
 	int minutes = totalMins % 60;
 
@@ -6945,189 +7169,177 @@ ValidateOffsetMinutes(char *dateString, int sizeOfDateString, int *indexOfDateSt
 	dateFromParts->timezone.value.v_utf8.str = hoursAndMinsFmt;
 	dateFromParts->timezone.value.v_utf8.len = strlen(hoursAndMinsFmt);
 
-	pfree(timezoneOffset);
+	return true;
 }
 
 
-/*
- * This function validates the timezone offset in dateString and sets the value in dateFromParts.
- * It is of the format +/-hhmm or TimeZone +/-hh:mm like UTC+05:30 or +0530
- */
-static void
-ValidateTimezoneOffsetForDateString(char *dateString, int sizeOfDateString,
-									int *indexOfDateStringIter,
-									DollarDateFromPartsBsonValue *dateFromParts,
-									bool *isInputValid, bool isOnErrorPresent)
+static bool
+ValidateAndParseTwoDigitsYear(char *rawString, const DateFormatMap *map,
+							  DollarDateFromPartsBsonValue *dateFromParts)
 {
-	/* Space indicates that dateString should be of format like 'UTC+05:30' or  'UTC'. All timezones are added with space. */
-	if (isalpha(dateString[*indexOfDateStringIter]))
+	if (rawString == NULL)
 	{
-		/* for UTC+05:30 or -05:30 Taking max len as 25 as it cannot be more than this number in length '/0' */
-		char *timezoneOffset = (char *) palloc0(25 * sizeof(char));
-		int timezoneOffsetLen = 0;
-
-		/* This will be used to tell if utc offset is present, This is to throw different errors for each. */
-		bool hasUTCOffset = false;
-
-		/* Copying the timezone identifier */
-		while (isalpha(dateString[*indexOfDateStringIter]))
-		{
-			timezoneOffset[timezoneOffsetLen++] = dateString[(*indexOfDateStringIter)++];
-		}
-
-		if ((timezoneOffsetLen > 0) && (*indexOfDateStringIter < sizeOfDateString) &&
-			(dateString[*indexOfDateStringIter] == '+' ||
-			 dateString[*indexOfDateStringIter] == '-'))
-		{
-			/* sign is present either +/-. */
-			hasUTCOffset = true;
-
-			/* Check if the extracted offset is "GMT" */
-			if (strcmp(timezoneOffset, "GMT") != 0)
-			{
-				/* If not "GMT", throw an error */
-				CONDITIONAL_EREPORT(isOnErrorPresent,
-									ThrowMongoConversionErrorForTimezoneIdentifier(
-										dateString,
-										sizeOfDateString,
-										indexOfDateStringIter));
-				*isInputValid = false;
-				return;
-			}
-			char sign = dateString[(*indexOfDateStringIter)++];
-
-			/* reverse the sign as for timezone calculations we have to adjust for postgres. */
-			timezoneOffset[timezoneOffsetLen++] = ((sign == '+') ? '-' : '+');
-
-			/* If "GMT" is specified, continue processing the offset */
-			ParseUtcOffsetForDateString(dateString, sizeOfDateString,
-										indexOfDateStringIter,
-										timezoneOffset, &timezoneOffsetLen,
-										isOnErrorPresent,
-										isInputValid);
-			if (!(*isInputValid))
-			{
-				return;
-			}
-		}
-		else
-		{
-			/* Check if the timezone identifier is not empty */
-			if (timezoneOffsetLen < 0)
-			{
-				CONDITIONAL_EREPORT(isOnErrorPresent,
-									ThrowMongoConversionErrorForTimezoneIdentifier(
-										dateString,
-										sizeOfDateString,
-										indexOfDateStringIter));
-				*isInputValid = false;
-				return;
-			}
-			else
-			{
-				timezoneOffset[timezoneOffsetLen] = '\0';
-			}
-		}
-		if (dateFromParts->timezone.value_type != BSON_TYPE_EOD)
-		{
-			/* For error to cx replace the sign negation. */
-			if (hasUTCOffset)
-			{
-				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																	  errmsg(
-																		  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
-			}
-			else
-			{
-				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																		  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																	  errmsg(
-																		  "you cannot pass in a date/time string with time zone information ('%s') together with a timezone argument",
-																		  timezoneOffset),
-																	  errdetail_log(
-																		  "you cannot pass in a date/time string with time zone information together with a timezone argument"))));
-			}
-
-			*isInputValid = false;
-			return;
-		}
-		dateFromParts->timezone.value_type = BSON_TYPE_UTF8;
-		dateFromParts->timezone.value.v_utf8.str = timezoneOffset;
-		dateFromParts->timezone.value.v_utf8.len = timezoneOffsetLen + 1;
-		return;
+		return false;
 	}
-	else if ((dateString[*indexOfDateStringIter] == '+') ||
-			 (dateString[*indexOfDateStringIter] == '-'))
+
+	int len = strlen(rawString);
+	if (len != 2)
 	{
-		/* for +0530 or -05:30 max len is 6 and 1 for '/0' */
-		char *timezoneOffset = (char *) palloc0(7 * sizeof(char));
-		int timezoneOffsetLen = 0;
+		return false;
+	}
 
-		/* Copying the sign */
-		timezoneOffset[timezoneOffsetLen++] = dateString[(*indexOfDateStringIter)++];
+	int century = GetCurrentCentury();
+	int year = atoi(rawString);
+	if (year < 0 || year > 99)
+	{
+		return false;
+	}
 
-		/* Building rest of utc offset */
-		ParseUtcOffsetForDateString(dateString, sizeOfDateString, indexOfDateStringIter,
-									timezoneOffset, &timezoneOffsetLen, isOnErrorPresent,
-									isInputValid);
-		if (!(*isInputValid))
-		{
-			return;
-		}
-
-		if (dateFromParts->timezone.value_type != BSON_TYPE_EOD)
-		{
-			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																	  ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-																  errmsg(
-																	  "you cannot pass in a date/time string with GMT offset together with a timezone argument"))));
-			*isInputValid = false;
-			return;
-		}
-		dateFromParts->timezone.value_type = BSON_TYPE_UTF8;
-		dateFromParts->timezone.value.v_utf8.str = timezoneOffset;
-		dateFromParts->timezone.value.v_utf8.len = timezoneOffsetLen;
-		return;
+	/* we use pivot year rule here */
+	if (year < 70)
+	{
+		year += century;
 	}
 	else
 	{
-		CONDITIONAL_EREPORT(isOnErrorPresent,
-							ThrowMongoConversionErrorForTimezoneIdentifier(dateString,
-																		   sizeOfDateString,
-																		   indexOfDateStringIter));
-		*isInputValid = false;
-		return;
+		year += (century - 100);
 	}
+
+	dateFromParts->year.value.v_int32 = year;
+	dateFromParts->year.value_type = BSON_TYPE_INT32;
+	return true;
 }
 
 
-/*
- * This function parses the given dateString , format and validates the respective values.
- * Post parsing sets the pgFormatString which will be used to specify the format for the date string conversion.
- */
-static void
-VerifyAndParseFormatStringForDateString(bson_value_t *dateString, bson_value_t *format,
-										DollarDateFromPartsBsonValue *dateFromParts,
-										bool *isInputValid, bool isOnErrorPresent, bool
-										*isOnErrorExpressionKindPath)
+static bool
+ValidateAndParseStrDayOfMonth(char *rawString, const DateFormatMap *map,
+							  DollarDateFromPartsBsonValue *dateFromParts)
 {
-	StringView formatStr = {
-		.string = format->value.v_utf8.str,
-		.length = format->value.v_utf8.len
-	};
-	StringView dateStringView = {
-		.string = dateString->value.v_utf8.str,
-		.length = dateString->value.v_utf8.len
-	};
+	if (rawString == NULL)
+	{
+		return false;
+	}
 
-	int sizeOfSplitFormat = 0;
-	char **elements = palloc0(formatStr.length * sizeof(char *));
-	SplitFormatString(formatStr, elements, &sizeOfSplitFormat);
+	int len = strlen(rawString);
+	if (len < map->minLen || len > map->maxLen)
+	{
+		return false;
+	}
 
-	ParseDateStringWithFormat(dateStringView, elements, sizeOfSplitFormat, dateFromParts,
-							  isInputValid, isOnErrorPresent,
-							  isOnErrorExpressionKindPath);
+	int day = -1;
 
-	DeepFreeFormatArray(elements, sizeOfSplitFormat);
+	if (strcasecmp(rawString, "1st") == 0)
+	{
+		day = 1;
+	}
+	if (strcasecmp(rawString, "2nd") == 0)
+	{
+		day = 2;
+	}
+	if (strcasecmp(rawString, "3rd") == 0)
+	{
+		day = 3;
+	}
+	if (strcasecmp(rawString, "21st") == 0)
+	{
+		day = 21;
+	}
+	if (strcasecmp(rawString, "22nd") == 0)
+	{
+		day = 22;
+	}
+	if (strcasecmp(rawString, "23rd") == 0)
+	{
+		day = 23;
+	}
+	if (strcasecmp(rawString, "31st") == 0)
+	{
+		day = 31;
+	}
+
+	if (day != -1)
+	{
+		dateFromParts->day.value.v_int32 = day;
+		dateFromParts->day.value_type = BSON_TYPE_INT32;
+		return true;
+	}
+
+	char *number_part = palloc0(sizeof(char) * (len + 1));
+	int number_part_len = 0;
+	while (isdigit(*rawString))
+	{
+		number_part[number_part_len++] = *rawString;
+		rawString++;
+	}
+
+	if (strcasecmp(rawString, "th") != 0)
+	{
+		return false;
+	}
+
+	day = atoi(number_part);
+	if (day < 1 || day > 31 || day == 1 || day == 2 || day == 3 || day == 21 || day ==
+		22 || day == 23 || day == 31)
+	{
+		return false;
+	}
+	pfree(number_part);
+
+	dateFromParts->day.value.v_int32 = day;
+	dateFromParts->day.value_type = BSON_TYPE_INT32;
+	return true;
+}
+
+
+static bool
+ValidateAndParseTimezoneOffset(char *rawString, const DateFormatMap *map,
+							   DollarDateFromPartsBsonValue *dateFromParts)
+{
+	if (rawString == NULL)
+	{
+		return false;
+	}
+
+	/* verify length of rawString for timezone */
+	int len = strlen(rawString);
+	if (len < map->minLen)
+	{
+		return false;
+	}
+
+	/* trim leading space */
+	while (isspace(*rawString))
+	{
+		rawString++;
+	}
+
+	/* check whether timezone is an abbr */
+	char *offset = GetOffsetFromTimezoneAbbr(rawString);
+	if (offset != NULL)
+	{
+		dateFromParts->timezone.value.v_utf8.str = offset;
+		dateFromParts->timezone.value.v_utf8.len = strlen(offset);
+		dateFromParts->timezone.value_type = BSON_TYPE_UTF8;
+		return true;
+	}
+
+	/* check whether timezone is format like GMT+/-[hh]:[mm]*/
+	const char *gmt = "GMT";
+	if (strncmp(rawString, gmt, strlen(gmt)) == 0)
+	{
+		/* Skip GMT and process offset afterwards as the case that timezone is exact 'GMT' is already handled before */
+		rawString += 3;
+	}
+
+	/**
+	 * no matter the remaining string is like +05:30 or other string, we can just leave it as it is
+	 * and let ParseTimezone() to handle it.
+	 * We need to copy the remaining string to a new memory location as the rawString will be released after parse.
+	 */
+	char *timezone = palloc0(sizeof(char) * (strlen(rawString) + 1));
+	strcpy(timezone, rawString);
+	dateFromParts->timezone.value.v_utf8.str = timezone;
+	dateFromParts->timezone.value.v_utf8.len = strlen(timezone);
+	dateFromParts->timezone.value_type = BSON_TYPE_UTF8;
+	return true;
 }

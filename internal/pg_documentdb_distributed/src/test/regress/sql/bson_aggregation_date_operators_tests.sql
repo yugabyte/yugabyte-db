@@ -933,6 +933,8 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": 1} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull":  {"$date": {"$numberLong": "1678924740500"} }} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "$missing", "onNull": "$missing"} } }');
+-- only when dateString is nullish value, onNull is considered
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2018-02-06T11:56:02Z", "format": null, "onNull": 1} } }');
 -- onNull with document cases
 select * from bson_dollar_project('{"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": "5"}','{"result": {"$dateFromString": {"dateString": "$dateFromString", "format": "$format", "onNull": "$onNull"} } }');
 select * from bson_dollar_project('{"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": 1}','{"result": {"$dateFromString": {"dateString": "$dateString", "format": "$format", "onNull": "$onNull"} } }');
@@ -963,8 +965,7 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2024 1002", "format": "%Y %j" } } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "Jenuery 1 2024", "format": "%B %d %Y" } } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "act 1 2024", "format": "%b %d %Y" } } }');
--- not parseable by default format
-select * from bson_dollar_project('{"dateString": "2021-01-11T12:53:12"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+
 -- unkown argument in input
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d", "unknown":1} } }');
 -- passing timezone as input with existing timezone in string
@@ -987,6 +988,9 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": 5} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2022-10-12", "format": null } } }');
+-- if dateString is not a string, onError should be considered
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": 5, "format": null } } }');
 -- passing timezone as input with existing timezone in string
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2017-07-12T22:23:55 GMT+02:00", "format": "%Y-%m-%dT%H:%M:%S %z", "timezone": "Europe/Paris"} } }');
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2017-07-12T22:23:55 GMT", "format": "%Y-%m-%dT%H:%M:%S %z", "timezone": "Europe/Paris"} } }');
@@ -1013,3 +1017,12 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 -- Defensive check to prevent error from ms conversion to timestamptz
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$dateToString": {"date":{"$toDate": {"$numberDouble": "-244058800000000"}}}}}');
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$dateToString": {"date":{"$toDate": {"$numberDouble": "9664590969990000"}}}}}');
+
+-- parse with preset formats
+select * from bson_dollar_project('{"dateString": "2021-01-11 11:00:03"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+select * from bson_dollar_project('{"dateString": "2021-01-11T12:53:12"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+select * from bson_dollar_project('{"dateString": "July 4th, 2017"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+select * from bson_dollar_project('{"dateString": "July 4th, 2017 12:39:30 BST"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+select * from bson_dollar_project('{"dateString": "July 4th, 2017 11am"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+select * from bson_dollar_project('{"dateString": "2017-Jul-04 noon"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+

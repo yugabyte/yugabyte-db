@@ -3302,6 +3302,13 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
  { }
 (1 row)
 
+-- only when dateString is nullish value, onNull is considered
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2018-02-06T11:56:02Z", "format": null, "onNull": 1} } }');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
 -- onNull with document cases
 select * from bson_dollar_project('{"dateString": null, "format": "%Y-%m-%dT%H:%M:%S.%LZ", "onNull": "5"}','{"result": {"$dateFromString": {"dateString": "$dateFromString", "format": "$format", "onNull": "$onNull"} } }');
  bson_dollar_project 
@@ -3402,18 +3409,15 @@ ERROR:  $dateFromString requires that 'dateString' be a string, found: object wi
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": 1} } }');
 ERROR:  $dateFromString requires that 'format' be a string, found: int with value 1
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
-ERROR:  Error parsing date string '2022-10-12'; 0: Format literal not found '2'
+ERROR:  Error parsing date string '2022-10-12'. Format literal not found '2'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
-ERROR:  Error parsing date string '2022-10-12'; 0: Format literal not found '2'
+ERROR:  Error parsing date string '2022-10-12'. Format literal not found '2'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2024 1002", "format": "%Y %j" } } }');
-ERROR:  Error parsing date string 2024 1002'; 8: Trailing data '2'
+ERROR:  Error parsing date string '2024 1002'. Trailing data '2'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "Jenuery 1 2024", "format": "%B %d %Y" } } }');
-ERROR:  Error parsing date string 'Jenuery 1 2024'; 7: Textual month cannot be found
+ERROR:  an incomplete date/time string has been found, with elements missing: 'Jenuery 1 2024'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "act 1 2024", "format": "%b %d %Y" } } }');
-ERROR:  Error parsing date string 'act 1 2024'; 3: Textual month cannot be found
--- not parseable by default format
-select * from bson_dollar_project('{"dateString": "2021-01-11T12:53:12"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
-ERROR:  Error parsing date string 2021-01-11T12:53:12'; 19: Not enough data available to satisfy format ''
+ERROR:  an incomplete date/time string has been found, with elements missing: 'act 1 2024'
 -- unkown argument in input
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d", "unknown":1} } }');
 ERROR:  Unrecognized argument to $dateFromString: unknown
@@ -3430,20 +3434,20 @@ ERROR:  an incomplete date/time string has been found, with elements missing: '2
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017", "format": "%C"} } }');
 ERROR:  Invalid format character '%C' in format string
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "ISO Week 1, 2018", "format": "ISO Week %V, %Y"} } }');
-ERROR:  Error parsing date string 'ISO Week 1, 2018'; 16: Mixing of ISO dates with natural dates is not allowed
+ERROR:  Error parsing date string 'ISO Week 1, 2018'; Mixing of ISO dates with natural dates is not allowed
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "12/31/2018", "format": "%m/%d\\0/%Y"} } }');
-ERROR:  Error parsing date string '12/31/2018'; 5: Format literal not found '/'
+ERROR:  Error parsing date string '12/31/2018'. Format literal not found '/'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017-12", "format": "%Y"} } }');
-ERROR:  Error parsing date string 2017-12'; 4: Trailing data '-'
+ERROR:  Error parsing date string '2017-12'. Trailing data '-'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "ISO Day 6", "format": "ISO Day %V"} }}');
 ERROR:  Error parsing date string 'ISO Day 6';The parsed date was invalid
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "12/31/2018", "format": "%m/%d/%G"} } }');
-ERROR:  Error parsing date string '12/31/2018'; 10: Mixing of ISO dates with natural dates is not allowed
+ERROR:  Error parsing date string '12/31/2018'; Mixing of ISO dates with natural dates is not allowed
 -- % format specifier test
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "% 2021-01-11T12:53:12.506Z", "format": "% %Y-%m-%dT%H:%M:%S.%LZ"} } }');
 ERROR:  Invalid format character '% ' in format string
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "% 2021-01-11T12:53:12.506Z", "format": "%%Y-%m-%dT%H:%M:%S.%LZ"} } }');
-ERROR:  Error parsing date string '% 2021-01-11T12:53:12.506Z'; 1: Format literal not found ' '
+ERROR:  Error parsing date string '% 2021-01-11T12:53:12.506Z'. Format literal not found ' '
 -- $dateFromString cases with onError
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": 5} } }');
       bson_dollar_project       
@@ -3458,6 +3462,19 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
+      bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : "error handled" }
+(1 row)
+
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": "2022-10-12", "format": null } } }');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- if dateString is not a string, onError should be considered
+select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"onError": "error handled","dateString": 5, "format": null } } }');
       bson_dollar_project       
 ---------------------------------------------------------------------
  { "result" : "error handled" }
@@ -3575,3 +3592,40 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$dateToString": {"date":{"
 ERROR:  Invalid conversion to date time.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$dateToString": {"date":{"$toDate": {"$numberDouble": "9664590969990000"}}}}}');
 ERROR:  Invalid conversion to date time.
+-- parse with preset formats
+select * from bson_dollar_project('{"dateString": "2021-01-11 11:00:03"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1610391603000" } } }
+(1 row)
+
+select * from bson_dollar_project('{"dateString": "2021-01-11T12:53:12"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1610398392000" } } }
+(1 row)
+
+select * from bson_dollar_project('{"dateString": "July 4th, 2017"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1499151600000" } } }
+(1 row)
+
+select * from bson_dollar_project('{"dateString": "July 4th, 2017 12:39:30 BST"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1499193570000" } } }
+(1 row)
+
+select * from bson_dollar_project('{"dateString": "July 4th, 2017 11am"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1499191200000" } } }
+(1 row)
+
+select * from bson_dollar_project('{"dateString": "2017-Jul-04 noon"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1499194800000" } } }
+(1 row)
+
