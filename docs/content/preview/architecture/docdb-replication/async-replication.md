@@ -275,6 +275,9 @@ Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-tra
 - In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 
 ### Transactional Automatic mode limitations
+- All connections to the source universe must be reset after setting up the replication. [#25853](https://github.com/yugabyte/yugabyte-db/issues/25853)
+- The GRANT statement is currently not replicated. [#26461](https://github.com/yugabyte/yugabyte-db/issues/26461)
+- Adding unique constraints is currently not supported. [#26167](https://github.com/yugabyte/yugabyte-db/issues/26167)
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
 - DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes be setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
 - CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
