@@ -1101,9 +1101,7 @@ public class AWSUtil implements CloudUtil {
       throws AmazonS3Exception {
     List<S3ObjectSummary> objectSummary = listObjectsResult.getObjectSummaries();
     List<DeleteObjectsRequest.KeyVersion> objectKeys =
-        objectSummary.parallelStream()
-            .map(o -> new KeyVersion(o.getKey()))
-            .collect(Collectors.toList());
+        objectSummary.stream().map(o -> new KeyVersion(o.getKey())).collect(Collectors.toList());
     DeleteObjectsRequest deleteRequest =
         new DeleteObjectsRequest(bucketName).withKeys(objectKeys).withQuiet(false);
     s3Client.deleteObjects(deleteRequest);
@@ -1264,7 +1262,7 @@ public class AWSUtil implements CloudUtil {
       }
       AmazonS3 client = createS3Client(s3Data);
       List<Bucket> buckets = client.listBuckets();
-      buckets.parallelStream()
+      buckets.stream()
           .forEach(
               b ->
                   bucketHostBaseMap.put(
@@ -1498,7 +1496,7 @@ public class AWSUtil implements CloudUtil {
     Optional<S3ObjectSummary> objSum;
     ListObjectsV2Result objListing = client.listObjectsV2(bucketName, objectName);
     objSum =
-        objListing.getObjectSummaries().parallelStream()
+        objListing.getObjectSummaries().stream()
             .filter(oS -> oS.getKey().equals(objectName))
             .findAny();
     return objSum.isPresent();
