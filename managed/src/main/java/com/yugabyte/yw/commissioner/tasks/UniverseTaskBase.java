@@ -4198,11 +4198,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createPreflightValidateBackupTask(
       BackupTableParams backupParams, boolean ybcBackup) {
-    return createPreflightValidateBackupTask(
-        backupParams.storageConfigUUID,
-        backupParams.customerUuid,
-        backupParams.getUniverseUUID(),
-        ybcBackup);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupPreflightValidate");
+    BackupPreflightValidate task = createTask(BackupPreflightValidate.class);
+    BackupPreflightValidate.Params params =
+        new BackupPreflightValidate.Params(backupParams, ybcBackup);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   public SubTaskGroup createPreflightValidateBackupTask(
