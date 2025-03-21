@@ -972,7 +972,7 @@ For example, to finalize an upgrade to a cluster, you would execute the followin
 
 #### check_version_compatibility
 
-Use the sub-command `yugabyted upgrade check_version_compatibility` to verify if the exisitng YugabyteDB cluster is compatible with the new version. This command needs to be executed only once per upgrade, from any node in the cluster.
+Use the sub-command `yugabyted upgrade check_version_compatibility` to verify if the existing YugabyteDB cluster is compatible with the new version. This command needs to be executed only once per upgrade, from any node in the cluster.
 
 For example, to verify the compatibility of a cluster with a new version, you would execute the following command:
 
@@ -2140,6 +2140,8 @@ For more information on additional server configuration options, see [YB-Master]
 ## Upgrade a YugabyteDB cluster
 
 {{< warning title="Upgrading to v2.25" >}}
+For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [Major YSQL upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
+
 Upgrading to v2.25.1 is only supported from v2024.2.2 release.
 {{< /warning >}}
 
