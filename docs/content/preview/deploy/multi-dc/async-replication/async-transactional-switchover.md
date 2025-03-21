@@ -56,9 +56,9 @@ The lag and skew values might be non-zero as they are estimates based on the las
 _Not applicable for Automatic mode_
 {{< /note >}}
 
-Since xCluster does not replicate sequence data, you need to manually synchronize the sequence values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+Since xCluster does not replicate sequence data, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 
-Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence values appropriately.
+Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence next values appropriately.
 
 ### Delete the old replication group
 
