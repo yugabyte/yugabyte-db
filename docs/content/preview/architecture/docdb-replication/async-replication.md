@@ -240,6 +240,8 @@ The following deployment scenarios are not yet supported:
 
 ## Limitations
 
+The following limitations apply to all xCluster modes and deployment scenarios:
+
 - Materialized views
 
     [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
@@ -252,7 +254,23 @@ The following deployment scenarios are not yet supported:
 
     CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
 
-### Active-active multi-master limitations
+- Modifications of Types
+
+  When xCluster is active, composite user types, array types whose base types are row types, domains, and other non-primitive types should not be created, altered or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap. [#24078](https://github.com/yugabyte/yugabyte-db/issues/24078), [#24079](https://github.com/yugabyte/yugabyte-db/issues/24079)
+
+Limitations specific to each scenario and mode are listed below:
+
+### Non-transactional
+ 
+- Consistency issues
+
+  Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
+
+- Enum types
+
+  When xCluster is active, user defined ENUM types should not be created, altered or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap.
+
+#### Active-active multi-master
 - Triggers
 
     Because xCluster replication operates at the DocDB layer, it bypasses the query layer. So, only the database triggers on the source universe are fired, and the ones on the target side are not fired. It is recommended to avoid using the same triggers on both universes, to avoid any confusion.
@@ -267,17 +285,13 @@ The following deployment scenarios are not yet supported:
 
   Sequence data is not replicated by xCluster. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
-### Non-transactional mode consistency issues
-
-Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
-
-### Transactional mode limitations
+### Transactional
 
 - No writes are allowed in the target universe
 - YCQL is not yet supported
 - In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 
-### Transactional Automatic mode limitations
+#### Transactional Automatic mode
 - All connections to the source universe must be reset after setting up the replication. [#25853](https://github.com/yugabyte/yugabyte-db/issues/25853)
 - The GRANT statement is currently not replicated. [#26461](https://github.com/yugabyte/yugabyte-db/issues/26461)
 - Adding unique constraints is currently not supported. [#26167](https://github.com/yugabyte/yugabyte-db/issues/26167)
@@ -288,6 +302,10 @@ Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-tra
 - ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
 - DDLs related to PUBLICATION, and SUBSCRIPTION are not supported.
 - While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
+
+#### Transactional Semi-Automatic and Manual mode
+- All DDL changes must be manually applied to both source and target universes. For more information refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+- When xCluster is active, user defined ENUM types should not be created, altered or dropped. Consider, setting up these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap.
 
 ### Kubernetes
 - xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
