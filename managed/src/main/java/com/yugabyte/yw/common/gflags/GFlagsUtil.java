@@ -736,16 +736,7 @@ public class GFlagsUtil {
       gflags.put(ENABLE_YSQL, "true");
       if (taskParam.enableConnectionPooling) {
         gflags.put(ENABLE_YSQL_CONN_MGR, "true");
-        String ybdbVersion =
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-        if (Util.compareYBVersions(
-                ybdbVersion,
-                Util.CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION,
-                Util.CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION,
-                true)
-            < 0) {
-          gflags.put(ALLOWED_PREVIEW_FLAGS_CSV, ENABLE_YSQL_CONN_MGR);
-        }
+        gflags.put(ALLOWED_PREVIEW_FLAGS_CSV, ENABLE_YSQL_CONN_MGR);
         gflags.put(
             PSQL_PROXY_BIND_ADDRESS,
             String.format(
@@ -760,6 +751,9 @@ public class GFlagsUtil {
                 taskParam.overrideNodePorts
                     ? taskParam.communicationPorts.ysqlServerRpcPort
                     : node.ysqlServerRpcPort));
+        if (!taskParam.connectionPoolingGflags.isEmpty()) {
+          gflags.putAll(taskParam.connectionPoolingGflags);
+        }
       } else {
         gflags.put(
             PSQL_PROXY_BIND_ADDRESS,
