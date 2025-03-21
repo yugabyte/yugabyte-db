@@ -282,9 +282,9 @@ Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-tra
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
 - DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes be setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
 - CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
-- While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
 - ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
 - DDLs related to PUBLICATION, and SUBSCRIPTION are not supported.
+- While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
 
 ### Kubernetes
 - xCluster replication can be set up with Kubernetes-deployed universes.  However, the source and target must be able to communicate by directly referencing the pods in the other universe.  In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
