@@ -70,8 +70,9 @@
 
 /* YB includes */
 #include "catalog/catalog.h"
-#include "utils/guc.h"
 #include "pg_yb_utils.h"
+#include "utils/guc.h"
+
 
 /* State shared by transformCreateStmt and its subroutines */
 typedef struct

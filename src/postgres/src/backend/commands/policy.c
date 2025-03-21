@@ -19,7 +19,6 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
-#include "c.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"

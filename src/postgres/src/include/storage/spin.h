@@ -51,12 +51,14 @@
 #ifndef SPIN_H
 #define SPIN_H
 
-#include "miscadmin.h"
-#include "storage/proc.h"
 #include "storage/s_lock.h"
 #ifndef HAVE_SPINLOCKS
 #include "storage/pg_sema.h"
 #endif
+
+/* YB includes */
+#include "miscadmin.h"
+#include "storage/proc.h"
 
 #define SpinLockInit(lock)	S_INIT_LOCK(lock)
 

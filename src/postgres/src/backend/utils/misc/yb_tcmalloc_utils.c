@@ -24,33 +24,24 @@
  *-------------------------------------------------------------------------
  */
 
-#include "yb_tcmalloc_utils.h"
-
-#include "c.h"
 #include "postgres.h"
-
-#include "fmgr.h"
-#include "funcapi.h"
-#include "pg_yb_utils.h"
-
-#include "catalog/pg_authid.h"
-
-#include "nodes/execnodes.h"
-
-#include "storage/procarray.h"
-
-#include "utils/builtins.h"
-#include "utils/tuplestore.h"
-#include "utils/acl.h"
-
-
-#include "yb/yql/pggate/util/ybc_util.h"
-#include "yb/yql/pggate/ybc_pggate.h"
-
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
+
+#include "catalog/pg_authid.h"
+#include "fmgr.h"
+#include "funcapi.h"
+#include "nodes/execnodes.h"
+#include "pg_yb_utils.h"
+#include "storage/procarray.h"
+#include "utils/acl.h"
+#include "utils/builtins.h"
+#include "utils/tuplestore.h"
+#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_tcmalloc_utils.h"
 
 static void
 YbPutHeapSnapshotTupleStore(Tuplestorestate *tupstore, TupleDesc tupdesc,

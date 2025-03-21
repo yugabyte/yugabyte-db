@@ -25,14 +25,15 @@
 #include <unistd.h>
 
 #include "access/htup_details.h"
-#include "executor/instrument.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "common/ip.h"
 #include "datatype/timestamp.h"
+#include "executor/instrument.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
@@ -47,8 +48,6 @@
 #include "utils/datetime.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
-
-#include "pg_yb_utils.h"
 
 #define YSQL_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)

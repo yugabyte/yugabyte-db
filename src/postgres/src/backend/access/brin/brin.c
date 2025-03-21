@@ -37,9 +37,11 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/index_selfuncs.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+
+/* YB includes */
+#include "utils/guc.h"
 
 
 /*

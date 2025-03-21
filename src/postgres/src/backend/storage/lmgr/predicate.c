@@ -210,6 +210,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /* Uncomment the next line to test the graceful degradation code. */

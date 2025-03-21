@@ -19,7 +19,6 @@
 
 #include "postgres.h"
 
-#include <arpa/inet.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -45,8 +44,6 @@
 #include "commands/prepare.h"
 #include "common/pg_prng.h"
 #include "jit/jit.h"
-
-#include "libpq/auth.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
@@ -86,22 +83,23 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
+/* YB includes */
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
+#include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "pg_yb_utils.h"
+#include "replication/walsender_private.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
+#include "utils/guc_tables.h"
 #include "utils/inval.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-
-/* YB includes */
-#include "replication/walsender_private.h"
-#include "utils/guc_tables.h"
-#include "yb_ysql_conn_mgr_helper.h"
 #include "yb_tcmalloc_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
+#include <arpa/inet.h>
 
 /* ----------------
  *		global variables

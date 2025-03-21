@@ -26,13 +26,13 @@
 
 #include "postgres.h"
 
-#include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "access/heapam.h"
-#include "access/reloptions.h"
 #include "access/htup_details.h"
+#include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/xlog.h"
@@ -46,15 +46,16 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/comment.h"
-#include "commands/seclabel.h"
-#include "commands/tablecmds.h"
-#include "commands/yb_tablegroup.h"
-#include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/seclabel.h"
+#include "commands/tablecmds.h"
+#include "commands/tablespace.h"
 #include "commands/yb_cmds.h"
+#include "commands/yb_tablegroup.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 #include "postmaster/bgwriter.h"
 #include "storage/fd.h"
 #include "storage/lmgr.h"
@@ -68,9 +69,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
 
 Oid			binary_upgrade_next_tablegroup_oid = InvalidOid;
 bool		binary_upgrade_next_tablegroup_default = false;

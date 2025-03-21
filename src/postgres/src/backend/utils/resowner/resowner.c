@@ -33,8 +33,10 @@
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+
 
 /*
  * All resource IDs managed by this code are required to fit into a Datum,

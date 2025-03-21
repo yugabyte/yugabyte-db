@@ -28,7 +28,6 @@
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
 #include "access/ybgin_private.h"
-#include "c.h"
 #include "catalog/index.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"

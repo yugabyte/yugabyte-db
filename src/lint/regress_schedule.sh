@@ -17,7 +17,7 @@
 # Simple linter for regress schedule.
 set -u
 
-. "${BASH_SOURCE%/*}/util.sh"
+. "${BASH_SOURCE%/*}/common.sh"
 
 # Check schedule style: tests should match pattern "test: <test_name>".  That
 # is, no inline comments and no parallel tests.

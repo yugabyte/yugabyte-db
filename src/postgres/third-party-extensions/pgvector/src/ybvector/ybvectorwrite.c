@@ -24,12 +24,9 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/genam.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
-#include "c.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
@@ -43,6 +40,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "ybvector.h"
 
 typedef struct {
 	/* Settings */

@@ -33,9 +33,6 @@
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_opfamily.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
@@ -47,10 +44,13 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "optimizer/clauses.h"
 #include "utils/fmgroids.h"
 

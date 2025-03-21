@@ -9,12 +9,11 @@
  */
 
 #include "postgres.h"
-#include "catalog/indexing.h"
-#include "miscadmin.h"
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
+#include "catalog/indexing.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_proc.h"
@@ -24,14 +23,14 @@
 #include "catalog/yb_logical_client_version.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 YbLogicalClientVersionType yb_logical_client_version_type = LOGICAL_CLIENT_VERSION_UNSET;

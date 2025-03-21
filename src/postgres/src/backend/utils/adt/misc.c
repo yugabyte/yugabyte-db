@@ -45,7 +45,7 @@
 #include "utils/ruleutils.h"
 #include "utils/timestamp.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*

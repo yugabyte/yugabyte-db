@@ -197,7 +197,7 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
-/* YB includes. */
+/* YB includes */
 #include "common/pg_yb_common.h"
 
 /*

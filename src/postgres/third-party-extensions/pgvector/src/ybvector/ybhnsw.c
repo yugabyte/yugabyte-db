@@ -24,10 +24,10 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
 #include "catalog/pg_opclass.h"
 #include "commands/yb_cmds.h"
 #include "utils/syscache.h"
+#include "ybvector.h"
 
 
 #define YBHNSW_DEFAULT_M 32

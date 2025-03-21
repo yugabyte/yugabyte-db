@@ -16,7 +16,6 @@
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
-#include <inttypes.h>
 
 #include "common/int.h"
 #include "funcapi.h"
@@ -26,6 +25,9 @@
 #include "optimizer/optimizer.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+
+/* YB includes */
+#include <inttypes.h>
 
 
 typedef struct

@@ -24,13 +24,10 @@
 #include "access/nbtree.h"
 #include "access/reloptions.h"
 #include "access/spgist_private.h"
-#include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "commands/yb_tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/view.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/postmaster.h"
 #include "utils/array.h"
@@ -39,6 +36,11 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+
+/* YB includes */
+#include "access/transam.h"
+#include "commands/yb_tablegroup.h"
+#include "miscadmin.h"
 
 /*
  * Contents of pg_class.reloptions

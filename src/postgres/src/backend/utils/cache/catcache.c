@@ -40,8 +40,7 @@
 #include "utils/resowner_private.h"
 #include "utils/syscache.h"
 
-/* Yugabytes includes */
-#include <string.h>
+/* YB includes */
 #include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
@@ -49,9 +48,12 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "nodes/pg_list.h"
-#include "utils/catcache.h"
 #include "pg_yb_utils.h"
 #include "storage/procarray.h"
+#include "utils/catcache.h"
+#include <string.h>
+
+
  /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
 
 /*

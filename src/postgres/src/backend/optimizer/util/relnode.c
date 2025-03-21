@@ -31,8 +31,10 @@
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 
+/* YB includes */
 #include "partitioning/partbounds.h"
 #include "pg_yb_utils.h"
+
 
 typedef struct JoinHashEntry
 {

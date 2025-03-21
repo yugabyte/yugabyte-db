@@ -72,11 +72,12 @@
 #include "port/pg_bitutils.h"
 #include "portability/instr_time.h"
 
+/* YB includes */
+#include "yb/yql/pggate/ysql_bench_metrics_handler/ybc_ysql_bench_metrics_handler.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-#include "yb/yql/pggate/ysql_bench_metrics_handler/ybc_ysql_bench_metrics_handler.h"
 
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION  "25P02"
 #define ERRCODE_T_R_SERIALIZATION_FAILURE  "40001"

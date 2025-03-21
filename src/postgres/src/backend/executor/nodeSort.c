@@ -21,7 +21,7 @@
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 

@@ -9,7 +9,6 @@
  */
 
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include <inttypes.h>
 
@@ -28,17 +27,17 @@
 #include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
+#include "pg_yb_utils.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
 

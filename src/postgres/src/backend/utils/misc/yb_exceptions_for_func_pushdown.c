@@ -25,6 +25,7 @@
  */
 
 #include "c.h"
+
 #include "catalog/pg_operator_d.h"
 #include "utils/fmgroids.h"
 

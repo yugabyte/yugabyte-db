@@ -63,8 +63,10 @@
 #include "utils/syscache.h"
 #include "utils/tuplestore.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/yb_tuplecache.h"
+
 
 /* GUC variables */
 int			SessionReplicationRole = SESSION_REPLICATION_ROLE_ORIGIN;

@@ -24,7 +24,6 @@
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/transam.h"
-#include "access/yb_scan.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -56,6 +55,8 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "access/yb_scan.h"
 #include "pg_yb_utils.h"
 
 /* GUC parameter */

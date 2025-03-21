@@ -40,10 +40,9 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
-#include "utils/guc.h"
-
-/* YB includes. */
+/* YB includes */
 #include "utils/builtins.h"
+#include "utils/guc.h"	/* TODO: is needed? */
 
 PG_MODULE_MAGIC;
 

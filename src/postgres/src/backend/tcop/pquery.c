@@ -19,7 +19,6 @@
 
 #include "access/xact.h"
 #include "commands/prepare.h"
-#include "commands/trigger.h"
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
@@ -28,9 +27,12 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
+#include "commands/trigger.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/ybplan.h"
+#include "pg_yb_utils.h"
+
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,

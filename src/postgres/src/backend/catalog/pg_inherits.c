@@ -32,8 +32,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-#include "utils/catcache.h"
+/* YB includes */
 #include "pg_yb_utils.h"
+#include "utils/catcache.h"
 
 /*
  * Entry of a hash table used in find_all_inheritors. See below.

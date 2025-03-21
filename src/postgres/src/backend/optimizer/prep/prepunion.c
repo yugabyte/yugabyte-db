@@ -40,11 +40,13 @@
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
 #include "parser/parsetree.h"
-#include "pg_yb_utils.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "pg_yb_utils.h"
 
 
 static RelOptInfo *recurse_set_operations(Node *setOp, PlannerInfo *root,

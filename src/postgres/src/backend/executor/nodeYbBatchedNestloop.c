@@ -33,10 +33,10 @@
 
 #include <math.h>
 
+#include "access/relation.h"
 #include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBatchedNestloop.h"
-#include "access/relation.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"

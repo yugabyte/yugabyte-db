@@ -26,8 +26,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 typedef struct
 {

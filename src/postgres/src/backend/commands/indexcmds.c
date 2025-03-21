@@ -15,8 +15,6 @@
 
 #include "postgres.h"
 
-#include <inttypes.h>
-
 #include "access/amapi.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -28,14 +26,12 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -44,6 +40,7 @@
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -60,7 +57,6 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -70,16 +66,20 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/binary_upgrade.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "commands/yb_tablegroup.h"
-#include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
+#include "utils/guc.h"
 #include "utils/yb_inheritscache.h"
+#include <inttypes.h>
+
 
 /* non-export function prototypes */
 static bool CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts);

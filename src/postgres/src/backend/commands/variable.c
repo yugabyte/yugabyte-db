@@ -33,7 +33,7 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*

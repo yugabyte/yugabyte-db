@@ -24,20 +24,19 @@
 
 #include "postgres.h"
 
-#include "skey.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/itup.h"
 #include "access/relation.h"
+#include "executor/ybExpr.h"
 #include "nodes/pathnodes.h"
+#include "pg_yb_utils.h"
+#include "skey.h"
 #include "utils/catcache.h"
 #include "utils/resowner.h"
 #include "utils/sampling.h"
 #include "utils/snapshot.h"
-
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
-#include "executor/ybExpr.h"
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
 

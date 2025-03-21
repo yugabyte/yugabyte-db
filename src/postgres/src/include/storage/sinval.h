@@ -15,6 +15,8 @@
 #define SINVAL_H
 
 #include <signal.h>
+
+/* YB includes */
 #include <sys/types.h>
 
 #include "storage/relfilenode.h"

@@ -45,10 +45,11 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
-/* YB includes. */
+/* YB includes */
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
+
 
 /* We use a list of these to detect recursion in RewriteQuery */
 typedef struct rewrite_event

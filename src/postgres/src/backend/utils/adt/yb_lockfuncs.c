@@ -22,13 +22,13 @@
 */
 
 #include "postgres.h"
-#include "pg_yb_utils.h"
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "executor/ybFunction.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 

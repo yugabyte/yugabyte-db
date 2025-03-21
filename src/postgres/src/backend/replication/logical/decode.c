@@ -43,7 +43,7 @@
 #include "replication/snapbuild.h"
 #include "storage/standby.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "replication/yb_decode.h"
 

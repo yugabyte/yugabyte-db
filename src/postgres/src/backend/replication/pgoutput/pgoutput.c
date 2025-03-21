@@ -33,7 +33,7 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;

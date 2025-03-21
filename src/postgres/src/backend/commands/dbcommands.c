@@ -85,7 +85,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "commands/yb_cmds.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"

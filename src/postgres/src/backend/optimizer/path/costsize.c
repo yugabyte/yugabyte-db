@@ -77,15 +77,10 @@
 #include "access/amapi.h"
 #include "access/htup_details.h"
 #include "access/tsmapi.h"
-#include "access/sysattr.h"
-#include "catalog/pg_statistic.h"
-#include "catalog/pg_statistic_ext.h"
-#include "catalog/pg_type_d.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeMemoize.h"
-#include "executor/ybExpr.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -102,13 +97,18 @@
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 #include "utils/spccache.h"
-#include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
-/* YB includes. */
+/* YB includes */
+#include "access/sysattr.h"
 #include "access/table.h"
+#include "catalog/pg_statistic.h"
+#include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_type_d.h"
+#include "executor/ybExpr.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+#include "utils/syscache.h"
 
 #define LOG2(x)  (log(x) / 0.693147180559945)
 

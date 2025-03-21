@@ -21,7 +21,6 @@
 #include "catalog/pg_type.h"
 #include "executor/functions.h"
 #include "lib/stringinfo.h"
-#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -33,11 +32,11 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-#include <pthread.h>
-
-/* Yugabyte includes */
+/* YB includes */
+#include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
+#include <pthread.h>
 
 /*
  * Hooks for function calls

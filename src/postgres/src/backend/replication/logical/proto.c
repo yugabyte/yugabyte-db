@@ -20,7 +20,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*

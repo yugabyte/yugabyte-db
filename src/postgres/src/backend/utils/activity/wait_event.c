@@ -29,9 +29,9 @@
 /* YB includes */
 #include "funcapi.h"
 #include "nodes/execnodes.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
 #define YB_WAIT_EVENT_DESC_COLS_V1 4

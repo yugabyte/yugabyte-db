@@ -20,8 +20,9 @@
 #include "nodes/parsenodes.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/execPartition.h"
+
 
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode

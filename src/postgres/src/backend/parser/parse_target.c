@@ -32,7 +32,7 @@
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "access/sysattr.h"
 
 static void markTargetListOrigin(ParseState *pstate, TargetEntry *tle,

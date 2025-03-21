@@ -53,7 +53,6 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/yb_tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
@@ -67,6 +66,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "commands/yb_tablegroup.h"
 
 static Oid	AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid);
 

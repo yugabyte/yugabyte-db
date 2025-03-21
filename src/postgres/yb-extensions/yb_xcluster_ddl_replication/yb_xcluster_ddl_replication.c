@@ -21,15 +21,13 @@
 #include "access/xact.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
-#include "nodes/pg_list.h"
 #include "executor/spi.h"
-#include "utils/fmgrprotos.h"
-
-#include "pg_yb_utils.h"
-
 #include "extension_util.h"
 #include "json_util.h"
+#include "nodes/pg_list.h"
+#include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
+#include "utils/fmgrprotos.h"
 
 PG_MODULE_MAGIC;
 

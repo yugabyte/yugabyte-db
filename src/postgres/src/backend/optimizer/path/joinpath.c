@@ -24,9 +24,11 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
+#include "utils/typcache.h"
+
+/* YB includes */
 #include "optimizer/restrictinfo.h"
 #include "pg_yb_utils.h"
-#include "utils/typcache.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;

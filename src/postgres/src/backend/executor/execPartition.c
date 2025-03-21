@@ -35,7 +35,7 @@
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
 
-/* YB includes. */
+/* YB includes */
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 

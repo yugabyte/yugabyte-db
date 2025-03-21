@@ -74,7 +74,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/pg_authid.h"
 #include "catalog/pg_init_privs.h"
 #include "catalog/pg_yb_tablegroup.h"

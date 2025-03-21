@@ -78,7 +78,7 @@
 #include <shlwapi.h>
 #endif
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 #define		MAX_L10N_DATA		80

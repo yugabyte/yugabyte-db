@@ -23,10 +23,11 @@
 #pragma once
 
 #include "postgres.h"
+
 #include "access/relation.h"
+#include "commands/explain.h"
 #include "nodes/plannodes.h"
 #include "utils/rel.h"
-#include "commands/explain.h"
 
 bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 

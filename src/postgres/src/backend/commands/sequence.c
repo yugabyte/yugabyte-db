@@ -48,10 +48,11 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "catalog/yb_oid_assignment.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
+
 
 /*
  * We don't want to log each fetching of a value from a sequence,

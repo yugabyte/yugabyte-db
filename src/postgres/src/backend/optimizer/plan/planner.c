@@ -14,7 +14,6 @@
  */
 
 #include "postgres.h"
-#include "pg_yb_utils.h"
 
 #include <limits.h>
 #include <math.h>
@@ -38,7 +37,6 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "pg_yb_utils.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
@@ -66,6 +64,9 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "pg_yb_utils.h"
 
 /* GUC parameters */
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;

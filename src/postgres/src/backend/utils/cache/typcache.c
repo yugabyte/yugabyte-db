@@ -73,8 +73,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /* The main type cache hashtable searched by lookup_type_cache */
 static HTAB *TypeCacheHash = NULL;

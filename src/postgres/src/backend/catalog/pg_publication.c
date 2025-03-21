@@ -45,7 +45,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);

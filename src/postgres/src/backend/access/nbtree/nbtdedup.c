@@ -20,7 +20,7 @@
 #include "miscadmin.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "utils/builtins.h"
 
 static void _bt_bottomupdel_finish_pending(Page page, BTDedupState state,

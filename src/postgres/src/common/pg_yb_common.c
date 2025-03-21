@@ -25,15 +25,14 @@
  *-------------------------------------------------------------------------
  */
 
+#include "postgres_fe.h"
+
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "postgres_fe.h"
-
 #include "common/pg_yb_common.h"
-
 #include "utils/elog.h"
 
 bool

@@ -25,9 +25,10 @@
 #include "utils/guc.h"			/* for application_name */
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
+
 
 /* ----------
  * Total number of backends including auxiliary

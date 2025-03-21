@@ -69,10 +69,10 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/sysattr.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList,
 										bool skipjunk);

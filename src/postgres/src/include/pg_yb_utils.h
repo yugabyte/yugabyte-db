@@ -25,7 +25,6 @@
 #ifndef PG_YB_UTILS_H
 #define PG_YB_UTILS_H
 
-#include "c.h"
 #include "postgres.h"
 
 #include "access/reloptions.h"
@@ -40,11 +39,9 @@
 #include "utils/resowner.h"
 #include "utils/tuplestore.h"
 #include "utils/typcache.h"
-
 #include "yb/yql/pggate/util/ybc_util.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 /*

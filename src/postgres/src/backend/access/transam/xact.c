@@ -71,6 +71,7 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 

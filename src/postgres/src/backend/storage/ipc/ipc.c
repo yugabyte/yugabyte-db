@@ -21,7 +21,6 @@
 
 #include <signal.h>
 #include <unistd.h>
-#include <stdatomic.h>
 #include <sys/stat.h>
 
 #include "miscadmin.h"
@@ -32,7 +31,10 @@
 #include "storage/ipc.h"
 #include "tcop/tcopprot.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
+#include <stdatomic.h>
+
 
 /*
  * This flag is set during proc_exit() to change ereport()'s behavior,

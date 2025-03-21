@@ -45,7 +45,7 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/yb_scan.h"
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,

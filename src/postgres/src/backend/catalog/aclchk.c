@@ -78,10 +78,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include "commands/yb_tablegroup.h"
+/* YB includes */
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "pg_yb_utils.h"
 
 /*

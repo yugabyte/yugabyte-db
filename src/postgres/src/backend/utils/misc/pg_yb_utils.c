@@ -24,21 +24,20 @@
  *-------------------------------------------------------------------------
  */
 
-#include "pg_yb_utils.h"
+#include "postgres.h"
 
 #include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
+#ifdef HAVE_SYS_PRCTL_H
+#include <sys/prctl.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include "access/heaptoast.h"
-#include "c.h"
-#include "postgres.h"
-#include "libpq/pqformat.h"
-#include "miscadmin.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
@@ -46,7 +45,6 @@
 #include "access/table.h"
 #include "access/tupdesc.h"
 #include "access/xact.h"
-#include "executor/ybExpr.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -90,18 +88,30 @@
 #include "commands/yb_cmds.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
+#include "executor/ybExpr.h"
+#include "fmgr.h"
+#include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
-#include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
+#include "libpq/libpq.h"
+#include "libpq/pqformat.h"
+#include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
 #include "parser/parse_utilcmd.h"
+#include "pg_yb_utils.h"
+#include "pgstat.h"
+#include "postmaster/interrupt.h"
+#include "storage/procarray.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
+#include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
@@ -109,23 +119,10 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
-#include "utils/jsonb.h"
-#include "fmgr.h"
-#include "funcapi.h"
-#include "mb/pg_wchar.h"
-
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "pgstat.h"
-#include "postmaster/interrupt.h"
-#include "nodes/readfuncs.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
-#include "storage/procarray.h"
-
-#ifdef HAVE_SYS_PRCTL_H
-#include <sys/prctl.h>
-#endif
 
 static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;

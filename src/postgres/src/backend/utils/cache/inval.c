@@ -108,9 +108,7 @@
  */
 #include "postgres.h"
 
-#include <assert.h>
 #include <limits.h>
-#include <unistd.h>
 
 #include "access/htup_details.h"
 #include "access/xact.h"
@@ -129,7 +127,11 @@
 #include "utils/relmapper.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
+#include <assert.h>
+#include <unistd.h>
 
 
 /*

@@ -25,8 +25,6 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
@@ -34,9 +32,12 @@
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
 
-#include "pg_yb_utils.h"
-#include "executor/ybModifyTable.h"
+/* YB includes */
 #include "bootstrap/yb_bootstrap.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,

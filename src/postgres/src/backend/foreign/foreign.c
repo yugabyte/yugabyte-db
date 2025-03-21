@@ -45,9 +45,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "executor/yb_fdw.h"
+#include "pg_yb_utils.h"
+
 
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.

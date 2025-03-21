@@ -44,9 +44,10 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
+#include "pg_yb_utils.h"
+
 
 static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup,

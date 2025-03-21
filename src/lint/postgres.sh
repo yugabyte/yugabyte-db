@@ -17,7 +17,7 @@
 # Simple linter for postgres code.
 set -u
 
-. "${BASH_SOURCE%/*}/util.sh"
+. "${BASH_SOURCE%/*}/common.sh"
 
 is_yb_file() {
   if [ $# != 1 ]; then
@@ -34,7 +34,79 @@ is_yb_file() {
   fi
 }
 
-if ! is_yb_file "$1"; then
+# Includes
+if is_yb_file "$1"; then
+  if grep -iqE '(yb|yugabyte) includes' "$1"; then
+    echo 'error:bad_yb_includes_block:'\
+'YB files should not have a YB includes block:1:'"$(head -1 "$1")"
+  fi
+
+  # Includes should be organized into empty-line-separated blocks.  The blocks
+  # should appear in order and not twice.  Each block should be sorted.
+  #
+  # Order of blocks:
+  # 0: c.h, postgres.h, or postgres_fe.h
+  # 1: <stdlib.h>
+  # 2: regular.h
+  pattern0='^#include "(c|postgres(_fe)?).h"'
+  pattern1='^#include <.*\.h(pp)?>'
+  pattern2='^#include ".*\.h"'
+  pattern_ignore='^#(if|else|endif)'
+  block_type=
+  prev_block_type=
+  prev_line=
+  while read -r line; do
+    # Split to lineno and line contents.
+    # shellcheck disable=SC2001 # parameter expansion doesn't support char set
+    lineno=$(sed 's/[:-].*//' <<<"$line")
+    # shellcheck disable=SC2001 # parameter expansion doesn't support char set
+    line=$(sed 's/[0-9]\+[:-]//' <<<"$line")
+
+    # Empty lines indicate the boundary between blocks.
+    if [ -z "$line" ]; then
+      prev_block_type=$block_type
+      block_type=
+      continue
+    fi
+
+    if [[ "$line" =~ $pattern0 ]]; then
+      line_type=0
+    elif [[ "$line" =~ $pattern1 ]]; then
+      line_type=1
+    elif [[ "$line" =~ $pattern2 ]]; then
+      line_type=2
+    elif [[ "$line" =~ $pattern_ignore ]]; then
+      continue
+    else
+      echo 'error:unidentified_includes_line:'\
+"Could not determine include line type:$lineno:$line"
+      continue
+    fi
+
+    if [ -z "$block_type" ]; then
+      if [ -n "$prev_block_type" ] && \
+         [ "$prev_block_type" -ge "$line_type" ]; then
+        echo 'error:bad_includes_block:'\
+"Duplicate or misordered includes block:$lineno:$line"
+      fi
+      block_type=$line_type
+    else
+      if [ "$line_type" -ne "$block_type" ]; then
+        echo 'error:bad_line_in_includes_block:'\
+"Includes block has line of mismatching type:$lineno:$line"
+      elif [ "$block_type" -eq 0 ]; then
+        echo 'error:including_both_c_and_postgres:'\
+"Should only include one of c.h, postgres.h, or postgres_fe.h:$lineno:$line"
+      fi
+      if [[ ! "$prev_line" < "$line" ]]; then
+        echo 'error:bad_sort_in_includes_block:'\
+"Includes block is not unique sorted:$lineno:$line"
+      fi
+    fi
+
+    prev_line=$line
+  done < <(grep -nB 100 '^#include' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
+else
   diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
   exit_code=$?
   if [ $exit_code -ne 0 ]; then
@@ -57,8 +129,134 @@ if ! is_yb_file "$1"; then
 ' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
 ' or remotely in the corresponding remote repository (and you need internet'\
 ' access in that case).:1:'"$(head -1)"
+  else
+    grep -inE '(yb|yugabyte) includes' "$1" \
+      | grep -vE '^[0-9]+:/\* YB includes \*/$' \
+      | while read -r line; do
+          echo 'error:bad_yb_includes_comment:'\
+'YB includes comment should be formatted exactly like /* YB includes */:'"$line"
+      done
+
+    upstream_commit_message_suffix=', or if importing an upstream commit,'\
+' upstream_repositories.csv should be updated correspondingly'
+
+    # Find upstream-side hunks that match "#include...".
+    # It's hard to pinpoint which YB line is relevant to the lack of upstream
+    # line, so just take the first line of each hunk.
+    grep -E '^(> #include|[0-9])' <<<"$diff_result" \
+      | grep -B1 '^>' \
+      | grep -Eo '^[0-9]+' \
+      | while read -r hunk_start_lineno; do
+          echo 'error:upstream_include_missing:'\
+'An upstream include in this area is missing'\
+"$upstream_commit_message_suffix:$hunk_start_lineno:$(sed -n "$lineno"p "$1")"
+        done
+
+    # Find YB-side hunks that match "/* YB includes */" or "#include...".
+    grep -E '^(< #include|/\* YB includes \*/$|[0-9])' <<<"$diff_result" \
+      | grep -B1 '^<' \
+      | grep -Eo '^[0-9]+(,[0-9]+)?' \
+      | while read -r line_ranges; do
+          hit_yb_includes_block=false
+          expect_newline=false
+          hit_last_line=false
+          prev_line=
+          while read -r line; do
+            # Split to lineno and line contents.
+            # shellcheck disable=SC2001 # parameter expansion doesn't support
+            # char set
+            lineno=$(sed 's/[:-].*//' <<<"$line")
+            # shellcheck disable=SC2001 # parameter expansion doesn't support
+            # char set
+            line=$(sed 's/[0-9]\+[:-]//' <<<"$line")
+
+            if "$hit_last_line"; then
+              if [[ "$line" == '#include '* ]]; then
+                echo 'error:include_not_in_yb_includes_block:'\
+'YB-added includes should be put in a YB includes block,'\
+' and such blocks should not have empty lines in them:'"$lineno:$line"
+              fi
+              continue
+            fi
+
+            c_include="#include \"c.h\""
+            yb_c_include="$c_include"$'\t'"/* YB include */"
+            pg_include_re="#include \"postgres(_fe)?\\.h\""
+            yb_pg_include_re="$pg_include_re"$'\t'"/\\* YB include \\*/"
+            if ! "$hit_yb_includes_block"; then
+              if [[ "$line" == "$c_include"* ]]; then
+                if [[ "$line" != "$yb_c_include" ]]; then
+                  echo 'error:c_include_missing_yb_comment:'\
+'YB-added c.h includes should have YB include comment inlined'\
+"$upstream_commit_message_suffix:$lineno:$line"
+                elif [[ "$(grep -n '^#include' "$1" \
+                           | head -1)" != "$lineno:$line" ]]; then
+                  echo 'error:bad_include_c:'\
+'YB-added c.h should be the first include, or if there exists an'\
+' upstream-owned postgres.h or postgres_fe.h include, then YB need not add a'\
+' c.h include:'"$lineno:$line"
+                fi
+                expect_newline=true
+                continue
+              elif [[ "$line" =~ $pg_include_re ]]; then
+                if [[ ! "$line" =~ $yb_pg_include_re ]]; then
+                  echo 'error:postgres_include_missing_yb_include_comment:'\
+'YB-added postgres.h or postgres_fe.h includes should have YB include comment'\
+' inlined'"$upstream_commit_message_suffix:$lineno:$line"
+                elif [[ "$(grep -n '^#include' "$1" \
+                             | head -1)" != "$lineno:$line" ]]; then
+                  if [[ "$(grep -n '^#include' "$1" \
+                             | head -2 )" != "$((lineno - 1)):#include \"c.h\"\n$lineno:$line" ]]; then
+                    echo 'error:bad_include_postgres:'\
+'YB-added postgres.h or postgres_fe.h should be the first include, or if'\
+' there exists an upstream-owned c.h include, then it should be the second'\
+' include:'"$lineno:$line"
+                  fi
+                else
+                  expect_newline=true
+                fi
+                continue
+              elif "$expect_newline"; then
+                if [ -n "$line" ]; then
+                  echo 'error:c_or_postgres_include_not_followed_by_newline:'\
+'YB-added c.h, postgres.h, or postgres_fe.h where upstream has no such'\
+' includes should be followed by a newline:'"$lineno:$line"
+                fi
+                expect_newline=false
+                continue
+              elif [[ "$line" != '/* YB includes */' ]]; then
+                echo 'error:include_not_in_yb_includes_block:'\
+'YB-added includes should be put in a YB includes block'\
+"$upstream_commit_message_suffix:$lineno:$line"
+                break
+              fi
+              hit_yb_includes_block=true
+              continue
+            fi
+
+            if [ -z "$line" ]; then
+              hit_last_line=true
+            elif [[ "$line" != '#include '* ]]; then
+              if [[ "$line" =~ ^#(if|else|endif) ]]; then
+                continue
+              fi
+              echo 'error:non_include_in_yb_includes_block:'\
+"YB includes block has a non-include line:$lineno:$line"
+            elif [[ ! "$prev_line" < "$line" ]]; then
+              echo 'error:bad_sort_in_includes_block:'\
+"Includes block is not unique sorted:$lineno:$line"
+            elif [[ "$line" == "$c_include"* ]] || \
+                 [[ "$line" =~ $pg_include_re ]]; then
+              echo 'error:c_or_postgres_is_not_first_include:'\
+'YB-added c.h, postgres.h, and postgres_fe.h do not belong in a YB includes'\
+' block. Rather, they should be the first includes with YB include comment'\
+' inlined.:'"$lineno:$line"
+            fi
+
+            prev_line=$line
+          done < <(grep -n '' "$1" | sed -n "$line_ranges"p)
+        done
   fi
-  # TODO(jason): use successful diff_result.
 fi
 
 if [[ "$1" == src/postgres/third-party-extensions/* ]]; then

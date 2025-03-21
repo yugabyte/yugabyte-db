@@ -15,6 +15,8 @@
 #define PATHS_H
 
 #include "nodes/pathnodes.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
 
 

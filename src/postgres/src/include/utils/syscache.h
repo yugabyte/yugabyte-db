@@ -18,9 +18,10 @@
 
 #include "access/attnum.h"
 #include "access/htup.h"
-#include "relcache.h"
-
 /* we intentionally do not include utils/catcache.h here */
+
+/* YB includes */
+#include "relcache.h"
 
 /*
  *		SysCache identifiers.

@@ -140,9 +140,10 @@
 #include "utils/typcache.h"
 
 /* YB includes */
-#include "pg_yb_utils.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
+#include "pg_yb_utils.h"
+
 
 /* Hooks for plugins to get control when we ask for stats */
 get_relation_stats_hook_type get_relation_stats_hook = NULL;

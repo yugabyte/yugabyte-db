@@ -79,7 +79,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/*  Yugabyte includes */
+/* YB includes */
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
 #include "catalog/index.h"
@@ -88,9 +88,8 @@
 #include "executor/ybOptimizeModifyTable.h"
 #include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
-#include "utils/typcache.h"
-
 #include "pg_yb_utils.h"
+#include "utils/typcache.h"
 
 typedef struct MTTargetRelLookup
 {

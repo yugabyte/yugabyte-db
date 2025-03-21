@@ -32,7 +32,7 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "catalog/yb_oid_assignment.h"
 #include "pg_yb_utils.h"
 

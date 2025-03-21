@@ -51,7 +51,7 @@
 #include "storage/procarray.h"
 #include "utils/builtins.h"
 
-/* YB includes. */
+/* YB includes */
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 

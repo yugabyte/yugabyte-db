@@ -17,10 +17,12 @@
 #include "access/sdir.h"
 #include "access/skey.h"
 #include "nodes/tidbitmap.h"
-#include "nodes/ybtidbitmap.h"
 #include "storage/lockdefs.h"
 #include "utils/relcache.h"
 #include "utils/snapshot.h"
+
+/* YB includes */
+#include "nodes/ybtidbitmap.h"
 
 /* We don't want this file to depend on execnodes.h. */
 struct IndexInfo;

@@ -59,7 +59,7 @@
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 

@@ -17,7 +17,7 @@
 #include "storage/spin.h"
 #include "replication/walreceiver.h"
 
-/* YB includes. */
+/* YB includes */
 #include "replication/walsender.h"
 #include "utils/uuid.h"
 

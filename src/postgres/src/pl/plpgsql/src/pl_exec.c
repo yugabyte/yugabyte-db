@@ -51,9 +51,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "yb/yql/pggate/util/ybc_util.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /*
  * All plpgsql function executions within a single transaction share the same

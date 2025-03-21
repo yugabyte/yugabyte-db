@@ -71,11 +71,12 @@
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
-#include "executor/ybModifyTable.h"
+/* YB includes */
 #include "access/yb_scan.h"
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
+
 
 static HeapTuple heap_prepare_insert(Relation relation, HeapTuple tup,
 									 TransactionId xid, CommandId cid, int options);

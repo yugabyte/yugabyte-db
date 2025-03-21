@@ -24,7 +24,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "yb_query_diagnostics.h"
+#include "postgres.h"
 
 #include <math.h>
 #include <unistd.h>
@@ -38,8 +38,8 @@
 #include "catalog/pg_namespace_d.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
-#include "commands/tablespace.h"
 #include "commands/explain.h"
+#include "commands/tablespace.h"
 #include "common/fe_memutils.h"
 #include "common/file_perm.h"
 #include "common/pg_prng.h"
@@ -58,6 +58,7 @@
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "yb_query_diagnostics.h"
 
 static const char *constants_and_bind_variables_file = "constants_and_bind_variables.csv";
 static const char *pgss_file = "pg_stat_statements.csv";

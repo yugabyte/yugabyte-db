@@ -43,10 +43,8 @@
  */
 #include "postgres.h"
 
-#include <inttypes.h>
 #include <math.h>
 #include <sys/stat.h>
-#include <stddef.h>
 #include <unistd.h>
 
 #include "access/parallel.h"
@@ -55,7 +53,6 @@
 #include "executor/instrument.h"
 #include "funcapi.h"
 #include "jit/jit.h"
-#include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "optimizer/planner.h"
@@ -64,7 +61,6 @@
 #include "parser/scanner.h"
 #include "parser/scansup.h"
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
@@ -77,16 +73,18 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
-/* Yugabyte includes */
-#include "hdr/hdr_histogram.h"
-#include "utils/json.h"
-#include "utils/jsonb.h"
+/* YB includes */
 #include "common/jsonapi.h"
 #include "common/pg_yb_common.h"
-
-
+#include "hdr/hdr_histogram.h"
+#include "lib/stringinfo.h"
+#include "pg_yb_utils.h"
+#include "utils/json.h"
+#include "utils/jsonb.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb_query_diagnostics.h"
+#include <inttypes.h>
+#include <stddef.h>
 
 PG_MODULE_MAGIC;
 

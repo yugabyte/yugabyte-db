@@ -14,7 +14,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 #
-# Utilities for linters.
+# Common variables/functions for linters.
+
+export LC_ALL=C
 
 check_ctags() {
   if ! which ctags >/dev/null || \

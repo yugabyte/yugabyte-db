@@ -39,9 +39,9 @@
 #include "orafce.h"
 #include "builtins.h"
 
-/* YB includes. */
-#include "yb/yql/pggate/ybc_pggate.h"
+/* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #ifndef ERRCODE_NO_DATA_FOUND
 #define ERRCODE_NO_DATA_FOUND				MAKE_SQLSTATE('P','0', '0','0','2')

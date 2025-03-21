@@ -16,9 +16,8 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <fcntl.h>
-#include <inttypes.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "access/amapi.h"
 #include "access/htup_details.h"
@@ -57,7 +56,6 @@
 #include "parser/parse_relation.h"
 #include "parser/parser.h"
 #include "parser/parsetree.h"
-#include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSupport.h"
@@ -76,9 +74,11 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/pg_rewrite.h"
 #include "commands/yb_tablegroup.h"
+#include "pg_yb_utils.h"
+#include <inttypes.h>
 
 /* ----------
  * Pretty formatting constants

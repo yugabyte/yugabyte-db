@@ -118,7 +118,9 @@
 #include "utils/sortsupport.h"
 #include "utils/tuplesort.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /* sort-type codes for sort__start probes */
 #define HEAP_SORT		0

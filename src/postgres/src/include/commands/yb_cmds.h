@@ -29,9 +29,8 @@
 #include "nodes/parsenodes.h"
 #include "replication/walsender.h"
 #include "storage/lock.h"
-#include "utils/relcache.h"
 #include "tcop/utility.h"
-
+#include "utils/relcache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*  Database Functions -------------------------------------------------------------------------- */

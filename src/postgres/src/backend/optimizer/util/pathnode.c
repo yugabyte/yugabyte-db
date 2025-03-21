@@ -16,7 +16,6 @@
 
 #include <math.h>
 
-#include "catalog/pg_am.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/extensible.h"
@@ -36,9 +35,11 @@
 #include "utils/memutils.h"
 #include "utils/selfuncs.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_am.h"
+#include "pg_yb_utils.h"
 
 typedef enum
 {

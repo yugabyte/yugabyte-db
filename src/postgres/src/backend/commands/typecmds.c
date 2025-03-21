@@ -53,7 +53,6 @@
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "commands/extension.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
@@ -75,8 +74,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
+#include "commands/extension.h"
 #include "pg_yb_utils.h"
+
 
 /* result structure for get_rels_with_domain() */
 typedef struct

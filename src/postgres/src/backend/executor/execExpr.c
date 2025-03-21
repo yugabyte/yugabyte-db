@@ -50,7 +50,7 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "optimizer/clauses.h"
 #include "optimizer/planner.h"
 #include "pg_yb_utils.h"

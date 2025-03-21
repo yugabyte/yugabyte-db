@@ -276,9 +276,9 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
 #include "utils/rel.h"

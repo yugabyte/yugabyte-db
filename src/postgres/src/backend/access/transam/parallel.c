@@ -23,7 +23,6 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_enum.h"
 #include "catalog/storage.h"
-#include "catalog/yb_catalog_version.h"
 #include "commands/async.h"
 #include "commands/vacuum.h"
 #include "executor/execParallel.h"
@@ -33,7 +32,6 @@
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "storage/ipc.h"
 #include "storage/predicate.h"
 #include "storage/sinval.h"
@@ -46,6 +44,10 @@
 #include "utils/relmapper.h"
 #include "utils/snapmgr.h"
 #include "utils/typcache.h"
+
+/* YB includes */
+#include "catalog/yb_catalog_version.h"
+#include "pg_yb_utils.h"
 
 /*
  * We don't want to waste a lot of memory on an error queue which, most of

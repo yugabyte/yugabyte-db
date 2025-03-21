@@ -21,7 +21,6 @@
 
 #include "postgres.h"
 
-#include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "storage/proc.h"
@@ -32,17 +31,17 @@
 #include "utils/memutils.h"
 
 /* YB includes */
-#include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "commands/explain.h"
+#include "funcapi.h"
+#include "pg_yb_utils.h"
+#include "pgstat.h"
 #include "utils/builtins.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-
-#ifdef __linux__
+#ifndef __linux__
+#include <libproc.h>
+#else
 #include <stdio.h>
 #include <unistd.h>
-#else
-#include <libproc.h>
 #endif
 
 YbPgMemTracker PgMemTracker = {0};

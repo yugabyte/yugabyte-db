@@ -62,9 +62,11 @@
 #include "access/tupdesc_details.h"
 #include "executor/tuptable.h"
 #include "utils/expandeddatum.h"
+
+/* YB includes */
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 
-#include "pg_yb_utils.h"
 
 /* Does att's datatype allow packing into the 1-byte-header varlena format? */
 #define ATT_IS_PACKABLE(att) \

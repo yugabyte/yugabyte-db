@@ -16,6 +16,8 @@
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
 #include "parser/parse_node.h"
+
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 typedef enum ExplainFormat

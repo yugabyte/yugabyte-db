@@ -95,9 +95,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
-/* YB includes. */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/yb_cmds.h"
+#include "pg_yb_utils.h"
 #include "replication/yb_virtual_wal_client.h"
 
 /*

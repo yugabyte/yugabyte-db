@@ -12,8 +12,8 @@
 
 #pragma once
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "storage/sinval.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * Enum representing how the catalog version is stored on this cluster.

@@ -22,8 +22,8 @@
 
 #pragma once
 
-#include "nodes/execnodes.h"
 #include "executor/tuptable.h"
+#include "nodes/execnodes.h"
 
 /**
  * YSQL guc variables that can be used to enable non transactional writes.

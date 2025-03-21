@@ -72,7 +72,7 @@
 #include "include/hypopg.h"
 #include "include/hypopg_index.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 #if PG_VERSION_NUM >= 90600

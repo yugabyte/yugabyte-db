@@ -35,9 +35,10 @@
 #include "partitioning/partprune.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
+
 
 static void expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 									   RangeTblEntry *parentrte,

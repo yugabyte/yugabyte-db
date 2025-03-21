@@ -20,9 +20,10 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/restrictinfo.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+
 
 static RestrictInfo *make_restrictinfo_internal(PlannerInfo *root,
 												Expr *clause,

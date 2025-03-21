@@ -56,13 +56,14 @@
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/relation.h"
 #include "catalog/pg_class.h"
 #include "partitioning/partprune.h"
+#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "pg_yb_utils.h"
+
 
 /*
  * Information about a clause matched with a partition key.

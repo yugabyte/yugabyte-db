@@ -17,7 +17,6 @@
 
 #include "access/transam.h"
 #include "catalog/pg_type.h"
-#include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -25,10 +24,13 @@
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/tlist.h"
-#include "pg_yb_utils.h"
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "nodes/execnodes.h"
+#include "pg_yb_utils.h"
 
 
 typedef struct

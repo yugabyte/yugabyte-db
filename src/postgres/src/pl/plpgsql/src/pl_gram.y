@@ -25,7 +25,10 @@
 #include "utils/builtins.h"
 
 #include "plpgsql.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 static void ybc_not_support(int pos, const char *feature, int issue);
 

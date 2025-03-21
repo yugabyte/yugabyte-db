@@ -66,11 +66,11 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_opfamily.h"
+#include "pg_yb_utils.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines

@@ -36,8 +36,8 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "common/ip.h"
-#include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
+#include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
@@ -45,9 +45,7 @@
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
-
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
-
 #include "yb_ysql_conn_mgr_helper.h"
 
 /* Max size of string that can be stored in shared memory */

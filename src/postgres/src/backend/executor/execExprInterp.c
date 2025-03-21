@@ -77,7 +77,7 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/sysattr.h"
 
 /*

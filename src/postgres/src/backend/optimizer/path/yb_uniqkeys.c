@@ -24,8 +24,8 @@
 
 #include "access/stratnum.h"
 #include "access/sysattr.h"
-#include "nodes/nodes.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/nodes.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
 #include "optimizer/tlist.h"

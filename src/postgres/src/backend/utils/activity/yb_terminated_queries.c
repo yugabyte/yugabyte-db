@@ -27,7 +27,7 @@
  * -------------------------------------------------------------------------
  */
 
-#include "yb_terminated_queries.h"
+#include "postgres.h"
 
 #include "catalog/pg_authid.h"
 #include "funcapi.h"
@@ -38,6 +38,7 @@
 #include "utils/acl.h"
 #include "utils/backend_status.h"
 #include "utils/builtins.h"
+#include "yb_terminated_queries.h"
 
 /* Caps the number of queries which can be stored in the array. */
 #define YB_TERMINATED_QUERIES_SIZE 1000

@@ -19,33 +19,32 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#include <inttypes.h>
-
 #include "postgres.h"
+
+#include <inttypes.h>
 
 #include "access/htup_details.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_type.h"
 #include "catalog/pg_proc.h"
-#include "nodes/makefuncs.h"
-#include "nodes/nodeFuncs.h"
-#include "utils/datum.h"
-#include "utils/relcache.h"
-#include "utils/rel.h"
-#include "parser/parse_type.h"
-#include "utils/lsyscache.h"
+#include "catalog/pg_type.h"
+#include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "executor/executor.h"
 #include "executor/nodeSubplan.h"
 #include "executor/tuptable.h"
-#include "miscadmin.h"
-#include "utils/syscache.h"
-#include "utils/builtins.h"
-
-#include "pg_yb_utils.h"
 #include "executor/ybExpr.h"
-#include "catalog/yb_type.h"
+#include "miscadmin.h"
+#include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "parser/parse_type.h"
+#include "pg_yb_utils.h"
+#include "utils/builtins.h"
+#include "utils/datum.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
+#include "utils/syscache.h"
 
 static Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate);
 static bool yb_pushdown_walker(Node *node, List **colrefs);

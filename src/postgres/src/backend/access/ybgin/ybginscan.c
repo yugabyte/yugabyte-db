@@ -32,11 +32,10 @@
 #include "access/ybgin_private.h"
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "utils/palloc.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
-
 #include "pg_yb_utils.h"
+#include "utils/memutils.h"
+#include "utils/palloc.h"
+#include "utils/rel.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*

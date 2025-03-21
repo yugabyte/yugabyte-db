@@ -39,7 +39,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 

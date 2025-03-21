@@ -27,7 +27,6 @@
 #include "access/tupconvert.h"
 #include "access/visibilitymap.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -68,6 +67,9 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+
+/* YB includes */
+#include "access/yb_scan.h"
 
 
 /* Per-index data for ANALYZE */

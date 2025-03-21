@@ -20,21 +20,17 @@
  */
 #include "postgres.h"
 
-#include <assert.h>
-
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
-#include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
-#include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
@@ -84,24 +80,22 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/pg_inherits.h"
-#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/pg_attrdef.h"
+#include "catalog/pg_constraint_d.h"
+#include "catalog/pg_inherits.h"
+#include "catalog/pg_type.h"
+#include "catalog/pg_yb_tablegroup.h"
+#include "fmgr.h"
+#include "funcapi.h"
 #include "miscadmin.h"
-#include "utils/builtins.h"
-#include "utils/fmgroids.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "pg_yb_utils.h"
-#include "fmgr.h"
-#include "funcapi.h"
-#include "catalog/pg_type.h"
-#include "utils/builtins.h"
-
+#include <assert.h>
 
 /*---------------------------------------------------------------------------
 

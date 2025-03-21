@@ -71,9 +71,10 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+
 
 /*
  * GUC parameters

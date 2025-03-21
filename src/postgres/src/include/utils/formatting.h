@@ -17,7 +17,7 @@
 #ifndef _FORMATTING_H_
 #define _FORMATTING_H_
 
-#include "postgres.h"
+#include "postgres.h"	/* YB include */
 
 extern char *str_tolower(const char *buff, size_t nbytes, Oid collid);
 extern char *str_toupper(const char *buff, size_t nbytes, Oid collid);

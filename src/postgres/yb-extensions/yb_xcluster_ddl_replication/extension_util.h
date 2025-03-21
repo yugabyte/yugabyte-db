@@ -20,6 +20,7 @@
 #define YB_XCLUSTER_DDL_REPLICATION_UTIL
 
 #include "postgres.h"
+
 #include "tcop/deparse_utility.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"

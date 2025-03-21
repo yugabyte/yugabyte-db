@@ -59,7 +59,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "access/sysattr.h"
 #include "pg_yb_utils.h"
 

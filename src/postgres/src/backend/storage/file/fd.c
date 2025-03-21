@@ -102,6 +102,8 @@
 #include "storage/ipc.h"
 #include "utils/guc.h"
 #include "utils/resowner_private.h"
+
+/* YB includes */
 #include "yb_terminated_queries.h"
 
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */

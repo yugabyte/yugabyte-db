@@ -82,8 +82,7 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_logical_client_version.h"
@@ -92,6 +91,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
+#include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);

@@ -19,7 +19,6 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
-#include "executor/ybModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -41,9 +40,11 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/guc.h"
+
 
 /* Hook for plugins to get control in ExplainOneQuery() */
 ExplainOneQuery_hook_type ExplainOneQuery_hook = NULL;

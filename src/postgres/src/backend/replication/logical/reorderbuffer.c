@@ -108,9 +108,10 @@
 #include "utils/rel.h"
 #include "utils/relfilenodemap.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
+
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt

@@ -12,8 +12,6 @@
  *
  *-------------------------------------------------------------------------
  */
-
-#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include <sys/param.h>
@@ -56,7 +54,11 @@
 #include "utils/pidfile.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+
+/* YB includes */
 #include "yb_ysql_conn_mgr_helper.h"
+#include <pg_yb_utils.h>
+
 
 #define DIRECTORY_LOCK_FILE		"postmaster.pid"
 

@@ -26,8 +26,6 @@
 
 #include "postgres.h"
 
-#include "ybgate/ybgate_api.h"
-
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -35,22 +33,23 @@
 #include "common/int.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
+#include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
-#include "utils/array.h"
+#include "pg_yb_utils.h"
 #include "utils/acl.h"
+#include "utils/array.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
-#include "utils/yb_rowtypes.h"
 #include "utils/sampling.h"
 #include "utils/syscache.h"
-#include "utils/lsyscache.h"
-#include "funcapi.h"
-#include "pg_yb_utils.h"
+#include "utils/yb_rowtypes.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "ybgate/ybgate_api.h"
 
 YbgStatus
 YbgInit()

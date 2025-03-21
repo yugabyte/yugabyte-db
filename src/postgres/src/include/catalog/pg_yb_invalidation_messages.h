@@ -18,7 +18,6 @@
 #define PG_YB_INVALIDATION_MESSAGES_H
 
 #include "catalog/genbki.h"
-
 #include "catalog/pg_yb_invalidation_messages_d.h"
 
 /* ----------------

@@ -116,7 +116,7 @@
 #include "storage/lmgr.h"
 #include "utils/snapmgr.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_am_d.h"
 #include "executor/ybModifyTable.h"
 #include "funcapi.h"

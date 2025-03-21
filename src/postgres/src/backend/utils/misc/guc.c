@@ -115,13 +115,13 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
 #include "commands/copy.h"
 #include "executor/ybModifyTable.h"
-#include "tcop/pquery.h"
 #include "pg_yb_utils.h"
+#include "tcop/pquery.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 

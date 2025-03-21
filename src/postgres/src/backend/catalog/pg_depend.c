@@ -23,16 +23,16 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
-#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/extension.h"
+#include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
-/* YB includes. */
-#include "utils/syscache.h"
+/* YB includes */
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "pg_yb_utils.h"
-#include "miscadmin.h"
+#include "utils/syscache.h"
 
 static bool isObjectPinned(const ObjectAddress *object);
 

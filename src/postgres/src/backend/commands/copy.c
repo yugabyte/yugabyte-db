@@ -41,14 +41,14 @@
 #include "utils/rel.h"
 #include "utils/rls.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
 #include "executor/ybModifyTable.h"
-#include "port/pg_bswap.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
+#include "port/pg_bswap.h"
 
 int			yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
 

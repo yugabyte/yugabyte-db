@@ -24,8 +24,6 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/amapi.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type_d.h"
@@ -35,6 +33,7 @@
 #include "nodes/nodes.h"
 #include "postgres_ext.h"
 #include "utils/lsyscache.h"
+#include "ybvector.h"
 
 void
 YbVectorInit(void)

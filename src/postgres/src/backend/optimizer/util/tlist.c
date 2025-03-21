@@ -20,8 +20,9 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/tlist.h"
 
-/* YB includes. */
+/* YB includes */
 #include "miscadmin.h"
+
 
 /*
  * Test if an expression node represents a SRF call.  Beware multiple eval!

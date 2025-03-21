@@ -15,7 +15,7 @@
  *-----------------------------------------------------------------------------
  */
 
-#include "source_ddl_end_handler.h"
+#include "postgres.h"
 
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_amop_d.h"
@@ -45,12 +45,12 @@
 #include "catalog/pg_ts_template_d.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/pg_user_mapping_d.h"
-
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "json_util.h"
 #include "lib/stringinfo.h"
 #include "pg_yb_utils.h"
+#include "source_ddl_end_handler.h"
 #include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"

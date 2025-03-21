@@ -33,7 +33,7 @@
 #include "utils/tuplesort.h"
 #include "utils/tuplestore.h"
 
-/* YB includes. */
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 struct PlanState;				/* forward references in this file */

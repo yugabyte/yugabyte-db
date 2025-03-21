@@ -14,15 +14,17 @@
 #ifndef PLANNODES_H
 #define PLANNODES_H
 
-#include "access/relation.h"
 #include "access/sdir.h"
 #include "access/stratnum.h"
 #include "lib/stringinfo.h"
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/parsenodes.h"
-#include "nodes/pathnodes.h"
 #include "nodes/primnodes.h"
+
+/* YB includes */
+#include "access/relation.h"	/* TODO: is needed? */
+#include "nodes/pathnodes.h"	/* TODO: is needed? */
 #include "nodes/ybbitmatrix.h"
 
 

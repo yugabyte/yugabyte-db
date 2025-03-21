@@ -53,7 +53,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"

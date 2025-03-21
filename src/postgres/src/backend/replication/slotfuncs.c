@@ -26,7 +26,7 @@
 #include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 
-/* YB includes. */
+/* YB includes */
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"

@@ -118,7 +118,6 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
-#include "common/pg_yb_common.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -134,9 +133,11 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 
-/*  YB includes. */
+/* YB includes */
+#include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "ybgate/ybgate_status.h"
+
 
 /* In this module, access gettext() via err_gettext() */
 #undef _

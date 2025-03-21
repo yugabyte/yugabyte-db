@@ -33,10 +33,10 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "pg_yb_utils.h"
 #include "storage/procsignal.h"
 #include "utils/catcache.h"
-#include "pg_yb_utils.h"
 #include "yb_tcmalloc_utils.h"
 
 /*

@@ -85,13 +85,13 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "commands/defrem.h"
 #include "commands/progress.h"
 #include "commands/yb_cmds.h"
 #include "parser/parse_utilcmd.h"
-#include "pgstat.h"
 #include "pg_yb_utils.h"
+#include "pgstat.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_index_pg_class_oid = InvalidOid;

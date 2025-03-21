@@ -30,6 +30,8 @@
 
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapAnd.h"
+
+/* YB includes */
 #include "nodes/tidbitmap.h"
 
 

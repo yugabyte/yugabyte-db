@@ -19,12 +19,7 @@
 #include <math.h>
 
 #include "access/sysattr.h"
-#include "access/htup_details.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_constraint.h"
-#include "catalog/pg_operator.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/extensible.h"
@@ -46,17 +41,23 @@
 #include "parser/parsetree.h"
 #include "partitioning/partprune.h"
 #include "tcop/tcopprot.h"
-#include "utils/selfuncs.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
-#include "utils/rel.h"
 
 /* YB includes */
+#include "access/htup_details.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_constraint.h"
+#include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
+#include "utils/rel.h"
+#include "utils/selfuncs.h"
+#include "utils/syscache.h"
+
 
 /*
  * Flag bits that can appear in the flags argument of create_plan_recurse().

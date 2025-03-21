@@ -90,12 +90,12 @@
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
-#include "commands/yb_tablegroup.h"
 #include "commands/yb_profile.h"
+#include "commands/yb_tablegroup.h"
 #include "pg_yb_utils.h"
 
 /*

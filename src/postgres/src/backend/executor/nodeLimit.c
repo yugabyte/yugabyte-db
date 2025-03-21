@@ -26,7 +26,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static void recompute_limits(LimitState *node);

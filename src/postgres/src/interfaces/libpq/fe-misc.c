@@ -32,7 +32,6 @@
 
 #include <signal.h>
 #include <time.h>
-#include <stdatomic.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -53,6 +52,9 @@
 #include "mb/pg_wchar.h"
 #include "pg_config_paths.h"
 #include "port/pg_bswap.h"
+
+/* YB includes */
+#include <stdatomic.h>
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);

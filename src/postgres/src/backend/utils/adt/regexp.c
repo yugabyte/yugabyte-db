@@ -38,7 +38,7 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

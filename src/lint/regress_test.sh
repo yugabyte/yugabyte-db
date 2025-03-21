@@ -17,7 +17,7 @@
 # Simple linter for regress test.
 set -u
 
-. "${BASH_SOURCE%/*}/util.sh"
+. "${BASH_SOURCE%/*}/common.sh"
 
 if ! [[ "$1" =~ /yb[^/]+$ ]]; then
   echo "Unexpected file $1" >&2

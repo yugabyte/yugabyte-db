@@ -32,6 +32,7 @@
 /* YB includes */
 #include "nodes/ybbitmatrix.h"
 
+
 /*
  * Macros to simplify copying of different kinds of fields.  Use these
  * wherever possible to reduce the chance for silly typos.  Note that these

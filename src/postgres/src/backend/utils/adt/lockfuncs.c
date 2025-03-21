@@ -21,7 +21,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 bool

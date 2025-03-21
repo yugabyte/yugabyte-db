@@ -28,10 +28,9 @@
 #pragma once
 
 #include "postgres.h"
+
 #include "nodes/execnodes.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*  Construct column reference expression. */

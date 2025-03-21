@@ -17,7 +17,6 @@
  *-------------------------------------------------------------------------
  */
 
-#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include "access/genam.h"
@@ -39,8 +38,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/yb_scan.h"
+#include <pg_yb_utils.h>
+
 
 /* ----------------------------------------------------------------
  *		general access method routines

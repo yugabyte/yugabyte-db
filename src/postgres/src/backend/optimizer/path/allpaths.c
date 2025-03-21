@@ -33,15 +33,12 @@
 
 #include <limits.h>
 #include <math.h>
-#include <utils/rel.h>
 
-#include "miscadmin.h"
 #include "access/sysattr.h"
 #include "access/tsmapi.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_database.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -69,11 +66,15 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "access/yb_scan.h"
-#include "executor/yb_fdw.h"
+#include "catalog/pg_database.h"
 #include "executor/ybExpr.h"
+#include "executor/yb_fdw.h"
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
+#include <utils/rel.h>
+
 
 /* results of subquery_is_pushdown_safe */
 typedef struct pushdown_safety_info

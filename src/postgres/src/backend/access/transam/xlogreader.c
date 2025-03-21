@@ -37,11 +37,13 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "utils/memutils.h"
-
-/* YB includes. */
-#include "pg_yb_utils.h"
 #else
 #include "common/logging.h"
+#endif
+
+/* YB includes */
+#ifndef FRONTEND
+#include "pg_yb_utils.h"
 #endif
 
 static void report_invalid_record(XLogReaderState *state, const char *fmt,...)

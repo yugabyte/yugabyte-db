@@ -19,31 +19,27 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
-
-
 #include "postgres.h"
 
-#include "optimizer/ybplan.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/print.h"
+#include "optimizer/ybplan.h"
+#include "pg_yb_utils.h"
 #include "utils/datum.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/lsyscache.h"
-
-/* YB includes. */
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "catalog/catalog.h"
-#include "catalog/pg_am_d.h"
-#include "catalog/yb_catalog_version.h"
-#include "pg_yb_utils.h"
 
 /*
  * A mapping between columns and their position/index on the col_info_list.

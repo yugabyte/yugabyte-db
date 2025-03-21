@@ -17,7 +17,7 @@
 # Simple linter to make sure a file is uniquely sorted.
 set -u
 
-. "${BASH_SOURCE%/*}/util.sh"
+. "${BASH_SOURCE%/*}/common.sh"
 
 pattern='YB|Yb|yb'
 

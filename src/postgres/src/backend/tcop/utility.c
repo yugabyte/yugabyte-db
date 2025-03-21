@@ -54,13 +54,11 @@
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/yb_tablegroup.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
-#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -75,9 +73,12 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
+#include "commands/yb_tablegroup.h"
+#include "libpq/libpq-be.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 

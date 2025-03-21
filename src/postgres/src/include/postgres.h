@@ -44,9 +44,11 @@
 #define POSTGRES_H
 
 #include "c.h"
-#include "tcop/cmdtag.h"
 #include "utils/elog.h"
 #include "utils/palloc.h"
+
+/* YB includes */
+#include "tcop/cmdtag.h"
 
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)

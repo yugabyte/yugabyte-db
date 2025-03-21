@@ -29,10 +29,10 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/typcache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "utils/builtins.h"
+#include "utils/typcache.h"
 
 typedef struct BTSortArrayContext
 {

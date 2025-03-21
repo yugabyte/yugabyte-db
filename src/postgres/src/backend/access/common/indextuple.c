@@ -22,6 +22,7 @@
 #include "access/itup.h"
 #include "access/toast_internals.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*

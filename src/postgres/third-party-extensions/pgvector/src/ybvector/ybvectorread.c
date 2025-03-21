@@ -24,15 +24,13 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/genam.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "catalog/pg_type.h"
-
 #include "pgstat.h"
 #include "utils/memutils.h"
+#include "ybvector.h"
 
 /*
  * Bind search keys to the ANN scan. These include

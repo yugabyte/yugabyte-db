@@ -76,7 +76,6 @@
 #endif
 
 #include "common/ip.h"
-#include "common/pg_yb_common.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "port/pg_bswap.h"
@@ -84,7 +83,9 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
+/* YB includes */
 #include "access/xact.h"
+#include "common/pg_yb_common.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

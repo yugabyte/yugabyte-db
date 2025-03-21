@@ -20,6 +20,7 @@
 #define YB_XCLUSTER_DDL_REPLICATION_JSON_UTIL
 
 #include "postgres.h"
+
 #include "utils/jsonb.h"
 
 void		AddJsonKey(JsonbParseState *state, char *key_buf);

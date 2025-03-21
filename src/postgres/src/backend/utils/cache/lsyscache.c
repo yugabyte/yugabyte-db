@@ -13,8 +13,6 @@
  *	  Eventually, the index information should go through here, too.
  *-------------------------------------------------------------------------
  */
-
-#include "pg_yb_utils.h"
 #include "postgres.h"
 
 #include "access/hash.h"
@@ -51,6 +49,7 @@
 
 /* YB includes */
 #include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;

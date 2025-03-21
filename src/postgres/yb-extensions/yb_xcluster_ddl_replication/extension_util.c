@@ -16,7 +16,7 @@
  *-----------------------------------------------------------------------------
  */
 
-#include "extension_util.h"
+#include "postgres.h"
 
 #include "access/genam.h"
 #include "access/heapam.h"
@@ -25,6 +25,7 @@
 #include "catalog/pg_extension.h"
 #include "catalog/pg_extension_d.h"
 #include "executor/spi.h"
+#include "extension_util.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"

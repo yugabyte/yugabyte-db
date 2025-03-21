@@ -32,20 +32,21 @@
 #include "optimizer/paths.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
-#include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
+#include "parser/parsetree.h"
+#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
+
 
 /* XXX see PartCollMatchesExprColl */
 #define IndexCollMatchesExprColl(idxcollation, exprcollation) \

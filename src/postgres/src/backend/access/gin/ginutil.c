@@ -29,7 +29,7 @@
 #include "utils/index_selfuncs.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/lsyscache.h"
 

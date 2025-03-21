@@ -26,7 +26,6 @@
 #include "access/htup.h"
 #include "catalog/dependency.h"
 #include "nodes/parsenodes.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*

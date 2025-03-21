@@ -67,9 +67,10 @@
 #include "utils/ruleutils.h"
 #include "utils/snapmgr.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/extension.h"
+#include "pg_yb_utils.h"
+
 
 /* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
 ExecutorStart_hook_type ExecutorStart_hook = NULL;

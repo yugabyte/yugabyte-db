@@ -30,14 +30,15 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include <float.h>
+/* YB includes */
 #include "common/pg_yb_common.h"
 #include "optimizer/cost.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/jsonfuncs.h"
 #include "utils/memutils.h"
-#include "pg_yb_utils.h"
+#include <float.h>
+
 
 /* Hash table for information about each tablespace */
 static HTAB *TableSpaceCacheHash = NULL;

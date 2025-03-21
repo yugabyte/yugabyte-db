@@ -37,7 +37,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /*
  * Support for fuzzily matching columns.

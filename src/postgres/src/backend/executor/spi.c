@@ -35,7 +35,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 

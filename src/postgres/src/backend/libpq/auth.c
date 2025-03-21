@@ -41,18 +41,16 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
-#include "utils/builtins.h"
 
+/* YB includes */
 #include "access/htup_details.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"	/* TODO: may not be needed */
 #include "utils/syscache.h"
-#include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-
-/* Yugabyte includes */
-#include "catalog/pg_authid.h"
 
 /*----------------------------------------------------------------
  * Global authentication functions

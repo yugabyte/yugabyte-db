@@ -49,19 +49,19 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "access/heapam.h"
 #include "access/htup_details.h"
-#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
-#include "catalog/pg_yb_invalidation_messages.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "commands/defrem.h"
+#include "pg_yb_utils.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-#include "pg_yb_utils.h"
 
 /*
  * Parameters to determine when to emit a log message in

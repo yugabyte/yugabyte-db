@@ -41,7 +41,6 @@
 #include "commands/progress.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
-#include "commands/yb_cmds.h"
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
 #include "pgstat.h"
@@ -59,8 +58,9 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_constraint.h"
+#include "commands/yb_cmds.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/planner.h"
 

@@ -46,7 +46,7 @@
 #include "parser/parsetree.h"
 #include "utils/rel.h"
 
-/* YB includes. */
+/* YB includes */
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 

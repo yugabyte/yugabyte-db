@@ -36,8 +36,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/pg_yb_catalog_version_d.h"
+
 
 /*
  * Setup a ScanKey for a search in the relation 'rel' for a tuple 'key' that

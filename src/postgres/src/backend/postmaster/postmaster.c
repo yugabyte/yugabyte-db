@@ -76,7 +76,6 @@
 #include <sys/param.h>
 #include <netdb.h>
 #include <limits.h>
-#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -96,7 +95,6 @@
 
 #include "access/transam.h"
 #include "access/xlog.h"
-#include "access/xact.h"
 #include "access/xlogrecovery.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
@@ -120,17 +118,12 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "replication/logicallauncher.h"
-#include "replication/slot.h"
-#include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
-#include "storage/procarray.h"
-#include "storage/procsignal.h"
-#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
@@ -142,17 +135,24 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
-#include "arpa/inet.h"
-#include "common/pg_yb_common.h"
-#include "pg_yb_utils.h"
-#include "yb_ash.h"
-#include "yb/yql/pggate/ybc_pg_shared_mem.h"
-#include "yb_terminated_queries.h"
-
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
 #endif
+
+/* YB includes */
+#include "access/xact.h"
+#include "arpa/inet.h"
+#include "common/pg_yb_common.h"
+#include "pg_yb_utils.h"
+#include "replication/slot.h"
+#include "replication/syncrep.h"
+#include "storage/procarray.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
+#include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb_ash.h"
+#include "yb_query_diagnostics.h"
+#include "yb_terminated_queries.h"
 
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in

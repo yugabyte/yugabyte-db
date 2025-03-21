@@ -57,7 +57,6 @@
 #include <limits.h>
 
 #include "access/transam.h"
-#include "access/xact.h"
 #include "catalog/namespace.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -74,10 +73,12 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
-#include "optimizer/ybplan.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "access/xact.h"
+#include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+
 
 /*
  * We must skip "overhead" operations that involve database access when the

@@ -27,7 +27,7 @@
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
