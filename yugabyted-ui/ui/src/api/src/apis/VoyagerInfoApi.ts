@@ -20,7 +20,6 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   APIForMigrationAssessmentPage,
-  APIForPlanAndAssesPage,
   APIForSourceDBSQLObjectsMetadataPage,
   APIForTargetSchemaRecommendationsPage,
   ApiError,
@@ -38,9 +37,6 @@ export interface GetMigrationAssessmentInfoForQuery {
   uuid: string;
 }
 export interface GetVoyagerMigrateSchemaTasksForQuery {
-  uuid: string;
-}
-export interface GetVoyagerMigrationAssesmentDetailsForQuery {
   uuid: string;
 }
 export interface GetVoyagerMigrationTasksForQuery {
@@ -361,87 +357,6 @@ export const useGetVoyagerMigrateSchemaTasksQuery = <T = IndividualMigrationTask
   const query = useQuery<IndividualMigrationTaskInfo, Error, T>(
     queryKey,
     () => getVoyagerMigrateSchemaTasksAxiosRequest(params, customAxiosInstance),
-    queryOptions
-  );
-
-  return {
-    queryKey,
-    ...query
-  };
-};
-
-
-
-/**
- * Get Voyager data migration metrics
- * Get Voyager data migration metrics
- */
-
-export const getVoyagerMigrationAssesmentDetailsAxiosRequest = (
-  requestParameters: GetVoyagerMigrationAssesmentDetailsForQuery,
-  customAxiosInstance?: AxiosInstance
-) => {
-  return Axios<APIForPlanAndAssesPage>(
-    {
-      url: '/migration_assesment',
-      method: 'GET',
-      params: {
-        uuid: requestParameters['uuid'],
-      }
-    },
-    customAxiosInstance
-  );
-};
-
-export const getVoyagerMigrationAssesmentDetailsQueryKey = (
-  requestParametersQuery: GetVoyagerMigrationAssesmentDetailsForQuery,
-  pageParam = -1,
-  version = 1,
-) => [
-  `/v${version}/migration_assesment`,
-  pageParam,
-  ...(requestParametersQuery ? [requestParametersQuery] : [])
-];
-
-
-export const useGetVoyagerMigrationAssesmentDetailsInfiniteQuery = <T = APIForPlanAndAssesPage, Error = ApiError>(
-  params: GetVoyagerMigrationAssesmentDetailsForQuery,
-  options?: {
-    query?: UseInfiniteQueryOptions<APIForPlanAndAssesPage, Error, T>;
-    customAxiosInstance?: AxiosInstance;
-  },
-  pageParam = -1,
-  version = 1,
-) => {
-  const queryKey = getVoyagerMigrationAssesmentDetailsQueryKey(params, pageParam, version);
-  const { query: queryOptions, customAxiosInstance } = options ?? {};
-
-  const query = useInfiniteQuery<APIForPlanAndAssesPage, Error, T>(
-    queryKey,
-    () => getVoyagerMigrationAssesmentDetailsAxiosRequest(params, customAxiosInstance),
-    queryOptions
-  );
-
-  return {
-    queryKey,
-    ...query
-  };
-};
-
-export const useGetVoyagerMigrationAssesmentDetailsQuery = <T = APIForPlanAndAssesPage["data"], Error = ApiError>(
-  params: GetVoyagerMigrationAssesmentDetailsForQuery,
-  options?: {
-    query?: UseQueryOptions<APIForPlanAndAssesPage, Error, T>;
-    customAxiosInstance?: AxiosInstance;
-  },
-  version = 1,
-) => {
-  const queryKey = getVoyagerMigrationAssesmentDetailsQueryKey(params,  version);
-  const { query: queryOptions, customAxiosInstance } = options ?? {};
-
-  const query = useQuery<APIForPlanAndAssesPage, Error, T>(
-    queryKey,
-    () => getVoyagerMigrationAssesmentDetailsAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 

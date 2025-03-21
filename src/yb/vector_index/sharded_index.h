@@ -114,6 +114,11 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return STATUS(NotSupported, "Loading from file is not implemented for ShardedVectorIndex");
   }
 
+  std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
+    CHECK(!indexes_.empty());
+    return indexes_[0]->Attach(std::move(obj));
+  }
+
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->Distance(lhs, rhs);

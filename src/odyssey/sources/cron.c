@@ -65,28 +65,28 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			if (route->id.yb_stats_index == -1) {
 				route->id.yb_stats_index = yb_get_stats_index(
 					instance->yb_stats,
-					route->yb_database_entry->oid,
-					route->yb_user_entry->oid,
+					route->id.yb_db_oid,
+					route->id.yb_user_oid,
 					instance->config.yb_max_pools);
 				if (route->id.yb_stats_index == -1) {
 					od_error(&instance->logger, "stats", NULL, NULL,
 						 "Unable to find the index for (%s, %s) pool",
-						 (char *)route->yb_database_entry->name,
-						 (char *)route->yb_user_entry->name);
+						 (char *)route->yb_database_name,
+						 (char *)route->yb_user_name);
 					return -1;
 				}
 			}
 
 			index = route->id.yb_stats_index;
 			memcpy(instance->yb_stats[index].database_name,
-				(char *)route->yb_database_entry->name,
-				DB_NAME_MAX_LEN - 1);
-			instance->yb_stats[index].database_name[DB_NAME_MAX_LEN - 1] = '\0';
-			instance->yb_stats[index].database_oid = route->yb_database_entry->oid;
-			strncpy(instance->yb_stats[index].user_name,
-				(char *)route->yb_user_entry->name, USER_NAME_MAX_LEN - 1);
-			instance->yb_stats[index].user_name[USER_NAME_MAX_LEN - 1] = '\0';
-			instance->yb_stats[index].user_oid = route->yb_user_entry->oid;
+				(char *)route->yb_database_name,
+				route->yb_database_name_len);
+			instance->yb_stats[index].database_name[route->yb_database_name_len] = '\0';
+			instance->yb_stats[index].database_oid = route->id.yb_db_oid;
+			memcpy(instance->yb_stats[index].user_name,
+				(char *)route->yb_user_name, route->yb_user_name_len);
+			instance->yb_stats[index].user_name[route->yb_user_name_len] = '\0';
+			instance->yb_stats[index].user_oid = route->id.yb_user_oid;
 		}
 
 		od_route_lock(route);

@@ -771,9 +771,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   Result<TabletInfos> GetTabletsIncludeInactive() const;
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
-  // Get the tablet of the table. The table must satisfy IsColocatedUserTable.
-  TabletInfoPtr GetColocatedUserTablet() const;
-
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
   std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
@@ -831,7 +828,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
-  bool IsColocatedUserTable() const;
+
+  // A table is a primary table if it appears in the table_id field of every tablet which hosts it.
+  // Examples of primary tables are:
+  //   non-colocated, user tables
+  //   the parent table of a colocated database
+  // Secondary tables are non-primary tables which are not on the master tablet.
+  // Examples of secondary tables are:
+  //   colocated user tables
+  //   vector indices
+  bool IsSecondaryTable() const;
   bool IsSequencesSystemTable() const;
   bool IsSequencesSystemTable(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;

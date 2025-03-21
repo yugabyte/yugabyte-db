@@ -89,6 +89,11 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   // max_concurrent_reads - max number of concurrent reads that could be run against this index.
   virtual Status LoadFromFile(const std::string& path, size_t max_concurrent_reads) = 0;
 
+  // Allows to attach a custom object that will be destroyed when the vector index does. Only one
+  // object can be attached. Returns previously attached object or nullptr if nothing was attached.
+  // Could be considered as a variation of cleanup paradigm rocskdb::Cleanable.
+  virtual std::shared_ptr<void> Attach(std::shared_ptr<void>) = 0;
+
   virtual ~VectorIndexIf() = default;
 };
 

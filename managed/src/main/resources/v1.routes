@@ -101,6 +101,7 @@ PUT     /customers/:cUUID/configs/:configUUID                                  c
 PUT     /customers/:cUUID/configs/:configUUID/edit                             com.yugabyte.yw.controllers.CustomerConfigController.editYb(cUUID: java.util.UUID, configUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.delete(cUUID: java.util.UUID, configUUID: java.util.UUID, isDeleteBackups:Boolean ?= false, request: Request)
 DELETE  /customers/:cUUID/configs/:configUUID/delete                           com.yugabyte.yw.controllers.CustomerConfigController.deleteYb(cUUID: java.util.UUID, configUUID: java.util.UUID, isDeleteBackups:Boolean ?= false, request: Request)
+GET     /customers/:cUUID/configs/:configUUID/backup_dirs                      com.yugabyte.yw.controllers.CustomerConfigController.listYbaBackupDirs(cUUID: java.util.UUID, configUUID: java.util.UUID)
 
 #---------------------------------------------------------------------------------------------------
 #                       Runtime Config

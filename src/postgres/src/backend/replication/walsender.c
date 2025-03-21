@@ -3757,6 +3757,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	int			num_standbys;
 	int			i;
 
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
+
 	InitMaterializedSRF(fcinfo, 0);
 
 	/*
@@ -3764,6 +3767,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	 * date before we're done, but we'll use the data anyway.
 	 */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
+
+	if (IsYugaByteEnabled())
+		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -3835,6 +3841,8 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 		else
 		{
 			values[1] = CStringGetTextDatum(WalSndGetStateString(state));
+			if (IsYugaByteEnabled())
+				values[1] = CStringGetTextDatum("streaming");
 
 			if (XLogRecPtrIsInvalid(sentPtr))
 				nulls[2] = true;
@@ -3876,6 +3884,32 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 			values[9] = Int32GetDatum(priority);
 
+			if (IsYugaByteEnabled())
+			{
+				int64_t lag_metric = -1;
+				int slotno;
+				for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
+				{
+					YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+					if (slot->active_pid != pid)
+						continue;
+
+					YBCGetLagMetrics(slot->stream_id, &lag_metric);
+					nulls[6] = true;
+					nulls[7] = true;
+					nulls[8] = true;
+					if (lag_metric >= 0)
+					{
+						values[6] = IntervalPGetDatum(offset_to_interval(lag_metric));
+						values[7] = IntervalPGetDatum(offset_to_interval(lag_metric));
+						values[8] = IntervalPGetDatum(offset_to_interval(lag_metric));
+						nulls[6] = false;
+						nulls[7] = false;
+						nulls[8] = false;
+					}
+					break;
+				}
+			}
 			/*
 			 * More easily understood version of standby state. This is purely
 			 * informational.

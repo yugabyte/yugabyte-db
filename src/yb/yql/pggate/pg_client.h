@@ -248,7 +248,10 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t* lag_metric);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids);

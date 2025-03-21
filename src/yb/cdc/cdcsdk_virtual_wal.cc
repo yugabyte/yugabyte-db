@@ -1200,6 +1200,10 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   return record_metadata.commit_lsn;
 }
 
+xrepl::StreamId CDCSDKVirtualWAL::GetStreamId() {
+  return stream_id_;
+}
+
 Status CDCSDKVirtualWAL::TruncateMetaMap(const uint64_t restart_lsn) {
   RSTATUS_DCHECK_LT(
       restart_lsn, last_shipped_commit.commit_lsn, InvalidArgument,
@@ -1554,6 +1558,14 @@ Status CDCSDKVirtualWAL::ValidateTablesToBeAddedPresentInStream(
       timeout, "Timed out waiting for table to get added to the stream"));
 
   return Status::OK();
+}
+
+std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
+  std::vector<TabletId> tablet_ids;
+  for (auto& entry : tablet_queues_) {
+    tablet_ids.push_back(entry.first);
+  }
+  return tablet_ids;
 }
 
 }  // namespace cdc

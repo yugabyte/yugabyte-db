@@ -37,6 +37,8 @@ bool yb_pushdown_is_not_null = true;
 
 bool yb_enable_pg_locks = true;
 
+bool yb_pg_locks_integrate_advisory_locks = true;
+
 bool yb_run_with_explain_analyze = false;
 
 bool yb_enable_add_column_missing_default = true;
@@ -87,6 +89,10 @@ int yb_read_after_commit_visibility = 0;
 
 bool yb_allow_block_based_sampling_algorithm = true;
 
+// TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366:
+// Switch to true here and inside src/postgres/src/backend/utils/misc/guc.c.
+bool yb_allow_separate_requests_for_sampling_stages = false;
+
 // TODO(#24089): Once code duplication between yb_guc and ybc_util is removed, we should be able
 // to use YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING instead of 1 and do it in one place.
 int32_t yb_sampling_algorithm = 1 /* YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING */;
@@ -108,3 +114,7 @@ int yb_major_version_upgrade_compatibility = 0;
 bool yb_upgrade_to_pg15_completed = true;
 
 bool yb_disable_auto_analyze = false;
+
+bool yb_extension_upgrade = false;
+
+bool yb_mixed_mode_expression_pushdown = false;

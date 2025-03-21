@@ -259,7 +259,7 @@ InitVirtualWal(List *publication_names,
 	}
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
-							list_length(tables), slot_hash_range);
+							list_length(tables), slot_hash_range, MyProcPid);
 
 	elog(DEBUG2,
 		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,

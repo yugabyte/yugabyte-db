@@ -105,7 +105,7 @@ ReplicaState::ReplicaState(
 ReplicaState::~ReplicaState() {
 }
 
-Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
+Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
   DCHECK(IsLocked());
 
   CoarseTimePoint now;
@@ -113,14 +113,14 @@ Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
 
   // Our last persisted term can be higher than the last persisted operation
   // (i.e. if we called an election) but reverse should never happen.
-  CHECK_LE(last_id_in_wal.term(), GetCurrentTermUnlocked()) << LogPrefix()
-      << "The last op in the WAL with id " << OpIdToString(last_id_in_wal)
-      << " has a term (" << last_id_in_wal.term() << ") that is greater "
-      << "than the latest recorded term, which is " << GetCurrentTermUnlocked();
+  SCHECK_LE(last_id_in_wal.term, GetCurrentTermUnlocked(), InvalidArgument,
+            Format("The last op in the WAL with id $0 has a term greater than the latest recorded "
+                       "term, which is $1",
+                   last_id_in_wal, GetCurrentTermUnlocked()));
 
-  next_index_ = last_id_in_wal.index() + 1;
+  next_index_ = last_id_in_wal.index + 1;
 
-  last_received_op_id_ = yb::OpId::FromPB(last_id_in_wal);
+  last_received_op_id_ = last_id_in_wal;
 
   state_ = kRunning;
   return Status::OK();
@@ -130,8 +130,8 @@ Status ReplicaState::LockForStart(UniqueLock* lock) const {
   SCOPED_WAIT_STATUS(ReplicaState_TakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
-  CHECK_EQ(state_, kInitialized) << "Illegal state for Start()."
-      << " Replica is not in kInitialized state";
+  SCHECK_EQ(state_, kInitialized, IllegalState,
+            "Illegal state for Start(), replica is not in kInitialized state");
   lock->swap(l);
   return Status::OK();
 }
@@ -149,7 +149,7 @@ ReplicaState::UniqueLock ReplicaState::LockForRead() const {
 
 Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const {
   DCHECK(!msg.has_id()) << "Should not have an ID yet: " << msg.ShortDebugString();
-  CHECK(msg.has_op_type());  // TODO: better checking?
+  SCHECK(msg.has_op_type(), InvalidArgument, "Message without op type"); // TODO: better checking?
   return LockForReplicate(lock);
 }
 
@@ -318,7 +318,7 @@ Status ReplicaState::LockForShutdown(UniqueLock* lock) {
 
 Status ReplicaState::ShutdownUnlocked() {
   DCHECK(IsLocked());
-  CHECK_EQ(state_, kShuttingDown);
+  SCHECK_EQ(state_, kShuttingDown, IllegalState, "Wrong state in Shutdown");
   state_ = kShutDown;
   return Status::OK();
 }
@@ -359,10 +359,10 @@ Status ReplicaState::SetPendingConfigUnlocked(
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM),
                         "Invalid config to set as pending");
   if (!new_config.unsafe_config_change()) {
-    CHECK(!cmeta_->has_pending_config())
-        << "Attempt to set pending config while another is already pending! "
-        << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
-        << "Attempted new pending config: " << new_config.ShortDebugString();
+    SCHECK(!cmeta_->has_pending_config(), IllegalState,
+           Format("Attempt to set pending config while another is already pending! "
+                      "Pending: $0, new: $1",
+                  cmeta_->pending_config(), new_config));
   } else if (cmeta_->has_pending_config()) {
     LOG_WITH_PREFIX(INFO) << "Allowing unsafe config change even though there is a pending config! "
                           << "Existing pending config: "
@@ -421,11 +421,12 @@ Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& config_to_co
     RaftConfigPB config_no_opid = config_to_commit;
     config_no_opid.clear_opid_index();
     // Quorums must be exactly equal, even w.r.t. peer ordering.
-    CHECK_EQ(GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString())
-        << Substitute(
-               "New committed config must equal pending config, but does not. "
-               "Pending config: $0, committed config: $1",
-               pending_config.ShortDebugString(), config_to_commit.ShortDebugString());
+    SCHECK_EQ(
+        GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString(),
+        InvalidArgument,
+        Format("New committed config must equal pending config, but does not. "
+                   "Pending: $0, committed: $1",
+               pending_config, config_to_commit));
   }
   cmeta_->set_committed_config(config_to_commit);
   cmeta_->clear_pending_config();
@@ -476,14 +477,13 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
 
   scoped_refptr<ConsensusRound> round = GetPendingOpByIndexOrNullUnlocked(op_id.index);
   if (round == nullptr) {
-    LOG_WITH_PREFIX(ERROR)
+    DumpPendingOperationsUnlocked();
+    LOG_WITH_PREFIX(FATAL)
         << "Consensus round not found for op id " << op_id << ": "
         << "committed_index=" << committed_index << ", "
         << "last_received_index=" << last_received_index << ", "
         << "tablet: " << options_.tablet_id << ", current state: "
         << ToStringUnlocked();
-    DumpPendingOperationsUnlocked();
-    CHECK(false);
   }
 
   if (round->id().term != op_id.term) {
@@ -535,8 +535,14 @@ Status ReplicaState::SetVotedForCurrentTermUnlocked(const std::string& uuid) {
   TRACE_EVENT1("consensus", "ReplicaState::SetVotedForCurrentTermUnlocked",
                "uuid", uuid);
   DCHECK(IsLocked());
+  RSTATUS_DCHECK(!cmeta_->has_voted_for(), IllegalState,
+                 "Already voted for $0 in term $1", cmeta_->voted_for(), cmeta_->current_term());
   cmeta_->set_voted_for(uuid);
-  CHECK_OK(cmeta_->Flush());
+  auto status = cmeta_->Flush();
+  if (!status.ok()) {
+    cmeta_->clear_voted_for();
+    return status;
+  }
   return Status::OK();
 }
 
@@ -638,7 +644,8 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     new_preceding = (**preceding_op_iter).id();
     ++preceding_op_iter;
   } else {
-    CHECK_EQ(new_preceding_idx, last_committed_op_id_.index);
+    SCHECK_EQ(
+        new_preceding_idx, last_committed_op_id_.index, InvalidArgument, "Invalid preceding index");
     new_preceding = last_committed_op_id_;
     if (!pending_operations_.empty() &&
         pending_operations_.front()->id().index > new_preceding_idx) {
@@ -710,7 +717,7 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
       // messages were delayed.
       const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
       if (round->replicate_msg()->id().index() > committed_config.opid_index()) {
-        CHECK_OK(SetPendingConfigUnlocked(new_config.ToGoogleProtobuf(), round->id()));
+        RETURN_NOT_OK(SetPendingConfigUnlocked(new_config.ToGoogleProtobuf(), round->id()));
       } else {
         LOG_WITH_PREFIX(INFO)
             << "Ignoring setting pending config change with OpId "
@@ -925,7 +932,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     auto current_id = round->id();
 
     if (PREDICT_TRUE(prev_id)) {
-      CHECK_OK_PREPEND(CheckOpInSequence(prev_id, current_id), LogPrefix());
+      RETURN_NOT_OK_PREPEND(CheckOpInSequence(prev_id, current_id), LogPrefix());
     }
 
     if (current_id.index > committed_op_id.index) {
@@ -1476,9 +1483,7 @@ uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
 }
 
-Result<bool> ReplicaState::RegisterRetryableRequest(
-    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side) {
-  CHECK(is_leader_side);
+Result<bool> ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
   return retryable_requests_.Register(round, tablet::IsLeaderSide::kTrue);
 }
 

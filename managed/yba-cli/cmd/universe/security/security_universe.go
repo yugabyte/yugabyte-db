@@ -11,9 +11,10 @@ import (
 
 // SecurityUniverseCmd represents the universe security command
 var SecurityUniverseCmd = &cobra.Command{
-	Use:   "security",
-	Short: "Manage security settings for a universe",
-	Long:  "Manage security settings for a universe",
+	Use:     "security",
+	GroupID: "action",
+	Short:   "Manage security settings for a universe",
+	Long:    "Manage security settings for a universe",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},

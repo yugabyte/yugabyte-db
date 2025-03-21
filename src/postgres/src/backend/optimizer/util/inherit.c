@@ -918,7 +918,8 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
 				 * Hence re-evaluate pushability.
 				 */
 				childri->yb_pushable = rinfo->yb_pushable ||
-					YbCanPushdownExpr(childri->clause, NULL);
+					YbCanPushdownExpr(childri->clause, NULL,
+									  planner_rt_fetch(parentrel->relid, root)->relid);
 			}
 			childquals = lappend(childquals, childri);
 			/* track minimum security level among child quals */

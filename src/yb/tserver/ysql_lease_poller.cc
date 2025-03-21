@@ -39,6 +39,9 @@ DEFINE_RUNTIME_uint64(ysql_lease_refresher_interval_ms, 1000,
 DEFINE_test_flag(bool, tserver_enable_ysql_lease_refresh, false,
     "Whether to enable the lease refresh RPCs tablet servers send to the master leader.");
 
+DEFINE_test_flag(double, tserver_ysql_lease_refresh_failure_prob, 0.0,
+    "Probablity to pretend we got a failure in response to a lease refresh RPC.");
+
 namespace yb {
 namespace tserver {
 
@@ -115,11 +118,16 @@ Status YsqlLeasePoller::Poll() {
 
   master::RefreshYsqlLeaseRequestPB req;
   *req.mutable_instance() = server_.instance_pb();
+  req.set_needs_bootstrap(!server_.HasBootstrappedLocalLockManager());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;
   MonoTime pre_request_time = MonoTime::Now();
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
+  if (RandomActWithProbability(
+          GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
+    return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
+  }
   RETURN_NOT_OK(ResponseStatus(resp));
   return server_.ProcessLeaseUpdate(resp.info(), pre_request_time);
 }

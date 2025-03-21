@@ -81,7 +81,7 @@ export const SmartResizeModal: FC<SRModalProps> = ({
             type="button"
             variant="primary"
             onClick={() => handleFullMove(false)}
-            data-testid="UpgradeLinuxVersionModal-SubmitButton"
+            data-testid="SmartResizeModal-SubmitButton"
           >
             {t('universeForm.fullMoveModal.submitLabel')}
           </YBButton>

@@ -345,22 +345,19 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
 
     // Preliminary checks for upgrades.
-    createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createCheckUpgradeTask(newVersion);
 
     // PreCheck for Available Memory on tserver nodes.
     long memAvailableLimit =
         confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
     // No need to run the check if the minimum allowed is 0.
     if (memAvailableLimit > 0) {
-      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit);
     }
 
-    createLocaleCheckTask(new ArrayList<>(universe.getNodes()))
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createLocaleCheckTask(new ArrayList<>(universe.getNodes()));
 
-    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion)
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion);
 
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
@@ -452,27 +449,47 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(
       Universe universe, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     // Set the flag in memory for all the nodes.
+
     createSetYBMajorVersionUpgradeCompatibility(
         universe,
+        ServerType.MASTER,
+        universe.getMasters(),
+        UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
+
+    createSetYBMajorVersionUpgradeCompatibility(
+        universe,
+        ServerType.TSERVER,
         universe.getTServers(),
         UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
 
     // Update server.conf for all the nodes.
-    createServerConfUpdateTaskForYsqlMajorUpgrade(
-        universe, universe.getTServers(), ysqlMajorVersionUpgradeState);
+    createServerConfUpdateTaskForYsqlMajorUpgrade(universe, ysqlMajorVersionUpgradeState);
   }
 
   private void createServerConfUpdateTaskForYsqlMajorUpgrade(
-      Universe universe,
-      List<NodeDetails> nodes,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+      Universe universe, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup updateGFlagsTaskGroup =
+    SubTaskGroup updateMasterGFlagsTaskGroup =
         createSubTaskGroup(subGroupDescription, SubTaskGroupType.UpdatingGFlags);
-    for (NodeDetails node : nodes) {
+    for (NodeDetails node : universe.getMasters()) {
+      Map<String, String> gFlags =
+          GFlagsUtil.getGFlagsForNode(
+              node,
+              ServerType.MASTER,
+              findCluster(universe, node.placementUuid),
+              universe.getUniverseDetails().clusters);
+      Cluster cluster = findCluster(universe, node.placementUuid);
+      updateMasterGFlagsTaskGroup.addSubTask(
+          getServerConfUpdateTaskForYsqlMajorUpgradePerNode(
+              cluster.userIntent, node, ServerType.MASTER, gFlags, ysqlMajorVersionUpgradeState));
+    }
+    getRunnableTask().addSubTaskGroup(updateMasterGFlagsTaskGroup);
+    SubTaskGroup updateTServerGFlagsTaskGroup =
+        createSubTaskGroup(subGroupDescription, SubTaskGroupType.UpdatingGFlags);
+    for (NodeDetails node : universe.getTServers()) {
       Map<String, String> gFlags =
           GFlagsUtil.getGFlagsForNode(
               node,
@@ -480,11 +497,11 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
               findCluster(universe, node.placementUuid),
               universe.getUniverseDetails().clusters);
       Cluster cluster = findCluster(universe, node.placementUuid);
-      updateGFlagsTaskGroup.addSubTask(
+      updateTServerGFlagsTaskGroup.addSubTask(
           getServerConfUpdateTaskForYsqlMajorUpgradePerNode(
               cluster.userIntent, node, ServerType.TSERVER, gFlags, ysqlMajorVersionUpgradeState));
     }
-    getRunnableTask().addSubTaskGroup(updateGFlagsTaskGroup);
+    getRunnableTask().addSubTaskGroup(updateTServerGFlagsTaskGroup);
   }
 
   private AnsibleConfigureServers getServerConfUpdateTaskForYsqlMajorUpgradePerNode(

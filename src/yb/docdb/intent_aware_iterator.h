@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -114,6 +114,9 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
+
+  EncodedDocHybridTime ObtainLastSeenHtCheckpoint() override;
+  void RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) override;
 
   HybridTime TEST_MaxSeenHt() const;
 

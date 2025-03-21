@@ -175,27 +175,50 @@ CREATE TABLE emp (
 	manager 	name
 ) INHERITS (person);
 
+\set filename :abs_srcdir '/data/emp.data'
+COPY emp FROM :'filename';
+VACUUM ANALYZE emp;
+
 
 CREATE TABLE student (
 	gpa 		float8
 ) INHERITS (person);
 
+\set filename :abs_srcdir '/data/student.data'
+COPY student FROM :'filename';
+VACUUM ANALYZE student;
+
 
 CREATE TABLE stud_emp (
 	percent 	int4
 ) INHERITS (emp, student);
+\set filename :abs_srcdir '/data/stud_emp.data'
+COPY stud_emp FROM :'filename';
 
 CREATE TABLE road (
 	name		text,
 	thepath 	path
 );
 
+\set filename :abs_srcdir '/data/streets.data'
+COPY road FROM :'filename';
+VACUUM ANALYZE road;
+
 CREATE TABLE ihighway () INHERITS (road);
+INSERT INTO ihighway
+   SELECT *
+   FROM ONLY road
+   WHERE name ~ 'I- .*';
+VACUUM ANALYZE ihighway;
 
 CREATE TABLE shighway (
 	surface		text
 ) INHERITS (road);
-
+INSERT INTO shighway
+   SELECT *, 'asphalt'
+   FROM ONLY road
+   WHERE name ~ 'State Hwy.*';
+VACUUM ANALYZE shighway;
 --
 -- Also create some non-built-in range types.
 --

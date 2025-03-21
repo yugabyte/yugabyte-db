@@ -1634,7 +1634,23 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Sets existing xCluster replication relationships between the source and target universes to be
+   * Returns the ids of outbound replication groups this namespaceId belongs to.
+   * @param namespaceId namespace id used to find the outbound replication groups; if null,
+   *   all outbound replication group ids will be returned.
+   * @return A deferred object that yields a {@link GetXClusterOutboundReplicationGroupsResponse}
+   *     which contains a list of outbound replication group ids
+   */
+  public Deferred<GetXClusterOutboundReplicationGroupsResponse>
+      getXClusterOutboundReplicationGroups(@Nullable String namespaceId) {
+    checkIsClosed();
+    GetXClusterOutboundReplicationGroupsRequest request =
+        new GetXClusterOutboundReplicationGroupsRequest(masterTable, namespaceId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Sets existing xCluster  replication relationships between the source and target universes to be
    * either active or inactive
    *
    * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.

@@ -984,6 +984,10 @@ class Tablet : public AbstractTablet,
     TEST_sleep_before_apply_intents_ = value;
   }
 
+  void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
+    TEST_sleep_before_delete_intents_file_ = value;
+  }
+
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
   // updates both regular db and intents db rate limiter speed.
   void RefreshCompactFlushRateLimitBytesPerSec();
@@ -1140,6 +1144,8 @@ class Tablet : public AbstractTablet,
 
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
+
+  docdb::EncodedPartitionBounds encoded_partition_bounds_;
 
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;
@@ -1314,6 +1320,7 @@ class Tablet : public AbstractTablet,
   MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
   MonoDelta TEST_sleep_before_apply_intents_;
+  MonoDelta TEST_sleep_before_delete_intents_file_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

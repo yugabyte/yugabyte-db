@@ -11,17 +11,17 @@ import {
   useGetMigrationAssessmentInfoQuery,
   useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
-  useGetVoyagerMigrationAssesmentDetailsQuery,
-  MigrationAssesmentInfo
+  MigrationAssessmentReport,
 } from "@app/api/src";
 
 interface MigrationStepProps {
   steps: string[];
   migration: Migration | undefined;
   step: number;
-  onRefetch: () => void;
+  onRefetch?: () => void;
   isFetching?: boolean;
   isNewMigration?: boolean;
+  voyagerVersion?: string;
 }
 
 const stepComponents = [MigrationAssessment, MigrationSchema, MigrationData, MigrationVerify];
@@ -30,58 +30,55 @@ export const MigrationStep: FC<MigrationStepProps> = ({
   steps = [""],
   migration,
   step,
-  onRefetch,
   isFetching = false,
   isNewMigration = false,
 }) => {
-  const { refetch: refetchMigrationAssesmentDetails } = useGetVoyagerMigrationAssesmentDetailsQuery(
+  const { refetch: refetchMigrationAssesmentDetails } = useGetMigrationAssessmentInfoQuery(
     {
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     },
     { query: { enabled: false } }
   );
-  const { data: migrationAssessmentData } = useGetVoyagerMigrationAssesmentDetailsQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+  const { data: migrationAssessmentData } = useGetMigrationAssessmentInfoQuery({
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
-  const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
+  const mAssessmentData = migrationAssessmentData as MigrationAssessmentReport;
   const { refetch: refetchMigrationAssesmentInfo } = useGetMigrationAssessmentInfoQuery(
     {
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationAssesmentSourceDB } = useGetAssessmentSourceDBInfoQuery(
     {
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchTargetRecommendation } = useGetAssessmentTargetRecommendationInfoQuery(
     {
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationSchemaTasks } = useGetVoyagerMigrateSchemaTasksQuery(
     {
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     },
     { query: { enabled: false } }
   );
 
   const { refetch: refetchMigrationMetrics } = useGetVoyagerDataMigrationMetricsQuery(
     {
-      uuid: migration?.migration_uuid || "migration_uuid_not_found",
+      uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
     },
     { query: { enabled: false } }
   );
 
   const refetch = React.useCallback(() => {
-    // Refetch all migration apis to avoid inconsistent states
-    onRefetch();
     refetchMigrationAssesmentDetails();
     refetchMigrationAssesmentInfo();
     refetchMigrationAssesmentSourceDB();
@@ -96,13 +93,14 @@ export const MigrationStep: FC<MigrationStepProps> = ({
           return (
             <StepComponent
               key={index}
-              operatingSystem={index === 0 ? mAssessmentData?.operating_system: "git"}
+              operatingSystem={index === 0 ? mAssessmentData?.operating_system : "git"}
               step={index}
               heading={steps[step]}
               migration={migration}
               onRefetch={refetch}
               isFetching={isFetching}
               isNewMigration={isNewMigration}
+              voyagerVersion={mAssessmentData?.voyager_version ?? ""}
             />
           );
         }

@@ -44,8 +44,6 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
   private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
 
-  private final String K8S_PG_UPGRADE_CHECK_LOC = "/mnt/disk0/yw-data";
-
   public static class Params extends ServerSubTaskParams {
     public String ybSoftwareVersion;
     public boolean downloadPackage = true;
@@ -112,14 +110,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
       String namespace = node.cloudInfo.kubernetesNamespace;
       String podName = node.cloudInfo.kubernetesPodName;
+      String dataDirectory = Util.getDataDirectoryPath(universe, node, config);
       List<String> deletePackageCommand =
           ImmutableList.of(
               "/bin/bash",
               "-c",
               String.format(
                   "rm -rf %s %s;",
-                  K8S_PG_UPGRADE_CHECK_LOC + "/" + packageName,
-                  K8S_PG_UPGRADE_CHECK_LOC + "/" + versionName));
+                  dataDirectory + "/yw-data/" + packageName,
+                  dataDirectory + "/yw-data/" + versionName));
       kubernetesManagerFactory
           .getManager()
           .executeCommandInPodContainer(
@@ -151,6 +150,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String ybServerPackage = release.getFilePath(arch);
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
+      String dataDirectory = Util.getDataDirectoryPath(universe, node, config);
       // Copy the package to the node in temp directory
       if (release.isHttpDownload(ybServerPackage)) {
         kubernetesManagerFactory
@@ -164,8 +164,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
                     "/bin/bash",
                     "-c",
                     "curl -o "
-                        + K8S_PG_UPGRADE_CHECK_LOC
-                        + "/"
+                        + dataDirectory
+                        + "/yw-data/"
                         + packageName
                         + " "
                         + ybServerPackage));
@@ -178,15 +178,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
                 podName,
                 "yb-tserver",
                 ybServerPackage,
-                K8S_PG_UPGRADE_CHECK_LOC);
+                dataDirectory + "/yw-data");
       }
       // Extract the package
       String command =
           String.format(
               "mkdir -p %s; tar -xvzf %s -C %s --strip-components=1",
-              K8S_PG_UPGRADE_CHECK_LOC + "/" + versionName,
-              K8S_PG_UPGRADE_CHECK_LOC + "/" + packageName,
-              K8S_PG_UPGRADE_CHECK_LOC + "/" + versionName);
+              dataDirectory + "/yw-data/" + versionName,
+              dataDirectory + "/yw-data/" + packageName,
+              dataDirectory + "/yw-data/" + versionName);
       List<String> extractPackageCommand = ImmutableList.of("/bin/bash", "-c", command);
       kubernetesManagerFactory
           .getManager()
@@ -206,6 +206,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     String ybServerPackage = release.getFilePath(arch);
     String versionName = extractVersionName(ybServerPackage);
     String tmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
+    String dataDirectory = Util.getDataDirectoryPath(universe, node, config);
 
     Map<String, String> zoneConfig =
         CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
@@ -214,7 +215,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =
-        String.format("%s/%s/postgres/bin/pg_upgrade", K8S_PG_UPGRADE_CHECK_LOC, versionName);
+        String.format("%s/%s/postgres/bin/pg_upgrade", dataDirectory + "/yw-data", versionName);
     String oldHost =
         primaryCluster.userIntent.enableYSQLAuth
             ? "$(ls -d -t " + tmpDirectory + "/.yb.* | head -1)"
@@ -223,13 +224,11 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         primaryCluster.userIntent.enableConnectionPooling
             ? String.valueOf(node.internalYsqlServerRpcPort)
             : String.valueOf(node.ysqlServerRpcPort);
+
     String upgradeCheckCommand =
         String.format(
-            "%s -d %s/pg_data --old-host %s --old-port %s --username yugabyte --check",
-            pgUpgradeBinaryLocation,
-            Util.getDataDirectoryPath(universe, node, config),
-            oldHost,
-            oldPort);
+            "cd %s;  %s -d %s/pg_data --old-host %s --old-port %s --username yugabyte --check",
+            dataDirectory, pgUpgradeBinaryLocation, dataDirectory, oldHost, oldPort);
     List<String> pgUpgradeCheckCommand = ImmutableList.of("/bin/bash", "-c", upgradeCheckCommand);
     kubernetesManagerFactory
         .getManager()

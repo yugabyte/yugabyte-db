@@ -48,6 +48,7 @@ class PgSharedMemoryPool;
 class SharedExchange;
 class SharedMemorySegmentHandle;
 class TSLocalLockManager;
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;

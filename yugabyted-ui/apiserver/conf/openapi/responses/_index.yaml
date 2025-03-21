@@ -170,16 +170,6 @@ MigrateSchemaResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrateSchemaTaskInfo'
-VoyagerAssesmentResponse:
-  description: Response for Plan and Asses page
-  content:
-    application/json:
-      schema:
-        title: API for Plan and Asses page
-        type: object
-        properties:
-          data:
-            $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
 VoyagerAssessmentResponseV2:
   description: Response for migration assessment page
   content:

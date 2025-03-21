@@ -29,6 +29,7 @@
 #include "yb/util/result.h"
 
 #include "yb/vector_index/usearch_wrapper.h"
+#include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
 
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
@@ -134,6 +135,41 @@ EncodedDistance EncodeDistance(float distance) {
   }
 }
 
+struct VectorIndexMergeFilter {
+  const std::string& log_prefix;
+  docdb::BoundedRocksDbIterator iter;
+
+  explicit VectorIndexMergeFilter(const std::string& log_prefix_, const DocDB& doc_db)
+      : log_prefix(log_prefix_), iter(doc_db.regular, {}, doc_db.key_bounds)
+  {}
+
+  const std::string& LogPrefix() const {
+    return log_prefix;
+  }
+
+  rocksdb::FilterDecision operator()(vector_index::VectorId vector_id) {
+    // TODO(vector_index): Revise once regular compaction correctly handles VectorId <=> ybctid;
+    // additionally check the following points:
+    // 1) Should tombstoned mapping be taken into account for filtering decision?
+    //    Current understanding is that it should not be taken into account as even tombstoned
+    //    records could still be required for some scenarious, and the regulard compaction should
+    //    be responsible for the deletion of reverse mapping.
+    // 2) Should DocRowwiseIterator created via tablet.NewUninitializedDocRowIterator() be used
+    //    instead of BoundedRocksDbIterator over regular db?
+    //    It may require additional changes to pass tablet itself of creating of a new factory
+    //    which produces DocRowwiseIterator for reverse mapping reading.
+
+    // Simple filtering by VectorId <=> ybctid presence in the regulard db.
+    auto key = dockv::DocVectorKey(vector_id);
+    const auto& db_entry = iter.Seek(key.AsSlice());
+    auto keep  = db_entry.Valid() && db_entry.key.starts_with(key.AsSlice());
+    auto decision = keep ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
+
+    VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
+    return decision;
+  }
+};
+
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 class DocVectorIndexImpl : public DocVectorIndex {
@@ -169,17 +205,33 @@ class DocVectorIndexImpl : public DocVectorIndex {
               const std::string& data_root_dir,
               rpc::ThreadPool& thread_pool,
               const PgVectorIdxOptionsPB& idx_options) {
+    using Options = typename LSM::Options;
+    using VectorIndexPtr  = typename Options::VectorIndexPtr;
+    using VectorIndexPtrs = typename Options::VectorIndexPtrs;
+
+    auto vector_index_merger =
+       [this](VectorIndexPtr& target, const VectorIndexPtrs& source) {
+          const auto& log_prefix = lsm_.options().log_prefix;
+          VectorIndexMergeFilter filter(log_prefix, doc_db_);
+          return vector_index::Merge(target, source, std::ref(filter));
+        };
+
     name_ = RemoveLogPrefixColon(log_prefix);
-    typename LSM::Options lsm_options = {
+    Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options))),
-      .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
+      .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
+      .vector_index_merger = std::move(vector_index_merger),
     };
     return lsm_.Open(std::move(lsm_options));
+  }
+
+  Status Destroy() override {
+    return lsm_.Destroy();
   }
 
   Status Insert(
@@ -235,8 +287,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   Status Compact() override {
-    LOG_WITH_FUNC(WARNING) << "Vector index compaction is not supported yet";
-    return Status::OK();
+    return lsm_.Compact(/* wait = */ true);
   }
 
   Status Flush() override {

@@ -64,8 +64,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();
-  Status CommitPlainTransaction();
-  Status CommitPlainTransactionContainingDDL(uint32_t ddl_db_oid, bool ddl_is_silent_altering);
+  Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
   Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
@@ -127,11 +126,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   };
 
  private:
-  struct DdlCommitInfo {
-    uint32_t db_oid;
-    bool is_silent_altering;
-  };
-
   class SerialNo {
    public:
     SerialNo();
@@ -166,13 +160,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::string TxnStateDebugStr() const;
 
   DdlMode GetDdlModeFromDdlState(
-    const std::optional<DdlState> ddl_state, const std::optional<DdlCommitInfo>& ddl_commit_info);
+    const std::optional<DdlState> ddl_state, const std::optional<PgDdlCommitInfo>& ddl_commit_info);
 
-  Status FinishPlainTransaction(Commit commit, const std::optional<DdlCommitInfo>& ddl_commit_info);
+  Status FinishPlainTransaction(
+      Commit commit, const std::optional<PgDdlCommitInfo>& ddl_commit_info);
 
   void IncTxnSerialNo();
 
-  Status ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info);
+  Status ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info);
 
   Status CheckSnapshotTimeConflict() const;
   Status CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& options) const;

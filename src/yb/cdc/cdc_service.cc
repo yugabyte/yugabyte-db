@@ -4923,6 +4923,60 @@ bool IsIntentGCError(Status status) {
   return false;
 }
 
+Status CDCServiceImpl::PersistActivePidInSlotEntry(
+    const xrepl::StreamId& stream_id, uint64_t active_pid) {
+  cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
+  entry.active_pid = active_pid;
+  RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+  return Status::OK();
+}
+
+void CDCServiceImpl::GetLagMetrics(
+    const GetLagMetricsRequestPB* req, GetLagMetricsResponsePB* resp, rpc::RpcContext context) {
+  auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
+  {
+    std::lock_guard l(mutex_);
+    if (session_virtual_wal_.empty() ||
+        session_virtual_wal_.find(stream_to_session_[stream_id]) ==
+            session_virtual_wal_.end()) {
+      resp->set_lag_metric(-1);
+      context.RespondSuccess();
+      return;
+    }
+    virtual_wal = session_virtual_wal_[stream_to_session_[stream_id]];
+  }
+  auto tablet_ids = virtual_wal->GetTabletIdsFromVirtualWAL();
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto& tablet_id : tablet_ids) {
+    tablet_peer = context_->LookupTablet(tablet_id);
+    if (tablet_peer) {
+      break;
+    }
+  }
+
+  if (!tablet_peer) {
+    resp->set_lag_metric(-1);
+    context.RespondSuccess();
+    return;
+  }
+
+  auto tablet = tablet_peer->shared_tablet();
+  const auto key = GetXreplMetricsKey(stream_id);
+
+  auto metrics_raw = tablet->GetAdditionalMetadata(key);
+  if (!metrics_raw) {
+    resp->set_lag_metric(-1);
+    context.RespondSuccess();
+    return;
+  }
+
+  auto lag_metric_value = std::static_pointer_cast<xrepl::CDCSDKTabletMetrics>(metrics_raw)
+                              .get()->cdcsdk_flush_lag->value();
+  resp->set_lag_metric(lag_metric_value);
+  context.RespondSuccess();
+}
+
 void CDCServiceImpl::InitVirtualWALForCDC(
     const InitVirtualWALForCDCRequestPB* req, InitVirtualWALForCDCResponsePB* resp,
     rpc::RpcContext context) {
@@ -5004,7 +5058,14 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     virtual_wal = std::make_shared<CDCSDKVirtualWAL>(
         this, stream_id, session_id, lsn_type, consistent_snapshot_time);
     session_virtual_wal_[session_id] = virtual_wal;
+    stream_to_session_[stream_id] = session_id;
   }
+
+  Status curr_status = PersistActivePidInSlotEntry(stream_id, req->active_pid());
+  RPC_CHECK_AND_RETURN_ERROR(
+    curr_status.ok(),
+    STATUS_FORMAT(InternalError, "Failed to populate active_pid for stream: $0", stream_id),
+    resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   std::unordered_set<TableId> table_list;
   for (const auto& table_id : req->table_id()) {
@@ -5126,7 +5187,12 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
         STATUS_FORMAT(
             NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
-
+    const auto& stream_id = session_virtual_wal_[session_id]->GetStreamId();
+    const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
+    stream_to_session_.erase(stream_id);
+    if (!curr_status.ok()) {
+      VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
+    }
     session_virtual_wal_.erase(session_id);
   }
 
@@ -5170,6 +5236,12 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
     std::lock_guard l(mutex_);
 
     for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
+      const auto& stream_id = session_virtual_wal_[*it]->GetStreamId();
+      const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
+      stream_to_session_.erase(stream_id);
+      if (!curr_status.ok()) {
+        VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
+      }
       if (session_virtual_wal_.erase(*it)) {
         LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }

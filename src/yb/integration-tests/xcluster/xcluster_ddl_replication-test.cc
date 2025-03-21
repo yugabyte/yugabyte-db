@@ -21,6 +21,7 @@
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -576,7 +577,8 @@ TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
 
 TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
   // Test when a table is created and dropped multiple times.
-  const int kNumIterations = 10;
+  // Decrease number of iterations for slower build types.
+  const int kNumIterations = (IsSanitizer() || kIsMac) ? 3 : 10;
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
@@ -1314,6 +1316,9 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
         ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
     consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
         ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+
+    auto consumer_namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+    consumer_database_oid_ = ASSERT_RESULT(GetPgsqlDatabaseOid(consumer_namespace_id));
   }
 
   Status PerformStep(size_t step) {
@@ -1342,7 +1347,28 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
     return Status::OK();
   }
 
+  Result<uint64_t> GetConsumerCatalogVersion() {
+    return consumer_conn_->FetchRow<pgwrapper::PGUint64>(Format(
+        "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = $0",
+        consumer_database_oid_));
+  }
+
+  Status WaitForCatalogVersionToPropagate() {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto current_version = VERIFY_RESULT(GetConsumerCatalogVersion());
+          if (current_version < last_consumer_catalog_version_) {
+            return false;
+          }
+          last_consumer_catalog_version_ = current_version;
+          return true;
+        },
+        kRpcTimeout * 1s, "Wait for new catalog version to propagate"));
+    return Status::OK();
+  }
+
   Status VerifyTargetData(bool is_paused) {
+    RETURN_NOT_OK(WaitForCatalogVersionToPropagate());
     if (!is_paused) {
       // Tables should have the same schema and data.
       for (const auto& query :
@@ -1387,6 +1413,8 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
 
   Status RunTest(size_t step_to_pause_on) {
     bool is_paused = false;
+    last_consumer_catalog_version_ = VERIFY_RESULT(GetConsumerCatalogVersion());
+
     for (size_t step = 0; step <= kNumSteps; ++step) {
       RETURN_NOT_OK(PerformStep(step));
       RETURN_NOT_OK(WaitForDDLReplication(is_paused));
@@ -1432,6 +1460,9 @@ class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTes
 
   std::string paused_expected_data_output_;
   std::string paused_expected_schema_output_;
+
+  uint32_t consumer_database_oid_;
+  uint64_t last_consumer_catalog_version_ = 0;
 };
 
 TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {

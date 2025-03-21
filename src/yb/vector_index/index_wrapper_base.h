@@ -61,6 +61,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return impl().DoSearch(query_vector, options);
   }
 
+  std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
+    std::swap(attached_, obj);
+    return obj;
+  }
+
  private:
   Impl& impl() {
     return *static_cast<Impl*>(this);
@@ -72,6 +77,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> has_entries_{false};
   std::atomic<bool> immutable_{false};
+  std::shared_ptr<void> attached_;
 };
 
 template <typename Vector, typename IteratorImpl>

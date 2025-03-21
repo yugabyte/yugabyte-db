@@ -103,7 +103,7 @@ class PgAnalyzeMultiTableTest : public PgAnalyzeReadTimeTest {
 };
 
 TEST_F_EX(PgAnalyzeReadTimeTest, AnalyzeMultipleTables, PgAnalyzeMultiTableTest) {
-  constexpr auto kNumInitialRows = 10000;
+  constexpr auto kNumInitialRows = RegularBuildVsSanitizers(10000, 1000);
 
   // Create table with keys from 1 to kNumInitialRows.
   auto setup_conn = ASSERT_RESULT(Connect());

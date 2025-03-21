@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import io.ebean.Finder;
+import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
@@ -31,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 @NoArgsConstructor
 @Getter
 @Setter
-public class XClusterNamespaceConfig {
+public class XClusterNamespaceConfig extends Model {
 
   public static final Finder<String, XClusterNamespaceConfig> find =
       new Finder<String, XClusterNamespaceConfig>(XClusterNamespaceConfig.class) {};

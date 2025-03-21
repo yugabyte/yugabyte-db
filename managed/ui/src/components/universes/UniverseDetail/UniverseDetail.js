@@ -133,7 +133,8 @@ class UniverseDetail extends Component {
     this.state = {
       dimensions: {},
       showAlert: false,
-      actionsDropdownOpen: false
+      actionsDropdownOpen: false,
+      refetchedUniverseDetails: false
     };
   }
 
@@ -156,7 +157,10 @@ class UniverseDetail extends Component {
     const { featureFlags } = this.props;
     return featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
   };
-
+  isNewTaskUIEnabled = () => {
+    const { featureFlags } = this.props;
+    return featureFlags.test.newTaskDetailsUI || featureFlags.released.newTaskDetailsUI;
+  }
   componentDidMount() {
     const {
       customer: { currentCustomer }
@@ -217,8 +221,21 @@ class UniverseDetail extends Component {
       if (hasLiveNodes(currentUniverse.data) && !universeTables.length) {
         this.props.fetchUniverseTables(currentUniverse.data.universeUUID);
       }
-      if(currentUniverse?.data?.universeDetails?.updateInProgress && currentUniverse?.data?.universeDetails?.updatingTaskUUID === undefined){
+      if (
+        this.isNewTaskUIEnabled() &&
+        !this.state.refetchedUniverseDetails &&
+        currentUniverse?.data?.universeDetails?.updateInProgress &&
+        currentUniverse?.data?.universeDetails?.updatingTaskUUID === undefined
+      ) {
         this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+        this.setState({
+          refetchedUniverseDetails: true
+        });
+      }
+      if(this.state.refetchedUniverseDetails && currentUniverse?.data?.universeDetails?.updatingTaskUUID === prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID) {
+        this.setState({
+          refetchedUniverseDetails: false
+        });
       }
     }
     if (

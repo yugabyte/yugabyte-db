@@ -91,6 +91,7 @@ static int	on_conflict_do_nothing = 0;
 static char role_catalog[10];
 #define PG_AUTHID "pg_authid"
 #define PG_ROLES  "pg_roles "
+#define YB_SUPERUSER  "yb_superuser"
 
 static FILE *OPF;
 static char *filename = NULL;
@@ -522,6 +523,7 @@ main(int argc, char *argv[])
 	 * we know how to escape strings.
 	 */
 	encoding = PQclientEncoding(conn);
+	setFmtEncoding(encoding);
 	std_strings = PQparameterStatus(conn, "standard_conforming_strings");
 	if (!std_strings)
 		std_strings = "off";
@@ -859,9 +861,11 @@ dumpRoles(PGconn *conn)
 		/*
 		 * In Yugabyte major upgrade, there are additional roles already created
 		 * by initdb.
+		 * yb_superuser is created outside of initdb, so it needs to be included.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
-			strncmp(rolename, "yb_", 3) == 0)
+			strncmp(rolename, "yb_", 3) == 0 &&
+			strncmp(rolename, YB_SUPERUSER, strlen(YB_SUPERUSER)) != 0)
 		{
 			pg_log_warning("role name starting with \"yb_\" skipped (%s)",
 						   rolename);

@@ -301,7 +301,7 @@ colocation_16384 |       10 |         16384 |        |
 (2 rows)
 ```
 
-The `grpname` column represent the tablegroup's name and the `grptablespace` column shows the OID of the associated tablespace.
+The `grpname` column represents the tablegroup name and the `grptablespace` column shows the OID of the associated tablespace.
 
 ### Geo-partitioned colocated tables with tablespaces
 
@@ -463,7 +463,7 @@ You can back up and restore a database with colocated tables and tablespaces in 
        default          | postgres    | t2_default | table | yugabyte
        default          | postgres    | t1_default | table | yugabyte
        default          | postgres    | t2         | table | yugabyte
-       default          | postgres    | t1 	       | table | yugabyte
+       default          | postgres    | t1         | table | yugabyte
       (10 rows)
       ```
 

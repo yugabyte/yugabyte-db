@@ -7966,7 +7966,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 								&base_table_pushed_down_filters,
 								&base_table_colrefs,
 								&index_pushed_down_filters,
-								&index_colrefs);
+								&index_colrefs,
+								planner_rt_fetch(index->rel->relid, root)->relid);
 
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
@@ -8678,7 +8679,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								&rel_remote_quals,
 								&rel_colrefs,
 								NULL, /* idx_remote_quals */
-								NULL); /* idx_colrefs */
+								NULL, /* idx_colrefs */
+								planner_rt_fetch(baserel->relid, root)->relid);
 
 	tuples_scanned = clamp_row_est(adjusted_baserel_tuples *
 								   clauselist_selectivity(root, indexquals,

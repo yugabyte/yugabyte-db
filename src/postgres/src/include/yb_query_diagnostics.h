@@ -157,11 +157,17 @@ typedef struct YbQueryDiagnosticsMetadata
 	/* Path to the folder where the bundle is stored */
 	char		path[MAXPGPATH];
 
+	/* Database name (required for dumping schema details) */
+	char		db_name[NAMEDATALEN];
+
 	/* Time when the query diagnostics bundle started */
 	TimestampTz start_time;
 
 	/* Whether the directory has been created */
 	bool		directory_created;
+
+	/* Only schema details remain pending; all other diagnostics data has been flushed */
+	bool		flush_only_schema_details;
 } YbQueryDiagnosticsMetadata;
 
 /*
@@ -202,7 +208,8 @@ extern Size YbQueryDiagnosticsShmemSize(void);
 extern void YbQueryDiagnosticsShmemInit(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
 extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
-extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format,...);
+extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format, ...);
+extern void YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg);
 extern void YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
 											 double total_time, uint64 rows,
 											 const BufferUsage *bufusage,

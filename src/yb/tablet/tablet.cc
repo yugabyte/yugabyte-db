@@ -1023,6 +1023,7 @@ Result<rocksdb::Options> Tablet::CommonRocksDBOptions() {
       &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), std::move(table_options));
 
   key_bounds_ = metadata()->MakeKeyBounds();
+  encoded_partition_bounds_ = VERIFY_RESULT(metadata()->MakeEncodedPartitionBounds());
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -1324,6 +1325,10 @@ void Tablet::DoCleanupIntentFiles() {
         << ", max ht: " << best_file_max_ht
         << ", min running transaction start ht: " << min_running_start_ht
         << ", min_start_ht_cdc_unstreamed_txns: " << min_start_ht_cdc_unstreamed_txns;
+    if (TEST_sleep_before_delete_intents_file_) {
+      std::this_thread::sleep_for(TEST_sleep_before_delete_intents_file_.ToSteadyDuration());
+    }
+
     auto flush_status = Flush(
         FlushMode::kSync,
         FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation);
@@ -1866,7 +1871,8 @@ Status Tablet::HandleQLReadRequest(
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics_scope.metrics(), TabletEventStats::kQlReadLatency);
 
-  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics_scope.metrics())};
+  docdb::QLRocksDBStorage storage{
+      LogPrefix(), doc_db(metrics_scope.metrics()), encoded_partition_bounds_};
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
       metadata()->primary_table_schema_version(), ql_read_request.schema_version(),
@@ -1985,7 +1991,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics, TabletEventStats::kQlReadLatency);
 
-  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics)};
+  docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics), encoded_partition_bounds_};
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
@@ -2246,12 +2252,12 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
   bool flush_intents = intents_db_ && HasFlags(flags, FlushFlags::kIntents);
   if (flush_intents) {
     options.wait = false;
-    WARN_NOT_OK(intents_db_->Flush(options), "Flush intents DB");
+    RETURN_NOT_OK(intents_db_->Flush(options));
   }
 
   if (HasFlags(flags, FlushFlags::kRegular) && regular_db_) {
     options.wait = mode == FlushMode::kSync;
-    WARN_NOT_OK(regular_db_->Flush(options), "Flush regular DB");
+    RETURN_NOT_OK(regular_db_->Flush(options));
   }
 
   if (mode == FlushMode::kSync) {
@@ -2710,6 +2716,7 @@ Status Tablet::AddMultipleTables(
 }
 
 Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
+  RETURN_NOT_OK(vector_indexes_->Remove(table_id));
   metadata_->RemoveTable(table_id, op_id);
   RETURN_NOT_OK(metadata_->Flush());
   return Status::OK();
@@ -5392,8 +5399,8 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = key_bounds_.lower;
     partition_upper_bound_key = key_bounds_.upper;
   } else {
-    const auto& partition_schema = metadata_->partition_schema();
-    const auto& partition = metadata_->partition();
+    const auto partition_schema = metadata_->partition_schema();
+    const auto partition = metadata_->partition();
     encoded_partition_key_start =
         VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_start()));
     encoded_partition_key_end =

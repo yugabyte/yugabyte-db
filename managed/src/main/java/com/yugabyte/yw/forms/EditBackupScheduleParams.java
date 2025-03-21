@@ -16,6 +16,11 @@ public class EditBackupScheduleParams {
   @ApiModelProperty(value = "Frequency of the schedule")
   public Long frequency;
 
+  // Specifies the time in millisecs before deleting the backup from the storage
+  // bucket.
+  @ApiModelProperty(value = "Time before deleting the backup from storage, in milliseconds")
+  public long timeBeforeDelete = 0L;
+
   @ApiModelProperty(value = "Cron expression for scheduling")
   public String cronExpression;
 

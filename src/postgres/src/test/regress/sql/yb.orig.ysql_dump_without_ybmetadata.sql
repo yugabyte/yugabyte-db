@@ -46,3 +46,28 @@ ALTER TABLE part_uniq_const ADD CONSTRAINT part_uniq_const_unique UNIQUE (v1, v2
 CREATE UNIQUE INDEX part_uniq_const_50_100_v2_idx ON part_uniq_const_50_100 (v2 ASC);
 
 ALTER TABLE part_uniq_const_50_100 ADD CONSTRAINT part_uniq_const_50_100_v2_uniq  UNIQUE USING INDEX part_uniq_const_50_100_v2_idx;
+
+-- Test inheritance
+CREATE TABLE level0(c1 int, c2 text not null, c3 text, c4 text);
+
+CREATE TABLE level1_0(c1 int, primary key (c1 asc)) inherits (level0);
+CREATE TABLE level1_1(c2 text primary key) inherits (level0);
+CREATE INDEX  level1_1_c3_idx ON level1_1 (c3 DESC);
+
+CREATE TABLE level2_0(c1 int not null, c2 text, c3 text not null) inherits (level1_0, level1_1);
+ALTER TABLE level2_0 NO INHERIT level1_1;
+
+CREATE TABLE level2_1(c1 int not null, c2 text not null, c3 text not null, c4 text primary key);
+ALTER TABLE level2_1 inherit level1_0;
+ALTER TABLE level2_1 inherit level1_1;
+CREATE INDEX level2_1_c3_idx ON level2_1 (c3 ASC);
+
+INSERT INTO level0 VALUES (NULL, '0', NULL, NULL);
+INSERT INTO level1_0 VALUES (2, '1_0', '1_0', NULL);
+INSERT INTO level1_1 VALUES (NULL, '1_1', NULL, '1_1');
+INSERT INTO level2_0 VALUES (1, '2_0', '2_0', NULL);
+INSERT INTO level2_1 VALUES (2, '2_1', '2_1', '2_1');
+
+ALTER TABLE level0 ADD CONSTRAINT level0_c1_cons CHECK (c1 > 0);
+ALTER TABLE level0 ADD CONSTRAINT level0_c1_cons2 CHECK (c1 IS NULL) NO INHERIT;
+ALTER TABLE level1_1 ADD CONSTRAINT level1_1_c1_cons CHECK (c1 >= 2);

@@ -101,3 +101,4 @@ Additionally, if not connected to the public Internet (that is, airgapped); and 
 - libatomic (for Redhat-based aarch64)
 - libatomic1, libncurses6 (for Debian-based aarch64)
 - chrony (for time synchronization). When using a Public Cloud Provider, chrony is the only choice. When using an On-Premises provider, chrony is recommended; ntpd and systemd-timesyncd are also supported.
+- polkit (for YBA versions including v2024.2 and later)

@@ -359,6 +359,14 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
+    MiniCluster* cluster, const std::string& table_name);
+
+Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
+    MiniCluster* cluster, const std::string& table_name);
+
+std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers);
+
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
 // i.e. not yet completed split or deleted (tombstoned).
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
@@ -421,8 +429,9 @@ int NumTotalRunningCompactions(MiniCluster* cluster);
 
 int NumRunningFlushes(MiniCluster* cluster);
 
-Result<scoped_refptr<master::TableInfo>> FindTable(
+Result<master::TableInfoPtr> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
+Result<TableId> FindTableId(MiniCluster* cluster, const std::string& table_name);
 
 Status WaitForInitDb(MiniCluster* cluster);
 

@@ -33,6 +33,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/server/server_common_flags.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -66,7 +67,6 @@ DEFINE_test_flag(bool, sort_auto_analyze_target_table_ids, false,
                  "for testing purpose.");
 
 DECLARE_bool(ysql_enable_auto_analyze_service);
-DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 using namespace std::chrono_literals;
 
@@ -155,7 +155,7 @@ uint32 PgAutoAnalyzeService::PeriodicTaskIntervalMs() const {
 // (6) For successful ANALYZEs or for tables that don't exist, subtract the mutations used to
 //     decide an ANALYZE from the mutations in the YCQL table.
 Status PgAutoAnalyzeService::TriggerAnalyze() {
-  if (FLAGS_ysql_yb_major_version_upgrade_compatibility > 0) {
+  if (IsYsqlMajorVersionUpgradeInProgress()) {
     YB_LOG_EVERY_N_SECS(INFO, 1800) << "Skipping auto analyze during YSQL major version upgrade";
     return Status::OK();
   }

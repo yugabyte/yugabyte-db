@@ -46,7 +46,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -524,7 +523,6 @@ public class TableManagerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore("Deprecated feature yb_backup restore with timestamp")
   public void testRestoreS3BackupWithRestoreTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST41");
@@ -543,7 +541,6 @@ public class TableManagerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore("Deprecated feature yb_backup restore with timestamp")
   public void testRestoreNfsBackupWithRestoreTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST42");
@@ -562,7 +559,6 @@ public class TableManagerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore("Deprecated feature yb_backup restore with timestamp")
   public void testRestoreGcsBackupWithRestoreTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST43");
@@ -581,7 +577,6 @@ public class TableManagerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore("Deprecated feature yb_backup restore with timestamp")
   public void testRestoreBackupWithInvalidTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST44");

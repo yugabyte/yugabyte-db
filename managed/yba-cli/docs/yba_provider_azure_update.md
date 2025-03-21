@@ -14,7 +14,7 @@ yba provider azure update [flags]
 
 ```
 yba provider azure update --name <provider-name> \
-	--hosted-zone-id <hosted-zone-id>
+	 --hosted-zone-id <hosted-zone-id>
 ```
 
 ### Options
@@ -28,7 +28,7 @@ yba provider azure update --name <provider-name> \
       --rg string                         [Optional] Update Azure Resource Group. Required with client-id, client-secret, tenant-id, subscription-id
       --network-subscription-id string    [Optional] Update Azure Network Subscription ID.
       --network-rg string                 [Optional] Update Azure Network Resource Group.
-      --hosted-zone-id string             [Optional] Update Hosted Zone ID corresponging to Private DNS Zone.
+      --hosted-zone-id string             [Optional] Update Hosted Zone ID corresponding to Private DNS Zone.
       --add-region stringArray            [Optional] Add region associated with the Azure provider. Provide the following double colon (::) separated fields as key-value pairs: "region-name=<region-name>::vnet=<virtual-network>::sg-id=<security-group-id>". Region name and Virtual network are required key-values. Security Group ID is optional. Each region needs to be added using a separate --add-region flag.
       --add-zone stringArray              [Optional] Zone associated to the Azure Region defined. Provide the following double colon (::) separated fields as key-value pairs: "zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>".Zone name, Region name and subnet IDs are required values. Secondary subnet ID is optional. Each --add-region definition must have atleast one corresponding --add-zone definition. Multiple --add-zone definitions can be provided per region.Each zone needs to be added using a separate --add-zone flag.
       --remove-region stringArray         [Optional] Region name to be removed from the provider. Each region to be removed needs to be provided using a separate --remove-region definition. Removing a region removes the corresponding zones.

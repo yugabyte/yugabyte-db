@@ -31,7 +31,7 @@ namespace yb::tserver {
 
 class TSLocalLockManager::Impl {
  public:
-  explicit Impl(const server::ClockPtr& clock) : clock_(clock) {}
+  Impl(const server::ClockPtr& clock, TabletServerIf* server) : clock_(clock), server_(server) {}
 
   ~Impl() = default;
 
@@ -133,6 +133,10 @@ class TSLocalLockManager::Impl {
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
+    // In case of exclusive locks, invalidate the db table cache before releasing them.
+    if (req.has_db_catalog_version_data()) {
+      server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
+    }
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     object_lock_manager_.Unlock(object_lock_owner);
     return Status::OK();
@@ -244,10 +248,11 @@ class TSLocalLockManager::Impl {
   std::condition_variable cv_;
   using LockType = std::mutex;
   LockType mutex_;
-
+  TabletServerIf* server_;
 };
 
-TSLocalLockManager::TSLocalLockManager(const server::ClockPtr& clock) : impl_(new Impl(clock)) {}
+TSLocalLockManager::TSLocalLockManager(const server::ClockPtr& clock, TabletServerIf* server)
+    : impl_(new Impl(clock, server)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
@@ -268,6 +273,10 @@ void TSLocalLockManager::DumpLocksToHtml(std::ostream& out) {
 
 size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
   return impl_->TEST_GrantedLocksSize();
+}
+
+bool TSLocalLockManager::IsBootstrapped() const {
+  return impl_->IsBootstrapped();
 }
 
 size_t TSLocalLockManager::TEST_WaitingLocksSize() const {

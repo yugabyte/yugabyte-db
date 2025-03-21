@@ -3,12 +3,12 @@ title: Active-Active Multi-Master design pattern for global applications
 headerTitle: Active-active multi-master
 linkTitle: Active-active multi-master
 description: Multi-Master dual cluster for global applications
-headcontent: Multi-Master dual cluster using xCluster deployment
+headcontent: Multi-Master dual cluster using asynchronous xCluster deployment
 menu:
   preview:
     identifier: global-apps-active-active-multi-master
     parent: build-global-apps
-    weight: 500
+    weight: 400
 type: docs
 ---
 
@@ -30,7 +30,7 @@ This ensures that the reads and writes are in the same region, with the expected
 
 ## Multi-master
 
-You can eliminate the possibility of data loss by setting up another cluster in a different region, say `us-east`, using [xCluster](../../../explore/going-beyond-sql/asynchronous-replication-ysql/#configure-bidirectional-replication).
+You can eliminate the possibility of data loss by setting up another cluster in a different region, say `us-east`, using [xCluster Setup](../../../deploy/multi-dc/async-replication/async-deployment).
 
 ![Active-Active Multi-Master](/images/architecture/replication/active-active-deployment-new.png)
 
@@ -46,18 +46,6 @@ When one of the clusters fails, say `us-west`, the other cluster in `us-east` ca
 
 ![Failover](/images/develop/global-apps/aa-multi-master-failover.png)
 
-## Caveats
-
-The replication happens at the DocDB layer, bypassing the query layer, and some standard functionality doesn't work:
-
-- Avoid `UNIQUE` indexes and constraints, as there is no way to check uniqueness.
-- Avoid `TRIGGERS`, as the triggers won't be fired as the query layer is bypassed.
-- Avoid `SERIAL` columns as both the clusters would generate the same sequence (use UUID instead).
-- Schema changes are not automatically transmitted but have to be applied manually (currently).
-- Transaction updates are NOT committed atomically across sources and hence the other cluster could be transactionally inconsistent.
-
 ## Learn more
 
 - [xCluster architecture](../../../architecture/docdb-replication/async-replication)
-- [xCluster deployment](../../../explore/going-beyond-sql/asynchronous-replication-ysql/)
-- [Raft consensus protocol](../../../architecture/docdb-replication/replication)

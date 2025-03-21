@@ -259,7 +259,8 @@ func init() {
 	createGCPProviderCmd.Flags().String("project-id", "",
 		"[Optional] Project ID that hosts universe nodes in GCP.")
 	createGCPProviderCmd.Flags().String("shared-vpc-project-id", "",
-		"[Optional] Shared VPC project ID in GCP.")
+		"[Optional] Shared VPC project ID in GCP. Set if you want use Shared VPC"+
+			" to connect resources from multiple projects to a common VPC.")
 
 	createGCPProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+

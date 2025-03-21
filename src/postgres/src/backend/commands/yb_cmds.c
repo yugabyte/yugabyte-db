@@ -1771,6 +1771,17 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			*needsYBAlter = false;
 			break;
 
+		case AT_DropInherit:
+			switch_fallthrough();
+		case AT_AddInherit:
+			/*
+			 * Altering the inheritance should keep the docdb column list the same and not
+			 * require an ALTER.
+			 * This will need to be re-evaluated, if NULLability is propagated to docdb.
+			 */
+			*needsYBAlter = false;
+			break;
+
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -2254,7 +2265,8 @@ YBCGetRelfileNodes(Oid *table_oids, size_t num_relations, Oid *relfilenodes)
 void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations,
-						const YbcReplicationSlotHashRange *slot_hash_range)
+						const YbcReplicationSlotHashRange *slot_hash_range,
+						uint64_t active_pid)
 {
 	Assert(MyDatabaseId);
 
@@ -2265,9 +2277,15 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
 											 relfilenodes, numrelations,
-											 slot_hash_range));
+											 slot_hash_range, active_pid));
 
 	pfree(relfilenodes);
+}
+
+void
+YBCGetLagMetrics(const char *stream_id, int64_t *lag_metric)
+{
+	HandleYBStatus(YBCPgGetLagMetrics(stream_id, lag_metric));
 }
 
 void

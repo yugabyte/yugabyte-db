@@ -935,7 +935,9 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid);
+
+YbcStatus YBCPgGetLagMetrics(const char *stream_id, int64_t *lag_metric);
 
 YbcStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,

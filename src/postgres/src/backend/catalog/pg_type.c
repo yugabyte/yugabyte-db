@@ -132,7 +132,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	nulls[Anum_pg_type_typacl - 1] = true;
 
 	/* Use binary-upgrade override for pg_type.oid? */
-	if (IsBinaryUpgrade || yb_binary_restore)
+	if ((IsBinaryUpgrade || yb_binary_restore) && !yb_extension_upgrade)
 	{
 		if (!OidIsValid(binary_upgrade_next_pg_type_oid))
 			ereport(ERROR,
@@ -496,7 +496,8 @@ TypeCreate(Oid newTypeOid,
 		else if (ybRelationIsShared && IsYsqlUpgrade)
 			elog(ERROR, "shared relations must have an explicit type OID");
 		/* Use binary-upgrade override for pg_type.oid, if supplied. */
-		else if (IsBinaryUpgrade || yb_binary_restore)
+		else if ((IsBinaryUpgrade || yb_binary_restore) &&
+				 !yb_extension_upgrade)
 		{
 			if (!OidIsValid(binary_upgrade_next_pg_type_oid))
 				ereport(ERROR,

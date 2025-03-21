@@ -420,10 +420,8 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
-  const bool*     TEST_yb_enable_invalidation_messages;
-  const int32_t*  TEST_yb_invalidation_message_expiration_secs;
-  const int32_t*  TEST_yb_max_num_invalidation_messages;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
+  const bool*     ysql_enable_inheritance;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -655,6 +653,8 @@ typedef struct {
   int replica_identities_count;
   uint64_t last_pub_refresh_time;
   const char *yb_lsn_type;
+  uint64_t active_pid;
+  bool expired;
 } YbcReplicationSlotDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in

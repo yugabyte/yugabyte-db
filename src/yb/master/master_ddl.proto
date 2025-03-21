@@ -798,6 +798,7 @@ message ReleaseObjectLocksGlobalResponsePB {
 
 message RefreshYsqlLeaseRequestPB {
   optional NodeInstancePB instance = 1;
+  optional bool needs_bootstrap = 2;
 }
 
 message RefreshYsqlLeaseInfoPB {

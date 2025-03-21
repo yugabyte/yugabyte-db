@@ -13,6 +13,7 @@
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
+      "upgrade": "Upgrade",
       "requiredField": "Required field",
       "fieldRequired": "This field is required",
       "save": "Save",
@@ -54,7 +55,8 @@
       "unitAbbreviation": {
         "milliseconds": "ms",
         "seconds": "s",
-        "megabyte": "MB"
+        "megabyte": "MB",
+        "megabytesPerSecond": "MBps"
       }
     },
     "imgAltText": {
@@ -89,8 +91,10 @@
       "async_replication_sent_lag_micros": "Async Replication Lag",
       "consumer_safe_time_lag": "Consumer Safe Time Lag",
       "consumer_safe_time_skew": "Consumer Safe Time Skew",
+      "xcluster_consumer_replication_error_count": "Consumer Replication Error Count",
+      "service_response_bytes_yb_cdc_CDCService_GetChanges": "CDC Service Get Changes Throughput (MBps)",
       "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
-      "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
+      "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     },
     "dashboard": {
       "nodeAgentReminderBanner": {
@@ -747,18 +751,25 @@
             "dbName": "Database",
             "elapsedMillis": "Elapsed Time",
             "keyspace": "Keyspace",
+            "leader_pid": "Leader PID",
             "local_blks_hit": "Tmp tables RAM",
             "local_blks_written": "Tmp tables On Disk",
+            "max_plan_time": "Max Plan Time",
             "max_time": "Max Exec Time",
+            "mean_plan_time": "Mean Plan Time",
             "mean_time": "Avg Exec Time",
+            "min_plan_time": "Min Plan Time",
             "min_time": "Min Exec Time",
             "nodeName": "Node Name",
             "privateIp": "Private IP",
+            "query_id": "Query ID",
             "queryStartTime": "Query Start",
             "rolname": "User",
             "rows": "Rows",
             "sessionStatus": "Session Status",
+            "stddev_plan_time": "Stdev Plan Time",
             "stddev_time": "Stdev Exec Time",
+            "total_plan_time": "Total Plan Time",
             "total_time": "Total Time",
             "type": "Type"
           },
@@ -921,6 +932,7 @@
             },
             "useNewTargetUniverse": {
               "optionName": "Select a new universe as DR replica",
+              "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
               "drReplica": "DR Replica Universe"
             }
           },
@@ -1026,7 +1038,7 @@
               },
               "bootstrapSummary": {
                 "instruction": "Confirm full copy creation plan",
-                "submitButton": "Next: Confirm Alert Threshold"
+                "submitButton": "Next: Configure PITR Settings"
               },
               "configurePitr": {
                 "instruction": "Configure point-in-time recovery (PITR) settings",
@@ -1470,7 +1482,9 @@
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
-            "consumerSafeTimeSkew": "Consumer Safe Time Skew"
+            "consumerSafeTimeSkew": "Consumer Safe Time Skew",
+            "consumerReplicationErrorCount": "Consumer Replication Error Count",
+            "cdcGetChangesThroughput": "CDC Service Get Changes Throughput"
           }
         },
         "error": {
@@ -2191,7 +2205,8 @@
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
         "successMsg": "Success. Click <0>here</0> for task details",
         "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
-        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade."
+        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade.",
+        "runPrecheckOnlyButton": "Run Pre-check Only"
       },
       "deleteModal": {
         "title": "Delete Linux Version",

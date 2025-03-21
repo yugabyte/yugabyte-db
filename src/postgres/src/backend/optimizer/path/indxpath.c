@@ -32,6 +32,7 @@
 #include "optimizer/paths.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
+#include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 
@@ -209,7 +210,7 @@ static bool ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 									   void *arg);
 static bool is_hash_column_in_lsm_index(const IndexOptInfo *index, int columnIndex);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
-static bool yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo);
+static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 
 /*
  * create_index_paths()
@@ -2399,6 +2400,10 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 	if (!enable_indexonlyscan)
 		return false;
 
+	/* YB: Index-only scans are not supported for copartitioned indexes. */
+	if (index->yb_amiscopartitioned)
+		return false;
+
 	/*
 	 * Check that all needed attributes of the relation are available from the
 	 * index.
@@ -2806,7 +2811,7 @@ match_clause_to_index(PlannerInfo *root,
 	}
 
 	if (IsYugaByteEnabled() && yb_bitmap_idx_pushdowns &&
-		yb_can_pushdown_as_filter(index, rinfo))
+		yb_can_pushdown_as_filter(root, index, rinfo))
 	{
 		rinfo->yb_pushable = true;
 		*yb_bitmap_idx_pushdowns = lappend(*yb_bitmap_idx_pushdowns, rinfo);
@@ -2820,7 +2825,9 @@ match_clause_to_index(PlannerInfo *root,
  *	  operations aren't indexable but are valid as filters.
  */
 static bool
-yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
+yb_can_pushdown_as_filter(PlannerInfo *root,
+						  IndexOptInfo *index,
+						  RestrictInfo *rinfo)
 {
 	List	   *colrefs = NIL;
 	int			required_relid;
@@ -2831,7 +2838,8 @@ yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
 		return false;
 
 	/* Can DocDB evaluate this operation? */
-	if (!YbCanPushdownExpr(rinfo->clause, &colrefs))
+	if (!YbCanPushdownExpr(rinfo->clause, &colrefs,
+						   planner_rt_fetch(index->rel->relid, root)->relid))
 		return false;
 
 	/* Do all of the clause's referenced attributes exist in the index? */

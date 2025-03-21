@@ -90,8 +90,10 @@ public class ConfigureDBApis extends UpgradeTaskBase {
   private void createTaskToConfigureApiThroughRollingGFlagsUpgrade(Universe universe) {
     List<UniverseDefinitionTaskParams.Cluster> currClusters =
         universe.getUniverseDetails().clusters;
+    Universe targetUniverseState = getUniverse();
     for (UniverseDefinitionTaskParams.Cluster currentCluster :
         universe.getUniverseDetails().clusters) {
+      // Update each cluster's user intent in the target universe state.
       UserIntent userIntent = currentCluster.userIntent.clone();
       userIntent.enableYSQL = taskParams().enableYSQL;
       userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
@@ -104,15 +106,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
               taskParams()
                   .connectionPoolingGflags
                   .getOrDefault(currentCluster.uuid, new SpecificGFlags()));
-      List<NodeDetails> masterNodes =
-          universe.getMasters().stream()
-              .filter(n -> n.placementUuid.equals(currentCluster.uuid))
-              .collect(Collectors.toList());
-      List<NodeDetails> tserverNodes =
-          universe.getTServers().stream()
-              .filter(n -> n.placementUuid.equals(currentCluster.uuid))
-              .collect(Collectors.toList());
-      Universe targetUniverseState = getUniverse();
       targetUniverseState.getUniverseDetails().getClusterByUuid(currentCluster.uuid).userIntent =
           userIntent;
       // Update the communication ports in the universe details.
@@ -122,6 +115,15 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           .forEach(
               node ->
                   CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node));
+
+      List<NodeDetails> masterNodes =
+          universe.getMasters().stream()
+              .filter(n -> n.placementUuid.equals(currentCluster.uuid))
+              .collect(Collectors.toList());
+      List<NodeDetails> tserverNodes =
+          universe.getTServers().stream()
+              .filter(n -> n.placementUuid.equals(currentCluster.uuid))
+              .collect(Collectors.toList());
       createRollingUpgradeTaskFlow(
           (nodes, processTypes) -> {
             // In case of rolling restart, we only deal with one node at a time.

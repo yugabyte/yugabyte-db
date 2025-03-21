@@ -1160,7 +1160,7 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
 
   int64 table_size = 0;
   int32 num_missing_tablets = 0;
-  if (!table_info->IsColocatedUserTable()) {
+  if (!table_info->IsSecondaryTable()) {
     // Colocated user tables do not have size info
 
     // Set missing tablets if test flag is set
@@ -5823,10 +5823,12 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
       VERIFY_RESULT(master_->ts_manager()->RefreshYsqlLease(epoch, req->instance()));
   *resp->mutable_info() = lease_update.ToPB();
   if (resp->info().new_lease()) {
-    *resp->mutable_info()->mutable_ddl_lock_entries() =
-        object_lock_info_manager()->ExportObjectLockInfo();
     object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
         req->instance().permanent_uuid(), resp->info().lease_epoch());
+  }
+  if (req->needs_bootstrap() || resp->info().new_lease()) {
+    *resp->mutable_info()->mutable_ddl_lock_entries() =
+        object_lock_info_manager()->ExportObjectLockInfo();
   }
   return Status::OK();
 }
@@ -5853,7 +5855,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
-  RSTATUS_DCHECK(!table->IsColocatedUserTable(),
+  RSTATUS_DCHECK(!table->IsSecondaryTable(),
                  InternalError,
                  Format("Cannot truncate colocated table $0 on master", table->name()));
 
@@ -6662,37 +6664,38 @@ Status CatalogManager::DeleteTableInternal(
     // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
     // it is possible that the tablet is already removed from table by a racing thread and
     // in that case colocated_tablet will be nullptr.
-    if (table.table_info_with_write_lock.info->IsColocatedUserTable()) {
+    if (table.table_info_with_write_lock->IsSecondaryTable()) {
       RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
-    }
-    auto colocated_tablet = table.table_info_with_write_lock->GetColocatedUserTablet();
-    if (colocated_tablet) {
-      // Send a RemoveTableFromTablet() request to each
-      // colocated parent tablet replica in the table.
-      if (!table.delete_retainer.IsHideOnly()) {
-        LOG(INFO) << "Notifying tablet with id " << colocated_tablet->tablet_id()
-                  << " to remove this colocated table " << table.table_info_with_write_lock->name()
-                  << " from its metadata.";
-        auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
-            epoch);
-        table.table_info_with_write_lock->AddTask(call);
-        WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-      } else {
-        // Set the snapshot schedules that prevented the table from getting deleted.
-        const auto retained_by_snapshot_schedules =
-            table.delete_retainer.RetainedBySnapshotSchedules();
-        if (!retained_by_snapshot_schedules.empty()) {
-          auto tablet_lock = colocated_tablet->LockForWrite();
+      for (const auto& colocated_tablet :
+               VERIFY_RESULT(table.table_info_with_write_lock->GetTabletsIncludeInactive())) {
+        // Send a RemoveTableFromTablet() request to each
+        // colocated parent tablet replica in the table.
+        if (!table.delete_retainer.IsHideOnly()) {
+          LOG(INFO)
+              << "Notifying tablet with id " << colocated_tablet->tablet_id()
+              << " to remove this colocated table " << table.table_info_with_write_lock->name()
+              << " from its metadata.";
+          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+              master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
+              epoch);
+          table.table_info_with_write_lock->AddTask(call);
+          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+        } else {
+          // Set the snapshot schedules that prevented the table from getting deleted.
+          const auto retained_by_snapshot_schedules =
+              table.delete_retainer.RetainedBySnapshotSchedules();
+          if (!retained_by_snapshot_schedules.empty()) {
+            auto tablet_lock = colocated_tablet->LockForWrite();
 
-          *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-              retained_by_snapshot_schedules;
+            *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+                retained_by_snapshot_schedules;
 
-          // Upsert to sys catalog and commit to memory.
-          RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
-          tablet_lock.Commit();
+            // Upsert to sys catalog and commit to memory.
+            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
+            tablet_lock.Commit();
+          }
+          CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
         }
-        CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
       }
     }
   }
@@ -6987,7 +6990,7 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  return all_tablets_done || table->is_system() || table->IsColocatedUserTable();
+  return all_tablets_done || table->is_system() || table->IsSecondaryTable();
 }
 
 std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
@@ -7138,7 +7141,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     resp->set_done(true);
   } else {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
-              << ((!table->IsColocatedUserTable()) ? ": deleting tablets" : "");
+              << ((!table->IsSecondaryTable()) ? ": deleting tablets" : "");
 
     auto descs = master_->ts_manager()->GetAllDescriptors();
     for (auto& ts_desc : descs) {
@@ -7676,6 +7679,17 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
+namespace {
+
+std::string AsDebugHexString(const PartitionPB& partition) {
+  return Format(
+      "partition_key_start: $0, partition_key_end: $1",
+      Slice(partition.partition_key_start()).PrefixNoLongerThan(64).ToDebugHexString(),
+      Slice(partition.partition_key_end()).PrefixNoLongerThan(64).ToDebugHexString());
+}
+
+} // namespace
+
 Status CatalogManager::RegisterNewTabletsForSplit(
     TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
     const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
@@ -7713,16 +7727,14 @@ Status CatalogManager::RegisterNewTabletsForSplit(
   // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
   // committed TabletInfo from the `table` ?
   for (auto& new_tablet : new_tablets) {
-    const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
-    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
-              << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
-              << ", partition_key_end: "
-              << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
-              << ", split_depth: " << new_split_depth << ") to split the tablet "
-              << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
-              << ") for table " << table->ToString()
-              << ", new partition_list_version: " << new_partition_list_version;
     new_tablet->mutable_metadata()->CommitMutation();
+    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " ("
+              << AsDebugHexString(new_tablet->LockForRead()->pb.partition())
+              << ", split_depth: " << new_split_depth << ") to split the tablet "
+              << source_tablet_info->tablet_id() << " ("
+              << AsDebugHexString(source_tablet_meta.partition()) << ") for table "
+              << table->ToString()
+              << ", new partition_list_version: " << new_partition_list_version;
   }
   return Status::OK();
 }
@@ -7866,7 +7878,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   resp->set_colocated(table->colocated());
 
-  if (table->IsColocatedUserTable()) {
+  if (table->IsSecondaryTable()) {
     // Set the tablegroup_id for colocated user tables only after Colocation is GA.
     if (IsTablegroupParentTableId(table->LockForRead()->pb.parent_table_id())) {
       resp->set_tablegroup_id(
@@ -10147,7 +10159,7 @@ CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
 
 Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
     bool use_cache) {
-  if (!FLAGS_TEST_yb_enable_invalidation_messages ||
+  if (!FLAGS_ysql_yb_enable_invalidation_messages ||
       !FLAGS_ysql_enable_db_catalog_version_mode ||
       !catalog_version_table_in_perdb_mode_) {
     return DbOidVersionToMessageListMap();
@@ -10616,7 +10628,7 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
     return STATUS(InvalidArgument, "It is not allowed to delete the system table tablet");
   }
   // Do not delete the tablet of a colocated table.
-  if (table.IsColocatedUserTable()) {
+  if (table.IsSecondaryTable()) {
     return STATUS(InvalidArgument, "It is not allowed to delete tablets of the colocated tables.");
   }
   return Status::OK();
@@ -12785,7 +12797,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     {
       auto l = info->LockForRead();
       if (info->is_system() ||
-          info->IsColocatedUserTable() ||
+          info->IsSecondaryTable() ||
           l->started_deleting()) {
         continue;
       }
@@ -13273,7 +13285,7 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
     changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
   }
-  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
     // Maybe last time invalidation messages refresh failed, read it again.
     if (!changed) {
       SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);

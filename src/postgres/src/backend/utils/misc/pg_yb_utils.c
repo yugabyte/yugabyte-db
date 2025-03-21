@@ -1080,6 +1080,61 @@ YBOnPostgresBackendShutdown()
 	YBCDestroyPgGate();
 }
 
+void
+YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
+{
+	if (!yb_enable_invalidation_messages)
+		return;
+
+	/*
+	 * When incremental catalog cache is enabled, we want to wait
+	 * for the yb_new_catalog_version to propagate to shared
+	 * memory of this node to allow proper ordering of the following
+	 * scenario:
+	 * SELECT * FROM foo;
+	 * \! ysqlsh -f ddl_script.sql
+	 * SELECT * FROM foo;
+	 * where ddl_script.sql may contain DDL statement(s) that caused
+	 * breaking catalog version to increment. Assume there are no other
+	 * conconcurrent DDLs. Due to heartbeat delay, we may see this
+	 * session's local catalog version as 1, shared memory catalog version
+	 * as 3, but latest breaking catalog version as 5 after ddl_script.sql
+	 * completes. With incremental cache refresh we only ask for inval
+	 * messages of version 2 and 3 and then we will start executing the
+	 * second SELECT. It is possible by the time the read RPC reaches the
+	 * target tablet server (which could be this node itself), a new
+	 * heartbeat has already updated breaking version to 5, causing the
+	 * SELECT to fail because it has only version 3. But from user's
+	 * pespective, ddl_script.sql has synchronously completed and the
+	 * second SELECT had better to see its effect as if ddl_script.sql were
+	 * executed inline from this session without an ERROR.
+	 * By waiting for yb_new_catalog_version showing up in shared memory,
+	 * we avoid the above ERROR because now we ask for inval messages
+	 * of version 2, 3, 4, 5 and the read RPC of the second SELECT will
+	 * not see the ERROR as described above.
+	 */
+	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
+
+	/* Wait up to 60 seconds, with a 0.1-second interval. */
+	int count = 0;
+	while (shared_catalog_version < version && count++ < 600)
+	{
+		/*
+		 * This can happen if database MyDatabaseId is dropped by another session.
+		 */
+		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+			return;
+		ereport(LOG,
+				(errmsg("waiting for shared catalog version to reach %" PRIu64,
+						version),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+		/* wait 0.1 sec */
+		pg_usleep(100000L);
+		shared_catalog_version = YbGetSharedCatalogVersion();
+	}
+}
+
 /*---------------------------------------------------------------------------*/
 /* Transactional DDL support - Common Definitions                            */
 /*---------------------------------------------------------------------------*/
@@ -1981,6 +2036,9 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_enable_advisory_locks = false;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+bool		yb_enable_invalidation_messages = false;
+int			yb_invalidation_message_expiration_secs = 10;
+int			yb_max_num_invalidation_messages = 4096;
 
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
@@ -2026,6 +2084,7 @@ bool		yb_test_stay_in_global_catalog_version_mode = false;
 bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
+int			yb_test_delay_after_applying_inval_message_ms = 0;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2411,8 +2470,7 @@ YBCommitTransactionContainingDDL()
 		 * we may have missed some invalidation messages associated with them.
 		 */
 		bool enable_inval_msgs =
-			*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
-			ddl_transaction_state.num_committed_pg_txns == 0;
+			yb_enable_invalidation_messages && ddl_transaction_state.num_committed_pg_txns == 0;
 		if (enable_inval_msgs)
 		{
 			/*
@@ -2460,7 +2518,7 @@ YBCommitTransactionContainingDDL()
 			nmsgs = numCatCacheMsgs + numRelCacheMsgs;
 			if (nmsgs > 0)
 			{
-				int max_allowed = *YBCGetGFlags()->TEST_yb_max_num_invalidation_messages;
+				int max_allowed = yb_max_num_invalidation_messages;
 				if (nmsgs > max_allowed)
 				{
 					elog(LOG, "too many messages: %d, max allowed %d", nmsgs, max_allowed);
@@ -2497,12 +2555,12 @@ YBCommitTransactionContainingDDL()
 			YBC_LOG_INFO("num_committed_pg_txns: %d",
 						 ddl_transaction_state.num_committed_pg_txns);
 
-		/* Clear sender_pid for unit test to have a stable result. */
+		/* Clear yb_sender_pid for unit test to have a stable result. */
 		if (yb_test_inval_message_portability && currentInvalMessages)
 			for (int i = 0; i < nmsgs; ++i)
 			{
 				SharedInvalidationMessage *msg = &currentInvalMessages[i];
-				msg->yb_header.sender_pid = 0;
+				msg->yb_header.yb_sender_pid = 0;
 			}
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
@@ -2546,9 +2604,10 @@ YBCommitTransactionContainingDDL()
 	 */
 	if (increment_done)
 	{
-		if (*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
+		if (yb_enable_invalidation_messages &&
 			database_oid == MyDatabaseId && YBIsDBCatalogVersionMode())
 		{
+			const uint64_t new_version = YbGetNewCatalogVersion();
 			/*
 			 * If local version is x and this DDL incremented catalog version to x + 1,
 			 * then we can do this optimization because the invalidation messages
@@ -2563,13 +2622,22 @@ YBCommitTransactionContainingDDL()
 			 * of x + 2 is fine because it only causes some redundant on-demand loading
 			 * of cache entries that are removed again by reapplying messages of x + 2.
 			 */
-			if (YbGetCatalogCacheVersion() + 1 == YbGetNewCatalogVersion())
+			if (YbGetCatalogCacheVersion() + 1 == new_version)
 				YbUpdateCatalogCacheVersion(YbGetNewCatalogVersion());
 			else
+			{
 				elog(LOG,
 					 "skipped optimization, "
 					 "local catalog version of db %u "
 					 "kept at %" PRIu64, MyDatabaseId, YbGetCatalogCacheVersion());
+				/*
+				 * If we remain at x when the new_version of this DDL is x + 2, we need
+				 * to wait for x + 1's invalidation messages, since we already know the
+				 * latest version is >= x + 2, let's wait for shared memory to catch up
+				 * to x + 2.
+				 */
+				YbWaitForSharedCatalogVersionToCatchup(new_version);
+			}
 		}
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
@@ -2920,6 +2988,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * underway need not abort.
 				 */
 				if (stmt->partbound)
+					break;
+
+				/*
+				 * Increment the catalog version for create inherited tables
+				 * so that the corresponding cache can be invalidated
+				 */
+				if (stmt->inhRelations)
 					break;
 
 				/*
@@ -3719,15 +3794,26 @@ yb_servers(PG_FUNCTION_ARGS)
 }
 
 bool
+YbIsUtf8Locale(const char *localebuf)
+{
+	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
+		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+}
+
+bool
+YbIsCLocale(const char *localebuf)
+{
+	return strcasecmp(localebuf, "C") == 0 ||
+		   strcasecmp(localebuf, "POSIX") == 0;
+}
+
+bool
 YBIsSupportedLibcLocale(const char *localebuf)
 {
 	/*
 	 * For libc mode, Yugabyte only supports the basic locales.
 	 */
-	if (strcmp(localebuf, "C") == 0 || strcmp(localebuf, "POSIX") == 0)
-		return true;
-	return (strcasecmp(localebuf, "en_US.utf8") == 0 ||
-			strcasecmp(localebuf, "en_US.UTF-8") == 0);
+	return YbIsCLocale(localebuf) || YbIsUtf8Locale(localebuf);
 }
 
 void
@@ -5315,6 +5401,38 @@ YBIsCollationValidNonC(Oid collation_id)
 	return is_valid_non_c;
 }
 
+bool
+YBRequiresCacheToCheckLocale(Oid collation)
+{
+	/*
+	 * lc_collate_is_c and lc_ctype_is_c have some basic checks for C locale.
+	 * If those checks fail to give an answer, then these functions check the
+	 * catalog cache. In DocDB, we cannot use the catalog cache - so we should
+	 * not push down collations where DocDB would need to access the cache to
+	 * get information about the locale.
+	 */
+	return OidIsValid(collation) && collation != DEFAULT_COLLATION_OID
+		&& collation != C_COLLATION_OID && collation != POSIX_COLLATION_OID;
+}
+
+bool
+YBIsDbLocaleDefault()
+{
+	/*
+	 * YB's initdb sets the default locale to UTF-8 for LC_CTYPE and C for
+	 * LC_COLLATE. If a database changes its locale to a non-UTF-8 locale, then
+	 * DocDB may have different semantics and return different results.
+	 * (See CheckMyDatabase in postinit.c and setlocales in initdb.c)
+	 */
+	char *locale;
+	if ((locale = setlocale(LC_CTYPE, NULL)) && !YbIsUtf8Locale(locale))
+		return false;
+	if ((locale = setlocale(LC_COLLATE, NULL)) && !YbIsCLocale(locale))
+		return false;
+
+	return true;
+}
+
 Oid
 YBEncodingCollation(YbcPgStatement handle, int attr_num, Oid attcollation)
 {
@@ -6836,12 +6954,22 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 		for (SharedInvalidationMessage *msg = invalMessages;
 			 msg < invalMessages + nmsgs; ++msg)
 		{
+			if (msg->id >= SysCacheSize)
+			{
+				/*
+				 * This represents a message to invalidate a new catcache from
+				 * a newer release that does not exist in this backend.
+				 */
+				elog(WARNING, "skip non-existent catcache %d", msg->id);
+				continue;
+			}
+
 			/*
-			 * Set sender_pid to mypid because LocalExecuteInvalidationMessage
-			 * can only apply a message when its sender_pid indicates that it
+			 * Set yb_sender_pid to mypid because LocalExecuteInvalidationMessage
+			 * can only apply a message when its yb_sender_pid indicates that it
 			 * is sent by this process.
 			 */
-			msg->yb_header.sender_pid = mypid;
+			msg->yb_header.yb_sender_pid = mypid;
 			LocalExecuteInvalidationMessage(msg);
 		}
 	}

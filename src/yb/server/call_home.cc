@@ -123,7 +123,7 @@ class MetricsCollector : public Collector {
 
   void Collect(CollectionLevel collection_level) {
     std::stringstream s;
-    JsonWriter w(&s, JsonWriter::COMPACT);
+    JsonWriter w(&s, JsonWriter::COMPACT_ESCAPE_STR);
     Status status = server_->metric_registry()->WriteAsJson(&w, MetricJsonOptions());
     if (!status.ok()) {
       json_ = "\"metrics\":{}";

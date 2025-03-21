@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -263,6 +264,7 @@ public class SupportBundleController extends AuthenticatedController {
   @ApiOperation(
       value = "Estimate support bundle size for specific universe",
       nickname = "estimateSupportBundleSize",
+      notes = "YbaApi Internal.",
       response = SupportBundleSizeEstimateResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -277,6 +279,7 @@ public class SupportBundleController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT)),
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
   public Result estimateSize(UUID customerUUID, UUID universeUUID, Http.Request request)
       throws Exception {
     JsonNode requestBody = request.body().asJson();

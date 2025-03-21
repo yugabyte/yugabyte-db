@@ -863,6 +863,7 @@ class VectorIndexKeyProvider {
                    vector_index_.column_id(), projection);
     // TODO(vector_index) Use limit during prefetch.
     dockv::PgTableRow table_row(projection);
+    size_t old_size = search_result_.size();
     while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
@@ -875,6 +876,9 @@ class VectorIndexKeyProvider {
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats && search_result_.size() != old_size)
+        << "VI_STATS: VectorIndexKeyProvider, found in intents: "
+        << (search_result_.size() - old_size);
 
     // Remove duplicates, so sort by key
     std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
@@ -919,8 +923,9 @@ class PgsqlVectorFilter {
 
   ~PgsqlVectorFilter() {
     LOG_IF(INFO, FLAGS_vector_index_dump_stats && row_)
-        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", found: "
-        << num_found_entries_ << ", accepted: " << num_accepted_entries_;
+        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
+        << num_accepted_entries_ << ", num removed: " << num_removed_
+        << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
   }
 
   Status Init(const PgsqlReadOperationData& data) {
@@ -954,9 +959,11 @@ class PgsqlVectorFilter {
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key));
     if (ybctid.empty() || ybctid[0] == dockv::ValueEntryTypeAsChar::kTombstone) {
+      ++num_removed_;
       return false;
     }
     if (!iter_.has_filter()) {
+      ++num_accepted_entries_;
       return true;
     }
     if (need_refresh_) {
@@ -978,6 +985,9 @@ class PgsqlVectorFilter {
     }
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
     if (vector_id.AsSlice() != encoded_value.id) {
+      LOG(DFATAL)
+          << "Referenced row with wrong vector id: " << encoded_value.DecodeId()
+          << ", expected: " << vector_id;
       return false;
     }
     ++num_accepted_entries_;
@@ -992,6 +1002,7 @@ class PgsqlVectorFilter {
   size_t num_checked_entries_ = 0;
   size_t num_found_entries_ = 0;
   size_t num_accepted_entries_ = 0;
+  size_t num_removed_ = 0;
 };
 
 std::string DebugKeySliceToString(Slice key) {
@@ -999,7 +1010,7 @@ std::string DebugKeySliceToString(Slice key) {
 }
 
 template <typename T>
-Result<size_t> WriteReservoir(const T& reservoir, int num_rows, WriteBuffer* buffer) {
+Result<size_t> WriteRowsReservoir(const T& reservoir, int num_rows, WriteBuffer* buffer) {
   // Return collected tuples from the reservoir.
   // Tuples are returned as (index, ybctid) pairs, where index is in [0..targrows-1] range.
   // As mentioned above, for large tables reservoirs become increasingly sparse from page to page.
@@ -1010,15 +1021,40 @@ Result<size_t> WriteReservoir(const T& reservoir, int num_rows, WriteBuffer* buf
     QLValuePB index;
     auto& row = reservoir[i];
     if (!row.has_binary_value()) {
+      VLOG_WITH_FUNC(4) << "skipped empty ybctid at index: " << i;
       continue;
     }
     index.set_int32_value(i);
     RETURN_NOT_OK(pggate::WriteColumn(index, buffer));
     RETURN_NOT_OK(pggate::WriteColumn(row, buffer));
-    VLOG(4) << "picked ybctid: " << DebugKeySliceToString(row.binary_value());
+    VLOG_WITH_FUNC(4) << "picked ybctid: " << DebugKeySliceToString(row.binary_value())
+                      << " index: " << i;
     fetched_rows++;
   }
   return fetched_rows;
+}
+
+Result<size_t> WriteBlocksReservoir(
+    const YQLStorageIf::SampleBlocksReservoir& sample_blocks, WriteBuffer* buffer) {
+  size_t fetched_blocks = 0;
+  for (size_t i = 0; i < sample_blocks.size(); ++i) {
+    QLValuePB index;
+    const auto& sample_block = sample_blocks[i];
+    if (sample_block.first.empty() && sample_block.second.empty()) {
+      continue;
+    }
+
+    VLOG_WITH_FUNC(3) << "Sample block #" << i << ": "
+                      << DebugKeySliceToString(sample_block.first.AsSlice()) << " - "
+                      << DebugKeySliceToString(sample_block.second.AsSlice());
+
+    index.set_int32_value(static_cast<int32_t>(i));
+    RETURN_NOT_OK(pggate::WriteColumn(index, buffer));
+    pggate::WriteBinaryColumn(sample_block.first.AsSlice(), buffer);
+    pggate::WriteBinaryColumn(sample_block.second.AsSlice(), buffer);
+    ++fetched_blocks;
+  }
+  return fetched_blocks;
 }
 
 } // namespace
@@ -1456,7 +1492,7 @@ Status PgsqlWriteOperation::UpdateColumn(
     RETURN_NOT_OK(returning_table_row->SetValue(column_id, result->Value()));
   }
 
-  if (!column.is_vector()) {
+  if (!column.is_vector() || IsNull(result->Value())) {
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
@@ -2082,10 +2118,16 @@ Result<size_t> PgsqlReadOperation::Execute() {
           InvalidArgument, "Sampling of index table ($0) is not supported and not expected",
           request_.table_id());
     }
-    if (data_.doc_read_context.schema().is_colocated() &&
-        request_.sampling_state().sampling_algorithm() ==
-            YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING) {
-      std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSampleBlockBased());
+    if (request_.sampling_state().sampling_algorithm() ==
+        YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING) {
+      if (request_.sampling_state().is_blocks_sampling_stage() ||
+          request_.sample_blocks().size() > 0) {
+        std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSampleBlockBased());
+      } else {
+        // Only for backward compatibility.
+        std::tie(fetched_rows, has_paging_state) =
+            VERIFY_RESULT(DEPRECATED_ExecuteSampleBlockBasedColocated());
+      }
     } else {
       std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
     }
@@ -2171,7 +2213,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
   // regardless of the row_count_limit.
   // Anyways, double targrows seems like reasonable minimum for the row_count_limit.
 
-  VLOG(2) << "Start sampling tablet with sampling_state=" << sampling_state.ShortDebugString();
+  VLOG(2) << "Start sampling tablet with sampling_state: " << sampling_state.ShortDebugString();
 
   auto projection = CreateProjection(data_.doc_read_context.schema(), request_);
   table_iter_ = VERIFY_RESULT(CreateIterator(data_, request_, projection, data_.doc_read_context));
@@ -2216,16 +2258,15 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
   }
 
   const auto fetched_rows =
-      VERIFY_RESULT(WriteReservoir(reservoir, numrows, result_buffer_));
+      VERIFY_RESULT(WriteRowsReservoir(reservoir, numrows, result_buffer_));
 
   // Return sampling state to continue with next page
-  PgsqlSamplingStatePB* new_sampling_state = response_.mutable_sampling_state();
-  new_sampling_state->set_numrows(numrows);
-  new_sampling_state->set_targrows(targrows);
-  new_sampling_state->set_samplerows(samplerows);
-  new_sampling_state->set_estimated_total_rows(samplerows);
-  new_sampling_state->set_rowstoskip(rowstoskip);
-  SamplerRandomStateToPb(rstate, new_sampling_state);
+  auto& new_sampling_state = *response_.mutable_sampling_state();
+  new_sampling_state.set_numrows(numrows);
+  new_sampling_state.set_targrows(targrows);
+  new_sampling_state.set_samplerows(samplerows);
+  new_sampling_state.set_rowstoskip(rowstoskip);
+  SamplerRandomStateToPb(rstate, &new_sampling_state);
   YbgDeleteMemoryContext();
 
   // Return paging state if scan has not been completed
@@ -2238,22 +2279,33 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
         ReadKey::kNext));
   }
 
-  VLOG(2) << "End sampling with new_sampling_state=" << new_sampling_state->ShortDebugString();
+  VLOG(2) << "End sampling with new_sampling_state: " << new_sampling_state.ShortDebugString()
+          << " paging_state: " << response_.paging_state().ShortDebugString();
 
   return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
 }
 
 namespace {
 
+std::pair<Slice, Slice> GetSampleBlockBounds(const PgsqlSampleBlockPB& sample_block) {
+  return {Slice(sample_block.lower_bound()), Slice(sample_block.upper_bound())};
+}
+
+std::pair<Slice, Slice> GetSampleBlockBounds(const std::pair<KeyBuffer, KeyBuffer>& sample_block) {
+  return {sample_block.first.AsSlice(), sample_block.second.AsSlice()};
+}
+
 // REQUIRES: table_iter is positioned to the first key for the table, sample_blocks are
 // non-overlapping and ordered consistently with Slice::compare order.
+template <typename T>
 Status SampleRowsFromBlocks(
-    YQLRowwiseIteratorIf* table_iter, const YQLStorageIf::SampleBlocksData& sample_blocks,
+    YQLRowwiseIteratorIf* table_iter,
+    const T& sample_blocks,
     Slice table_upperbound, const CoarseTimePoint& stop_scan_time,
     PgsqlSamplingStatePB* sampling_state, YbgReservoirState rstate,
     std::vector<QLValuePB>* reservoir) {
   if (!VERIFY_RESULT(table_iter->PgFetchNext(nullptr))) {
-    // Nothing to sample.
+    LOG(INFO) << "Nothing to sample";
     return Status::OK();
   }
 
@@ -2266,12 +2318,14 @@ Status SampleRowsFromBlocks(
   bool fetch_next_needed = false;
 
   size_t sample_block_idx = 0;
-  for (const auto& sample_block : sample_blocks.boundaries) {
-    const auto lower_bound_key_inclusive = sample_block.first.AsSlice();
-    const auto upper_bound_key_exclusive = sample_block.second.AsSlice();
+  size_t num_blocks_present = 0;
+  for (const auto& sample_block : sample_blocks) {
+    const auto[lower_bound_key_inclusive, upper_bound_key_exclusive] =
+        GetSampleBlockBounds(sample_block);
     const auto is_seek_needed = row_key.compare(lower_bound_key_inclusive) < 0;
-    VLOG(3) << "lower_bound_key_inclusive: " << lower_bound_key_inclusive.ToDebugHexString()
-            << " upper_bound_key_exclusive: " << upper_bound_key_exclusive.ToDebugHexString()
+    VLOG(3) << "Sorted sample block #" << sample_block_idx
+            << " lower_bound_key_inclusive: " << DebugKeySliceToString(lower_bound_key_inclusive)
+            << " upper_bound_key_exclusive: " << DebugKeySliceToString(upper_bound_key_exclusive)
             << " row_key: " << DebugKeySliceToString(row_key)
             << " is_seek_needed: " << is_seek_needed;
     if (is_seek_needed) {
@@ -2280,6 +2334,7 @@ Status SampleRowsFromBlocks(
     }
 
     bool reached_end_of_tablet = false;
+    bool found_row = false;
     for (;; ++num_sample_rows, fetch_next_needed = true) {
       if (fetch_next_needed) {
         if (!VERIFY_RESULT(table_iter->PgFetchNext(nullptr))) {
@@ -2295,6 +2350,7 @@ Status SampleRowsFromBlocks(
         break;
       }
 
+      found_row = true;
       VLOG(4) << "ybctid: " << DebugKeySliceToString(table_iter->GetTupleId())
               << " num_rows_collected: " << num_rows_collected
               << " num_sample_rows: " << num_sample_rows
@@ -2302,8 +2358,7 @@ Status SampleRowsFromBlocks(
               << " row_key: " << DebugKeySliceToString(row_key);
       if (num_rows_collected < targrows) {
         const auto ybctid = table_iter->GetTupleId();
-        reservoir->emplace_back().set_binary_value(ybctid.data(), ybctid.size());
-        ++num_rows_collected;
+        (*reservoir)[num_rows_collected++].set_binary_value(ybctid.data(), ybctid.size());
       } else if (rows_to_skip > 0) {
         // At least targrows tuples have already been collected, now algorithm skips increasing
         // number of rows before taking next one into the reservoir.
@@ -2328,6 +2383,10 @@ Status SampleRowsFromBlocks(
       }
     }
 
+    if (found_row) {
+      ++num_blocks_present;
+    }
+
     VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows)
             << ", ybctid after the sample block #" << sample_block_idx << ": "
             << DebugKeySliceToString(table_iter->GetTupleId())
@@ -2337,6 +2396,8 @@ Status SampleRowsFromBlocks(
     }
     ++sample_block_idx;
   }
+
+  VLOG(2) << "num_blocks_present: " << num_blocks_present;
   sampling_state->set_samplerows(num_sample_rows);
   sampling_state->set_rowstoskip(rows_to_skip);
   sampling_state->set_numrows(num_rows_collected);
@@ -2345,7 +2406,7 @@ Status SampleRowsFromBlocks(
 
 } // namespace
 
-Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
+Result<std::tuple<size_t, bool>> PgsqlReadOperation::DEPRECATED_ExecuteSampleBlockBasedColocated() {
   if (!data_.doc_read_context.schema().is_colocated()) {
     return STATUS_FORMAT(
         NotSupported,
@@ -2355,82 +2416,93 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
 
   VLOG(2) << "DocDB stats:\n" << DocDbStatsToString(data_.read_operation_data.statistics);
 
-  PgsqlSamplingStatePB sampling_state = request_.sampling_state();
+  // Will return sampling state with info for upper layer.
+  auto& new_sampling_state = *response_.mutable_sampling_state();
+  new_sampling_state = request_.sampling_state();
 
-  if (sampling_state.rowstoskip() > 0) {
+  if (new_sampling_state.rowstoskip() > 0) {
     return STATUS_FORMAT(
         NotSupported,
         "ExecuteSampleBlockBased sampling_state.rowstoskip is not expected to be set for colocated "
         "tables, but got: $0",
-        sampling_state.rowstoskip());
+        new_sampling_state.rowstoskip());
   }
 
-  if (sampling_state.numrows() != 0) {
+  if (new_sampling_state.numrows() != 0) {
     return STATUS_FORMAT(
         NotSupported,
         "ExecuteSampleBlockBased expected sampling_state.numrows to be 0 for colocated tables, but "
         "got: $0",
-        sampling_state.numrows());
+        new_sampling_state.numrows());
   }
 
-  if (sampling_state.samplerows() > 0) {
+  if (new_sampling_state.samplerows() > 0) {
     return STATUS_FORMAT(
         NotSupported,
         "ExecuteSampleBlockBased expected sampling_state.samplerows to be 0 for colocated tables, "
         "but got: $0",
-        sampling_state.samplerows());
+        new_sampling_state.samplerows());
   }
 
-  const auto targrows = sampling_state.targrows();
+  const auto targrows = new_sampling_state.targrows();
 
+  YQLStorageIf::BlocksSamplingState blocks_sampling_state = {
+      .num_blocks_processed = 0,
+      .num_blocks_collected = 0,
+  };
   auto sample_blocks = VERIFY_RESULT(data_.ql_storage.GetSampleBlocks(
-      data_.doc_read_context, sampling_state.docdb_blocks_sampling_method(), targrows));
+      data_.doc_read_context, new_sampling_state.docdb_blocks_sampling_method(), targrows,
+      &blocks_sampling_state));
+  new_sampling_state.set_num_blocks_processed(blocks_sampling_state.num_blocks_processed);
+  new_sampling_state.set_num_blocks_collected(blocks_sampling_state.num_blocks_collected);
 
-  const auto num_sample_blocks = sample_blocks.boundaries.size();
+  LOG_WITH_FUNC(INFO) << "Sorting sample blocks";
+  std::sort(
+      sample_blocks.begin(), sample_blocks.end(),
+      [](const std::pair<KeyBuffer, KeyBuffer>& b1, const std::pair<KeyBuffer, KeyBuffer>& b2) {
+        // Keep not-initialized/non-bounded blocks at the end.
+        if (b1.first.empty() && b1.second.empty()) {
+          return false;
+        }
+        if (b2.first.empty() && b2.second.empty()) {
+          return true;
+        }
+        return b1.first < b2.first;
+      });
+  sample_blocks.resize(blocks_sampling_state.num_blocks_collected);
 
   VLOG(2) << "DocDB stats:\n" << DocDbStatsToString(data_.read_operation_data.statistics);
 
   YbgPrepareMemoryContext();
   YbgReservoirState rstate = nullptr;
   YbgSamplerCreate(
-      sampling_state.rstate_w(), sampling_state.rand_state().s0(), sampling_state.rand_state().s1(),
-      &rstate);
+      new_sampling_state.rstate_w(), new_sampling_state.rand_state().s0(),
+      new_sampling_state.rand_state().s1(), &rstate);
 
   std::vector<QLValuePB> reservoir;
   reservoir.reserve(targrows);
+  reservoir.insert(reservoir.begin(), targrows, {});
 
   LOG_WITH_FUNC(INFO) << "Start sampling tablet with sampling_state: "
-                      << sampling_state.ShortDebugString()
-                      << " num_sample_blocks: " << num_sample_blocks;
+                      << new_sampling_state.ShortDebugString();
 
   auto projection = CreateProjection(data_.doc_read_context.schema(), request_);
+
+  table_iter_ = VERIFY_RESULT(CreateIterator(data_, request_, projection, data_.doc_read_context));
 
   const auto stop_scan_time =
       data_.read_operation_data.deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
 
-  table_iter_ = VERIFY_RESULT(CreateIterator(data_, request_, projection, data_.doc_read_context));
-
   RETURN_NOT_OK(SampleRowsFromBlocks(
       table_iter_.get(), sample_blocks, data_.doc_read_context.upperbound(), stop_scan_time,
-      &sampling_state, rstate, &reservoir));
+      &new_sampling_state, rstate, &reservoir));
+  reservoir.resize(new_sampling_state.numrows());
 
-  // TODO(analyze_sampling): It doesn't affect anything for colocated tables since there is only
-  // one reservoir per table. But check whether it can introduce bias when enhancing for
-  // non-colocated tables which will have reservoir per tablet.
+  // It is correct for colocated tables since there is only one reservoir per table.
   // In the final rows sample, sort by scan order is important to calculate pg_stats.correlation
   // properly.
-  // Also having keys sorted helps with utilizing disk read-ahead mechanism and improve performance
+  // Having keys sorted helps with utilizing disk read-ahead mechanism and improve performance
   // for reading rows that are located nearby.
-  // For non-colocated tables and paging we need to move sorting to a better place.
-  // Comment from amartsinchyk:
-  // Before key selection is completed, the key position in reservoir matters, we should avoid
-  // changing it.
-  // Here and now key selection is completed, but after adding support for paging and distributed
-  // tables it won't be.
-  // Even after sampling is done, the best time to sort keys is later. The keys from the reservoir
-  // are batched by the tablets to fetch the actual rows, and it is more efficient to sort multiple
-  // smaller vectors.
-  // Should be addressed in scope of https://github.com/yugabyte/yugabyte-db/issues/24113.
   VLOG_WITH_FUNC(1) << "Reservoir sort start";
   std::sort(reservoir.begin(), reservoir.end(), [](const QLValuePB& v1, const QLValuePB& v2) {
     return v1 < v2;
@@ -2438,26 +2510,97 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
   VLOG_WITH_FUNC(1) << "Reservoir sort completed";
 
   const auto fetched_rows =
-      VERIFY_RESULT(WriteReservoir(reservoir, sampling_state.numrows(), result_buffer_));
+      VERIFY_RESULT(WriteRowsReservoir(reservoir, new_sampling_state.numrows(), result_buffer_));
 
-  // Return sampling state to continue with next page
-  PgsqlSamplingStatePB* new_sampling_state = response_.mutable_sampling_state();
-  *new_sampling_state = sampling_state;
-  new_sampling_state->set_estimated_total_rows(
-      num_sample_blocks >= sample_blocks.num_total_blocks
-          ? sampling_state.samplerows()
-          : 1.0 * sampling_state.samplerows() * sample_blocks.num_total_blocks / num_sample_blocks);
-  SamplerRandomStateToPb(rstate, new_sampling_state);
+  const auto num_blocks_processed = new_sampling_state.num_blocks_processed();
+  const auto num_blocks_collected = new_sampling_state.num_blocks_collected();
+  new_sampling_state.set_deprecated_estimated_total_rows(
+      num_blocks_collected >= num_blocks_processed
+          ? new_sampling_state.samplerows()
+          : 1.0 * new_sampling_state.samplerows() * num_blocks_processed / num_blocks_collected);
+  SamplerRandomStateToPb(rstate, &new_sampling_state);
   YbgDeleteMemoryContext();
+
+  LOG_WITH_FUNC(INFO) << "End sampling with new_sampling_state: "
+                      << new_sampling_state.ShortDebugString();
+  VLOG(2) << "DocDB stats:\n" << DocDbStatsToString(data_.read_operation_data.statistics);
+
+  return std::tuple<size_t, bool>{fetched_rows, false};
+}
+
+Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
+  VLOG(2) << "DocDB stats:\n" << DocDbStatsToString(data_.read_operation_data.statistics);
+
+  // Will return sampling state with info for upper layer.
+  auto& new_sampling_state = *response_.mutable_sampling_state();
+  new_sampling_state = request_.sampling_state();
+
+  VLOG_WITH_FUNC(2) << "timeout: "
+                    << AsString(data_.read_operation_data.deadline - CoarseMonoClock::now());
+
+  const auto targrows = new_sampling_state.targrows();
+  // Items are either sample blocks or sample rows.
+  size_t fetched_items;
+
+  LOG_WITH_FUNC(INFO) << "Start sampling tablet with sampling_state: "
+                      << new_sampling_state.ShortDebugString()
+                      << " num_sample_blocks: " << request_.sample_blocks().size()
+                      << " tablet: " << data_.ql_storage.ToString();
+
+  if (new_sampling_state.is_blocks_sampling_stage()) {
+    YQLStorageIf::BlocksSamplingState blocks_sampling_state = {
+        .num_blocks_processed = new_sampling_state.num_blocks_processed(),
+        .num_blocks_collected = new_sampling_state.num_blocks_collected(),
+    };
+    auto sample_blocks = VERIFY_RESULT(data_.ql_storage.GetSampleBlocks(
+        data_.doc_read_context, new_sampling_state.docdb_blocks_sampling_method(), targrows,
+        &blocks_sampling_state));
+    new_sampling_state.set_num_blocks_processed(blocks_sampling_state.num_blocks_processed);
+    new_sampling_state.set_num_blocks_collected(blocks_sampling_state.num_blocks_collected);
+
+    fetched_items = VERIFY_RESULT(WriteBlocksReservoir(sample_blocks, result_buffer_));
+  } else {
+    // We are at the second stage, sample blocks are ready, need to get sample rows from them.
+    VLOG(2) << "DocDB stats:\n" << DocDbStatsToString(data_.read_operation_data.statistics);
+
+    YbgPrepareMemoryContext();
+    YbgReservoirState rstate = nullptr;
+    YbgSamplerCreate(
+        new_sampling_state.rstate_w(), new_sampling_state.rand_state().s0(),
+        new_sampling_state.rand_state().s1(), &rstate);
+
+    std::vector<QLValuePB> reservoir;
+    reservoir.reserve(targrows);
+    reservoir.insert(reservoir.begin(), targrows, {});
+
+    auto projection = CreateProjection(data_.doc_read_context.schema(), request_);
+
+    table_iter_ =
+        VERIFY_RESULT(CreateIterator(data_, request_, projection, data_.doc_read_context));
+
+    const auto stop_scan_time =
+        data_.read_operation_data.deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
+
+    RETURN_NOT_OK(SampleRowsFromBlocks(
+        table_iter_.get(), request_.sample_blocks(), data_.doc_read_context.upperbound(),
+        stop_scan_time, &new_sampling_state, rstate, &reservoir));
+
+    fetched_items =
+        VERIFY_RESULT(WriteRowsReservoir(reservoir, new_sampling_state.numrows(), result_buffer_));
+
+    SamplerRandomStateToPb(rstate, &new_sampling_state);
+    YbgDeleteMemoryContext();
+  }
 
   // TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/25306 - return paging
   // state if scan has not been completed within deadline.
 
   LOG_WITH_FUNC(INFO) << "End sampling with new_sampling_state: "
-                      << new_sampling_state->ShortDebugString();
+                      << new_sampling_state.ShortDebugString()
+                      << " fetched_items: " << fetched_items;
   VLOG(2) << "DocDB stats:\n" << DocDbStatsToString(data_.read_operation_data.statistics);
 
-  return std::tuple<size_t, bool>{fetched_rows, false};
+  return std::tuple<size_t, bool>{fetched_items, false};
 }
 
 Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
@@ -2710,7 +2853,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 template <class KeyProvider>
 Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
   VLOG_WITH_FUNC(3) << "Started, request_.size_limit(): " << request_.size_limit()
-                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size();
+                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
+                    << " tablet: " << data_.ql_storage.ToString();
   // We limit the response's size.
   auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
   if (request_.has_size_limit() && request_.size_limit() > 0) {

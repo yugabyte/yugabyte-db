@@ -272,7 +272,7 @@ public class YbcManager {
     String certFile = universe.getCertificateNodetoNode();
     UUID providerUUID = UUID.fromString(c.userIntent.provider);
     List<String> tsIPs =
-        tsNodes.parallelStream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
+        tsNodes.stream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
 
     YbcClient ybcClient = null;
     Map<FieldDescriptor, Object> currentThrottleParamsMap = null;
@@ -867,7 +867,7 @@ public class YbcManager {
       nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe.getRunningTserversInPrimaryCluster().parallelStream()
+          universe.getRunningTserversInPrimaryCluster().stream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }

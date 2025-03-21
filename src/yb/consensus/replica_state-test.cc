@@ -79,7 +79,7 @@ class RaftConsensusStateTest : public YBTest {
     // Start up the ReplicaState.
     ReplicaState::UniqueLock lock;
     ASSERT_OK(state_->LockForStart(&lock));
-    ASSERT_OK(state_->StartUnlocked(MinimumOpId()));
+    ASSERT_OK(state_->StartUnlocked(OpId::Min()));
   }
 
  protected:

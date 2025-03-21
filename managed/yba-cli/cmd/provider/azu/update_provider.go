@@ -25,7 +25,7 @@ var updateAzureProviderCmd = &cobra.Command{
 	Short:   "Update an Azure YugabyteDB Anywhere provider",
 	Long:    "Update an Azure provider in YugabyteDB Anywhere",
 	Example: `yba provider azure update --name <provider-name> \
-	--hosted-zone-id <hosted-zone-id>`,
+	 --hosted-zone-id <hosted-zone-id>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -349,7 +349,7 @@ func init() {
 		"[Optional] Update Azure Network Resource Group.")
 
 	updateAzureProviderCmd.Flags().String("hosted-zone-id", "",
-		"[Optional] Update Hosted Zone ID corresponging to Private DNS Zone.")
+		"[Optional] Update Hosted Zone ID corresponding to Private DNS Zone.")
 
 	updateAzureProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Optional] Add region associated with the Azure provider. "+

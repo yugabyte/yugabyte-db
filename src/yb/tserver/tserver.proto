@@ -428,10 +428,20 @@ message AcquireObjectLockResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message YsqlCatalogVersionPB {
+  optional uint32 db_oid = 1;
+  optional uint64 current_version = 2;
+  optional uint64 last_breaking_version = 3;
+}
+
+message DBCatalogVersionDataPB {
+  repeated YsqlCatalogVersionPB db_catalog_versions = 1;
+}
+
 message ReleaseObjectLockRequestPB {
   optional bytes txn_id = 1;
   // When set, only locks owned by the given subtxn id are released. If unset, releases
-  // all locks held by <txn_id> irrespective of value in 'release_all_locks'.
+  // all locks held by <txn_id>.
   optional uint32 subtxn_id = 2;
 
   optional bytes session_host_uuid = 3;
@@ -444,6 +454,8 @@ message ReleaseObjectLockRequestPB {
   // out of order acquire request from leaking locks.
   optional fixed64 apply_after_hybrid_time = 5;
   optional fixed64 propagated_hybrid_time = 6;
+
+  optional DBCatalogVersionDataPB db_catalog_version_data = 7;
 }
 
 message ReleaseObjectLockResponsePB {

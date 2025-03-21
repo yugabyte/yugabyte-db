@@ -230,6 +230,10 @@ struct ValueEntryTypeAsChar {
 constexpr ValueEntryType kMinPrimitiveValueEntryType = ValueEntryType::kNullLow;
 constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kObject;
 
+// All regular db table row records can't start earlier than this. All non-table row regular db
+// records are guaranteed to be before than this.
+constexpr auto kMinRegularDbTableRowFirstByte = dockv::KeyEntryTypeAsChar::kNullLow;
+
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.
 constexpr inline bool IsObjectType(const ValueEntryType value_type) {

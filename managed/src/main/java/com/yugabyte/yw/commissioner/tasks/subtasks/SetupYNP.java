@@ -61,6 +61,16 @@ public class SetupYNP extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
+  void removeNodeAgentDirectory(
+      NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("rm -rf ");
+    sb.append(nodeAgentHome);
+    List<String> command = getCommand("/bin/bash", "-c", sb.toString());
+    log.info("Clearing node-agent directory: {}", command);
+    nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
+  }
+
   private NodeAgent createNodeAgent(Universe universe, NodeDetails node) {
     String output =
         nodeUniverseManager
@@ -99,14 +109,20 @@ public class SetupYNP extends AbstractTaskBase {
         nodeAgentManager.purge(nodeAgent);
       }
     }
-
     if (taskParams().sshUser != null) {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
+
+    removeNodeAgentDirectory(
+        node,
+        universe,
+        shellContext,
+        Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR).toString());
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     NodeAgent nodeAgent = createNodeAgent(universe, node);
-    InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, ynpStagingDir);
+    InstallerFiles installerFiles =
+        nodeAgentManager.getInstallerFiles(nodeAgent, ynpStagingDir, false /* certsOnly */);
     Set<String> dirs =
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())

@@ -91,6 +91,8 @@ DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
+DEFINE_test_flag(bool, tserver_disable_catalog_refresh_on_heartbeat, false,
+    "When set, disable trigger of catalog cache refresh from tserver-master heartbeat path.");
 
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
@@ -485,7 +487,8 @@ Status HeartbeatPoller::TryHeartbeat() {
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   // We only check --enable_ysql when --ysql_enable_db_catalog_version_mode=true
   // to keep the logic backward compatible.
-  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql &&
+      PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
     // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
     // mode, we do not use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
@@ -497,7 +500,7 @@ Status HeartbeatPoller::TryHeartbeat() {
                           << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
       server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
-      if (FLAGS_TEST_yb_enable_invalidation_messages) {
+      if (FLAGS_ysql_yb_enable_invalidation_messages) {
         if (last_hb_response_.has_db_catalog_inval_messages_data()) {
           server_.SetYsqlDBCatalogInvalMessages(
               last_hb_response_.db_catalog_inval_messages_data());
@@ -541,7 +544,8 @@ Status HeartbeatPoller::TryHeartbeat() {
         server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                        last_hb_response_.ysql_catalog_version());
       }
-    } else if (last_hb_response_.has_db_catalog_version_data()) {
+    } else if (last_hb_response_.has_db_catalog_version_data() &&
+               PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
       // --ysql_enable_db_catalog_version_mode is still false on this tserver but master
       // already has --ysql_enable_db_catalog_version_mode=true. This can happen during
       // rolling upgrade from an old release where this gflag defaults to false to a new

@@ -24,7 +24,11 @@ import java.util.concurrent.TimeoutException;
 
 import org.yb.minicluster.LogPrinter;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public final class ProcessUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(ProcessUtil.class);
 
   // Used by pidOfProcess()
   private static String UNIX_PROCESS_CLASS_NAME =  "java.lang.UNIXProcess";
@@ -136,6 +140,8 @@ public final class ProcessUtil {
     String   programName = pathPieces[pathPieces.length - 1];
 
     ProcessBuilder pb = new ProcessBuilder(args);
+    if (!logPrefix.isEmpty())
+      LOG.info("About to run " + args);
 
     // Handle the logs output.
     Process process = pb.start();

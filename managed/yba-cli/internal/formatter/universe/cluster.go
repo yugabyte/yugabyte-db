@@ -38,7 +38,7 @@ const (
 	tserverGFlagsHeader  = "TServer GFlags"
 	specificGFlagsHeader = "Specific GFlags (in json)"
 	instanceTypeHeader   = "Instance Type"
-	volumeSizeHeader     = "Volume Size"
+	volumeSizeHeader     = "Volume Size in GB"
 	numVolumesHeader     = "Number of Volumes"
 	diskIopsHeader       = "Disk IOPS"
 	throughputHeader     = "Throughput"
@@ -249,7 +249,7 @@ func (c *ClusterContext) startSubsection(format string) (*template.Template, err
 }
 
 func (c *ClusterContext) subSection(name string) {
-	c.Output.Write([]byte("\n\n"))
+	c.Output.Write([]byte("\n"))
 	c.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	c.Output.Write([]byte("\n"))
 }

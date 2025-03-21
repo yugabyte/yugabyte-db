@@ -188,7 +188,7 @@ public class NFSUtil implements StorageUtil {
       UUID universeUUID,
       boolean checkExistsOnAll) {
     List<String> absoluteLocationsList =
-        locations.parallelStream()
+        locations.stream()
             .map(l -> BackupUtil.getPathWithPrefixSuffixJoin(l, fileName))
             .collect(Collectors.toList());
     Map<String, Boolean> locationsFileCheckResultMap =
@@ -311,7 +311,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check SnapshotInfoPB file exists on all locations.
     boolean snapshotFileDoesNotExist =
-        cloudLocationsFileExistenceMap.entrySet().parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().stream()
             .anyMatch(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.SNAPSHOT_PB)
@@ -322,7 +322,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check KMS history
     boolean hasKMSHistory =
-        cloudLocationsFileExistenceMap.entrySet().parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().stream()
             .filter(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.BACKUP_KEYS_JSON)
@@ -402,6 +402,9 @@ public class NFSUtil implements StorageUtil {
       // Copy the file
       Files.copy(backup.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
       log.info("Backup successfully copied to: " + targetFile.getAbsolutePath());
+      // Write the marker file to /nfsDirectory/backupDir/.yba_backup_marker
+      File markerFile = new File(targetDir, YBA_BACKUP_MARKER);
+      markerFile.createNewFile();
       return true;
     } catch (IOException e) {
       log.error("Failed to copy backup: " + e.getMessage());
@@ -410,7 +413,24 @@ public class NFSUtil implements StorageUtil {
   }
 
   @Override
-  public String getStorageLocation(CustomerConfigData configData, String backupDir) {
+  public List<String> getYbaBackupDirs(CustomerConfigData configData) {
+    String nfsDirectory = ((CustomerConfigStorageNFSData) configData).backupLocation;
+    File nfsDir = new File(nfsDirectory);
+    if (!nfsDir.exists() || !nfsDir.isDirectory()) {
+      log.warn("NFS directory {} does not exist or is not a directory.", nfsDirectory);
+      return new ArrayList<>();
+    }
+    // Find all directories in the NFS directory that have .yba_backup_marker file
+    File[] backupDirs =
+        nfsDir.listFiles(
+            (dir, name) ->
+                new File(dir, name).isDirectory()
+                    && new File(dir, name + "/.yba_backup_marker").exists());
+    return Arrays.stream(backupDirs).map(File::getName).collect(Collectors.toList());
+  }
+
+  @Override
+  public String getYbaBackupStorageLocation(CustomerConfigData configData, String backupDir) {
     String nfsDirectory = ((CustomerConfigStorageNFSData) configData).backupLocation;
 
     // Construct the full path to the target directory
@@ -592,8 +612,6 @@ public class NFSUtil implements StorageUtil {
       // Construct the path to the directory containing releases
       Path releasesDir = Paths.get(nfsDirectory, backupDir, YBDB_RELEASES);
 
-      log.info("Fetching remote release versions from NFS location: {}", releasesDir);
-
       Set<String> releaseVersions = new HashSet<>();
 
       // Ensure the releases directory exists
@@ -612,18 +630,9 @@ public class NFSUtil implements StorageUtil {
 
       for (File file : files) {
         if (file.isDirectory()) {
-          // Use the provided extractReleaseVersion method to validate and extract the version
           String relativePath = Paths.get(nfsDirectory).relativize(file.toPath()).toString();
           String version = extractReleaseVersion(relativePath, backupDir);
-          log.info(
-              "File path: {} // Relative Path: {} // File absolute path: {} // NFS Directory {}",
-              file.toPath(),
-              relativePath,
-              file.toPath().toAbsolutePath(),
-              nfsDirectory);
-
           if (version != null) {
-            log.info("Found version {} in NFS directory", version);
             releaseVersions.add(version);
           } else {
             log.debug("Skipping non-version directory: {}", file.getName());

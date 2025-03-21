@@ -132,7 +132,7 @@ kiwi_fe_read_parameter(char *data, uint32_t size, char **name,
 	if (kiwi_unlikely(rc != 0))
 		return -1;
 	if (kiwi_unlikely(header->type != KIWI_BE_PARAMETER_STATUS) &&
-		kiwi_unlikely(header->type != YB_ROLE_OID_PARAMETER_STATUS))
+		kiwi_unlikely(header->type != YB_CONN_MGR_PARAMETER_STATUS))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);

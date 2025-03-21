@@ -69,6 +69,7 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/locks.h"
@@ -163,8 +164,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
-  tserver::TSLocalLockManager* ts_local_lock_manager() const override {
-    return ts_local_lock_manager_.get();
+  TSLocalLockManagerPtr ts_local_lock_manager() const override {
+    std::lock_guard l(lock_);
+    return ts_local_lock_manager_;
   }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
@@ -204,6 +206,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
+  bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -247,8 +251,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
-  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data)
-      EXCLUDES(lock_);
+  void SetYsqlDBCatalogVersions(const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
+      EXCLUDES(lock_) override;
   void SetYsqlDBCatalogInvalMessages(
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
       EXCLUDES(lock_);
@@ -588,7 +592,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
   // Lock Manager to maintain table/object locking activity in memory.
-  std::unique_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_;
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

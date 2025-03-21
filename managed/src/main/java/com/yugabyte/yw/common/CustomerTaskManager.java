@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
@@ -860,6 +861,15 @@ public class CustomerTaskManager {
         break;
       case ModifyAuditLoggingConfig:
         taskParams = Json.fromJson(oldTaskParams, AuditLogConfigParams.class);
+        AuditLogConfigParams auditLogConfigParams = (AuditLogConfigParams) taskParams;
+        if (auditLogConfigParams != null && auditLogConfigParams.getUniverseUUID() != null) {
+          Universe universe = Universe.getOrBadRequest(auditLogConfigParams.getUniverseUUID());
+          if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot retry modifying audit logging task as YSQL major upgrade is in progress.");
+          }
+        }
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
@@ -993,8 +1003,11 @@ public class CustomerTaskManager {
       case CloudProviderEdit:
         taskParams = Json.fromJson(oldTaskParams, CloudProviderEdit.Params.class);
         break;
-      case ReadOnlyClusterDelete:
+      case ReadOnlyKubernetesClusterDelete:
         taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
+        break;
+      case ReadOnlyClusterDelete:
+        taskParams = Json.fromJson(oldTaskParams, ReadOnlyClusterDelete.Params.class);
         break;
       case FailoverDrConfig:
       case SwitchoverDrConfig:

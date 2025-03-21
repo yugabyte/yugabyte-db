@@ -2504,6 +2504,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pg_locks_integrate_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enables pg_locks to integrate and display advisory locks details correctly."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pg_locks_integrate_advisory_locks,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_commands", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
 			NULL,
@@ -3183,6 +3194,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_separate_requests_for_sampling_stages", PGC_SUSET,
+			CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to allow using separate requests for "
+						 "block-based sampling stages. Not to be touched by "
+						 "users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_separate_requests_for_sampling_stages,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_refresh_matview_in_place", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Refresh materialized views in place."),
 			NULL,
@@ -3204,18 +3229,53 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-  {
-    {"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
-      gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
-          "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
-          "any other method is not allowed."),
-      NULL,
-      GUC_NOT_IN_SAMPLE
-    },
-    &yb_disable_auto_analyze,
-    false,
-    yb_disable_auto_analyze_check_hook, NULL, NULL
-  },
+	{
+		{"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
+						 "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
+						 "any other method is not allowed."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_auto_analyze,
+		false,
+		yb_disable_auto_analyze_check_hook, NULL, NULL
+	},
+
+	{
+		{"yb_extension_upgrade", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Set to true when upgrading extensions during "
+						 "a YSQL major version upgrade."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_extension_upgrade,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_mixed_mode_expression_pushdown", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables expression pushdown for queries in mixed "
+						 "mode of a YSQL Major version upgrade."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_mixed_mode_expression_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable invalidation messages"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_invalidation_messages,
+		false,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -5105,6 +5165,40 @@ static struct config_int ConfigureNamesInt[] =
 	 NULL,
 	 assign_tcmalloc_sample_period,
 	 show_tcmalloc_sample_period},
+
+	{
+		{"yb_test_delay_after_applying_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay after applying invalidation messages."),
+			NULL
+		},
+		&yb_test_delay_after_applying_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Invalidation messages expiration time in catalog table "
+						 "pg_yb_invalidation_messages."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_invalidation_message_expiration_secs,
+		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_max_num_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Max number of invalidation messages supported for incremental "
+						 "catalog cache refresh."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_max_num_invalidation_messages,
+		4096, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -8687,18 +8781,41 @@ ReportChangedGUCOptions(void)
  *
  * We need not transmit the value if it's the same as what we last
  * transmitted.  However, clear the NEEDS_REPORT flag in any case.
+ *
+ * YB: Always send back a ParameterStatus packet back, atleast to
+ * Connection Manager for full correctness. If the value is the same
+ * as what was previously transmitted, do not send the packet to the
+ * client from Connection Manager.
  */
 static void
 ReportGUCOption(struct config_generic *record)
 {
 	char	   *val = _ShowOption(record, false);
 
-	if (record->last_reported == NULL ||
+	if (YbIsClientYsqlConnMgr() ||
+		record->last_reported == NULL ||
 		strcmp(val, record->last_reported) != 0)
 	{
 		StringInfoData msgbuf;
 
-		pq_beginmessage(&msgbuf, 'S');
+		/*
+		 * YB: Do not bombard the client with ParameterStatus packets.
+		 * Send a specialized ParameterStatus packet to instruct Connection
+		 * Manager to not forward the packet to the client.
+		 *
+		 * 1. If GUC_REPORT is not enabled for the variable.
+		 * 2. If GUC_REPORT is enabled, but the previous value is the
+		 * same as the current value.
+		 */
+		bool guc_report_not_enabled = !(record->flags & GUC_REPORT);
+		bool guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
+			record->last_reported &&
+			strcmp(val, record->last_reported) == 0;
+
+		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
+			pq_beginmessage(&msgbuf, 'r');
+		else
+			pq_beginmessage(&msgbuf, 'S');
 		pq_sendstring(&msgbuf, record->name);
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);

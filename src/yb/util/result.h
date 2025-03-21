@@ -397,6 +397,14 @@ Status OptionalMoveStatus(TValue&& value) {
   return Status::OK();
 }
 
+template <typename T>
+std::string AsDebugHexString(const Result<T>& value) {
+  if (!value.ok()) {
+    return value.status().ToString();
+  }
+  return AsDebugHexString(value.get());
+}
+
 // When expr type is Result, then it works as VERIFY_RESULT. Otherwise, just returns expr.
 // Could be used in templates to work with functions that returns Result in some instantiations,
 // and plain value in others.

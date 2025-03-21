@@ -274,7 +274,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     builder.packagePath(Paths.get("/opt/yugabyte"));
     builder.certDir("/opt/yugabyte/certs");
     lenient()
-        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
         .thenReturn(builder.build());
     NodeAgent nodeAgent = new NodeAgent();
     nodeAgent.setIp("127.0.0.1");
