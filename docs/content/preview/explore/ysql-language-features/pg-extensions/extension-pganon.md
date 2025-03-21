@@ -96,11 +96,11 @@ To enable dynamic masking:
 SELECT anon.start_dynamic_masking(false);
 ```
 
-You must run this every time a "MASKED" SECURITY LABEL is created for a user or role.
+You must run this every time a masked security label is created for a user or role.
 
-The boolean parameter indicates whether fake data should be loaded or not. It is recommended to use `anon.init()` to load fake data. This creates masked views on the `anon.maskschema` for all the tables present in `anon.sourceschema`, and alters the privileges of all users with "MASKED" SECURITY LABEL so that a masked user will only be able to read masked data and not the original data.
+The boolean parameter indicates whether fake data should be loaded or not. It is recommended to use `anon.init()` to load fake data. This creates masked views on the `anon.maskschema` for all the tables present in `anon.sourceschema`, and alters the privileges of all users with a masked security label so that a masked user will only be able to read masked data and not the original data.
 
-During a backup, if the users were not backed up, the users/roles and their SECURITY LABELs will need to be recreated and dynamic masking should be enabled after restoring the backup.
+During a backup, if the users were not backed up, the users/roles and their security labels will need to be recreated and dynamic masking should be enabled after restoring the backup.
 
 To disable dynamic masking:
 
