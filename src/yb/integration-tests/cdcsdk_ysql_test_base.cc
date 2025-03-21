@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/rocksdb/db.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"

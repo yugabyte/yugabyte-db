@@ -46,61 +46,54 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
-#include "yb/common/constants.h"
-#include "yb/common/entity_ids.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/restore_sys_catalog_state.h"
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/transaction.h"
+
 #include "yb/client/client_fwd.h"
+
+#include "yb/common/constants.h"
+#include "yb/common/transaction.h"
+
+#include "yb/dockv/partition.h"
+
+#include "yb/fs/fs_manager.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
-#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
 
-#include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
-#include "yb/server/monitored_task.h"
-#include "yb/tserver/tablet_peer_lookup.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/promise.h"
-#include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 
@@ -147,6 +140,7 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
+class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
 class YsqlManagerIf;
 class YsqlManager;
@@ -156,8 +150,6 @@ using PlacementId = std::string;
 typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
 typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
-
-constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 YB_DEFINE_ENUM(
     CDCSDKStreamCreationState,

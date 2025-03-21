@@ -58,7 +58,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -75,6 +74,7 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -91,7 +91,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
-#include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"

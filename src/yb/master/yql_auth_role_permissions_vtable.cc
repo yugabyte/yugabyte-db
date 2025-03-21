@@ -15,13 +15,13 @@
 
 #include <boost/asio/ip/address.hpp>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/permissions_manager.h"
 
 #include "yb/util/status_log.h"

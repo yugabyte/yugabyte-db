@@ -13,21 +13,21 @@
 
 #include "yb/master/permissions_manager.h"
 
-#include <mutex>
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_dcl.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/util/crypt.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
@@ -81,10 +81,10 @@ class ScopedMutation {
 
 }  // anonymous namespace
 
-
 PermissionsManager::PermissionsManager(CatalogManager* catalog_manager)
     : security_config_(nullptr),
-      catalog_manager_(catalog_manager) {
+      catalog_manager_(catalog_manager),
+      cm_mutex_(catalog_manager_->mutex_) {
   CHECK_NOTNULL(catalog_manager);
 }
 

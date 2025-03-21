@@ -20,6 +20,7 @@
 
 #include "yb/common/ysql_operation_lease.h"
 
+#include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"

@@ -15,6 +15,7 @@
 
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/master/master_defaults.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/master/catalog_manager.h"

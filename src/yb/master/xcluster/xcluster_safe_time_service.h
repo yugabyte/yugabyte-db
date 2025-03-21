@@ -36,22 +36,22 @@
 #include <boost/asio/strand.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/yb_table_name.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/catalog_manager.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/poller.h"
 
-#include "yb/util/threadpool.h"
-
 namespace yb {
+
+class MetricRegistry;
+
 namespace master {
 
 // Periodically compute the xCluster safe time and store it in sys catalog.
