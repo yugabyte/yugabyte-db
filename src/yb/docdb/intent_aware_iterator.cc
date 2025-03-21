@@ -58,6 +58,9 @@ DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
                       "After number of next calls is reached this limit, use seek to find non "
                       "future record.");
 
+DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
+                    "Disable optimization to ignore non-existent keys for read restart.");
+
 namespace yb::docdb {
 
 using dockv::KeyBytes;
@@ -1368,6 +1371,17 @@ Result<HybridTime> IntentAwareIterator::RestartReadHt() const {
   auto decoded_max_seen_ht = VERIFY_RESULT(max_seen_ht_.Decode());
   VLOG(4) << "Restart read: " << decoded_max_seen_ht.hybrid_time() << ", original: " << read_time_;
   return decoded_max_seen_ht.hybrid_time();
+}
+
+EncodedDocHybridTime IntentAwareIterator::ObtainLastSeenHtCheckpoint() {
+  return max_seen_ht_;
+}
+
+void IntentAwareIterator::RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) {
+  if (ANNOTATE_UNPROTECTED_READ(FLAGS_disable_last_seen_ht_rollback)) {
+    return;
+  }
+  max_seen_ht_ = last_seen_ht;
 }
 
 HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {

@@ -239,7 +239,7 @@ func (fu *FullUniverseContext) startSubsection(format string) (*template.Templat
 }
 
 func (fu *FullUniverseContext) subSection(name string) {
-	fu.Output.Write([]byte("\n\n"))
+	fu.Output.Write([]byte("\n"))
 	fu.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fu.Output.Write([]byte("\n"))
 }

@@ -1,0 +1,25 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_pick_read_time s2_update_conflicting_key s1_savepoint_a s1_update_conflicting_key s1_rollback_to_a s1_update_non_conflicting_key s1_commit
+step s1_pick_read_time: SELECT * FROM tbl;
+ k| v
+--+--
+ 5| 5
+ 1| 1
+ 6| 6
+ 7| 7
+ 9| 9
+10|10
+ 4| 4
+ 2| 2
+ 8| 8
+ 3| 3
+(10 rows)
+
+step s2_update_conflicting_key: UPDATE tbl SET v = 2 WHERE k = 1;
+step s1_savepoint_a: SAVEPOINT a;
+step s1_update_conflicting_key: UPDATE tbl SET v = 3 WHERE k = 1;
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s1_rollback_to_a: ROLLBACK TO a;
+step s1_update_non_conflicting_key: UPDATE tbl SET v = 3 WHERE k = 2;
+step s1_commit: COMMIT;

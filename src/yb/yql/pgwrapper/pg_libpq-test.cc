@@ -981,7 +981,7 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
     uint64_t ver_orig;
     RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
     auto enable_inval_messages = VERIFY_RESULT(
-        cluster_->tablet_server(0)->GetFlag("TEST_yb_enable_invalidation_messages"));
+        cluster_->tablet_server(0)->GetFlag("ysql_yb_enable_invalidation_messages"));
     auto num_iter = FLAGS_num_iter;
     // When using invalidation messages, each DDL takes longer time to complete
     // because in addition to incrementing the catalog version, it also needs to

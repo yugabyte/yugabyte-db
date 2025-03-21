@@ -188,7 +188,6 @@ public class CreateContinuousBackup extends AbstractTaskBase {
         });
     // Cleanup backups
     replicationHelper.cleanupCreatedBackups();
-    log.info(backup.getAbsolutePath());
     return;
   }
 }

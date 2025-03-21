@@ -31432,6 +31432,59 @@
         ]
       }
     },
+    "/api/v1/customers/{cUUID}/configs/{configUUID}/backup_dirs" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfYbaBackupDirsCustomerConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "configUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List all backup dirs within a customer configurations",
+        "tags" : [
+          "Customer Configuration"
+        ]
+      }
+    },
     "/api/v1/customers/{cUUID}/configs/{configUUID}/delete" : {
       "delete" : {
         "description" : "",

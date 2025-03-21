@@ -178,7 +178,7 @@ func (fx *FullXClusterContext) startSubsection(format string) (*template.Templat
 }
 
 func (fx *FullXClusterContext) subSection(name string) {
-	fx.Output.Write([]byte("\n\n"))
+	fx.Output.Write([]byte("\n"))
 	fx.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fx.Output.Write([]byte("\n"))
 }

@@ -16,8 +16,10 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -29,6 +31,7 @@ import org.yb.ybc.CloudStoreSpec;
 public interface StorageUtil {
 
   public static final String YBDB_RELEASES = "ybdb_releases";
+  public static final String YBA_BACKUP_MARKER = ".yba_backup_marker";
 
   /**
    * Create YBC CloudStoreSpec for backup/incremental backups.
@@ -271,14 +274,19 @@ public interface StorageUtil {
     return false;
   }
 
-  public default String getStorageLocation(CustomerConfigData configData, String backupDir) {
+  public default String getYbaBackupStorageLocation(
+      CustomerConfigData configData, String backupDir) {
     return null;
+  }
+
+  public default List<String> getYbaBackupDirs(CustomerConfigData configData) {
+    return Collections.emptyList();
   }
 
   public default String extractReleaseVersion(String key, String backupDir) {
     String regex =
         String.format(
-            "%s/%s/((\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?).*",
+            ".*%s/%s/((\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?)/.*\\.tar\\.gz",
             backupDir, YBDB_RELEASES);
     Pattern pattern = Pattern.compile(regex);
     Matcher matcher = pattern.matcher(key);
@@ -286,5 +294,9 @@ public interface StorageUtil {
       return matcher.group(1);
     }
     return null;
+  }
+
+  public default String stripSlash(String str) {
+    return str.replaceAll("^/+", "").replaceAll("/+$", "");
   }
 }

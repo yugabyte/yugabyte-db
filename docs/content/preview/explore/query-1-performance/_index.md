@@ -21,7 +21,7 @@ This guide provides a comprehensive overview of query tuning techniques for dist
 
 ## Identify slow queries
 
-The pg_stat_statements extension provides a comprehensive view of query performance, and is essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help ypu identify performance bottlenecks and optimize query performance.
+The pg_stat_statements extension provides a comprehensive view of query performance, and is essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help you identify performance bottlenecks and optimize query performance.
 
 {{<lead link="./pg-stat-statements/">}}
 Learn how to fetch query statistics and improve performance using [pg_stat_statements](./pg-stat-statements/).

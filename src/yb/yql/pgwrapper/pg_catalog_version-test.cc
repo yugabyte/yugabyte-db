@@ -46,9 +46,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     LibPqTestBase::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
   }
 
   Result<int64_t> GetCatalogVersion(PGConn* conn) {
@@ -108,15 +108,15 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void RestartClusterWithInvalMessageEnabled(
       const std::vector<string>& extra_tserver_flags = {}) {
-    LOG(INFO) << "Restart the cluster with --TEST_yb_enable_invalidation_messages=true";
+    LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=true";
     cluster_->Shutdown();
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(
-          "--TEST_yb_enable_invalidation_messages=true");
+          "--ysql_yb_enable_invalidation_messages=true");
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(
-          "--TEST_yb_enable_invalidation_messages=true");
+          "--ysql_yb_enable_invalidation_messages=true");
       for (const auto& flag : extra_tserver_flags) {
         cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
       }

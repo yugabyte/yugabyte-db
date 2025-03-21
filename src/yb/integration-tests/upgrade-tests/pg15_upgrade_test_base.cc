@@ -335,4 +335,9 @@ Status Pg15UpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::
       5min, "Waiting for upgrade to reach state " + state_str);
 }
 
+Result<std::string> Pg15UpgradeTestBase::ReadUpgradeCompatibilityGuc() {
+  auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
+  return conn.FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility");
+}
+
 }  // namespace yb

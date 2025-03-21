@@ -226,7 +226,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 					{
 						RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
 
-						ri->yb_pushable = YbCanPushdownExpr(ri->clause, NULL);
+						ri->yb_pushable = YbCanPushdownExpr(ri->clause, NULL, rte->relid);
 					}
 				}
 			}

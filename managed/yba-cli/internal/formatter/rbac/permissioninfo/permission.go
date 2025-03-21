@@ -86,7 +86,7 @@ func (p *PermissionContext) startSubsection(format string) (*template.Template, 
 }
 
 func (p *PermissionContext) subSection(name string) {
-	p.Output.Write([]byte("\n\n"))
+	p.Output.Write([]byte("\n"))
 	p.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	p.Output.Write([]byte("\n"))
 }

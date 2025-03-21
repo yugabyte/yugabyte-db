@@ -737,7 +737,7 @@ Default: `1`
 
 ##### --enable_tablet_split_of_pitr_tables
 
-Enables automatic tablet splitting of tables covered by Point In Time Recovery schedules.
+Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
 
 Default: `true`
 
@@ -1052,6 +1052,20 @@ database, the cost of reading `table pg_yb_catalog_version` becomes more
 expensive when the number of yb-tservers, or the number of databases goes up.
 
 {{< /note >}}
+
+## Advisory lock flags
+
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+
+To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+
+##### --ysql_yb_enable_advisory_locks
+
+Enables advisory locking.
+
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
+
+Default: false
 
 ## Advanced flags
 

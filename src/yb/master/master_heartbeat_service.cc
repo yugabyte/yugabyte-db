@@ -331,7 +331,7 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     catalog_version->set_last_breaking_version(it.second.last_breaking_version);
   }
 
-  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
     // We only read pg_yb_invalidation_messages when there is any catalog version
     // change. This reduces the number of reading pg_yb_invalidation_messages which
     // may be bulky if there are many databases and/or large invalidation messages.

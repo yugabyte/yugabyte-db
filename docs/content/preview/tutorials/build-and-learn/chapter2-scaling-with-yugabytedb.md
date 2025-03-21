@@ -209,7 +209,7 @@ If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable 
 
 `- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
-The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of lock. The version of YugabyteDB is displayed in the UI at <http://localhost:15433/>.
+The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), which are only supported in YugabyteDB v2.25.1 or later. You can use Flyway with YugabyteDB even without this type of lock. The version of YugabyteDB is displayed in the UI at <http://localhost:15433/>.
     {{< /warning >}}
 
 1. Start the application:

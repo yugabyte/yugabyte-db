@@ -466,7 +466,7 @@ You can back up and restore a database with colocated tables and tablespaces in 
        default          | postgres    | t2_default | table | yugabyte
        default          | postgres    | t1_default | table | yugabyte
        default          | postgres    | t2         | table | yugabyte
-       default          | postgres    | t1 	       | table | yugabyte
+       default          | postgres    | t1         | table | yugabyte
       (10 rows)
       ```
 
