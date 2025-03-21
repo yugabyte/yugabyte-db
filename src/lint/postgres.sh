@@ -19,6 +19,53 @@ set -u
 
 . "${BASH_SOURCE%/*}/util.sh"
 
+is_yb_file() {
+  if [ $# != 1 ]; then
+    echo "Invalid arguments $*" >&2
+    exit 1
+  fi
+  if [[ "$1" =~ /yb[^/]+\.[ch]$ ||
+        "$1" =~ /pg_yb[^/]+\.[ch]$ ||
+        "$1" =~ /nodeYb[^/]+\.[ch]$ ||
+        "$1" =~ /yb-extensions/ ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+if ! is_yb_file "$1"; then
+  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
+  exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    if [ $exit_code -ne 2 ]; then
+      # The following messages are not emitted to stderr because those messages
+      # may be buried under a large python stacktrace also emitted to stderr.
+      if [ -z "$diff_result" ]; then
+        echo "Unexpected failure, exit code $exit_code"
+      else
+        echo "$diff_result"
+      fi
+      exit 1
+    fi
+
+    echo 'error:bad_filename_for_yb_file:'\
+'This is a YB-introduced file, but the linter does not recognize it as such.'\
+' If it is YB-introduced, rename the file better (such as with "yb" prefix).'\
+' If the file is from an upstream repository, update'\
+' upstream_repositories.csv. The corresponding commit in'\
+' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
+' or remotely in the corresponding remote repository (and you need internet'\
+' access in that case).:1:'"$(head -1)"
+  fi
+  # TODO(jason): use successful diff_result.
+fi
+
+if [[ "$1" == src/postgres/third-party-extensions/* ]]; then
+  # Remaining rules are not intended for third-party-extensions.
+  exit
+fi
+
 # Whitespace
 if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
         "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ]]; then
@@ -270,9 +317,7 @@ echo "$1" \
       # "yb", but it is not possible to determine which are YB-added or not.
       # So as a best effort, at least we know YB files contain only YB code, so
       # whatever types they produce should have "yb".
-      if [[ "$1" =~ /yb[^/]+\.[ch]$ ||
-            "$1" =~ /pg_yb[^/]+\.[ch]$ ||
-            "$1" =~ /nodeYb[^/]+\.[ch]$ ]] &&
+      if is_yb_file "$1" &&
          [[ "$symbol" != *YB* &&
             "$symbol" != *Yb* &&
             "$symbol" != *yb* ]]; then

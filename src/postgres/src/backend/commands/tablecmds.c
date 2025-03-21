@@ -133,7 +133,7 @@
 #include "catalog/pg_shdepend_d.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/dbcommands.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "commands/view.h"
 #include "commands/yb_cmds.h"
 #include "executor/ybModifyTable.h"

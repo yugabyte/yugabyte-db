@@ -1,6 +1,6 @@
 /*-----------------------------------------------------------------------------
  *
- * tablegroup.h
+ * yb_tablegroup.h
  *	  Commands to manipulate table groups
  *
  * Copyright (c) YugabyteDB, Inc.
@@ -17,13 +17,12 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/commands/tablegroup.h
+ * src/include/commands/yb_tablegroup.h
  *
  *-----------------------------------------------------------------------------
  */
 
-#ifndef TABLEGROUP_H
-#define TABLEGROUP_H
+#pragma once
 
 #include "catalog/objectaddress.h"
 #include "lib/stringinfo.h"
@@ -44,5 +43,3 @@ extern ObjectAddress AlterTablegroupOwner(const char *grpname, Oid newOwnerId);
 extern void ybAlterTablespaceForTablegroup(const char *grpname,
 										   Oid newTablespace,
 										   const char *newname);
-
-#endif							/* TABLEGROUP_H */

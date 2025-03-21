@@ -158,6 +158,8 @@ bool YBCIsNonembeddedYbctidsOnlyFetch(const YbcPgPrepareParameters *params);
 
 bool YBIsMajorUpgradeInitDb();
 
+const char *YBCGetOutFuncName(YbcPgOid typid);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

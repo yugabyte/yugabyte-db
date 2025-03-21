@@ -45,7 +45,7 @@
 #include "catalog/yb_logical_client_version.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "commands/yb_cmds.h"

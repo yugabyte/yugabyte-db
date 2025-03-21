@@ -94,7 +94,7 @@
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
 

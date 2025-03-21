@@ -60,7 +60,7 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/typecmds.h"
 #include "miscadmin.h"

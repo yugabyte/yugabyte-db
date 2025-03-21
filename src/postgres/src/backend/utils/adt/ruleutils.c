@@ -78,7 +78,7 @@
 
 /* YB includes. */
 #include "catalog/pg_rewrite.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 
 /* ----------
  * Pretty formatting constants

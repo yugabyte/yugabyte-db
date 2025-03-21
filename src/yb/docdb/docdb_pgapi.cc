@@ -30,6 +30,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -837,30 +838,30 @@ char *get_record_string_value(
       auto elem_type = get_range_array_element_type(att->atttypid);
       if (elem_type == TSTZRANGEOID) {
         values[i] = (uintptr_t)get_range_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), tz);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), tz);
       } else {
         values[i] = (uintptr_t)get_range_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), nullptr);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), nullptr);
       }
       curr_att_modified = true;
     } else if (get_array_element_type(att->atttypid) != kPgInvalidOid) {
       auto elem_type = get_array_element_type(att->atttypid);
       if (elem_type == TIMESTAMPTZOID) {
         values[i] = (uintptr_t)get_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), tz);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), tz);
       } else {
         values[i] = (uintptr_t)get_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), nullptr);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), nullptr);
       }
       curr_att_modified = true;
     } else if (get_range_element_type(att->atttypid) != kPgInvalidOid) {
       auto elem_type = get_range_element_type(att->atttypid);
       if (elem_type == TIMESTAMPTZOID) {
         values[i] = (uintptr_t)get_range_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), tz, att->atttypid);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), tz, att->atttypid);
       } else {
         values[i] = (uintptr_t)get_range_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), nullptr, att->atttypid);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), nullptr, att->atttypid);
       }
       curr_att_modified = true;
     }
