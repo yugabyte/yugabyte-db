@@ -61,16 +61,9 @@ Note that a snapshot ID becomes invalid as soon as the exporting transaction end
 
 The following example demonstrates how to use snapshot export and import across two sessions to maintain a consistent view of the data.
 
-<table>
-  <tr>
-   <td style="text-align:center;">session #1</td>
-   <td style="text-align:center;">session #2</td>
-  </tr>
+**Session 1**
 
-  <tr>
-    <td>
-
-First create a table and add data:
+Start a session and create a table and add data:
 
 ```sql
 CREATE TABLE test(col INT);
@@ -91,17 +84,9 @@ SELECT pg_export_snapshot();
 (1 row)
 ```
 
-</td>
-    <td>
-    </td>
-  </tr>
+**Session 2**
 
-  <tr>
-    <td>
-    </td>
-    <td>
-
-In session #2, insert a new row into the table:
+Start a second session, and insert a new row into the table:
 
 ```sql
 INSERT INTO test VALUES (3);
@@ -125,13 +110,6 @@ SELECT * FROM test;
 
 Because this transaction is using the exported snapshot, it does not see the row inserted previously in session #2.
 
-</td>
-    <td>
-    </td>
-  </tr>
-
-</table>
-
 ## Limitation
 
-Currently, exporting and setting a snapshot can only be performed in a transaction using the REPEATABLE READ isolation level (Github Issues [#24161](https://github.com/yugabyte/yugabyte-db/issues/24161), [#24162](https://github.com/yugabyte/yugabyte-db/issues/24162)).
+Currently, exporting and setting a snapshot can only be performed in a transaction using the REPEATABLE READ isolation level (issues [#24161](https://github.com/yugabyte/yugabyte-db/issues/24161) and [#24162](https://github.com/yugabyte/yugabyte-db/issues/24162)).
