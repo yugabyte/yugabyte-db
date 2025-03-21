@@ -16,7 +16,7 @@ private = true
     <a href="#local-remove-db" class="nav-link" id="local-remove-db-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local-remove-db" aria-selected="false">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 </ul>

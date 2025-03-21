@@ -18,7 +18,7 @@ The database should have at least one table in order to be added to replication.
     <a href="#local-add-db" class="nav-link" id="local-add-db-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local-add-db" aria-selected="false">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 </ul>
@@ -70,7 +70,7 @@ The database should have at least one table in order to be added to replication.
 
   <div id="local-add-db" class="tab-pane fade " role="tabpanel" aria-labelledby="local-add-db-tab">
 
-<!-- Local Add DB -->
+<!-- Manual Add DB -->
 
 1. Create a checkpoint.
 

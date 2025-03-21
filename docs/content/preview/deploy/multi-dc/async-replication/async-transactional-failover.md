@@ -102,7 +102,7 @@ If there are multiple databases, perform PITR on each database sequentially, one
     <a href="#local-pitr" class="nav-link" id="local-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="local-pitr" aria-selected="false">
     <i class="icon-shell"></i>
-    Local
+    Manual
     </a>
 </li>
 </ul>
@@ -229,7 +229,7 @@ Once you are ready to drop the databases on A, follow the steps:
     <a href="#local-drop-pitr" class="nav-link" id="local-drop-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="local-drop-pitr" aria-selected="false">
     <i class="icon-shell"></i>
-    Local
+    Manual
     </a>
 </li>
 </ul>

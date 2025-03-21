@@ -50,8 +50,8 @@ Before setting up xCluster replication, ensure you have reviewed the [Prerequisi
   <li>
     <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local
+      <i class="icon-shell"></i>
+      Manual
     </a>
   </li>
   <li>

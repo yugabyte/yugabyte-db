@@ -20,7 +20,7 @@ Before setting up xCluster replication, ensure you have reviewed the [Prerequisi
     <a href="#local-setup" class="nav-link" id="local-setup-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local-setup" aria-selected="false">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 </ul>
@@ -94,7 +94,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
   <div id="local-setup" class="tab-pane fade " role="tabpanel" aria-labelledby="local-setup-tab">
 
-<!-- Local Setup -->
+<!-- Manual Setup -->
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 1. Create a checkpoint using the `create_xcluster_checkpoint` command, providing a name for the replication group, and the names of the databases to replicate as a comma-separated list.

@@ -23,7 +23,7 @@ Before setting up xCluster replication, ensure you have reviewed the [Prerequisi
     <a href="#local" class="nav-link" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="false">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 </ul>
@@ -98,7 +98,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
   <div id="local" class="tab-pane fade " role="tabpanel" aria-labelledby="local-tab">
 
-<!-- Local Setup -->
+<!-- Manual Setup -->
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
