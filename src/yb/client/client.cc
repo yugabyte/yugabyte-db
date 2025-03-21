@@ -363,6 +363,19 @@ Status SetInternalSignalNumber(int signum) {
   return SetStackTraceSignal(signum);
 }
 
+tserver::PGReplicationSlotLsnType CDCSDKStreamInfo::GetPGReplicationSlotLsnType(
+    ReplicationSlotLsnType lsn_type) {
+  switch (lsn_type) {
+    case ReplicationSlotLsnType_SEQUENCE:
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
+    case ReplicationSlotLsnType_HYBRID_TIME:
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME;
+    default:
+      LOG(WARNING) << "Invalid LSN type specified: " << lsn_type << ", defaulting to SEQUENCE";
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
+  }
+}
+
 YBClientBuilder::YBClientBuilder()
   : data_(new YBClientBuilder::Data()) {
 }

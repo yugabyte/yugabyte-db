@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/pgsql_error.h"

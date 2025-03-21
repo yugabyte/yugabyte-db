@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_inbound_replication_group_setup_task.h"
 
+#include "yb/client/client.h"
 #include "yb/client/table_info.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"

@@ -15,6 +15,7 @@
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/consensus/consensus.h"

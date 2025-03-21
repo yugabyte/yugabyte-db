@@ -14,7 +14,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 namespace yb {

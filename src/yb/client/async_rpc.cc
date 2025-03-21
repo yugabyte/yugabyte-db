@@ -23,6 +23,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"

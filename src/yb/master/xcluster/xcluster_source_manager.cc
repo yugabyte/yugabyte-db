@@ -18,7 +18,9 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"

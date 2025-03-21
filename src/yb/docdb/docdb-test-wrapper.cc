@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/docdb/consensus_frontier.h"

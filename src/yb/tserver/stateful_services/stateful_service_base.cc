@@ -15,6 +15,7 @@
 
 #include <chrono>
 
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 
 #include "yb/consensus/consensus.h"

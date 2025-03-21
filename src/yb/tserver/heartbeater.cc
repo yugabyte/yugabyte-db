@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"

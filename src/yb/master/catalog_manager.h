@@ -49,6 +49,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/common_types_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/transaction.h"
 
@@ -67,6 +68,7 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.h"

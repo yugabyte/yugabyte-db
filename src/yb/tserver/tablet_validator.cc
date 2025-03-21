@@ -27,6 +27,8 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/client/client.h"
+
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/gutil/thread_annotations.h"

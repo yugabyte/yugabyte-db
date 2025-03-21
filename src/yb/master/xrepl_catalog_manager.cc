@@ -13,6 +13,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"

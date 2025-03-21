@@ -13,10 +13,15 @@
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.h"
+
+#include "yb/client/client.h"
 #include "yb/client/session.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/xcluster_util.h"
+
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/shared_lock.h"
 
 DECLARE_bool(ysql_yb_enable_replica_identity);

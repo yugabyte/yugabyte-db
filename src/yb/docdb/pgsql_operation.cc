@@ -25,6 +25,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"

@@ -41,7 +41,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
 
-#include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"

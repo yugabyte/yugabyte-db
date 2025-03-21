@@ -37,6 +37,8 @@
 #include <boost/optional.hpp>
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xcluster_types.h"
+
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
