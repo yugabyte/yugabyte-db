@@ -50,6 +50,15 @@ Wait for any pending updates to propagate to B:
 The lag and skew values might be non-zero as they are estimates based on the last time the tablets were polled. Since no new writes can occur during this period, you can be certain that no data is lost within this timeframe.
 {{< /note >}}
 
+### Fix up sequences and serial columns
+
+{{< note >}}
+_Not applicable for Automatic mode_
+{{< /note >}}
+
+Since xCluster does not replicate sequence data, you need to manually synchronize the sequence values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+
+Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence values appropriately.
 
 ### Delete the old replication group
 

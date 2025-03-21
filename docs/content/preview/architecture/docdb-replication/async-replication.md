@@ -248,7 +248,7 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
 - Change Data Capture
 
-  CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
+  CDC's [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
 
 - Modifications of Types
 
@@ -266,7 +266,7 @@ Limitations specific to each scenario and mode are listed below:
 
   When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
-#### Active-active multi-master
+#### Multi-master async replication
 
 - Triggers
 
