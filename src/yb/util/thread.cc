@@ -768,6 +768,10 @@ void Thread::CallAtExit(const Closure& cb) {
   exit_callbacks_.push_back(cb);
 }
 
+void Thread::Abandon() {
+  joinable_ = false;
+}
+
 std::string Thread::ToString() const {
   return Substitute("Thread $0 (name: \"$1\", category: \"$2\")", tid_, name_, category_);
 }

@@ -21,6 +21,8 @@ import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 import { TaskDetailSimpleComp } from '../../../redesign/features/tasks/components/TaskDetailSimpleComp';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { api } from '../../../redesign/helpers/api';
 //icons
 import WarningExclamation from '../images/warning_exclamation.svg';
 
@@ -31,7 +33,7 @@ export default class UniverseStatus extends Component {
     const {
       currentUniverse: { universeUUID, universeDetails },
       tasks: { customerTaskList },
-      refreshUniverseData,
+      refreshUniverseData
     } = this.props;
 
     if (
@@ -44,18 +46,25 @@ export default class UniverseStatus extends Component {
   }
 
   retryTaskClicked = (currentTaskUUID, universeUUID) => {
-    this.props.retryCurrentTask(currentTaskUUID).then((response) => {
-      const status = response?.payload?.response?.status || response?.payload?.status;
-      if (status === 200 || status === 201) {
+    api
+      .retryTask(currentTaskUUID)
+      .then(() => {
         browserHistory.push(`/universes/${universeUUID}/tasks`);
-      } else {
-        const taskResponse = response?.payload?.response;
-        const toastMessage = taskResponse?.data?.error
-          ? taskResponse?.data?.error
-          : taskResponse?.statusText;
-        toast.error(toastMessage);
-      }
-    });
+      })
+      .catch((error) => {
+        handleServerError(error, { customErrorLabel: 'Retry Task Failed' });
+      });
+  };
+
+  rollbackTaskClicked = (currentTaskUUID, universeUUID) => {
+    api
+      .rollbackTask(currentTaskUUID)
+      .then(() => {
+        browserHistory.push(`/universes/${universeUUID}/tasks`);
+      })
+      .catch((error) => {
+        handleServerError(error, { customErrorLabel: 'Rollback Task Failed' });
+      });
   };
 
   redirectToTaskLogs = (taskUUID, universeUUID) => {
@@ -64,7 +73,6 @@ export default class UniverseStatus extends Component {
       : browserHistory.push(`/universes/${universeUUID}/tasks`);
   };
 
-  
   render() {
     const {
       currentUniverse,
@@ -250,19 +258,49 @@ export default class UniverseStatus extends Component {
                 />
               </RbacValidator>
             )}
+          {shouldDisplayTaskButton &&
+            !universePendingTask &&
+            failedTask !== undefined &&
+            failedTask?.canRollback &&
+            ![
+              SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
+              SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
+            ].includes(failedTask?.type) && (
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: currentUniverse.universeUUID,
+                  ...ApiPermissionMap.ROLLBACK_TASKS
+                }}
+                isControl
+              >
+                <YBButton
+                  btnText={'Rollback Task'}
+                  btnClass="btn btn-default view-task-details-btn"
+                  onClick={() =>
+                    this.rollbackTaskClicked(failedTask?.id, currentUniverse.universeUUID)
+                  }
+                />
+              </RbacValidator>
+            )}
         </div>
       );
     }
 
     return (
-      <div className={'universe-status ' + universeStatus.state.className} onClick={(e) => { e.preventDefault(); }}>
+      <div
+        className={'universe-status ' + universeStatus.state.className}
+        onClick={(e) => {
+          e.preventDefault();
+        }}
+      >
         {statusDisplay}
-        { showTaskDetails &&
+        {showTaskDetails &&
           [UniverseState.PENDING, UniverseState.BAD].includes(universeStatus.state) && (
-            <TaskDetailSimpleComp taskUUID={taskToDisplayInDrawer?.id} universeUUID={currentUniverse.universeUUID} />
-
-          )
-        }
+            <TaskDetailSimpleComp
+              taskUUID={taskToDisplayInDrawer?.id}
+              universeUUID={currentUniverse.universeUUID}
+            />
+          )}
         {showAlertsBadge && <UniverseAlertBadge universeUUID={currentUniverse.universeUUID} />}
       </div>
     );

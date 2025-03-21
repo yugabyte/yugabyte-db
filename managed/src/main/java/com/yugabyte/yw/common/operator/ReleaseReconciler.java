@@ -22,6 +22,8 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseStatus;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.gcs.CredentialsJsonSecret;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.SecretAccessKeySecret;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -76,8 +78,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
-        releaseMetadata.setFinalizers(
-            Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
+        releaseMetadata.setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
         resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
         List<ReleaseArtifact> artifacts = createReleaseArtifacts(release);
@@ -95,8 +96,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     } else {
       Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
       try {
-        releaseMetadata.setFinalizers(
-            Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
+        releaseMetadata.setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
         resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
         gFlagsValidation.addDBMetadataFiles(releasePair.getFirst());
@@ -198,6 +198,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private List<ReleaseArtifact> createReleaseArtifacts(Release release) throws Exception {
     ReleaseArtifact dbArtifact = null;
     ReleaseArtifact helmArtifact = null;
+    if (release.getSpec().getConfig() == null
+        || release.getSpec().getConfig().getDownloadConfig() == null) {
+      throw new Exception(
+          String.format("No download config found release %s", release.getMetadata().getName()));
+    }
     if (release.getSpec().getConfig().getDownloadConfig().getS3() != null) {
       ReleaseArtifact.S3File s3File = new ReleaseArtifact.S3File();
       s3File.path =
@@ -206,6 +211,19 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
           release.getSpec().getConfig().getDownloadConfig().getS3().getAccessKeyId();
       s3File.secretAccessKey =
           release.getSpec().getConfig().getDownloadConfig().getS3().getSecretAccessKey();
+      if (release.getSpec().getConfig().getDownloadConfig().getS3().getSecretAccessKeySecret()
+          != null) {
+        SecretAccessKeySecret awsSecret =
+            release.getSpec().getConfig().getDownloadConfig().getS3().getSecretAccessKeySecret();
+        String secret =
+            operatorUtils.getAndParseSecretForKey(
+                awsSecret.getName(), awsSecret.getNamespace(), "AWS_SECRET_ACCESS_KEY");
+        if (secret != null) {
+          s3File.secretAccessKey = secret;
+        } else {
+          log.warn("Aws secret access key secret {} not found", awsSecret.getName());
+        }
+      }
       dbArtifact =
           ReleaseArtifact.create(
               release
@@ -238,6 +256,19 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
           release.getSpec().getConfig().getDownloadConfig().getGcs().getPaths().getX86_64();
       gcsFile.credentialsJson =
           release.getSpec().getConfig().getDownloadConfig().getGcs().getCredentialsJson();
+      if (release.getSpec().getConfig().getDownloadConfig().getGcs().getCredentialsJsonSecret()
+          != null) {
+        CredentialsJsonSecret gcsSecret =
+            release.getSpec().getConfig().getDownloadConfig().getGcs().getCredentialsJsonSecret();
+        String secret =
+            operatorUtils.getAndParseSecretForKey(
+                gcsSecret.getName(), gcsSecret.getNamespace(), "CREDENTIALS_JSON");
+        if (secret != null) {
+          gcsFile.credentialsJson = secret;
+        } else {
+          log.warn("Gcs credentials json secret {} not found", gcsSecret.getName());
+        }
+      }
       dbArtifact =
           ReleaseArtifact.create(
               release

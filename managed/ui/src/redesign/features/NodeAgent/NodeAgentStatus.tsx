@@ -1,12 +1,11 @@
-import { FC } from 'react';
 import clsx from 'clsx';
-import { Box, makeStyles } from '@material-ui/core';
-import { NodeAgentStatusList } from '../../utils/dtos';
+import { Box, makeStyles, Typography } from '@material-ui/core';
 import Check from '../../assets/check.svg';
 import Warning from '../../assets/warning-solid.svg';
 import Loading from '../../assets/loading-dark.svg';
 
-const DEFAULT_STATUS_TEXT = 'N/A';
+import { NodeAgentState } from '../../utils/dtos';
+import { AugmentedNodeAgent } from './types';
 
 const useStyles = makeStyles((theme) => ({
   tagTextBlue: {
@@ -46,44 +45,34 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface NodeAgentStatusProps {
-  status: string;
-  isReachable: boolean;
+  nodeAgent: AugmentedNodeAgent;
 }
 
-const NODE_AGENT_STATUS_TO_DISPLAY_TEXT = {
-  READY: 'Ready',
-  REGISTERING: 'Registering',
-  REGISTERED: 'Registered',
-  UPGRADE: 'Upgrading',
-  UPGRADED: 'Upgrading',
-  UNREACHABLE: 'Unreachable'
-};
-
-export const NodeAgentStatus: FC<NodeAgentStatusProps> = ({ status, isReachable }) => {
+export const NodeAgentStatus = ({ nodeAgent }: NodeAgentStatusProps) => {
   const helperClasses = useStyles();
   let tagColor = helperClasses.tagBlue;
   let tagTextColor = helperClasses.tagTextBlue;
   let imageSrc = '';
 
-  if (!isReachable) {
+  if (!nodeAgent.reachable) {
     tagColor = helperClasses.tagRed;
     tagTextColor = helperClasses.tagTextRed;
     imageSrc = Warning;
   } else {
-    switch (status) {
-      case NodeAgentStatusList.READY:
+    switch (nodeAgent.state) {
+      case NodeAgentState.READY:
         tagColor = helperClasses.tagGreen;
         tagTextColor = helperClasses.tagTextGreen;
         imageSrc = Check;
         break;
-      case NodeAgentStatusList.REGISTERING:
-      case NodeAgentStatusList.REGISTERED:
+      case NodeAgentState.REGISTERING:
+      case NodeAgentState.REGISTERED:
         tagColor = helperClasses.tagBlue;
         tagTextColor = helperClasses.tagTextBlue;
         imageSrc = Loading;
         break;
-      case NodeAgentStatusList.UPGRADED:
-      case NodeAgentStatusList.UPGRADE:
+      case NodeAgentState.UPGRADED:
+      case NodeAgentState.UPGRADE:
         tagColor = helperClasses.tagBlue;
         tagTextColor = helperClasses.tagTextBlue;
         imageSrc = Loading;
@@ -97,11 +86,9 @@ export const NodeAgentStatus: FC<NodeAgentStatusProps> = ({ status, isReachable 
 
   return (
     <Box className={clsx(helperClasses.nodeAgentStateTag, tagColor)}>
-      <span className={clsx(helperClasses.nodeAgentStatusText, tagTextColor)}>
-        {isReachable
-          ? NODE_AGENT_STATUS_TO_DISPLAY_TEXT[status] ?? DEFAULT_STATUS_TEXT
-          : NODE_AGENT_STATUS_TO_DISPLAY_TEXT['UNREACHABLE']}
-      </span>
+      <Typography variant="body2" className={clsx(helperClasses.nodeAgentStatusText, tagTextColor)}>
+        {nodeAgent.statusLabel}
+      </Typography>
       <img src={imageSrc} alt="status" />
     </Box>
   );

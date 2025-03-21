@@ -693,12 +693,11 @@ class AzureCloudAdmin():
                     logging.info("[app] Deleted nic {}".format(nic_name))
                     break
             except (CloudError, HttpResponseError) as e:
-                if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
+                code = self._get_azure_error_code(e)
+                if code in ['ResourceNotFound', 'NotFound']:
                     logging.info("[app] Resource nic {} is not found".format(nic_name))
                     break
-                elif e.error and (
-                  (hasattr(e.error, 'error') and e.error.error == 'NicReservedForAnotherVm') or
-                  (hasattr(e.error, 'code') and e.error.code == 'NicReservedForAnotherVm')):
+                if code in ['NicReservedForAnotherVm', 'NicReservedForAnotherVm']:
                     # In case VM wasn't created, Azure reserves the NICs for the VMs
                     # for 180 seconds and throws NicReservedForAnotherVm error code,
                     # and suggests to retry after 180 seconds.
@@ -720,8 +719,9 @@ class AzureCloudAdmin():
                     ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
-        except CloudError as e:
-            if e.error and e.error.error == 'ResourceNotFound':
+        except (CloudError, HttpResponseError) as e:
+            code = self._get_azure_error_code(e)
+            if code == 'ResourceNotFound':
                 logging.info("[app] Resource ip name {} is not found".format(ip_name))
             else:
                 raise e
@@ -1166,11 +1166,20 @@ class AzureCloudAdmin():
                 json.dump(vms, writefile)
         return
 
-    def get_host_info(self, vm_name, get_all=False):
+    def get_host_info(self, vm_name, get_all=False, node_uuid=None):
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
             logging.error("Failed to get VM info for {} with error {}".format(vm_name, e))
+            return None
+        host_node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
+        server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
+        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
+        # Matching tag or no tag for backward compatibility.
+        if host_node_uuid is not None and node_uuid is not None \
+                and host_node_uuid != node_uuid:
+            logging.warning("VM {}({}) with node UUID {} is not found.".
+                            format(vm_name, host_node_uuid, node_uuid))
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
         nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)
@@ -1185,16 +1194,13 @@ class AzureCloudAdmin():
             public_ip = (self.network_client.public_ip_addresses
                          .get(NETWORK_RESOURCE_GROUP, ip_name).ip_address)
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
-        server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
-        node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
-        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
         instance_state = self.extract_vm_instance_state(vm.instance_view)
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
-                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
+                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": host_node_uuid,
                 "universe_uuid": universe_uuid, "instance_state": instance_state,
                 "is_running": is_running, "root_volume": root_volume}
 
@@ -1272,6 +1278,15 @@ class AzureCloudAdmin():
         if it's not given in Resource ID format.
         """
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
+
+    def _get_azure_error_code(self, e):
+        """Returns the Azure string error code from the exception.
+        """
+        if isinstance(e, CloudError):
+            return e.code
+        if isinstance(e, HttpResponseError) and e.error and hasattr(e.error, 'code'):
+            return e.error.code
+        return str(e)
 
     def get_vm_status(self, vm_name):
         instance_view = self.compute_client.virtual_machines.get(RESOURCE_GROUP,

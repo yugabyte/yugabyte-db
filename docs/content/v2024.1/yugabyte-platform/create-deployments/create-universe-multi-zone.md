@@ -32,6 +32,8 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
+For information on modifying or scaling an existing universe, refer to [Modify universe](../../manage-deployments/edit-universe/).
+
 ## Prerequisites
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
@@ -92,11 +94,9 @@ To enable public access to the universe, select the **Assign Public IP** option.
 
 Enable the YSQL and YCQL endpoints and database authentication.
 
-Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). For more information, refer to [Database authorization](../../security/authorization-platform/).
+Enter the password to use for the default database admin superuser (for YSQL the user is `yugabyte`, and for YCQL `cassandra`). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
 
-You can also enable and disable the API endpoints and authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
-
-By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration), and, after deployment, you can modify the YCQL API and admin UI endpoint ports. To change YCQL ports, navigate to your universe, click **Actions**, choose **Edit YCQL Configuration**, and select the **Override YCQL Default Ports** option.
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration).
 
 #### Encryption Settings
 

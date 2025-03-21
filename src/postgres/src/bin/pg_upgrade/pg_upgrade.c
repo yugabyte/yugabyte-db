@@ -51,6 +51,9 @@
 #include "fe_utils/string_utils.h"
 #include "pg_upgrade.h"
 
+/* YB includes */
+#include "fe_utils/query_utils.h"
+
 static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
 static void create_new_objects(void);
@@ -58,6 +61,7 @@ static void copy_xact_xlog_xid(void);
 static void set_frozenxids(bool minmxid_only);
 static void make_outputdirs(char *pgdata);
 static void setup(char *argv0, bool *live_check);
+static void yb_execute_extension_updates(void);
 
 ClusterInfo old_cluster,
 			new_cluster;
@@ -135,10 +139,13 @@ main(int argc, char **argv)
 	output_check_banner(live_check);
 
 	/*
-	 * YB: The check for Postgres versions is performed at higher layers.
-	 * Socket directories are explicitly set from input arguments.
+	 * YB: Socket directories are explicitly set from input arguments.
 	 */
-	if (!is_yugabyte_enabled())
+	if (is_yugabyte_enabled())
+	{
+		yb_check_cluster_versions();
+	}
+	else
 	{
 		check_cluster_versions();
 		get_sock_dir(&old_cluster, live_check);
@@ -164,7 +171,7 @@ main(int argc, char **argv)
 	/*
 	 * YB: If this is run as a preflight check, the new cluster is not yet started.
 	 */
-	if (!is_yugabyte_enabled() || !user_opts.check)
+	if (!is_yugabyte_enabled())
 		check_new_cluster();
 
 	report_clusters_compatible();
@@ -247,6 +254,8 @@ main(int argc, char **argv)
 
 		issue_warnings_and_set_wal_level();
 	}
+
+	yb_execute_extension_updates();
 
 	pg_log(PG_REPORT,
 		   "\n"
@@ -517,7 +526,7 @@ create_new_objects(void)
 				  true,
 				  true,
 				  "\"%s/pg_restore\" %s %s --exit-on-error --verbose "
-				  "--dbname postgres \"%s/%s\"",
+				  "--dbname yugabyte \"%s/%s\"",
 				  new_cluster.bindir,
 				  cluster_conn_opts(&new_cluster),
 				  create_opts,
@@ -543,15 +552,11 @@ create_new_objects(void)
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
 		/*
-		 * postgres database will already exist in the target installation, so
+		 * yugabyte database will already exist in the target installation, so
 		 * tell pg_restore to drop and recreate it; otherwise we would fail to
 		 * propagate its database-level properties.
 		 */
-		if (strcmp(old_db->db_name, "postgres") == 0)
-			create_opts = "--clean --create";
-		else if (strcmp(old_db->db_name, "yugabyte") == 0)
-			create_opts = "--clean --create";
-		else if (strcmp(old_db->db_name, "system_platform") == 0)
+		if (strcmp(old_db->db_name, "yugabyte") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";
@@ -849,5 +854,57 @@ set_frozenxids(bool minmxid_only)
 
 	PQfinish(conn_template1);
 
+	check_ok();
+}
+
+void
+yb_execute_extension_updates()
+{
+	int			dbnum;
+
+	prep_status("Executing extension updates");
+
+	for (dbnum = 0; dbnum < new_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_name;
+		DbInfo	   *active_db = &new_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&new_cluster, active_db->db_name);
+
+		/* find extensions needing updates */
+		res = executeQueryOrDie(conn,
+								"SELECT name "
+								"FROM pg_available_extensions "
+								"WHERE installed_version != default_version");
+
+		ntups = PQntuples(res);
+		i_name = PQfnumber(res, "name");
+
+		if (ntups > 0)
+			executeCommand(conn, "SET yb_extension_upgrade = true", false /* echo */ );
+
+		for (rowno = 0; rowno < ntups; rowno++)
+		{
+			const char *extension_name = PQgetvalue(res, rowno, i_name);
+			char query[256];
+
+			PGresult   *res;
+			snprintf(query, sizeof(query), "ALTER EXTENSION %s UPDATE;",
+					 quote_identifier(extension_name));
+
+			res = PQexec(conn, query);
+			if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+			{
+				pg_log(PG_REPORT, "fatal\n");
+				pg_fatal("Unable to update extension %s\n\n", extension_name);
+			}
+		}
+
+		PQclear(res);
+
+		PQfinish(conn);
+	}
 	check_ok();
 }

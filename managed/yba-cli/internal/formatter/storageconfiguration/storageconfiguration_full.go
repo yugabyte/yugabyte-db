@@ -135,7 +135,7 @@ func (fs *FullStorageConfigContext) startSubsection(format string) (*template.Te
 }
 
 func (fs *FullStorageConfigContext) subSection(name string) {
-	fs.Output.Write([]byte("\n\n"))
+	fs.Output.Write([]byte("\n"))
 	fs.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fs.Output.Write([]byte("\n"))
 }

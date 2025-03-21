@@ -57,7 +57,7 @@ var deleteBackupScheduleCmd = &cobra.Command{
 
 		scheduleAPIFilter := ybaclient.ScheduleApiFilter{}
 
-		scheduleAPIDirection := "DESC"
+		scheduleAPIDirection := util.DescSortDirection
 		scheduleAPISort := "scheduleName"
 
 		universeName, err := cmd.Flags().GetString("universe-name")
@@ -132,7 +132,8 @@ var deleteBackupScheduleCmd = &cobra.Command{
 
 			// Prepare next page request
 			scheduleAPIQuery.Offset = offset
-			scheduleListRequest = authAPI.ListBackupSchedules().PageScheduleRequest(scheduleAPIQuery)
+			scheduleListRequest = authAPI.ListBackupSchedules().
+				PageScheduleRequest(scheduleAPIQuery)
 		}
 
 		if len(scheduleUUID) == 0 {

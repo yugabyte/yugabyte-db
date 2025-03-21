@@ -18,6 +18,8 @@
 #include <thread>
 
 #include "yb/common/vector_types.h"
+
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/status.h"
 
 #include "yb/util/result.h"
@@ -56,18 +58,18 @@ class DocKeyWithDistance {
   bool operator>(const DocKeyWithDistance& other) const { return Compare(other) > 0; }
 };
 
-// Our default comparator for VertexWithDistance already orders the pairs by increasing distance.
+// Our default comparator for VectorWithDistance already orders the pairs by increasing distance.
 template<ValidDistanceResultType DistanceResult>
 using MaxDistanceQueue =
-    std::priority_queue<VertexWithDistance<DistanceResult>,
-                        std::vector<VertexWithDistance<DistanceResult>>>;
+    std::priority_queue<VectorWithDistance<DistanceResult>,
+                        std::vector<VectorWithDistance<DistanceResult>>>;
 
 
-// Drain a max-queue of (vertex, distance) pairs and return a list of VertexWithDistance instances
+// Drain a max-queue of (vertex, distance) pairs and return a list of VectorWithDistance instances
 // ordered by increasing distance.
 template<ValidDistanceResultType DistanceResult>
 auto DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue<DistanceResult>& queue) {
-  std::vector<VertexWithDistance<DistanceResult>> result_list;
+  std::vector<VectorWithDistance<DistanceResult>> result_list;
   while (!queue.empty()) {
     result_list.push_back(queue.top());
     queue.pop();
@@ -82,7 +84,7 @@ auto DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue<DistanceResult>& que
 // multiple results having the same distance from the query, results with lower vertex ids are
 // preferred.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbors(
+std::vector<VectorWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbors(
     const Vector& query,
     const std::vector<VectorId>& vertex_ids,
     const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
@@ -91,14 +93,14 @@ std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
     return {};
   }
   MaxDistanceQueue<DistanceResult> queue;
-  for (const auto& vertex_id : vertex_ids) {
-    auto distance = distance_fn(vertex_id, query);
-    auto new_element = VertexWithDistance<DistanceResult>(vertex_id, distance);
+  for (const auto& vector_id : vertex_ids) {
+    auto distance = distance_fn(vector_id, query);
+    auto new_element = VectorWithDistance<DistanceResult>(vector_id, distance);
     if (queue.size() < num_results || new_element < queue.top()) {
       // Add a new element if there is a room in the result set, or if the new element is better
       // than the worst element of the result set. The comparsion is done using the (distance,
-      // vertex_id) as a lexicographic pair, so we should prefer elements that have the lowest
-      // vertex_id among those that have the same distance from the query.
+      // vector_id) as a lexicographic pair, so we should prefer elements that have the lowest
+      // vector_id among those that have the same distance from the query.
       queue.push(new_element);
     }
     if (queue.size() > num_results) {
@@ -120,24 +122,44 @@ std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
     VectorIndexFactory<Vector, DistanceResult> index_factory,
-    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes) {
+    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes,
+    size_t min_capacity = 0) {
   VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
 
-  size_t total_max_vectors = 0;
+  size_t total_capacity = 0;
   for (const auto& index : indexes) {
-    total_max_vectors += index->MaxVectors();
+    total_capacity += index->Capacity();
   }
 
   RETURN_NOT_OK(merged_index->Reserve(
-      total_max_vectors, std::thread::hardware_concurrency(), std::thread::hardware_concurrency()));
+      std::max(min_capacity, total_capacity),
+      std::thread::hardware_concurrency(),
+      std::thread::hardware_concurrency()));
 
-  for (const auto& index : indexes) {
-    for (const auto& [vertex_id, vector] : *index) {
-      RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
+  RETURN_NOT_OK(Merge(merged_index, indexes, [](auto&&){ return rocksdb::FilterDecision::kKeep; }));
+  return std::move(merged_index);
+}
+
+template <typename Filter>
+concept MergeFilterType =
+    std::is_invocable_r_v<rocksdb::FilterDecision, Filter, VectorId> ||
+    std::is_invocable_r_v<rocksdb::FilterDecision, Filter, const VectorId&>;
+
+template <IndexableVectorType Vector,
+          ValidDistanceResultType DistanceResult,
+          MergeFilterType MergeFilter>
+Status Merge(
+    VectorIndexIfPtr<Vector, DistanceResult>& target,
+    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& source,
+    MergeFilter&& merge_filter) {
+  for (const auto& index : source) {
+    for (const auto& [vector_id, vector] : *index) {
+      if (merge_filter(vector_id) == rocksdb::FilterDecision::kKeep) {
+        RETURN_NOT_OK(target->Insert(vector_id, vector));
+      }
     }
   }
-
-  return merged_index;
+  return Status::OK();
 }
 
 }  // namespace yb::vector_index

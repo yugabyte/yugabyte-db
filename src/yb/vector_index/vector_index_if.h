@@ -35,7 +35,7 @@ class VectorIndexReaderIf;
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
-  using SearchResult  = std::vector<VertexWithDistance<DistanceResult>>;
+  using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
   using IteratorValue = std::pair<VectorId, Vector>;
   using Iterator      = PolymorphicIterator<IteratorValue>;
 
@@ -43,6 +43,9 @@ class VectorIndexReaderIf {
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
   virtual Result<SearchResult> Search(
       const Vector& query_vector, const SearchOptions& options) const = 0;
+
+  // Returns the vector with the given id or NotFound error when vector is not found.
+  virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
 
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
@@ -61,14 +64,13 @@ class VectorIndexWriterIf {
   virtual Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
 
+  // Returns current number of vectors.
+  virtual size_t Size() const = 0;
+
   // Returns the number of reserved vectors
-  virtual size_t MaxVectors() const = 0;
+  virtual size_t Capacity() const = 0;
 
-  virtual Status Insert(VectorId vertex_id, const Vector& vector) = 0;
-
-  // Returns the vector with the given id, an empty vector if such VectorId does not exist, or
-  // a non-OK status if an error occurred.
-  virtual Result<Vector> GetVector(VectorId vertex_id) const = 0;
+  virtual Status Insert(VectorId vector_id, const Vector& vector) = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -86,6 +88,11 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   // Implementation could load index partially, fetching data on demand and unload it if necessary.
   // max_concurrent_reads - max number of concurrent reads that could be run against this index.
   virtual Status LoadFromFile(const std::string& path, size_t max_concurrent_reads) = 0;
+
+  // Allows to attach a custom object that will be destroyed when the vector index does. Only one
+  // object can be attached. Returns previously attached object or nullptr if nothing was attached.
+  // Could be considered as a variation of cleanup paradigm rocskdb::Cleanable.
+  virtual std::shared_ptr<void> Attach(std::shared_ptr<void>) = 0;
 
   virtual ~VectorIndexIf() = default;
 };

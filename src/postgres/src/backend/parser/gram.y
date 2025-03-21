@@ -2908,7 +2908,11 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_AddInherit;
@@ -2918,7 +2922,11 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropInherit;
@@ -4506,7 +4514,15 @@ ConstraintElem:
 				}
 		;
 
-opt_no_inherit:	NO INHERIT { parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129); $$ = true; }
+opt_no_inherit:	NO INHERIT
+				{
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
+					$$ = true;
+				}
 			| /* EMPTY */							{  $$ = false; }
 		;
 
@@ -4688,7 +4704,11 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
@@ -10917,7 +10937,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TYPE_P any_name SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE SET SCHEMA", 1893);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_TYPE;

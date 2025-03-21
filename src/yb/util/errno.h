@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <cerrno>
 #include <string>
 
 #include "yb/util/status_fwd.h"
@@ -72,6 +73,17 @@ Status StatusFromErrnoSpecialEioHandling(
 // value (the rv parameter) is non-zero.
 Status StatusFromErrnoIfNonZero(const std::string& context, int rv, const char* file, int line);
 
+// For cases where we do actually care about the return value, but the call may return -1 and set
+// errno, e.g. open().
+template<typename T>
+Result<T> ResultWithStatusFromErrno(const std::string& context, T rv, const char* file, int line) {
+  if (rv == T(-1)) {
+    return StatusFromErrno(context, errno, file, line);
+  } else {
+    return rv;
+  }
+}
+
 }  // namespace internal
 
 #define STATUS_FROM_ERRNO(context, err_number) \
@@ -95,5 +107,15 @@ Status StatusFromErrnoIfNonZero(const std::string& context, int rv, const char* 
 
 #define RETURN_ON_ERRNO_RV_FN_CALL(...) \
     RETURN_NOT_OK(STATUS_FROM_ERRNO_RV_FN_CALL(__VA_ARGS__))
+
+#define RESULT_FROM_ERRNO_FN_CALL(fn_name, ...) \
+    ::yb::internal::ResultWithStatusFromErrno( \
+        BOOST_PP_STRINGIZE(fn_name), fn_name(__VA_ARGS__), __FILE__, __LINE__)
+
+#define VERIFY_ERRNO_FN_CALL(...) \
+    VERIFY_RESULT(RESULT_FROM_ERRNO_FN_CALL(__VA_ARGS__))
+
+#define RETURN_ON_ERRNO_FN_CALL(...) \
+    RETURN_NOT_OK(RESULT_FROM_ERRNO_FN_CALL(__VA_ARGS__))
 
 } // namespace yb

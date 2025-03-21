@@ -9,8 +9,8 @@ import (
 )
 
 // ListOfAZ fetches az list of a provider region
-func (a *AuthAPIClient) ListOfAZ(pUUID, rUUID string) (
-	ybaclient.AvailabilityZonesApiApiListOfAZRequest,
-) {
+func (a *AuthAPIClient) ListOfAZ(
+	pUUID, rUUID string,
+) ybaclient.AvailabilityZonesApiApiListOfAZRequest {
 	return a.APIClient.AvailabilityZonesApi.ListOfAZ(a.ctx, a.CustomerUUID, pUUID, rUUID)
 }

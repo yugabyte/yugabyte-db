@@ -69,6 +69,8 @@
 /* Yugabyte includes */
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_opfamily.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -124,6 +126,69 @@ static IndexScanDesc index_beginscan_internal(Relation indexRelation,
 											  int nkeys, int norderbys, Snapshot snapshot,
 											  ParallelIndexScanDesc pscan, bool temp_snap);
 
+/*
+ * Wrapper on the top of index_open(), used during yb_index_check(). Given a
+ * base relation id, it creates a dummy primary key index object such
+ * that:
+ *   - indexrelid and indrelid both point to the base relation
+ *   - index key: ybctid column
+ */
+Relation
+yb_dummy_baserel_index_open(Oid relationId, LOCKMODE lockmode)
+{
+	Relation relation;
+
+	relation = relation_open(relationId, lockmode);
+
+	if (relation->rd_rel->relkind == RELKIND_RELATION)
+	{
+		Assert(!relation->rd_index);
+		Assert(!relation->rd_indam);
+		Assert(!relation->rd_opfamily);
+		int natts = 1;
+		Form_pg_index pg_index =
+			palloc0(sizeof(FormData_pg_index) + natts * sizeof(int16));
+		pg_index->indexrelid = RelationGetRelid(relation);
+		pg_index->indrelid = RelationGetRelid(relation);
+		pg_index->indnatts = natts;
+		pg_index->indnkeyatts = natts;
+		pg_index->indisunique = true;
+		pg_index->indisprimary = true;
+		pg_index->indimmediate = true;
+		pg_index->indisvalid = true;
+		pg_index->indisready = true;
+		pg_index->indislive = true;
+		pg_index->indkey.ndim = 1;
+		pg_index->indkey.dataoffset = 0; /* never any nulls */
+		pg_index->indkey.elemtype = INT2OID;
+		pg_index->indkey.dim1 = natts;
+		pg_index->indkey.lbound1 = 0;
+		pg_index->indkey.values[0] = YBTupleIdAttributeNumber;
+
+		relation->rd_index = pg_index;
+		relation->rd_indam = GetIndexAmRoutineByAmId(LSM_AM_OID, false);
+		relation->rd_opfamily = palloc0(sizeof(Oid) * pg_index->indnkeyatts);
+		relation->rd_opfamily[0] = BYTEA_LSM_FAM_OID;
+	}
+	return relation;
+}
+
+/*
+ * Free the dummy index object created for yb_index_check().
+ */
+void
+yb_free_dummy_baserel_index(Relation relation)
+{
+	Assert(relation->rd_index);
+	Assert(relation->rd_indam);
+	Assert(relation->rd_opfamily);
+	pfree(relation->rd_index);
+	pfree(relation->rd_indam);
+	pfree(relation->rd_opfamily);
+	relation->rd_index = NULL;
+	relation->rd_indam = NULL;
+	relation->rd_opfamily = NULL;
+}
 
 /* ----------------------------------------------------------------
  *				   index_ interface functions
@@ -224,9 +289,9 @@ index_insert(Relation indexRelation,
 	}
 
 	return indexRelation->rd_indam->aminsert(indexRelation, values, isnull,
-												heap_t_ctid, heapRelation,
-												checkUnique, indexUnchanged,
-												indexInfo);
+											 heap_t_ctid, heapRelation,
+											 checkUnique, indexUnchanged,
+											 indexInfo);
 }
 
 /* ----------------
@@ -676,7 +741,7 @@ index_fetch_heap(IndexScanDesc scan, TupleTableSlot *slot)
 		 * amgettuple.
 		 */
 		if (!scan->yb_aggrefs)
-			ExecStoreHeapTuple(scan->xs_hitup, slot, false /* shouldFree */);
+			ExecStoreHeapTuple(scan->xs_hitup, slot, false /* shouldFree */ );
 
 		return true;
 	}

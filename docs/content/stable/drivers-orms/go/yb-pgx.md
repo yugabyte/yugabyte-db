@@ -98,11 +98,11 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
 | dbname | Database name | yugabyte |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) |  Defaults to upstream driver behavior unless set to one of the allowed values other than 'false' |
-| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
-| `fallback_to_topology_keys_only` | If `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | Empty |
-| `failed_host_reconnect_delay_secs` | When the driver is unable to connect to a node, it marks the node as failed using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it marks the server as UP only if the time specified via this property has elapsed from the time it was last marked as failed. | 5 |
+| load_balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false |
+| topology_keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load_balance` is false. | Empty |
+| yb_servers_refresh_interval | The interval (in seconds) to refresh the servers list; ignored if `load_balance` is false | 300 |
+| fallback_to_topology_keys_only | If set to true and `topology_keys` are specified, the driver only tries to connect to nodes specified in `topology_keys` | false |
+| failed_host_reconnect_delay_secs | Time (in seconds) to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
 
 In v5.5.3-yb-4 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
@@ -138,8 +138,6 @@ conn, err := pgx.Connect(context.Background(), url)
 ```
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load balances subsequent connection requests across these servers.
-
-To enable load balancing for primary cluster nodes that have a read replica cluster, see [Load balancing read replica clusters](../yb-pgx-reference/#load-balancing-for-read-replica-clusters).
 
 #### Use multiple addresses
 

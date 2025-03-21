@@ -2483,8 +2483,9 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		 * If the planner found a pg relation in this plan, set the appropriate
 		 * flag for the execution txn.
 		 */
-		if (plansource->usesPostgresRel) {
-			SetTxnWithPGRel();
+		if (plansource->usesPostgresRel)
+		{
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 		}
 
 		spicallbackarg.query = plansource->query_string;

@@ -78,6 +78,14 @@ public class ScheduleControllerTest extends FakeDBApplication {
     return doRequestWithAuthToken(method, url, authToken);
   }
 
+  private Result getSchedule(UUID customerUUID, UUID scheduleUUID) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "GET";
+    String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
+
+    return doRequestWithAuthToken(method, url, authToken);
+  }
+
   private Result deleteSchedule(UUID scheduleUUID, UUID customerUUID) {
     String authToken = defaultUser.createAuthToken();
     String method = "DELETE";
@@ -358,6 +366,40 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(0, resultJson.size());
+    assertAuditEntry(1, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testEditScheduleUpdateRetentionPeriodWhenStopped() {
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+    backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
+    defaultIncrementalSchedule =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
+    defaultIncrementalSchedule.setStatus(State.Stopped);
+    defaultIncrementalSchedule.save();
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.timeBeforeDelete = 259200000L;
+    params.cronExpression = "0 12 * * *";
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        editSchedule(
+            defaultIncrementalSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson);
+    assertOk(result);
+    JsonNode resultJson =
+        Json.parse(
+            contentAsString(
+                getSchedule(
+                    defaultCustomer.getUuid(), defaultIncrementalSchedule.getScheduleUUID())));
+    BackupRequestParams requestParams =
+        Json.fromJson(resultJson.get("taskParams"), BackupRequestParams.class);
+    assertEquals(259200000L, requestParams.timeBeforeDelete);
     assertAuditEntry(1, defaultCustomer.getUuid());
   }
 

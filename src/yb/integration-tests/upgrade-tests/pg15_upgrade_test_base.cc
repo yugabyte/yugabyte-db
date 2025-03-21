@@ -19,6 +19,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/env_util.h"
 
@@ -27,10 +28,8 @@ using namespace std::chrono_literals;
 namespace yb {
 
 void Pg15UpgradeTestBase::SetUp() {
-  UpgradeTestBase::SetUp();
-  if (IsTestSkipped()) {
-    return;
-  }
+  TEST_SETUP_SUPER(UpgradeTestBase);
+
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");
   CHECK(IsYsqlMajorVersionUpgrade());
   CHECK_GT(cluster_->num_tablet_servers(), 1);
@@ -41,7 +40,7 @@ void Pg15UpgradeTestBase::SetUp() {
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
-Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility() {
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
   const auto tserver = cluster_->tablet_server(0);
   const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
 
@@ -50,13 +49,41 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility() {
     "--old-datadir", data_path,
     "--old-host", tserver->bind_host(),
     "--old-port", AsString(tserver->pgsql_rpc_port()),
-    "--username", "yugabyte",
+    "--username", user_name,
     "--check"
   };
 
   LOG(INFO) << "Running " << AsString(args);
 
-  return Subprocess::Call(args);
+  return Subprocess::Call(args, /*log_stdout_and_stderr=*/true);
+}
+
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+    const std::vector<std::string>& expected_errors, const std::string& user_name) {
+  std::vector<std::unique_ptr<StringWaiterLogSink>> log_waiters;
+  for (const auto& expected_error : expected_errors) {
+    log_waiters.emplace_back(std::make_unique<StringWaiterLogSink>(expected_error));
+  }
+  auto status = ValidateUpgradeCompatibility(user_name);
+  SCHECK(
+      !status.ok(), IllegalState,
+      Format("Expected pg_upgrade to fail with error(s): $0", ToString(expected_errors)));
+  SCHECK(
+      status.message().Contains(kPgUpgradeFailedError), IllegalState, "Unexpected status: $0",
+      status);
+
+  for (size_t i = 0; i < expected_errors.size(); ++i) {
+    SCHECK_FORMAT(
+        log_waiters[i]->IsEventOccurred(), IllegalState,
+        "Expected pg_upgrade to fail with error: $0", expected_errors[i]);
+  }
+
+  return Status::OK();
+}
+
+Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+    const std::string& expected_error, const std::string& user_name) {
+  return ValidateUpgradeCompatibilityFailure(std::vector<std::string>{expected_error}, user_name);
 }
 
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
@@ -64,9 +91,8 @@ Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
 
   LOG(INFO) << "Upgrading cluster to mixed mode";
 
-  static const MonoDelta no_delay_between_nodes = 0s;
   RETURN_NOT_OK_PREPEND(
-      RestartAllMastersInCurrentVersion(no_delay_between_nodes), "Failed to restart masters");
+      RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes), "Failed to restart masters");
 
   RETURN_NOT_OK_PREPEND(
       PerformYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
@@ -79,7 +105,7 @@ Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
+Status Pg15UpgradeTestBase::UpgradeAllTserversFromMixedMode() {
   LOG(INFO) << "Restarting all other yb-tservers in current version";
 
   auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
@@ -92,6 +118,14 @@ Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
   }
 
   RETURN_NOT_OK(WaitForClusterToStabilize());
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
+
+  return Status::OK();
+}
+
+Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
+  RETURN_NOT_OK(UpgradeAllTserversFromMixedMode());
 
   RETURN_NOT_OK(UpgradeTestBase::FinalizeUpgrade());
 
@@ -108,9 +142,10 @@ Status Pg15UpgradeTestBase::RollbackUpgradeFromMixedMode() {
   RETURN_NOT_OK_PREPEND(
       RollbackYsqlMajorCatalogVersion(), "Failed to run ysql major catalog rollback");
 
-  static const MonoDelta no_delay_between_nodes = 0s;
   RETURN_NOT_OK_PREPEND(
-      RestartAllMastersInOldVersion(no_delay_between_nodes), "Failed to restart masters");
+      RestartAllMastersInOldVersion(kNoDelayBetweenNodes), "Failed to restart masters");
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   return Status::OK();
 }
@@ -244,6 +279,13 @@ Status Pg15UpgradeTestBase::TestUpgradeWithSimpleTable() {
 }
 
 Status Pg15UpgradeTestBase::TestRollbackWithSimpleTable() {
+  // Create an extra DB with a table to make sure the rollback with multiple DBs work.
+  {
+    RETURN_NOT_OK(ExecuteStatement("CREATE DATABASE db1"));
+    auto db1_conn = VERIFY_RESULT(cluster_->ConnectToDB("db1"));
+    RETURN_NOT_OK(db1_conn.Execute("CREATE TABLE t (a INT)"));
+  }
+
   RETURN_NOT_OK(CreateSimpleTable());
 
   RETURN_NOT_OK(UpgradeClusterToMixedMode());
@@ -291,6 +333,11 @@ Status Pg15UpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::
                std::string::npos;
       },
       5min, "Waiting for upgrade to reach state " + state_str);
+}
+
+Result<std::string> Pg15UpgradeTestBase::ReadUpgradeCompatibilityGuc() {
+  auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
+  return conn.FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility");
 }
 
 }  // namespace yb

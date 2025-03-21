@@ -11,7 +11,7 @@ showRightNav: true
 type: docs
 ---
 
-System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
+System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/11/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
 
 To list the tables in the system catalog, you can execute the following command:
 
@@ -91,7 +91,7 @@ The pg_locks view doesn't have a documented view definition that you can directl
 {{</note>}}
 
 {{<tip>}}
-[pg_locks](#pg-locks) view can be joined to [pg_stat_activity](#pg-stat-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock.
+You can join the pg_locks view to the [pg_stat_activity](#session-activity) view on the _pid_ column to get more information on the session holding or awaiting each lock.
 {{</tip>}}
 
 {{<lead link="../../explore/observability/pg-locks/">}}

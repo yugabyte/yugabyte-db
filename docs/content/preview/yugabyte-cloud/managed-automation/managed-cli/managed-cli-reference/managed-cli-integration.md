@@ -37,7 +37,7 @@ ybm integration create \
 
 Create an integration configuration.
 
-| Flag | Description |
+| <div style="width:175px">Flag</div> | Description |
 | :--- | :--- |
 | --config-name | Required. Name for the integration configuration. |
 | --type | Required. The third party tool to export to. Options: DATADOG, GRAFANA, SUMOLOGIC, VICTORIAMETRICS, PROMETHEUS, GOOGLECLOUD. |
@@ -45,7 +45,7 @@ Create an integration configuration.
 | --grafana-spec | Required for type GRAFANA. The Grafana Cloud export details, provided as key-value pairs.<br>Arguments:<ul><li>access-policy-token - your Grafana Cloud token.</li><li>org-slug - your organization name.</li><li>instance-id - your Grafana Cloud instance ID.</li><li>zone - your Grafana Cloud instance zone.</li></ul> |
 | --sumologic-spec | Required for type SUMOLOGIC. The Sumo Logic export details, provided as key-value pairs.<br>Arguments:<ul><li>access-key - your Sumo Logic access key.</li><li>access-id - your Sumo Logic access ID.</li><li>installation-token - your Sumo Logic installation token.</li></ul> |
 | --prometheus-spec | Required for type PROMETHEUS. The Prometheus export details, provided as key-value pairs.<br>Arguments:<br><ul><li>endpoint - your Prometheus OTLP endpoint URL.</li></ul>|
-| &#8209;&#8209;victoriametrics&#8209;spec | Required for type VICTORIAMETRICS. The VictoriaMetrics export details, provided as key-value pairs.<br>Arguments:<br><ul><li>endpoint - your VictoriaMetrics OTLP endpoint URL.</li></ul>|
+| --victoriametrics-spec | Required for type VICTORIAMETRICS. The VictoriaMetrics export details, provided as key-value pairs.<br>Arguments:<br><ul><li>endpoint - your VictoriaMetrics OTLP endpoint URL.</li></ul>|
 | --googlecloud-cred-filepath | Required for type GOOGLECLOUD. Provide the absolute file path for Google Cloud service account credentials. |
 
 ### delete

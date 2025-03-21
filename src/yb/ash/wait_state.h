@@ -252,6 +252,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
+  (kGetTserverCatalogMessageLists)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -264,6 +265,11 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kCronSetLastMinute)
   (kAcquireAdvisoryLock)
   (kReleaseAdvisoryLock)
+  (kAcquireObjectLock)
+  (kExportTxnSnapshot)
+  (kSetTxnSnapshot)
+  (kClearExportedTxnSnapshots)
+  (kPollVectorIndexReady)
 );
 
 struct WaitStatesDescription {
@@ -492,6 +498,9 @@ class WaitStateInfo {
 
   static std::vector<WaitStatesDescription> GetWaitStatesDescription();
   static int GetCircularBufferSizeInKiBs();
+
+  static uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code);
+  static uint32_t AshRemoveComponentFromWaitStateCode(uint32_t code);
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);

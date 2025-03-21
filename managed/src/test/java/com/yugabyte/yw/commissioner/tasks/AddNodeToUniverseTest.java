@@ -200,8 +200,10 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer, // end provisioning
+          TaskType.SetNodeStatus, // to ServerSetup
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -226,6 +228,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -258,8 +262,10 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -279,6 +285,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> ADD_NODE_TASK_DECOMISSIONED_NODE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -316,8 +324,10 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer, // provisioned
+          TaskType.SetNodeStatus, // provisioned
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -352,6 +362,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -400,9 +412,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     }
     for (TaskType expectedTaskType : expectedTaskSequence) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      // For some weird reason, the error interchanges expected and actual if I do not put expected
-      // parameter later.
-      assertEquals("At position: " + position, tasks.get(0).getTaskType(), expectedTaskType);
+      assertEquals("At position: " + position, expectedTaskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = taskExpectedResults.get(position);
       List<JsonNode> taskDetails =
           tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
@@ -449,7 +459,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -461,7 +471,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
       // 7 version increments + 1 modify blacklist.
-      verify(mockClient, times(13)).changeMasterClusterConfig(any());
+      verify(mockClient, times(14)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }
@@ -474,7 +484,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -489,7 +499,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -538,7 +548,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
 
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(20)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(18)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

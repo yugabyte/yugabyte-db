@@ -19,57 +19,59 @@ SET standard_conforming_strings = on;
 
 \set role_exists false
 \if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'User_"_WITH_""_different''_''quotes'' and spaces') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' "User_""_WITH_""""_different'_'quotes' and spaces"
+\else
+    CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
+    ALTER ROLE "User_""_WITH_""""_different'_'quotes' and spaces" WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\endif
+
+\set role_exists false
+\if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role postgres already exists.'
+    \echo 'Role already exists:' postgres
 \else
     CREATE ROLE postgres;
+    ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 \endif
-ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yb_db_admin already exists.'
+    \echo 'Role already exists:' yb_db_admin
 \else
     CREATE ROLE yb_db_admin;
+    ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
-ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yb_extension already exists.'
+    \echo 'Role already exists:' yb_extension
 \else
     CREATE ROLE yb_extension;
+    ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
-ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yb_fdw already exists.'
+    \echo 'Role already exists:' yb_fdw
 \else
     CREATE ROLE yb_fdw;
+    ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
-ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 
-\set role_exists false
-\if :ignore_existing_roles
-    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte') AS role_exists \gset
-\endif
-\if :role_exists
-    \echo 'Role yugabyte already exists.'
-\else
-    CREATE ROLE yugabyte;
-\endif
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'md52c2dc7d65d3e364f08b8addff5a54bf5';
 
 \set role_exists false
@@ -77,11 +79,11 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role yugabyte_test already exists.'
+    \echo 'Role already exists:' yugabyte_test
 \else
     CREATE ROLE yugabyte_test;
+    ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
 \endif
-ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
 
 
 --
@@ -178,6 +180,14 @@ SET row_security = off;
 \set use_roles true
 \endif
 
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+END IF;
+END $$;
+
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
@@ -210,6 +220,14 @@ GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+END IF;
+END $$;
 
 --
 -- YSQL database dump complete
@@ -254,6 +272,14 @@ SET row_security = off;
 \set use_roles true
 \endif
 
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+END IF;
+END $$;
+
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
@@ -286,6 +312,14 @@ GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+END IF;
+END $$;
 
 --
 -- YSQL database dump complete

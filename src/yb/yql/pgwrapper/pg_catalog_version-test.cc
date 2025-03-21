@@ -14,8 +14,10 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -44,9 +46,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     LibPqTestBase::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
   }
 
   Result<int64_t> GetCatalogVersion(PGConn* conn) {
@@ -104,6 +106,24 @@ class PgCatalogVersionTest : public LibPqTestBase {
     RestartClusterSetDBCatalogVersionMode(true, extra_tserver_flags);
   }
 
+  void RestartClusterWithInvalMessageEnabled(
+      const std::vector<string>& extra_tserver_flags = {}) {
+    LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=true";
+    cluster_->Shutdown();
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      cluster_->master(i)->mutable_flags()->push_back(
+          "--ysql_yb_enable_invalidation_messages=true");
+    }
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->tablet_server(i)->mutable_flags()->push_back(
+          "--ysql_yb_enable_invalidation_messages=true");
+      for (const auto& flag : extra_tserver_flags) {
+        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+      }
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
+
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
   static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(PGConn* conn) {
     const auto rows = VERIFY_RESULT((
@@ -141,31 +161,27 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
-          cluster_->tablet_server(tablet_index));
-      rpc::RpcController controller;
-      controller.set_timeout(kRpcTimeout);
-      tserver::GetSharedDataRequestPB shared_data_req;
-      tserver::GetSharedDataResponsePB shared_data_resp;
-      RETURN_NOT_OK(proxy.GetSharedData(shared_data_req, &shared_data_resp, &controller));
-      const auto& data = shared_data_resp.data();
-      tserver::TServerSharedData tserver_shared_data;
-      SCHECK_EQ(
-          data.size(), sizeof(tserver_shared_data),
-          IllegalState, "Unexpected response size");
-      memcpy(pointer_cast<void*>(&tserver_shared_data), data.c_str(), data.size());
+      auto uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+      tserver::SharedMemoryManager shared_mem_manager;
+      RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
+
+      auto tserver_shared_data = shared_mem_manager.SharedData();
+
       size_t initialized_slots_count = 0;
       for (size_t i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
-        if (tserver_shared_data.ysql_db_catalog_version(i)) {
+        if (tserver_shared_data->ysql_db_catalog_version(i)) {
           ++initialized_slots_count;
         }
       }
 
       // Get the tserver catalog version info from tserver at 'tablet_index'.
+      rpc::RpcController controller;
+      controller.set_timeout(kRpcTimeout);
+      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+          cluster_->tablet_server(tablet_index));
+
       tserver::GetTserverCatalogVersionInfoRequestPB catalog_version_req;
       tserver::GetTserverCatalogVersionInfoResponsePB catalog_version_resp;
-      controller.Reset();
-      controller.set_timeout(kRpcTimeout);
       RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(
           catalog_version_req, &catalog_version_resp, &controller));
       if (catalog_version_resp.has_error()) {
@@ -177,7 +193,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
         SCHECK(entry.has_db_oid() && entry.has_shm_index(), IllegalState, "missed fields");
         auto db_oid = entry.db_oid();
         auto shm_index = entry.shm_index();
-        const auto current_version = tserver_shared_data.ysql_db_catalog_version(shm_index);
+        const auto current_version = tserver_shared_data->ysql_db_catalog_version(shm_index);
         SCHECK_NE(current_version, 0UL, IllegalState, "uninitialized version is not expected");
         catalog_versions.emplace(db_oid, current_version);
         if (!output.empty()) {
@@ -475,6 +491,37 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 0);
     ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 0);
   }
+
+  void VerifyCatCacheRefreshMetricsHelper(
+      int num_full_refreshes, int num_delta_refreshes) {
+    ExternalTabletServer* ts = cluster_->tablet_server(0);
+    auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+    EasyCurl c;
+    faststring buf;
+
+    auto json_metrics_url =
+        Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+    ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
+    auto json_metrics = ParseJsonMetrics(buf.ToString());
+
+    int count = 0;
+    for (const auto& metric : json_metrics) {
+      // Should see one full refresh.
+      if (metric.name.find("CatalogCacheRefreshes") != std::string::npos) {
+        ++count;
+        ASSERT_EQ(metric.value, num_full_refreshes);
+      }
+      // Should not see any incremental refresh.
+      if (metric.name.find("CatalogCacheDeltaRefreshes") != std::string::npos) {
+        ++count;
+        ASSERT_EQ(metric.value, num_delta_refreshes);
+      }
+      if (count == 2) {
+        break;
+      }
+    }
+  }
+
 };
 
 TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
@@ -1719,7 +1766,7 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
   ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user"));
   auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn));
   auto v2_test_db = ASSERT_RESULT(GetCatalogVersion(&conn_test1));
-  ASSERT_EQ(v2_yugabyte, v1_yugabyte);
+  ASSERT_EQ(v2_yugabyte, v1_yugabyte + 1);
   ASSERT_EQ(v2_test_db, v1_test_db + 1);
   WaitForCatalogVersionToPropagate();
   ASSERT_OK(conn_test1.Execute("ALTER DATABASE test_db SET statement_timeout = 100"));
@@ -1763,6 +1810,341 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
   // The error is not detected on connection to the a different node, this is
   // unique for YB.
   ASSERT_OK(conn_test3.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+}
+
+// This test ensures that ALTER DATABASE RENAME has global impact. If we only bump up
+// the catalog version of the altered database (test_db), or even if we also bump up the
+// catalog version of MyDatabaseId (yugabyte in this test), we can have a situation
+// where DROP DATABASE executed from a connection to a third DB (postgres) stucks in
+// a PG infinite loop: this third-DB connection has a stale cache entry of the database
+// with its old name, and performing a scan-based query from the master returns the new
+// name. The PG infinite loop can only break until they compare equal but if the third
+// DB's catalog version isn't bumped, its connection will never refresh its catalog caches
+// and the old name remains in the stale cache entry.
+// Note that due to tserver/master heartbeat delay, it is still possible that even if
+// ALTER DATABASE RENAME has global impact, the third-DB connection has already entered
+// into the infinite loop before it receives the heartbeat and performs a catalog cache
+// refresh. So this DROP DATABASE hanging problem is only mitigated not completed avoided.
+TEST_F(PgCatalogVersionTest, AlterDatabaseRename) {
+  // Test setup: create a test db.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn_postgres = ASSERT_RESULT(ConnectToDB("postgres"));
+
+  auto v1_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v1_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // Execute a query on the postgres-connection to get a cache entry with the old DB name.
+  ASSERT_OK(conn_postgres.Execute("ALTER DATABASE test_db SET temp_file_limit = 1024"));
+  auto v2_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v2_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+  ASSERT_EQ(v1_yugabyte, v2_yugabyte);
+  ASSERT_EQ(v1_postgres, v2_postgres);
+
+  // Execute a query on the yugabyte-connection to rename the test_db.
+  ASSERT_OK(conn_yugabyte.Execute("ALTER DATABASE test_db RENAME TO test_db_renamed"));
+
+  auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v3_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // If we did not bump up the catalog version of postgres DB, this DROP DATABASE would
+  // stuck and the test timed out.
+  ASSERT_OK(conn_postgres.Execute("DROP DATABASE test_db_renamed"));
+  auto v4_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  auto v4_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // ALTER DATABASE RENAME has global-impact.
+  ASSERT_EQ(v2_yugabyte + 1, v3_yugabyte);
+  ASSERT_EQ(v2_postgres + 1, v3_postgres);
+
+  // DROP DATABASE is a same-version DDL that does not bump up catalog version.
+  ASSERT_EQ(v3_yugabyte, v4_yugabyte);
+  ASSERT_EQ(v3_postgres, v4_postgres);
+}
+
+// This test ensures that ALTER DATABASE OWNER has global impact. If we only bump up
+// the catalog version of the altered database (test_db), or even if we also bump up the
+// catalog version of MyDatabaseId (yugabyte in this test), we can have a situation
+// where a user connected to a third DB (postgres in this test) can end up having a
+// stale database entry, which prevents/allows the user to perform an operation
+// of the test_db incorrectly.
+TEST_F(PgCatalogVersionTest, AlterDatabaseOwner) {
+  // Test setup: create a test db and two users.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user1"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user2"));
+
+  auto conn_test_user1 = ASSERT_RESULT(ConnectToDBAsUser(
+      "postgres" /* db_name */, "test_user1"));
+  auto conn_test_user2 = ASSERT_RESULT(ConnectToDBAsUser(
+      "postgres" /* db_name */, "test_user2"));
+
+  // Initially neither user can drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Change the owner of test_db to test_user1.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user1"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user1 owns the database, test_user2 should continue not be able to drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  // Now test_user1 owns the database, so test_user1 should be able to drop test_db.
+  ASSERT_OK(conn_test_user1.Execute("DROP DATABASE test_db"));
+
+  // Redo the test in a different way.
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+
+  // Initially neither user can drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+  ASSERT_NOK_STR_CONTAINS(conn_test_user2.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Change the owner of test_db to test_user1.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user1"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user1 owns the database, so test_user1 should be able to alter it. This gets
+  // the test_db cache entry loaded in conn_test_user1. Note that temp_file_limit requires
+  // PGC_SUSET, test_user only has PGC_USERSET so we still get a permission denied error.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute(
+      "ALTER DATABASE test_db SET temp_file_limit = 1024"),
+      "permission denied to set parameter");
+
+  // Change the owner of test_db to test_user2.
+  ASSERT_OK(conn.Execute("ALTER DATABASE test_db OWNER TO test_user2"));
+
+  WaitForCatalogVersionToPropagate();
+
+  // Now test_user2 owns the database, so test_user1 should not be able to drop test_db.
+  ASSERT_NOK_STR_CONTAINS(conn_test_user1.Execute("DROP DATABASE test_db"),
+                          "must be owner of database");
+
+  // Now test_user2 owns the database, so test_user2 should be able to drop test_db.
+  ASSERT_OK(conn_test_user2.Execute("DROP DATABASE test_db"));
+}
+
+// Create or replace view should increment catalog version.
+TEST_F(PgCatalogVersionTest, CreateOrReplaceView) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(a INT, b INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(1, 2)"));
+
+  auto v1 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  ASSERT_OK(conn1.Execute("CREATE VIEW v AS SELECT a, b FROM foo"));
+  auto v2 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  // Create view does not increment catalog version.
+  ASSERT_EQ(v2, v1);
+
+  auto query = "SELECT * FROM v"s;
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto expected_result1 = "1, 2";
+  auto expected_result2 = "2, 1";
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, expected_result1);
+  ASSERT_OK(conn1.Execute("CREATE OR REPLACE VIEW v AS SELECT b AS a, a AS b FROM foo"));
+  auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn1));
+  // Create or replace view increments catalog version.
+  ASSERT_EQ(v3, v2 + 1);
+
+  WaitForCatalogVersionToPropagate();
+
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, expected_result2);
+}
+
+// This test does sanity check that invalidation messages are portable
+// across nodes and they are stable.
+TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto ts_index = RandomUniformInt(0UL, cluster_->num_tablet_servers() - 1);
+  pg_ts = cluster_->tablet_server(ts_index);
+  LOG(INFO) << "ts_index: " << ts_index;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_test_inval_message_portability = true"));
+  ASSERT_OK(conn.Execute("SET log_min_messages = DEBUG1"));
+  auto choice = RandomUniformInt(0, 1);
+  LOG(INFO) << "choice: " << choice;
+  // We connect to a randomly selected node, and create two types of tables.
+  if (choice) {
+    ASSERT_OK(conn.Execute("CREATE TABLE foo(a INT, b INT)"));
+  } else {
+    ASSERT_OK(conn.Execute("CREATE TABLE foo(id TEXT)"));
+  }
+  ASSERT_OK(conn.Execute("DROP TABLE foo"));
+  auto query = "SELECT current_version, encode(messages, 'hex') "
+               "FROM pg_yb_invalidation_messages"s;
+  auto expected_result0 =
+      "2, 5000000000000000cb34000040c1eb0a00000000000000004f00000000000000cb340"
+      "0005ac4b85300000000000000005000000000000000cb34000047a2537b0000000000000"
+      "0004f00000000000000cb34000021e2d2ca00000000000000000700000000000000cb340"
+      "0004a34179b00000000000000000600000000000000cb3400003239589f0000000000000"
+      "0000700000000000000cb340000849f9c1300000000000000000600000000000000cb340"
+      "00002517d2400000000000000000700000000000000cb340000d519492c0000000000000"
+      "0000600000000000000cb340000532bd64f00000000000000000700000000000000cb340"
+      "0000ce84cf300000000000000000600000000000000cb340000f1f7a7e80000000000000"
+      "0000700000000000000cb340000ecbba96500000000000000000600000000000000cb340"
+      "00084a01e3000000000000000000700000000000000cb3400003f53cbc60000000000000"
+      "0000600000000000000cb3400001310debc00000000000000000700000000000000cb340"
+      "000c76e67a200000000000000000600000000000000cb340000f3cf9e8c0000000000000"
+      "0000700000000000000cb34000017e0201d00000000000000000600000000000000cb340"
+      "0004ba32d1e00000000000000003700000000000000cb340000465708530000000000000"
+      "0003600000000000000cb34000021e2d2ca0000000000000000fb00000000000000cb340"
+      "000300a00000000000000000000fb00000000000000cb340000300a00000000000000000"
+      "000fe00000000000000cb340000004000000000000000000000fb00000000000000cb340"
+      "000300a00000000000000000000";
+  auto expected_result1 =
+      "2, 5000000000000000cb34000040c1eb0a00000000000000004f00000000000000cb340"
+      "0005ac4b85300000000000000005000000000000000cb34000047a2537b0000000000000"
+      "0004f00000000000000cb34000021e2d2ca00000000000000000700000000000000cb340"
+      "0004a34179b00000000000000000600000000000000cb3400003239589f0000000000000"
+      "0000700000000000000cb340000849f9c1300000000000000000600000000000000cb340"
+      "00002517d2400000000000000000700000000000000cb340000d519492c0000000000000"
+      "0000600000000000000cb340000532bd64f00000000000000000700000000000000cb340"
+      "0000ce84cf300000000000000000600000000000000cb340000f1f7a7e80000000000000"
+      "0000700000000000000cb340000ecbba96500000000000000000600000000000000cb340"
+      "00084a01e3000000000000000000700000000000000cb3400003f53cbc60000000000000"
+      "0000600000000000000cb3400001310debc00000000000000000700000000000000cb340"
+      "000c76e67a200000000000000000600000000000000cb340000f3cf9e8c0000000000000"
+      "0000700000000000000cb34000017e0201d00000000000000000600000000000000cb340"
+      "00006e6784000000000000000000700000000000000cb3400007651cba70000000000000"
+      "0000600000000000000cb340000bdf7d7b600000000000000003700000000000000cb340"
+      "0004657085300000000000000003600000000000000cb34000021e2d2ca0000000000000"
+      "000fb00000000000000cb340000300a00000000000000000000fb00000000000000cb340"
+      "000300a00000000000000000000fe00000000000000cb340000004000000000000000000"
+      "000fb00000000000000cb340000300a00000000000000000000";
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
+  if (choice) {
+    ASSERT_EQ(result, expected_result1);
+  } else {
+    ASSERT_EQ(result, expected_result0);
+  }
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageMultiDDLTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id INT)"));
+  auto query = "BEGIN; "s;
+  for (int i = 1; i <= 5; i++) {
+    query += Format("ALTER TABLE foo ADD COLUMN id$0 INT; ", i);
+  }
+  query += "END";
+  LOG(INFO) << "multi-ddl query: " << query;
+  ASSERT_OK(conn.Execute(query));
+  auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      Format("SELECT current_version, length(messages) FROM pg_yb_invalidation_messages "
+             "WHERE db_oid = $0", yugabyte_db_oid)));
+  LOG(INFO) << "result: " << result;
+  ASSERT_EQ(result, "2, 120; 3, 144; 4, 144; 5, 144; 6, 144");
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageCatCacheRefreshTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn2.Execute("SET log_min_messages = DEBUG1"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(1)"));
+
+  auto query = "SELECT * FROM foo"s;
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  auto expected_result1 = "1";
+  ASSERT_EQ(result, expected_result1);
+
+  ASSERT_OK(conn1.Execute("ALTER TABLE foo ADD COLUMN value TEXT"));
+  ASSERT_OK(conn1.Execute("INSERT INTO foo VALUES(2, '2')"));
+
+  WaitForCatalogVersionToPropagate();
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  auto expected_result2 = "1, NULL; 2, 2";
+  ASSERT_EQ(result, expected_result2);
+
+  // Verify that the incremental catalog cache refresh happened on conn2.
+  VerifyCatCacheRefreshMetricsHelper(0 /* num_full_refreshes */, 1 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_max_invalidation_message_queue_size=2"});
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn2.Execute("SET log_min_messages = DEBUG1"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+
+  auto query = "SELECT 1"s;
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  // Execute 4 DDLs that cause catalog version to bump to cause the
+  // tserver message queue to overflow.
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK(conn1.Execute("ALTER TABLE foo ADD COLUMN value TEXT"));
+    ASSERT_OK(conn1.Execute("ALTER TABLE foo DROP COLUMN value"));
+  }
+
+  WaitForCatalogVersionToPropagate();
+  result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  // Since the message queue overflowed, we will see a full catalog cache refresh on conn2.
+  VerifyCatCacheRefreshMetricsHelper(1 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, WaitForSharedCatalogVersionToCatchup) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--TEST_ysql_disable_transparent_cache_refresh_retry=true" });
+
+  std::string ddl_script;
+  for (int i = 1; i < 100; ++i) {
+    ddl_script += Format("GRANT ALL ON SCHEMA public TO PUBLIC;\n");
+    ddl_script += Format("REVOKE USAGE ON SCHEMA public FROM PUBLIC;\n");
+  }
+  std::unique_ptr<WritableFile> ddl_script_file;
+  std::string tmp_file_name;
+  ASSERT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), "ddl_XXXXXX", &tmp_file_name, &ddl_script_file));
+  ASSERT_OK(ddl_script_file->Append(ddl_script));
+  ASSERT_OK(ddl_script_file->Close());
+  LOG(INFO) << "ddl_script:\n" << ddl_script;
+
+  auto hostport = cluster_->ysql_hostport(0);
+  std::string main_script = "SET yb_test_delay_after_applying_inval_message_ms = 2000;\n"s;
+  main_script += "SET yb_max_query_layer_retries = 0;\n"s;
+  main_script += "CREATE TABLE foo(id INT);\n"s;
+  main_script += "SELECT * FROM foo;\n"s;
+  std::string ysqlsh_path = CHECK_RESULT(path_utils::GetPgToolPath("ysqlsh"));
+  main_script += Format("\\! $0 -f $1 -h $2 -p $3 yugabyte > /dev/null\n",
+                        ysqlsh_path, tmp_file_name, hostport.host(), hostport.port());
+  main_script += "SELECT * FROM foo;\n"s;
+  LOG(INFO) << "main_script:\n" << main_script;
+
+  auto scope_exit = ScopeExit([tmp_file_name] {
+    if (Env::Default()->FileExists(tmp_file_name)) {
+      WARN_NOT_OK(
+          Env::Default()->DeleteFile(tmp_file_name),
+          Format("Failed to delete temporary sql script file $0.", tmp_file_name));
+    }
+  });
+  YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
+  auto output = CHECK_RESULT(ysqlsh_runner.ExecuteSqlScript(
+      main_script, "WaitForSharedCatalogVersionToCatchup" /* tmp_file_prefix */));
+  LOG(INFO) << "output: " << output;
 }
 
 } // namespace pgwrapper

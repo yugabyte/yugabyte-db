@@ -28,12 +28,11 @@
 #include "datatype/timestamp.h" /* for TimestampTz */
 #include "pgtime.h"				/* for pg_time_t */
 
-#include "postgres.h"			/* for HeapTuple */
-#include "access/htup.h"		/* for HeapTuple */
-
+/* YB includes */
 #ifndef FRONTEND
 #include "storage/proc.h"		/* for MyProc */
 #endif
+
 
 #define InvalidPid				(-1)
 
@@ -100,6 +99,15 @@ extern PGDLLIMPORT volatile sig_atomic_t IdleInTransactionSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcSignalBarrierPending;
 extern PGDLLIMPORT volatile sig_atomic_t LogMemoryContextPending;
+extern PGDLLIMPORT volatile sig_atomic_t YbLogCatcacheStatsPending;
+extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
 extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
 
 extern PGDLLIMPORT volatile sig_atomic_t CheckClientConnectionPending;
@@ -160,7 +168,7 @@ do { \
 	CritSectionCount--; \
 } while(0)
 
-#else /* !FRONTEND */
+#else							/* !FRONTEND */
 
 #define START_CRIT_SECTION()  \
 do { \
@@ -176,7 +184,7 @@ do { \
 	if (MyProc && CritSectionCount == 0) \
 		MyProc->ybEnteredCriticalSection = false; \
 } while(0)
-#endif /* FRONTEND */
+#endif							/* FRONTEND */
 
 
 /*****************************************************************************

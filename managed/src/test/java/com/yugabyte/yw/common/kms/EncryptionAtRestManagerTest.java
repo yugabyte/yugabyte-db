@@ -11,11 +11,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
@@ -86,13 +88,14 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
             KeyProvider.GCP,
             new ObjectMapper().createObjectNode(),
             "kms-config-3");
-    doReturn(universeKeyRef1)
+    doReturn(new EncryptionKey(universeKeyRef1))
         .when(mockEARService)
         .createKey(testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), keyConfig);
-    doReturn(universeKeyRef2)
+    doReturn(new EncryptionKey(universeKeyRef2))
         .when(mockEARService)
         .rotateKey(testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), keyConfig);
-    when(mockEARService.retrieveKey(any(), any(), any(byte[].class))).thenCallRealMethod();
+    when(mockEARService.retrieveKey(any(), any(), any(byte[].class), any(ObjectNode.class)))
+        .thenCallRealMethod();
     doReturn(mockEARService).when(testManager2).getServiceInstance(anyString());
   }
 
@@ -117,10 +120,10 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
         KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 0);
 
     // Create a universe key.
-    byte[] universeKeyData =
+    EncryptionKey universeKeyData =
         testManager2.generateUniverseKey(
             kmsConfig1.getConfigUUID(), testUniverse.getUniverseUUID(), keyConfig);
-    assertEquals(universeKeyRef1, universeKeyData);
+    assertEquals(universeKeyRef1, universeKeyData.getKeyBytes());
 
     // After rotating the universe key, there should be 1 entry in the KMS history table.
     List<KmsHistory> kmsHistoryList =
@@ -147,10 +150,10 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
         KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 1);
 
     // Rotate the universe key.
-    byte[] universeKeyData =
+    EncryptionKey universeKeyData =
         testManager2.generateUniverseKey(
             kmsConfig1.getConfigUUID(), testUniverse.getUniverseUUID(), keyConfig);
-    assertEquals(universeKeyRef2, universeKeyData);
+    assertEquals(universeKeyRef2, universeKeyData.getKeyBytes());
 
     // After rotating the universe key, there should be 2 entries in the KMS history table.
     List<KmsHistory> kmsHistoryList =
@@ -172,8 +175,11 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
   @Test
   public void testReEncryptActiveUniverseKeysRotateSameMasterKey() {
-    doReturn(universeKey1).when(mockEARService).retrieveKeyWithService(any(), eq(universeKeyRef1));
-    doReturn(universeKeyRef1).when(mockEARService).encryptKeyWithService(any(), eq(universeKey1));
+    EncryptionKey encryptionKey1 = new EncryptionKey(universeKeyRef1);
+    doReturn(universeKey1)
+        .when(mockEARService)
+        .retrieveKeyWithService(any(), eq(universeKeyRef1), any());
+    doReturn(encryptionKey1).when(mockEARService).encryptKeyWithService(any(), eq(universeKey1));
 
     // Add a universe key so we can rotate master key.
     assertEquals(
@@ -212,8 +218,12 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
   @Test
   public void testReEncryptActiveUniverseKeysRotateDifferentMasterKey() {
-    doReturn(universeKey1).when(mockEARService).retrieveKeyWithService(any(), eq(universeKeyRef1));
-    doReturn(universeKeyRef2).when(mockEARService).encryptKeyWithService(any(), eq(universeKey1));
+    doReturn(universeKey1)
+        .when(mockEARService)
+        .retrieveKeyWithService(any(), eq(universeKeyRef1), any());
+    doReturn(new EncryptionKey(universeKeyRef2))
+        .when(mockEARService)
+        .encryptKeyWithService(any(), eq(universeKey1));
 
     // Add a universe key so we can rotate master key.
     assertEquals(
@@ -252,10 +262,16 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
   @Test
   public void testRotateMasterKeyWithPreviouslyRotatedKmsConfig() {
-    doReturn(universeKey1).when(mockEARService).retrieveKeyWithService(any(), eq(universeKeyRef1));
-    doReturn(universeKey2).when(mockEARService).retrieveKeyWithService(any(), eq(universeKeyRef2));
-    doReturn(universeKeyRef3).when(mockEARService).encryptKeyWithService(any(), eq(universeKey1));
-    doReturn(universeKeyRef4).when(mockEARService).encryptKeyWithService(any(), eq(universeKey2));
+    doReturn(universeKey1)
+        .when(mockEARService)
+        .retrieveKeyWithService(any(), eq(universeKeyRef1), any());
+    doReturn(universeKey2)
+        .when(mockEARService)
+        .retrieveKeyWithService(any(), eq(universeKeyRef2), any());
+    EncryptionKey encryptionKey3 = new EncryptionKey(universeKeyRef3);
+    EncryptionKey encryptionKey4 = new EncryptionKey(universeKeyRef4);
+    doReturn(encryptionKey3).when(mockEARService).encryptKeyWithService(any(), eq(universeKey1));
+    doReturn(encryptionKey4).when(mockEARService).encryptKeyWithService(any(), eq(universeKey2));
 
     // Add 2 universe keys with different KMS configs so we can rotate master key.
     assertEquals(

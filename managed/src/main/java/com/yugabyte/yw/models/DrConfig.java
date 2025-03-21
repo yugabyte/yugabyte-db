@@ -72,6 +72,9 @@ public class DrConfig extends Model {
   @JsonIgnore
   private UUID storageConfigUuid;
 
+  @OneToMany(mappedBy = "drConfig", cascade = CascadeType.ALL)
+  private List<Webhook> webhooks;
+
   @JsonIgnore private int parallelism;
 
   /**
@@ -137,6 +140,12 @@ public class DrConfig extends Model {
     xClusterConfig.updateNamespaces(sourceNamespaceIds);
     drConfig.save();
     return drConfig;
+  }
+
+  /** It updates the dr config object and all of its xCluster configs in a transaction. */
+  @Transactional
+  public void update() {
+    super.update();
   }
 
   public XClusterConfig addXClusterConfig(UUID sourceUniverseUUID, UUID targetUniverseUUID) {

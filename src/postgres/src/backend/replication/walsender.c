@@ -97,7 +97,7 @@
 
 /* YB includes. */
 #include "pg_yb_utils.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "replication/yb_virtual_wal_client.h"
 
 /*
@@ -211,7 +211,8 @@ static LogicalDecodingContext *logical_decoding_ctx = NULL;
  * 4. Processing time of the output plugin
  * 5. Sending the data to the client including the socket time
  */
-uint64_t YbWalSndTotalTimeInYBDecodeMicros = 0;
+uint64_t	YbWalSndTotalTimeInYBDecodeMicros = 0;
+
 /*
  * Total time spent in the reorderbuffer steps in a batch of changes. This
  * includes the time spent in:
@@ -222,9 +223,10 @@ uint64_t YbWalSndTotalTimeInYBDecodeMicros = 0;
  *
  * A subset of the yb_decode time.
  */
-uint64_t YbWalSndTotalTimeInReorderBufferMicros = 0;
+uint64_t	YbWalSndTotalTimeInReorderBufferMicros = 0;
+
 /* Total time spent in the WalSndWriteData function in a batch of changes. */
-uint64_t YbWalSndTotalTimeInSendingMicros = 0;
+uint64_t	YbWalSndTotalTimeInSendingMicros = 0;
 
 /* A sample associating a WAL location with the time it was written. */
 typedef struct
@@ -1013,7 +1015,7 @@ reportErrorIfLsnTypeNotEnabled()
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("LSN type parameter not allowed when "
-					"ysql_yb_allow_replication_slot_lsn_types is disabled")));
+						"ysql_yb_allow_replication_slot_lsn_types is disabled")));
 }
 
 /*
@@ -1089,7 +1091,7 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			if (lsn_type_given || cmd->kind != REPLICATION_KIND_LOGICAL)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("conflicting or redundant lsn_type options")));
+						 errmsg("conflicting or redundant lsn_type options")));
 
 			action = defGetString(defel);
 			lsn_type_given = true;
@@ -1137,6 +1139,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4];
+	bool yb_is_pg_export_snapshot_enabled = *YBCGetGFlags()->ysql_enable_pg_export_snapshot;
 
 	Assert(!MyReplicationSlot);
 
@@ -1201,9 +1204,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 		{
 			if (IsYugaByteEnabled())
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("exporting snapshot is not yet supported")));
+				YBCheckSnapshotsAllowed(false /* check_isolation_level */ );
 
 			if (IsTransactionBlock())
 				ereport(ERROR,
@@ -1213,13 +1214,21 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			need_full_snapshot = true;
 		}
-
-		/*
-		 * YB has its own snapshot mechanism that does not require the command
-		 * to be created within a transaction, so we disable these checks here.
-		 */
-		else if (snapshot_action == CRS_USE_SNAPSHOT && !IsYugaByteEnabled())
+		else if (snapshot_action == CRS_USE_SNAPSHOT && (!IsYugaByteEnabled() || yb_is_pg_export_snapshot_enabled))
 		{
+			if (IsYugaByteEnabled())
+			{
+				if (XactDeferrable)
+					ereport(ERROR,
+							(errmsg("%s must not be called in a DEFERRABLE transaction",
+									"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
+
+				if (YbIsBatchedExecution())
+						ereport(ERROR,
+								(errmsg("%s must not be called in batched execution mode",
+										"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
+			}
+
 			if (!IsTransactionBlock())
 				ereport(ERROR,
 				/*- translator: %s is a CREATE_REPLICATION_SLOT statement */
@@ -1267,26 +1276,43 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 * of errors.
 			 */
 			if (cmd->plugin == NULL)
-					elog(ERROR, "cannot initialize logical decoding without a specified plugin");
+				elog(ERROR, "cannot initialize logical decoding without a specified plugin");
 
 			YBValidateOutputPlugin(cmd->plugin);
 
 			/*
 			 * 23 digits is an upper bound for the decimal representation of a uint64
 			 */
-			char consistent_snapshot_time_string[24];
-			uint64_t consistent_snapshot_time;
+			char		consistent_snapshot_time_string[24];
+			uint64_t	consistent_snapshot_time;
+
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
 								  two_phase,
 								  cmd->plugin, snapshot_action,
 								  &consistent_snapshot_time, lsn_type);
 
-			if (snapshot_action == CRS_USE_SNAPSHOT)
+			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
+			{
+				snapshot_name = SnapBuildExportSnapshot(NULL,
+														consistent_snapshot_time
+														/* yb_cdc_snapshot_read_time */ );
+			}
+			else if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
 				snprintf(consistent_snapshot_time_string,
 						 sizeof(consistent_snapshot_time_string), "%llu",
 						 (unsigned long long) consistent_snapshot_time);
 				snapshot_name = pstrdup(consistent_snapshot_time_string);
+
+				if (yb_is_pg_export_snapshot_enabled)
+				{
+					SnapshotData snapshot = {};
+					YbInitSnapshot(&snapshot);
+					snapshot.yb_cdc_snapshot_read_time.has_value = true;
+					snapshot.yb_cdc_snapshot_read_time.value = consistent_snapshot_time;
+
+					RestoreTransactionSnapshot(&snapshot, NULL);
+				}
 			}
 
 			/*
@@ -1329,7 +1355,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 */
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 			{
-				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder);
+				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder,
+														0 /* yb_cdc_snapshot_read_time */ );
 			}
 			else if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
@@ -1423,8 +1450,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 
-if (!IsYugaByteEnabled())
-	ReplicationSlotRelease();
+	if (!IsYugaByteEnabled())
+		ReplicationSlotRelease();
 }
 
 /*
@@ -1478,14 +1505,12 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 
 	ReplicationSlotAcquire(cmd->slotname, true);
 
-#ifdef YB_TODO
 	if (XLogRecPtrIsInvalid(MyReplicationSlot->data.restart_lsn))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("cannot read from logical replication slot \"%s\"",
 						cmd->slotname),
 				 errdetail("This slot has been invalidated because it exceeded the maximum reserved size.")));
-#endif
 
 	/*
 	 * Force a disconnect, so that the decoding code doesn't need to care
@@ -1498,6 +1523,9 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 				(errmsg("terminating walsender process after promotion")));
 		got_STOPPING = true;
 	}
+
+	if (IsYugaByteEnabled())
+		YBCGetTableHashRange(&cmd->options);
 
 	/*
 	 * Create our decoding context, making it start at the previously ack'ed
@@ -3273,7 +3301,7 @@ XLogSendLogical(void)
 	XLogRecord *record;
 	char	   *errm;
 
-	YBCPgVirtualWalRecord *yb_record;
+	YbVirtualWalRecord *yb_record;
 
 	/*
 	 * We'll use the current flush point to determine whether we've caught up.
@@ -3330,11 +3358,11 @@ XLogSendLogical(void)
 	 * we only need to update flushPtr if EndRecPtr is past it.
 	 */
 	if (flushPtr == InvalidXLogRecPtr)
-		flushPtr = IsYugaByteEnabled() ? YBCGetFlushRecPtr() :
-										 GetFlushRecPtr(NULL);
+		flushPtr =
+			IsYugaByteEnabled() ? YBCGetFlushRecPtr() : GetFlushRecPtr(NULL);
 	else if (logical_decoding_ctx->reader->EndRecPtr >= flushPtr)
-		flushPtr = IsYugaByteEnabled() ? YBCGetFlushRecPtr() :
-										 GetFlushRecPtr(NULL);
+		flushPtr =
+			IsYugaByteEnabled() ? YBCGetFlushRecPtr() : GetFlushRecPtr(NULL);
 
 	/* If EndRecPtr is still past our flushPtr, it means we caught up. */
 	if (logical_decoding_ctx->reader->EndRecPtr >= flushPtr)
@@ -3729,6 +3757,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	int			num_standbys;
 	int			i;
 
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
+
 	InitMaterializedSRF(fcinfo, 0);
 
 	/*
@@ -3736,6 +3767,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	 * date before we're done, but we'll use the data anyway.
 	 */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
+
+	if (IsYugaByteEnabled())
+		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -3807,6 +3841,8 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 		else
 		{
 			values[1] = CStringGetTextDatum(WalSndGetStateString(state));
+			if (IsYugaByteEnabled())
+				values[1] = CStringGetTextDatum("streaming");
 
 			if (XLogRecPtrIsInvalid(sentPtr))
 				nulls[2] = true;
@@ -3848,6 +3884,32 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 			values[9] = Int32GetDatum(priority);
 
+			if (IsYugaByteEnabled())
+			{
+				int64_t lag_metric = -1;
+				int slotno;
+				for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
+				{
+					YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+					if (slot->active_pid != pid)
+						continue;
+
+					YBCGetLagMetrics(slot->stream_id, &lag_metric);
+					nulls[6] = true;
+					nulls[7] = true;
+					nulls[8] = true;
+					if (lag_metric >= 0)
+					{
+						values[6] = IntervalPGetDatum(offset_to_interval(lag_metric));
+						values[7] = IntervalPGetDatum(offset_to_interval(lag_metric));
+						values[8] = IntervalPGetDatum(offset_to_interval(lag_metric));
+						nulls[6] = false;
+						nulls[7] = false;
+						nulls[8] = false;
+					}
+					break;
+				}
+			}
 			/*
 			 * More easily understood version of standby state. This is purely
 			 * informational.

@@ -147,6 +147,8 @@
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"
+#include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb_terminated_queries.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -608,7 +610,7 @@ PostmasterMain(int argc, char *argv[])
 	int			i;
 	char	   *output_config_variable = NULL;
 
-	// This should be done as the first thing after process start.
+	/* This should be done as the first thing after process start. */
 	YBSetParentDeathSignal();
 
 	InitProcessGlobals();
@@ -1022,7 +1024,8 @@ PostmasterMain(int argc, char *argv[])
 
 	YBReportIfYugaByteEnabled();
 #ifdef __APPLE__
-	if (YBIsEnabledInPostgresEnvVar()) {
+	if (YBIsEnabledInPostgresEnvVar())
+	{
 		/*
 		 * Resolve local hostname to initialize macOS network libraries. If we
 		 * don't do this, there might be a lot of segmentation faults in
@@ -1072,13 +1075,18 @@ PostmasterMain(int argc, char *argv[])
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
 
-	/* Register the query diagnostics background worker */
-	if (YBIsEnabledInPostgresEnvVar() && yb_enable_query_diagnostics)
-		YbQueryDiagnosticsBgWorkerRegister();
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		/*
+		 * Set up reserved address segment for shared memory allocators. This needs to done before
+		 * any process that needs it is forked.
+		 */
+		YBCSetupSharedMemoryAddressSegment();
 
-	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
-		YbAshRegister();
+		/* Register ASH collector */
+		if (yb_enable_ash)
+			YbAshRegister();
+	}
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -1790,7 +1798,7 @@ ServerLoop(void)
 
 	nSockets = initMasks(&readmask);
 #ifdef __APPLE__
-	bool yb_enabled = YBIsEnabledInPostgresEnvVar();
+	bool		yb_enabled = YBIsEnabledInPostgresEnvVar();
 #endif
 
 #ifdef __linux__
@@ -1863,8 +1871,9 @@ ServerLoop(void)
 			int			i;
 
 #ifdef __APPLE__
-			// If STDIN is closed, it means that parent did exit
-			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask)) {
+			/* If STDIN is closed, it means that parent did exit */
+			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask))
+			{
 				return STATUS_OK;
 			}
 #endif
@@ -2041,7 +2050,8 @@ initMasks(fd_set *rmask)
 	FD_ZERO(rmask);
 
 #ifdef __APPLE__
-	if (YBIsEnabledInPostgresEnvVar()) {
+	if (YBIsEnabledInPostgresEnvVar())
+	{
 		FD_SET(STDIN_FILENO, rmask);
 		maxsock = STDIN_FILENO;
 	}
@@ -2096,7 +2106,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	 * of the actual client. This information is passed by the connection
 	 * manager to the auth-backend.
 	 */
-	char *yb_auth_backend_remote_host = NULL;
+	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
 
@@ -2386,8 +2396,8 @@ retry1:
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
 							 errmsg("yb_authonly can only be set "
-							   "if the connection is made over unix domain "
-							   "socket")));
+									"if the connection is made over unix domain "
+									"socket")));
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
@@ -2495,6 +2505,7 @@ retry1:
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;
+
 			ip_address_1 = (struct sockaddr_in *) (&MyProcPort->raddr.addr);
 			inet_pton(AF_INET, port->remote_host,
 					  &(ip_address_1->sin_addr));
@@ -3212,8 +3223,9 @@ reaper(SIGNAL_ARGS)
 		 *    XLogCtl->info_lck, ProcStructLock.
 		 */
 
-		int i;
-		bool foundProcStruct = false;
+		int			i;
+		bool		foundProcStruct = false;
+
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
@@ -3248,7 +3260,7 @@ reaper(SIGNAL_ARGS)
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash from "
 								"unexpected error code %d",
-							WTERMSIG(exitstatus))));
+								WTERMSIG(exitstatus))));
 				break;
 			}
 
@@ -3793,13 +3805,10 @@ CleanupBackend(int pid,
 	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
 
-#ifdef YB_TODO
-		/* Postgres changed the implemenation for stats. Need new code. */
 		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+			yb_report_query_termination("Terminated by SIGKILL", pid);
 		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-#endif
+			yb_report_query_termination("Terminated by SIGSEGV", pid);
 	}
 	else
 		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
@@ -3909,7 +3918,8 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 
 	if (take_action)
 	{
-		int level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
+		int			level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
+
 		LogChildExit(level, procname, pid, exitstatus);
 		ereport(level,
 				(errmsg("terminating any other active server processes")));
@@ -4579,18 +4589,21 @@ SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
 	if (oom_score_adj[0] == 0)
 		return;
 
-	char file_name[64];
+	char		file_name[64];
+
 	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
-	FILE * fPtr;
+	FILE	   *fPtr;
+
 	fPtr = fopen(file_name, "w");
 
 	if (fPtr == NULL)
 	{
-		int saved_errno = errno;
+		int			saved_errno = errno;
+
 		ereport(LOG,
-			(errcode_for_file_access(),
-				errmsg("error %d: %s, unable to open file %s", saved_errno,
-				strerror(saved_errno), file_name)));
+				(errcode_for_file_access(),
+				 errmsg("error %d: %s, unable to open file %s", saved_errno,
+						strerror(saved_errno), file_name)));
 	}
 	else
 	{
@@ -4840,8 +4853,12 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	port->remote_host = strdup(remote_host);
-	port->remote_port = strdup(remote_port);
+	/*
+	 * YB: Allocate memory in the context using pstrdup so that with auth-backend
+	 * where the backend is closed after authentication, the memory is automatically freed.
+	 */
+	port->remote_host = pstrdup(remote_host);
+	port->remote_port = pstrdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)
@@ -4955,8 +4972,9 @@ BackendInitialize(Port *port)
 
 		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
 					 "remote_ps_data: %s",
-					 (am_walsender ? "walsender" :
-									 (yb_is_auth_backend ? "auth" : "regular")),
+					 (am_walsender ?
+					  "walsender" :
+					  (yb_is_auth_backend ? "auth" : "regular")),
 					 getpid(), port->user_name, remote_ps_data);
 	}
 }
@@ -5873,7 +5891,8 @@ StartChildProcess(AuxProcType type)
 	if (YBIsEnabledInPostgresEnvVar() &&
 		(type == BgWriterProcess ||
 		 type == WalWriterProcess ||
-		 type == WalReceiverProcess)) {
+		 type == WalReceiverProcess))
+	{
 		return 0;
 	}
 

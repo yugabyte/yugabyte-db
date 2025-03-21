@@ -131,8 +131,11 @@ func GetEARConfig(
 	if len(r) < 1 {
 		logrus.Fatalf(
 			formatter.Colorize(
-				fmt.Sprintf("No encryption at rest configurations with name: %s and code %s found\n",
-					earName, earCode),
+				fmt.Sprintf(
+					"No encryption at rest configurations with name: %s and code %s found\n",
+					earName,
+					earCode,
+				),
 				formatter.RedColor,
 			))
 	}

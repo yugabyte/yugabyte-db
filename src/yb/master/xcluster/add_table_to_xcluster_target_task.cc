@@ -67,7 +67,7 @@ Status AddTableToXClusterTargetTask::FirstStep() {
           ShouldAddTableToReplicationGroup(*universe_, *table_info_, catalog_manager_))) {
     LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
                           << " does not need to be added to xCluster universe replication";
-    RETURN_NOT_OK(CleanupAndComplete());
+    Complete();
     return Status::OK();
   }
 
@@ -102,9 +102,10 @@ Status AddTableToXClusterTargetTask::FirstStep() {
   // We need to keep the client alive until the callback is invoked.
   remote_client_ = VERIFY_RESULT(GetXClusterRemoteClientHolder(*universe_));
 
-  if (!table_l->pb.xcluster_source_table_id().empty()) {
+  auto& xcluster_table_info = table_l->pb.xcluster_table_info();
+  if (!xcluster_table_info.xcluster_source_table_id().empty()) {
     // We know the producer table id. We can directly get the checkpoint info.
-    LOG(INFO) << "Using xCluster source table id " << table_l->pb.xcluster_source_table_id()
+    LOG(INFO) << "Using xCluster source table id " << xcluster_table_info.xcluster_source_table_id()
               << " for table " << table_info_->ToString() << " in namespace "
               << table_info_->namespace_name() << " in universe " << universe_->id();
     RSTATUS_DCHECK(
@@ -112,7 +113,7 @@ Status AddTableToXClusterTargetTask::FirstStep() {
         "Automatic DDL mode is not enabled but received source table id");
     return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
         universe_->ReplicationGroupId(), producer_namespace_id,
-        {table_l->pb.xcluster_source_table_id()}, std::move(callback));
+        {xcluster_table_info.xcluster_source_table_id()}, std::move(callback));
   }
 
   return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
@@ -233,7 +234,7 @@ Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
   RETURN_NOT_OK(xcluster_manager_.RefreshXClusterSafeTimeMap(epoch_));
   auto initial_safe_time = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!initial_safe_time) {
-    RETURN_NOT_OK(CleanupAndComplete());
+    Complete();
     return Status::OK();
   }
 
@@ -250,7 +251,7 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
   auto ht = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!ht) {
     // The namespace is no longer part of any xCluster replication.
-    RETURN_NOT_OK(CleanupAndComplete());
+    Complete();
     return Status::OK();
   }
 
@@ -264,14 +265,6 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
 
   LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
                         << " successfully added to xCluster universe replication";
-
-  RETURN_NOT_OK(CleanupAndComplete());
-  return Status::OK();
-}
-
-Status AddTableToXClusterTargetTask::CleanupAndComplete() {
-  // Ensure that we clean up the xcluster_source_table_id field.
-  RETURN_NOT_OK(xcluster_manager_.ClearXClusterSourceTableId(table_info_, epoch_));
 
   Complete();
   return Status::OK();

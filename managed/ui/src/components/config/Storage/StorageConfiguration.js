@@ -20,6 +20,8 @@ import azureLogo from './images/azure_logo.svg';
 import gcsLogo from './images/gcs-logo.png';
 import nfsIcon from './images/nfs.svg';
 import { Formik } from 'formik';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE, fetchRunTimeConfigs, fetchRunTimeConfigsResponse } from '../../../actions/customers';
+import { isPathStyleAccess } from '../../backupv2/common/BackupUtils';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -73,6 +75,7 @@ class StorageConfiguration extends Component {
 
   componentDidMount() {
     this.props.fetchCustomerConfigs();
+    this.props.fetchRuntimeConfigs();
   }
 
   getConfigByType = (name, customerConfigs) => {
@@ -485,15 +488,26 @@ class StorageConfiguration extends Component {
   }
 }
 
+const mapDispatchToProps = (dispatch) => {
+    return {
+      fetchRuntimeConfigs: () => {
+        dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
+          dispatch(fetchRunTimeConfigsResponse(response.payload))
+        );
+      },
+    };
+  };
+
 function mapStateToProps(state) {
   const {
-    featureFlags: { test, released }
+    featureFlags: { test, released },
+    customer: { runtimeConfigs }
   } = state;
-
+  const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
   return {
-    enablePathStyleAccess: test.enablePathStyleAccess || released.enablePathStyleAccess,
+    enablePathStyleAccess: enablePathStyleAccess,
     enableS3BackupProxy: test.enableS3BackupProxy || released.enableS3BackupProxy
   };
 }
 
-export default connect(mapStateToProps, null)(withRouter(StorageConfiguration));
+export default connect(mapStateToProps, mapDispatchToProps)(withRouter(StorageConfiguration));

@@ -446,7 +446,6 @@ TEST_F(LoadBalancerPlacementPolicyTest, UnderreplicatedAdd) {
 
   // Should not add a replica in ts3 since that does not fix the under-replication in z0.
   SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
-  WaitForLoadBalancerToBeIdle();
   GetLoadOnTservers(table_name().table_name(), new_num_tservers, &counts_per_ts);
   ASSERT_EQ(counts_per_ts, expected_counts_per_ts);
 
@@ -468,10 +467,8 @@ TEST_F(LoadBalancerPlacementPolicyTest, BlacklistedAdd) {
     external_mini_cluster()->tablet_server(0)
   ));
 
-  SleepFor(3s * kTimeMultiplier);
-  WaitForLoadBalancerToBeIdle();
-
   // Should not move from ts0 as we do not have an alternative in the same zone.
+  SleepFor(3s * kTimeMultiplier);
   vector<int> counts_per_ts;
   vector<int> expected_counts_per_ts = {4, 4, 4, 0};
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);

@@ -46,10 +46,10 @@ class TransactionIntentApplier {
       std::span<const PostApplyTransactionMetadata> metadatas) = 0;
 
   virtual Status RemoveAdvisoryLocks(
-      const TransactionId& transaction_id, rocksdb::DirectWriteHandler* handler) = 0;
+      const TransactionId& transaction_id, rocksdb::DirectWriteHandler& handler) = 0;
   virtual Status RemoveAdvisoryLock(
       const TransactionId& transaction_id, const Slice& key,
-      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) = 0;
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler& handler) = 0;
 
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 

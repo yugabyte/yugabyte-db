@@ -21,10 +21,10 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
@@ -351,7 +351,7 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
       CoarseMonoClock::Now() +
       MonoDelta::FromMilliseconds(FLAGS_max_wait_for_aborting_transactions_during_restore_ms);
   WARN_NOT_OK(
-      tablet().AbortSQLTransactions(deadline),
+      tablet().AbortActiveTransactions(deadline),
       Format("Cannot abort transactions for tablet $0 during restore", tablet().tablet_id()));
 
   if (!snapshot_dir.empty()) {

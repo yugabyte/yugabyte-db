@@ -6,7 +6,7 @@ import { api, taskQueryKey, universeQueryKey } from '../../../../redesign/helper
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { TaskListTable, TaskProgressContainer } from '../../../tasks';
 import { TASK_SHORT_TIMEOUT } from '../../../tasks/constants';
-import { patchTasksForCustomer } from '../../../../actions/tasks';
+import { patchTasksForCustomer, showTaskInDrawer } from '../../../../actions/tasks';
 
 interface UniverseTaskListProps {
   universeUuid: string;
@@ -67,6 +67,11 @@ export const UniverseTaskList = ({
     }
     return activeTasks;
   }, []);
+
+  const showTaskDrawer = (taskUUID: string) => {
+    dispatch(showTaskInDrawer(taskUUID));
+  };
+
   return (
     <div className="universe-detail-content-container">
       <TaskProgressContainer
@@ -83,6 +88,7 @@ export const UniverseTaskList = ({
         showTaskAbortModal={showTaskAbortModal}
         visibleModal={visibleModal}
         featureFlags={featureFlags}
+        showTaskDrawer={showTaskDrawer}
       />
     </div>
   );

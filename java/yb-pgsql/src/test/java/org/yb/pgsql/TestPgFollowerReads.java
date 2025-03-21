@@ -433,6 +433,16 @@ public class TestPgFollowerReads extends BasePgSQLTest {
   // The test checks that follower reads are not used if sys catalog reads are to be performed.
   @Test
   public void testPgSysCatalogNoFollowerReads() throws Exception {
+    // Make a new connection. The current connection was used to execute some test setup
+    // code including a DDL statement: GRANT ALL ON SCHEMA public TO public
+    // When we use invalidation messages we use a SQL function to increment the catalog
+    // version and insert the messages into the pg_yb_invalidation_messages table.
+    // Calling this SQL function caused more master catalog table reads which resulted
+    // in a larger catalog cache in the current session. In particular, it already included
+    // those catalog cache entries that would have triggered master RPCs when executing the
+    // normal query of the test. As a result, no more master RPCs were triggered. Using
+    // a new connection avoids this problem.
+    connection = getConnectionBuilder().connect();
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
       stmt.execute("SET yb_read_from_followers = true");

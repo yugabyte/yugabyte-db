@@ -3,10 +3,10 @@
 ####################################################################################################
 # This includes tests for Aggregates Functions
 ####################################################################################################
-# Dependencies for `yb_pg_aggregates`
-test: yb_pg_test_setup
-test: yb_dep_create_index
+# Dependencies for `yb.port.aggregates`
+test: yb.port.test_setup
+test: yb.depd.create_index
 
-test: yb_pg_create_aggregate
-test: yb_pg_aggregates
-test: yb_aggregates
+test: yb.port.create_aggregate
+test: yb.port.aggregates
+test: yb.orig.aggregates

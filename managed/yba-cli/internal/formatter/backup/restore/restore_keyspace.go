@@ -70,7 +70,11 @@ func (r *RestoreKeyspaceContext) Write(index int) error {
 		logrus.Errorf("%s", err.Error())
 		return err
 	}
-	r.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor)))
+	r.Output.Write(
+		[]byte(
+			formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor),
+		),
+	)
 	r.Output.Write([]byte("\n"))
 	if err := r.ContextFormat(tmpl, rc.RestoreKeyspace); err != nil {
 		logrus.Errorf("%s", err.Error())

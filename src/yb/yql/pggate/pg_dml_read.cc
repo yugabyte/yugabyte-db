@@ -34,6 +34,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/slice.h"
@@ -45,6 +46,8 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+#include "ybgate/ybgate_api.h"
 
 namespace yb::pggate {
 namespace {
@@ -259,6 +262,11 @@ Status PgDmlRead::AppendQual(PgExpr* qual, bool is_for_secondary_index) {
         qual, /* is_for_secondary_index= */ false);
   }
 
+  auto version = yb_major_version_upgrade_compatibility > 0
+      ? yb_major_version_upgrade_compatibility
+      : YbgGetPgVersion();
+  read_req_->set_expression_serialization_version(version);
+
   // Populate the expr_pb with data from the qual expression.
   // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
   // for any column reference found in the expression. However, the serialized Postgres expressions,
@@ -402,6 +410,15 @@ Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
 
 void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids) {
   SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids));
+}
+
+void PgDmlRead::SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids) {
+  HoldingYbctidProvider ybctid_holder(&arena());
+  size_t size = ybctids.size();
+  ybctid_holder.reserve(size);
+  for (size_t i = 0; i < size; i++)
+    ybctid_holder.append(ybctids[i]);
+  SetYbctidProvider(std::make_unique<HoldingYbctidProvider>(ybctid_holder));
 }
 
 Status PgDmlRead::ANNBindVector(PgExpr* vector) {

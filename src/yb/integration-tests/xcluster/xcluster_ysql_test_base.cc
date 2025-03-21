@@ -14,6 +14,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/client/client.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -47,11 +48,10 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(cdc_enable_implicit_checkpointing);
+DECLARE_bool(xcluster_enable_ddl_replication);
 
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 DECLARE_uint64(TEST_pg_auth_key);
 
 namespace yb {
@@ -64,10 +64,7 @@ void XClusterYsqlTestBase::SetUp() {
   XClusterTestBase::SetUp();
 
   LOG(INFO) << "DB-scoped replication will use automatic mode: " << UseAutomaticMode();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
-      UseAutomaticMode();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
-      UseAutomaticMode();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
 }
 
 Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t num_masters) {
@@ -224,8 +221,7 @@ Status XClusterYsqlTestBase::InitPostgres(
   yb::pgwrapper::PgProcessConf pg_process_conf =
       VERIFY_RESULT(yb::pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
           yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
@@ -235,8 +231,19 @@ Status XClusterYsqlTestBase::InitPostgres(
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
   cluster->pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
   RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+
+  pg_ts->SetPgServerHandlers(
+      // start_pg
+      [this, cluster, pg_port = pg_process_conf.pg_port] {
+        return InitPostgres(cluster, cluster->pg_ts_idx_, pg_port);
+      },
+      // shutdown_pg
+      [cluster] {
+        cluster->pg_supervisor_->Stop();
+        cluster->pg_supervisor_.reset();
+      });
 
   cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
   return OK();
@@ -989,7 +996,7 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 }
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id, bool require_no_bootstrap_needed) {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateOutboundReplicationGroup(
@@ -997,7 +1004,9 @@ Status XClusterYsqlTestBase::CheckpointReplicationGroup(
 
   auto bootstrap_required =
       VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));
-  SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
+  SCHECK(
+      !require_no_bootstrap_needed || !bootstrap_required, IllegalState,
+      "Bootstrap should not be required");
 
   return Status::OK();
 }
@@ -1038,12 +1047,13 @@ Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
 }
 
 Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
-    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names) {
+    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names,
+    xcluster::ReplicationGroupId replication_group_id) {
   RETURN_NOT_OK(LoggedWaitFor(
-      [this, &target_master_addresses]() -> Result<bool> {
+      [this, &target_master_addresses, replication_group_id]() -> Result<bool> {
         auto result = VERIFY_RESULT(
             client::XClusterClient(*producer_client())
-                .IsCreateXClusterReplicationDone(kReplicationGroupId, target_master_addresses));
+                .IsCreateXClusterReplicationDone(replication_group_id, target_master_addresses));
         if (!result.status().ok()) {
           return result.status();
         }
@@ -1072,7 +1082,16 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
 
-  return WaitForCreateReplicationToFinish(master_addr, namespace_names);
+  return WaitForCreateReplicationToFinish(master_addr, namespace_names, replication_group_id);
+}
+
+Status XClusterYsqlTestBase::DeleteOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  const auto target_master_address = consumer_cluster()->GetMasterAddresses();
+
+  return source_xcluster_client.DeleteOutboundReplicationGroup(
+      kReplicationGroupId, target_master_address);
 }
 
 Status XClusterYsqlTestBase::VerifyDDLExtensionTablesCreation(
@@ -1112,4 +1131,16 @@ Status XClusterYsqlTestBase::VerifyDDLExtensionTablesDeletion(
   });
 }
 
+Status XClusterYsqlTestBase::EnablePITROnClusters() {
+  return RunOnBothClusters([this](Cluster* cluster) -> Status {
+    client::SnapshotTestUtil snapshot_util;
+    snapshot_util.SetProxy(&cluster->client_->proxy_cache());
+    snapshot_util.SetCluster(cluster->mini_cluster_.get());
+
+    RETURN_NOT_OK(snapshot_util.CreateSchedule(
+        nullptr, YQL_DATABASE_PGSQL, namespace_name, client::WaitSnapshot::kTrue,
+        2s * kTimeMultiplier, 20h));
+    return Status::OK();
+  });
+}
 }  // namespace yb

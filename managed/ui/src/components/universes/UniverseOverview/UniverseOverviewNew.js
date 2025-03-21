@@ -520,6 +520,8 @@ export default class UniverseOverviewNew extends Component {
       <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
+          // In case of dedicated nodes, the read replica cluster can have only TServer nodes.
+          isDedicatedNodes={false}
           universeInfo={currentUniverse}
           runtimeConfigs={this.props.runtimeConfigs}
         />
@@ -563,9 +565,6 @@ export default class UniverseOverviewNew extends Component {
             </FlexGrow>
             <FlexGrow>
               <YBResourceCount size={numCassandraTables} kind="YCQL" />
-            </FlexGrow>
-            <FlexGrow>
-              <YBResourceCount size={numRedisTables} kind="YEDIS" />
             </FlexGrow>
           </FlexContainer>
         }
@@ -844,7 +843,8 @@ export default class UniverseOverviewNew extends Component {
       tasks,
       currentCustomer,
       runtimeConfigs,
-      universeLbState
+      universeLbState,
+      featureFlags
     } = this.props;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
@@ -872,6 +872,9 @@ export default class UniverseOverviewNew extends Component {
       )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
+    const isNewTaskDetailsUIEnabled =
+      featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
+
     return (
       <Fragment>
         {isRollBackFeatureEnabled &&
@@ -879,6 +882,7 @@ export default class UniverseOverviewNew extends Component {
             <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
           )}
         {isRollBackFeatureEnabled &&
+          !isNewTaskDetailsUIEnabled &&
           [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
             ybSoftwareUpgradeState
           ) &&

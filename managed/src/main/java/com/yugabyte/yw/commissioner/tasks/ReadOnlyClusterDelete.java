@@ -10,7 +10,10 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager.DnsCommandType;
 import com.yugabyte.yw.common.UniverseInProgressException;
@@ -27,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 
 // Tracks a read only cluster delete intent from a universe.
 @Slf4j
+@Abortable
+@Retryable
 public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
 
   @Inject
@@ -34,9 +39,12 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
     super(baseTaskDependencies);
   }
 
+  @JsonDeserialize(converter = Params.Converter.class)
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID clusterUUID;
     public Boolean isForceDelete = false;
+
+    public static class Converter extends BaseConverter<Params> {}
   }
 
   public Params params() {
@@ -55,44 +63,50 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
+    if (isFirstTry() && Collections.isEmpty(roClusters)) {
+      String msg =
+          "Unable to delete RO cluster from universe \""
+              + universe.getName()
+              + "\" as it doesn't have any RO clusters.";
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), params().getUniverseUUID());
 
     Universe universe =
         lockAndFreezeUniverseForUpdate(params().expectedUniverseVersion, null /* Txn callback */);
     try {
-      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
-      if (Collections.isEmpty(roClusters)) {
-        String msg =
-            "Unable to delete RO cluster from universe \""
-                + universe.getName()
-                + "\" as it doesn't have any RO clusters.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      addBasicPrecheckTasks();
 
       preTaskActions();
 
       // Delete all the read-only cluster nodes.
-      Cluster cluster = roClusters.get(0);
-      Collection<NodeDetails> nodesToBeRemoved = universe.getNodesInCluster(cluster.uuid);
-      // Set the node states to Removing.
-      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      createDestroyServerTasks(
-              universe,
-              nodesToBeRemoved,
-              params().isForceDelete,
-              true /* deleteNodeFromDB */,
-              true /* deleteRootVolumes */,
-              true /* skipDestroyPrecheck */)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      if (roClusters.size() > 0) {
+        Cluster cluster = roClusters.get(0);
+        Collection<NodeDetails> nodesToBeRemoved = universe.getNodesInCluster(cluster.uuid);
+        // Set the node states to Removing.
+        createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+        createDestroyServerTasks(
+                universe,
+                nodesToBeRemoved,
+                params().isForceDelete,
+                true /* deleteNodeFromDB */,
+                true /* deleteRootVolumes */,
+                true /* skipDestroyPrecheck */)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
-      // Remove the cluster entry from the universe db entry.
-      createDeleteClusterFromUniverseTask(params().clusterUUID)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+        // Remove the cluster entry from the universe db entry.
+        createDeleteClusterFromUniverseTask(params().clusterUUID)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
 
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)

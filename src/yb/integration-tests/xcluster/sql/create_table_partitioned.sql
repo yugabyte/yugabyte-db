@@ -6,6 +6,12 @@
 -- Taken from Postgres test/regress/sql/create_table.sql
 -- Tests some basic create partitioned table commands.
 
+-- This script tests a lot of invalid cases, we turn off error stopping to allow
+-- these to run, and test that DDL replication correctly ignores them all.
+-- In the end, we require the two final tables (partitioned and partitioned2)
+-- to be created properly.
+\set ON_ERROR_STOP off
+
 -- cannot combine INHERITS and PARTITION BY (although grammar allows)
 CREATE TABLE partitioned (
 	a int
@@ -75,11 +81,6 @@ CREATE TABLE partitioned (
 ) PARTITION BY RANGE (immut_func(a));
 DROP FUNCTION immut_func(int);
 
--- cannot contain whole-row references
-CREATE TABLE partitioned (
-	a	int
-) PARTITION BY RANGE ((partitioned));
-
 -- prevent using columns of unsupported types in key (type must have a btree operator class)
 CREATE TABLE partitioned (
 	a point
@@ -100,6 +101,8 @@ CREATE TABLE partitioned (
 	CONSTRAINT check_a CHECK (a > 0) NO INHERIT
 ) PARTITION BY RANGE (a);
 
+\set ON_ERROR_STOP on
+
 -- some checks after successful creation of a partitioned table
 CREATE FUNCTION plusone(a int) RETURNS INT AS $$ SELECT a+1; $$ LANGUAGE SQL;
 
@@ -113,20 +116,15 @@ CREATE TABLE partitioned (
 -- check relkind
 SELECT relkind FROM pg_class WHERE relname = 'partitioned';
 
--- prevent a function referenced in partition key from being dropped
-DROP FUNCTION plusone(int);
-
--- partitioned table cannot participate in regular inheritance
 CREATE TABLE partitioned2 (
 	a int,
 	b text
 ) PARTITION BY RANGE ((a+1), substr(b, 1, 5));
-CREATE TABLE fail () INHERITS (partitioned2);
 
 -- Partition key in describe output
 \d partitioned
 \d+ partitioned2
 
-INSERT INTO partitioned2 VALUES (1, 'hello');
 CREATE TABLE part2_1 PARTITION OF partitioned2 FOR VALUES FROM (-1, 'aaaaa') TO (100, 'ccccc');
+INSERT INTO partitioned2 VALUES (1, 'hello');
 \d+ part2_1

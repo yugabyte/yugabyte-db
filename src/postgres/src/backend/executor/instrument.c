@@ -224,6 +224,7 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 	{
 		YbPgEventMetric *dst_event = &dst->yb_instr.storage_event_metrics[i];
 		YbPgEventMetric *add_event = &add->yb_instr.storage_event_metrics[i];
+
 		dst_event->sum += add_event->sum;
 		dst_event->count += add_event->count;
 	}

@@ -58,9 +58,15 @@ export interface Task {
   };
   abortable: boolean;
   retryable: boolean;
+  canRollback: boolean;
   correlationId: string;
   userEmail: string;
   subtaskInfos: SubTaskInfo[];
+  taskInfo: {
+    taskParams: {
+      previousTaskUUID?: string;
+    }
+  }
 }
 
 export interface FailedTask {

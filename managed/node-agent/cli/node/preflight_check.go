@@ -49,22 +49,12 @@ func preflightCheckHandler(cmd *cobra.Command, args []string) {
 	instanceTypeData := instanceTypeHandler.Result()
 	util.ConsoleLogger().Info(ctx, "Fetched instance type from the platform")
 
-	accessKeysHandler := task.NewGetAccessKeysHandler()
-	// Get access key from the platform.
-	err = executor.GetInstance().ExecuteTask(ctx, accessKeysHandler.Handle)
-	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Failed fetching config from the platform - %s", err)
-	}
-	accessKeyData := accessKeysHandler.Result()
-	util.ConsoleLogger().Info(ctx, "Fetched access key from the platform")
-
 	// Prepare the preflight check input.
 	util.ConsoleLogger().Info(ctx, "Running Pre-flight checks")
-	preflightCheckParam := task.CreatePreflightCheckParam(
-		provider, instanceTypeData, accessKeyData)
+	preflightCheckParam := task.CreatePreflightCheckParam(provider, instanceTypeData)
 	preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 	err = executor.GetInstance().
-		ExecuteTask(ctx, preflightCheckHandler.Handle)
+		ExecuteTask(ctx, task.ToHandler(preflightCheckHandler.Handle))
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Task execution failed - %s", err.Error())
 	}

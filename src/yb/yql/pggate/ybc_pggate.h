@@ -72,7 +72,7 @@ YbcStatus YBCPgResetMemctx(YbcPgMemctx memctx);
 void YBCPgDeleteStatement(YbcPgStatement handle);
 
 // Invalidate the sessions table cache.
-YbcStatus YBCPgInvalidateCache();
+YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version);
 
 // Check if initdb has been already run.
 YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
@@ -97,6 +97,10 @@ YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 // have one row per database.
 YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
 
+YbcStatus YBCGetTserverCatalogMessageLists(
+    YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
+    YbcCatalogMessageLists* message_lists);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -119,6 +123,14 @@ bool YBCTryMemConsume(int64_t bytes);
 bool YBCTryMemRelease(int64_t bytes);
 
 YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
+
+int64_t YBCGetTCMallocSamplingPeriod();
+void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
+                             int64_t* num_samples,
+                             bool peak_heap);
+
+void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
 
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options);
@@ -155,7 +167,9 @@ YbcConstSliceVector YBCBitmapCopySetToVector(YbcConstSliceSet set, size_t *size)
 
 // Returns a vector representing a chunk of the given vector. ybctids are
 // shallow copied - their underlying allocations are shared.
-YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec, size_t start, size_t length);
+YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec,
+                                            size_t start,
+                                            size_t length);
 
 void YBCBitmapShallowDeleteVector(YbcConstSliceVector vec);
 void YBCBitmapShallowDeleteSet(YbcConstSliceSet set);
@@ -424,6 +438,9 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
+YbcStatus YBCPgCreateIndexSetHnswOptions(
+    YbcPgStatement handle, int m, int m0, int ef_construction);
+
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
 YbcStatus YBCPgNewDropIndex(YbcPgOid database_oid,
@@ -445,6 +462,10 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(
     int* num_lagging_backends);
 
 YbcStatus YBCPgBackfillIndex(
+    const YbcPgOid database_oid,
+    const YbcPgOid index_relfilenode_oid);
+
+YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
     const YbcPgOid index_relfilenode_oid);
 
@@ -571,6 +592,7 @@ YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
 YbcStatus YBCPgFlushBufferedOperations();
+YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
@@ -664,6 +686,7 @@ YbcStatus YBCPgRetrieveYbctids(YbcPgStatement handle, const YbcPgExecParameters 
                                bool *exceeded_work_mem);
 YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParameters *exec_params,
                                      YbcConstSliceVector ybctids);
+YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(
@@ -687,6 +710,8 @@ YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
 YbcStatus YBCPgCommitPlainTransaction();
+YbcStatus YBCPgCommitPlainTransactionContainingDDL(
+    YbcPgOid ddl_db_oid, bool ddl_is_silent_altering);
 YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
@@ -695,6 +720,7 @@ YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
 YbcStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+YbcStatus YBCPgSetDdlStateInPlainTransaction();
 YbcStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YbcStatus YBCPgExitSeparateDdlTxnMode(YbcPgOid db_oid, bool is_silent_altering);
@@ -708,8 +734,9 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 
 // System validation -------------------------------------------------------------------------------
-// Validate placement information
-YbcStatus YBCPgValidatePlacement(const char *placement_info);
+// Validate whether placement information is theoretically valid. If check_satisfiable is true,
+// also check whether the current set of tservers can satisfy the requested placement.
+YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -770,8 +797,10 @@ void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uin
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
 YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor* descr, bool* res);
-YbcStatus YBCAddForeignKeyReferenceIntent(const YbcPgYBTupleIdDescriptor* descr,
-                                          bool relation_is_region_local);
+YbcStatus YBCAddForeignKeyReferenceIntent(
+    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
+    bool is_deferred_trigger);
+void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
@@ -906,7 +935,9 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid);
+
+YbcStatus YBCPgGetLagMetrics(const char *stream_id, int64_t *lag_metric);
 
 YbcStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
@@ -949,6 +980,24 @@ YbcStatus YBCAcquireAdvisoryLock(
     YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
 YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode);
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
+
+YbcStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
+YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
+
+bool YBCPgHasExportedSnapshots();
+void YBCPgClearExportedTxnSnapshots();
+
+YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+
+// Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
+// pg15). This will return true before any process has been upgraded to the new version, and will
+// return false after the upgrade has been finalized.
+// This will return false for regular YB upgrades (both major and minor).
+// DevNote: Finalize is a multi-step process involving YsqlMajorCatalog Finalize, AutoFlag Finalize,
+// and YsqlUpgrade. This will return false after the AutoFlag Finalize step.
+bool YBCPgYsqlMajorVersionUpgradeInProgress();
 
 #ifdef __cplusplus
 }  // extern "C"

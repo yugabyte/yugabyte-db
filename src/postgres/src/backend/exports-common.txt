@@ -51,7 +51,6 @@ DecodeArrayDatum
 DecodeRangeDatum
 DecodeRangeArrayDatum
 DecodeRecordDatum
-GetOutFuncName
 GetRecordTypeId
 HeapFormTuple
 HeapDeformTuple

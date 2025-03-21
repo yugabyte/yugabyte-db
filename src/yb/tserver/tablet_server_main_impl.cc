@@ -63,7 +63,6 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
@@ -256,7 +255,12 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
-  server->SharedObject().SetPid(getpid());
+  server->SharedObject()->SetPid(getpid());
+
+  // Set the locale to match the YB PG defaults. This should be kept in line with
+  // the locale set in the initdb process (setlocales)
+  setlocale(LC_ALL, "en_US.UTF-8");
+  setlocale(LC_COLLATE, "C");
 
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());
@@ -266,8 +270,7 @@ int TabletServerMain(int argc, char** argv) {
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
         FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
-        server->GetSharedMemoryFd());
+        tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;

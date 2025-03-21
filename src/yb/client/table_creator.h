@@ -81,6 +81,8 @@ class YBTableCreator {
 
   YBTableCreator& xcluster_source_table_id(const TableId& source_table_id);
 
+  YBTableCreator& xcluster_backfill_hybrid_time(uint64_t backfill_hybrid_time);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -246,6 +248,9 @@ class YBTableCreator {
 
   // Set by DDL Replication to link the table to the original table in the source cluster.
   TableId xcluster_source_table_id_;
+
+  // Set by DDL Replication as a set time to perform index backfill.
+  uint64_t xcluster_backfill_hybrid_time_;
 
   const TransactionMetadata* txn_ = nullptr;
 

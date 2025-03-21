@@ -32,11 +32,11 @@ Tautologically, PostgreSQL (and therefore YSQL) is unable to detect if the promi
 
 <a name="pg-doc-on-volatility"></a>
 {{< tip title="See the PostgreSQL documentation for more detail." >}}
-The section [38.7. Function Volatility Categories](https://www.postgresql.org/docs/11/xfunc-volatility.html) explains some of the more subtle aspects of function _volatility_. In particular, it makes this recommendation:
+The section [38.7. Function Volatility Categories](https://www.postgresql.org/docs/15/xfunc-volatility.html) explains some of the more subtle aspects of function _volatility_. In particular, it makes this recommendation:
 
 > For best optimization results, you should label your functions with the strictest volatility category that is valid for them.
 
-The section [43.11.2. Plan Caching](https://www.postgresql.org/docs/11/plpgsql-implementation.html#PLPGSQL-PLAN-CACHING) explains the caching mechanism and how it is tied to the notion of _prepare_ and the possibility that a prepared statement might (or might not) cache its execution plan.
+The section [43.11.2. Plan Caching](https://www.postgresql.org/docs/15/plpgsql-implementation.html#PLPGSQL-PLAN-CACHING) explains the caching mechanism and how it is tied to the notion of _prepare_ and the possibility that a prepared statement might (or might not) cache its execution plan.
 {{< /tip >}}
 
 ### volatile
@@ -260,7 +260,7 @@ This tells YSQL that the function is safe to run in parallel mode without restri
 
 The default for this attribute is _not leakproof_. Only a _superuser_ may mark a function as _leakproof_.
 
-Functions and operators marked as _leakproof_ are assumed to be trustworthy, and may be executed before conditions from security policies and security barrier views. This is a component of the [Rules and Privileges](https://www.postgresql.org/docs/11/rules-privileges.html) functionality. See the account of _[create view](https://www.postgresql.org/docs/11/sql-createview.html)_ in the PostgreSQL documentation for the syntax for the _security_barrier_ attribute.
+Functions and operators marked as _leakproof_ are assumed to be trustworthy, and may be executed before conditions from security policies and security barrier views. This is a component of the [Rules and Privileges](https://www.postgresql.org/docs/15/rules-privileges.html) functionality. See the account of _[create view](https://www.postgresql.org/docs/15/sql-createview.html)_ in the PostgreSQL documentation for the syntax for the _security_barrier_ attribute.
 
 The _leakproof_ attribute indicates whether or not the function has any side effects. A function is considered to be _leakproof_ only if:
 

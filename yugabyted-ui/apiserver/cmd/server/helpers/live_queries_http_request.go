@@ -80,7 +80,7 @@ func (h *HelperContainer) GetLiveQueriesYsqlFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:13000/rpcz", nodeHost)
+    url := fmt.Sprintf("http://%s/rpcz", net.JoinHostPort(nodeHost, "13000"))
     resp, err := httpClient.Get(url)
     if err != nil {
         liveQueries.Error = err
@@ -135,7 +135,7 @@ func (h *HelperContainer) GetLiveQueriesYcqlFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:12000/rpcz", nodeHost)
+    url := fmt.Sprintf("http://%s/rpcz", net.JoinHostPort(nodeHost, "12000"))
     resp, err := httpClient.Get(url)
     if err != nil {
         liveQueries.Error = err
@@ -216,7 +216,7 @@ func (h *HelperContainer) GetActiveYsqlConnectionsFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:13000/rpcz", nodeHost)
+    url := fmt.Sprintf("http://%s/rpcz", net.JoinHostPort(nodeHost, "13000"))
     resp, err := httpClient.Get(url)
     if err != nil {
         activeConnections.Error = err
@@ -251,7 +251,7 @@ func (h *HelperContainer) GetActiveYcqlConnectionsFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:12000/rpcz", nodeHost)
+    url := fmt.Sprintf("http://%s/rpcz", net.JoinHostPort(nodeHost, "12000"))
     resp, err := httpClient.Get(url)
     if err != nil {
         activeConnections.Error = err

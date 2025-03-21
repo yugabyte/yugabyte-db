@@ -35,12 +35,21 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @RunWith(value = YBTestRunner.class)
 public class TestPgCacheConsistency extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgCacheConsistency.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    appendToYsqlPgConf(flags, "log_statement=all");
+    flags.putIfAbsent("ysql_enable_inheritance", "true");
+    return flags;
+  }
 
   @Test
   public void testBasicDDLOperations() throws Exception {
@@ -590,6 +599,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         assertEquals(getRowList(stmt1, query).size(), getRowList(stmt2, query).size());
       }
 
+      String enable_invalidation_messages = miniCluster.getClient().getFlag(
+            miniCluster.getTabletServers().keySet().iterator().next(),
+            "ysql_yb_enable_invalidation_messages");
+      LOG.info("enable_invalidation_messages: " + enable_invalidation_messages);
+
       // Now repeat the same test as above, but start a transaction in stmt2 in
       // the loop. Snapshot isolation guarantees here should ensure that the
       // transaction in stmt2 should not see the new partition or the data inserted
@@ -605,7 +619,20 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
               "INSERT INTO prt_p%d(a,b) VALUES (%d, 'abc')",
               ii + 1, startPartition + 1));
         waitForTServerHeartbeat();
-        assertEquals(getRowList(stmt1, query).size() - 1, getRowList(stmt2, query).size());
+        // When we do invalidation messages instead of full catalog cache refresh,
+        // we can defer the loading of the parent table until referenced on stmt2.
+        // At this time the new partition is already created and it will be reflected
+        // on the metadata of the parent table. That's why on stmt2 we will see the
+        // new partition and the data inserted on stmt1. The ii == numIterations case
+        // is special because there was no catalog version increment between the
+        // previous assertEquals and "BEGIN", so the getRowList(stmt2, query) above
+        // made a reference of the parent table which loaded it into the cache.
+        // Therefore the cached entry does not have the next new partition reflected.
+        if (ii == numIterations || enable_invalidation_messages.equals("false")) {
+          assertEquals(getRowList(stmt1, query).size() - 1, getRowList(stmt2, query).size());
+        } else {
+          assertEquals(getRowList(stmt1, query).size(), getRowList(stmt2, query).size());
+        }
         stmt2.execute("END");
       }
 
@@ -669,6 +696,66 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       stmt1.executeUpdate("DROP TABLE prt2");
       waitForTServerHeartbeat();
       runInvalidQuery(stmt2, "INSERT INTO prt VALUES (3)", error_msg);
+    }
+  }
+
+  @Test
+  public void testInheritance() throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+    Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+    Statement stmt1 = connection1.createStatement();
+    Statement stmt2 = connection2.createStatement()) {
+
+      stmt1.executeUpdate("CREATE TABLE parent(a int, b text, c int, d int)");
+      stmt1.executeUpdate("INSERT INTO parent values (1,'parent',1, 1);");
+      stmt1.executeUpdate("CREATE TABLE child(ch_a int) inherits (parent)");
+      stmt1.executeUpdate("INSERT INTO child values (100,'child',100, 100, 100)");
+      assertEquals(getRowList(stmt2, "SELECT a FROM parent").size(), 2);
+
+
+    // drop col from parent, verify write on child is aborted
+    final String[] abort_errors =
+    { "expired or aborted by a conflict", "Transaction aborted: kAborted" };
+
+    stmt2.execute("BEGIN");
+    stmt2.executeUpdate("INSERT INTO child VALUES (101, 'child', 101, 101, 101)");
+    stmt1.executeUpdate("ALTER TABLE parent DROP COLUMN d");
+    runInvalidQuery(stmt2, "COMMIT", abort_errors);
+    waitForTServerHeartbeat();
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 2);
+    stmt2.executeUpdate("INSERT INTO child VALUES (101, 'child', 101, 101)");
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 3);
+
+
+    // drop col from only parent, verify write on child is unaffected
+    stmt2.execute("BEGIN");
+    stmt2.executeUpdate("INSERT INTO child VALUES (102, 'child', 102, 102)");
+    stmt1.executeUpdate("ALTER TABLE ONLY parent DROP COLUMN c");
+    stmt2.execute("COMMIT");
+    waitForTServerHeartbeat();
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 4);
+
+    // remove inheritance, verify select does not read child
+    stmt1.executeUpdate("ALTER TABLE child NO INHERIT parent");
+    waitForTServerHeartbeat();
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 1);
+
+    // add inheritance, verify select reads all rows
+    stmt1.executeUpdate("ALTER TABLE child INHERIT parent");
+    waitForTServerHeartbeat();
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 4);
+
+    // create table inherits, verify select reads all rows
+    stmt1.executeUpdate("CREATE TABLE newchild(newch_a int) INHERITS (parent)");
+    stmt1.executeUpdate("INSERT INTO newchild VALUES (200, 'newchild', 200)");
+    waitForTServerHeartbeat();
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 5);
+
+    // drop table, verify select does not read child
+    stmt1.executeUpdate("DROP TABLE child");
+    waitForTServerHeartbeat();
+    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 2);
+
     }
   }
 

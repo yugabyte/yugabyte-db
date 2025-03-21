@@ -36,6 +36,9 @@ volatile sig_atomic_t IdleInTransactionSessionTimeoutPending = false;
 volatile sig_atomic_t IdleSessionTimeoutPending = false;
 volatile sig_atomic_t ProcSignalBarrierPending = false;
 volatile sig_atomic_t LogMemoryContextPending = false;
+volatile sig_atomic_t YbLogCatcacheStatsPending = false;
+volatile sig_atomic_t LogHeapSnapshotPending = false;
+volatile sig_atomic_t LogHeapSnapshotPeakHeap = false;
 volatile sig_atomic_t IdleStatsUpdateTimeoutPending = false;
 volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 QueryCancelHoldoffCount = 0;
@@ -103,7 +106,7 @@ Oid			YbDatabaseIdForNewObjectId = InvalidOid;
  * variable to tell whether a colocated database is a legacy colocated
  * database or a colocated database based on new Colocation GA implementation.
  */
-bool        MyColocatedDatabaseLegacy = true;
+bool		MyColocatedDatabaseLegacy = true;
 
 bool		YbTablegroupCatalogExists = false;
 

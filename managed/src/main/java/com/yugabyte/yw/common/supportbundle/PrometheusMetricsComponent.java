@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.supportbundle;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
@@ -61,7 +62,7 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
   }
 
   public void exportMetric(
-      SupportBundleFormData data, String query, String type, String exportDestDir)
+      Date startDate, Date endDate, String query, String type, String exportDestDir)
       throws Exception {
     try {
       // get the default batch duration from the global runtime-config
@@ -69,20 +70,16 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
           confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpBatchDurationInMins);
       Duration defaultBatchDuration = Duration.ofMinutes(batchDuration);
 
-      log.debug(
-          "exportMetric: querying metric '{}' from {} to {}",
-          query,
-          data.promDumpStartDate,
-          data.promDumpEndDate);
+      log.debug("exportMetric: querying metric '{}' from {} to {}", query, startDate, endDate);
 
       // batchwise collection of prom-dump
-      Date batchStartTS = data.promDumpStartDate;
+      Date batchStartTS = startDate;
       // end timestamp of the current batch will be batchStartTS +
       // defaultBatchDuration
       Date batchEndTS = Date.from(batchStartTS.toInstant().plus(defaultBatchDuration));
       int batchNumber = 1;
       int freq = 0;
-      while (!batchEndTS.after(data.promDumpEndDate)) {
+      while (!batchEndTS.after(endDate)) {
         log.debug(
             "exportMetric:[{}] batch {} ({} to {})", type, batchNumber, batchStartTS, batchEndTS);
 
@@ -108,8 +105,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
               throw new RuntimeException(metricResponse.error);
             }
             batchEndTS = Date.from(batchStartTS.toInstant().plus(newBatchDuration));
-            if (batchEndTS.after(data.promDumpEndDate)) {
-              batchEndTS = data.promDumpEndDate;
+            if (batchEndTS.after(endDate)) {
+              batchEndTS = endDate;
               defaultBatchDuration =
                   Duration.between(batchStartTS.toInstant(), batchEndTS.toInstant());
               continue;
@@ -162,12 +159,12 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
         // update the start timestamp for the next batch
         batchStartTS = Date.from(batchEndTS.toInstant().plusSeconds(1));
-        if (batchStartTS.after(data.promDumpEndDate)) {
+        if (batchStartTS.after(endDate)) {
           return;
         }
         batchEndTS = Date.from(batchStartTS.toInstant().plus(defaultBatchDuration));
-        if (batchEndTS.after(data.promDumpEndDate)) {
-          batchEndTS = data.promDumpEndDate;
+        if (batchEndTS.after(endDate)) {
+          batchEndTS = endDate;
         }
         freq = 0;
       }
@@ -205,29 +202,65 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
     dateValidation(data);
 
+    long startTime = data.promDumpStartDate.getTime(), endTime = data.promDumpEndDate.getTime();
     // loop through the requested metric types
-    for (PrometheusMetricsType type : data.prometheusMetricsTypes) {
-      // create <type> folder inside the support_bundle/YBA/promdump folder.
-      String exportDestDir = destDir + "/" + type.name().toLowerCase();
-      log.info("Attempting to create output directory for the export: {}.", type);
-      Files.createDirectories(Paths.get(exportDestDir));
+    data.prometheusMetricsTypes.stream()
+        .forEach(
+            type -> {
+              try {
+                String typeName = type.name().toLowerCase();
+                // create <type> folder inside the support_bundle/YBA/promdump folder.
+                String exportDestDir = destDir + "/" + typeName;
+                log.info("Attempting to create output directory for the export: {}.", type);
+                Files.createDirectories(Paths.get(exportDestDir));
 
-      // generate the promQL query
-      // Ex query: "{export_type=\"master_export\",node_prefix=\"universe-test\"}"
-      String query;
-      if (type == PrometheusMetricsType.PLATFORM || type == PrometheusMetricsType.PROMETHEUS) {
-        query =
-            String.format(
-                "{job=\"%s\",node_prefix=\"%s\"}",
-                type.name().toLowerCase(),
-                (type == PrometheusMetricsType.PLATFORM ? nodePrefix : ""));
-      } else {
-        query =
-            String.format(
-                "{export_type=\"%s\",node_prefix=\"%s\"}", type.name().toLowerCase(), nodePrefix);
-      }
-      exportMetric(data, query, type.name().toLowerCase(), exportDestDir);
-    }
+                // generate the promQL query
+                // Ex query: "{export_type=\"master_export\",node_prefix=\"universe-test\"}"
+                String query;
+                if (type == PrometheusMetricsType.PLATFORM
+                    || type == PrometheusMetricsType.PROMETHEUS) {
+                  query =
+                      String.format(
+                          "{job=\"%s\",node_prefix=\"%s\"}",
+                          typeName, (type == PrometheusMetricsType.PLATFORM ? nodePrefix : ""));
+                } else {
+                  query =
+                      String.format(
+                          "{export_type=\"%s\",node_prefix=\"%s\"}", typeName, nodePrefix);
+                }
+                exportMetric(
+                    new Date(startTime), new Date(endTime), query, typeName, exportDestDir);
+              } catch (Exception e) {
+                log.error("Error processing PrometheusMetricsType {}: {}", type, e.getMessage(), e);
+              }
+            });
+
+    // Collect metrics for the custom PromQL queries.
+    data.promQueries.entrySet().stream()
+        .forEach(
+            queryEntry -> {
+              try {
+                String query = queryEntry.getValue();
+                String queryType = queryEntry.getKey().replace(" ", "_");
+                String exportDestDir = destDir + "/" + queryType;
+                log.info("Attempting to create output directory for prometheus query {}", query);
+                Path path = Files.createDirectories(Paths.get(exportDestDir));
+                // Add a manifest which specifies the query and start,end dates.
+                ObjectNode manifest = Json.newObject().put("Query", query);
+                manifest.put("StartDate", data.promDumpStartDate.toString());
+                manifest.put("EndDate", data.promDumpEndDate.toString());
+                supportBundleUtil.saveMetadata(
+                    customer, path.toAbsolutePath().toString(), manifest, "manifest.json");
+                exportMetric(
+                    new Date(startTime), new Date(endTime), query, queryType, exportDestDir);
+              } catch (Exception e) {
+                log.error(
+                    "Error processing custom prometheus query {}: {}",
+                    queryEntry.getValue(),
+                    e.getMessage(),
+                    e);
+              }
+            });
   }
 
   @Override
@@ -293,6 +326,10 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
           sum += 300000L * numNodes * timeMultiplier;
       }
     }
+    // Its not possible to estimate the size correctly for custom queries since we don't
+    // know what queries will be passed in.
+    // Adding 5MB per query per 15 minutes to account for custom queries.
+    sum += 5000000L * bundleData.promQueries.size() * timeMultiplier;
     res.put("promSizeEstimate", sum);
     return res;
   }

@@ -189,8 +189,9 @@ ExecuteQuery(ParseState *pstate,
 	 * If the planner found a pg relation in this plan, set the appropriate
 	 * flag for the execution txn.
 	 */
-	if (entry->plansource->usesPostgresRel) {
-		SetTxnWithPGRel();
+	if (entry->plansource->usesPostgresRel)
+	{
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* Evaluate parameters, if any */

@@ -245,7 +245,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 		case T_YbBitmapIndexScan:
 			result = (PlanState *) ExecInitYbBitmapIndexScan((YbBitmapIndexScan *) node,
-														   estate, eflags);
+															 estate, eflags);
 			break;
 
 		case T_BitmapHeapScan:
@@ -1037,8 +1037,8 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 	}
 	else if (IsA(child_node, YbBatchedNestLoopState))
 	{
-		YbBatchedNestLoopState *bnl_state =
-			(YbBatchedNestLoopState *) child_node;
+		YbBatchedNestLoopState *bnl_state = (YbBatchedNestLoopState *) child_node;
+
 		if (bnl_state->bnl_is_sorted)
 		{
 			if (tuples_needed < 0)

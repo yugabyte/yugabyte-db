@@ -55,6 +55,15 @@
   NO_PENDING_FATALS(); \
 } while (0)
 
+// Invokes super setup, and returns if the test was marked as skipped.
+#define TEST_SETUP_SUPER(super) \
+  do { \
+    super::SetUp(); \
+    if (Test::IsSkipped()) { \
+      return; \
+    } \
+  } while (false)
+
 namespace yb {
 
 class CurlGlobalInitializer;
@@ -276,6 +285,15 @@ Status CorruptFile(
 
 Status ForkAndRunToCompletion(const std::function<void(void)>& child,
                               const std::function<void(void)>& parent = {});
+
+Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent,
+                              std::string_view crash_point);
+
+inline Status ForkAndRunToCrashPoint(const std::function<void(void)>& f,
+                                     std::string_view crash_point) {
+  return ForkAndRunToCrashPoint(f, {} /* parent */, crash_point);
+}
 
 } // namespace yb
 

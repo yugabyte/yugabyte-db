@@ -59,7 +59,7 @@ To get started with migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
-    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/).
+    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
     1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
 
         ```sh
@@ -178,11 +178,11 @@ Bulk assessment is managed using a fleet configuration file, which specifies the
 
 The following table outlines the fields that can be included in the fleet configuration file.
 
-| Field | Description |
+| <div style="width:180px">Field</div> | Description |
 | :--- | :--- |
 | source-db-type | Required. The type of source database. Currently, only Oracle is supported. |
 | source-db-user | Required. The username used to connect to the source database. |
-| source&#8209;db&#8209;password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
+| source-db-password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
 | source-db-schema | Required. The specific schema in the source database to be assessed. |
 | source-db-host | Optional. The hostname or IP address of the source database server. |
 | source-db-port | Optional. The port number on which the source database is running. This is required if `oracle-tns-alias` is not used. |

@@ -35,8 +35,7 @@ class FetchState {
   explicit FetchState(const docdb::DocDB& doc_db, const ReadHybridTime& read_time)
       : iterator_(CreateIntentAwareIterator(
             doc_db,
-            docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-            boost::none,
+            docdb::BloomFilterOptions::Inactive(),
             rocksdb::kDefaultQueryId,
             TransactionOperationContext(),
             docdb::ReadOperationData {

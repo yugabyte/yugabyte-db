@@ -571,12 +571,11 @@ public class XClusterUniverseService {
     }
   }
 
-  public List<NamespaceSafeTimePB> getNamespaceSafeTimeList(XClusterConfig xClusterConfig) {
+  public List<NamespaceSafeTimePB> getNamespaceSafeTimeList(Universe targetUniverse) {
     log.debug(
-        "XClusterUniverseService.getNamespaceSafeTimeList is called with xClusterConfig={}",
-        xClusterConfig);
+        "XClusterUniverseService.getNamespaceSafeTimeList is called for universe {}",
+        targetUniverse.getUniverseUUID());
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
@@ -585,9 +584,7 @@ public class XClusterUniverseService {
       GetXClusterSafeTimeResponse resp = client.getXClusterSafeTime();
       if (resp.hasError()) {
         throw new RuntimeException(
-            String.format(
-                "getXClusterSafeTime RPC call has errors in xCluster config %s: %s",
-                xClusterConfig, resp.errorMessage()));
+            String.format("getXClusterSafeTime RPC call has errors: %s", resp.errorMessage()));
       }
       return resp.getSafeTimes();
     } catch (Exception e) {

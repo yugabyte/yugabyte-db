@@ -55,6 +55,7 @@ DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
@@ -155,6 +156,10 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
         std::string(config.preload_additional_catalog_list);
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
+    // When invalidation messages are used, this test does not use the tserver response
+    // cache and the test will timeout if we wait for response cache counters to become
+    // greater than 0.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
@@ -865,6 +870,30 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
   // With yb_enable_fkey_catcache turned off, we would see more than 24 RPCs
   // because we have to look up the foreign keys from master.
   ASSERT_EQ(select_rpc_count, 24);
+}
+
+// The test checks that sys catalog table prefetching works well in case of login of user with
+// non-trivial connection permissions.
+TEST_F(PgCatalogPerfTest, RestrictedConnections) {
+  constexpr auto kNewUserName = "new_user"sv;
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE ROLE new_role;"
+        "GRANT CONNECT ON DATABASE yugabyte TO new_role;"
+        "CREATE ROLE $0 LOGIN;"
+        "GRANT new_role TO $0;"
+        "REVOKE CONNECT ON DATABASE yugabyte FROM PUBLIC", kNewUserName));
+    // Establish new connection to update relcache_file after catalog version change
+    conn = ASSERT_RESULT(Connect());
+  }
+
+  auto settings = MakeConnSettings();
+  // Disable reconnect to speedup failure detection
+  settings.connect_timeout = 1;
+  settings.user = kNewUserName;
+  // Make sure new user with non-trivial connection permissions is able to connect
+  ASSERT_OK(PGConnBuilder(settings).Connect());
 }
 
 } // namespace yb::pgwrapper

@@ -40,9 +40,7 @@ void XClusterDDLReplicationTestBase::SetUp() {
 
 Status XClusterDDLReplicationTestBase::SetUpClusters(
     bool is_colocated, bool start_yb_controller_servers) {
-  if (is_colocated) {
-    namespace_name = "colocated_test_db";
-  }
+  namespace_name = is_colocated ? "colocated_test_db" : "test_db";
   const SetupParams kDefaultParams{
       // By default start with no consumer or producer tables.
       .num_consumer_tablets = {},
@@ -53,6 +51,7 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(
       .num_masters = 1,
       .ranged_partitioned = false,
       .is_colocated = is_colocated,
+      .use_different_database_oids = true,
       .start_yb_controller_servers = start_yb_controller_servers,
   };
   RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(kDefaultParams));
@@ -152,10 +151,11 @@ Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetCons
 }
 
 void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsumer(
-    const client::YBTableName& producer_table_name) {
+    const client::YBTableName& producer_table_name, uint32_t start, uint32_t end,
+    const xcluster::ReplicationGroupId replication_group) {
   std::shared_ptr<client::YBTable> producer_table =
       ASSERT_RESULT(GetProducerTable(producer_table_name));
-  ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
+  ASSERT_OK(InsertRowsInProducer(start, end, producer_table));
 
   // Once the safe time advances, the target should have the new table and its rows.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -167,8 +167,8 @@ void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsume
     // Verify that universe was setup on consumer.
     // Skip for colocated as the table is not tracked in master replication.
     master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
+    ASSERT_OK(VerifyUniverseReplication(replication_group, &resp));
+    ASSERT_EQ(resp.entry().replication_group_id(), replication_group);
     ASSERT_TRUE(std::any_of(
         resp.entry().tables().begin(), resp.entry().tables().end(),
         [&](const std::string& table) { return table == producer_table_name.table_id(); }));
@@ -204,13 +204,14 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
   const auto rows = VERIFY_RESULT((conn.FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY $0 ASC",
-      xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,
+      xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn))));
 
   std::stringstream ss;
   ss << "DDL Queue Table:" << std::endl;
-  for (const auto& [start_time, query_id, raw_json_data] : rows) {
-    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(0, kMaxJsonStrLen)
+  for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
+    // Serialized JSON string has an extra character at the front.
+    ss << ddl_end_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
        << std::endl;
   }
   LOG(INFO) << ss.str();
@@ -228,4 +229,34 @@ Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {
     return Status::OK();
   });
 }
+
+Result<std::string> XClusterDDLReplicationTestBase::GetReplicationRole(
+    Cluster& cluster, const NamespaceName& database) {
+  const auto& db_name = database.empty() ? namespace_name : database;
+  auto conn = VERIFY_RESULT(cluster.ConnectToDB(db_name));
+  return conn.FetchRowAsString("SHOW yb_xcluster_ddl_replication.replication_role");
+}
+
+Status XClusterDDLReplicationTestBase::ValidateReplicationRole(
+    Cluster& cluster, const std::string& expected_role, const NamespaceName& database) {
+  auto actual_role = VERIFY_RESULT(GetReplicationRole(cluster, database));
+  SCHECK_EQ(
+      actual_role, expected_role, IllegalState,
+      Format("Expected replication role $0, got $1", expected_role, actual_role));
+  return Status::OK();
+}
+
+bool XClusterDDLReplicationTestBase::SetReplicationDirection(
+    ReplicationDirection replication_direction) {
+  if (replication_direction_ == replication_direction) {
+    return false;
+  }
+  replication_direction_ = replication_direction;
+  std::swap(consumer_cluster_, producer_cluster_);
+  std::swap(consumer_table_, producer_table_);
+  LOG(INFO) << "Switched replication direction to "
+            << (replication_direction_ == ReplicationDirection::AToB ? "A -> B" : "B -> A");
+  return true;
+}
+
 }  // namespace yb

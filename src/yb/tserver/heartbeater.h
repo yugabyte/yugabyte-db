@@ -52,7 +52,7 @@ class HeartbeatDataProvider {
 
   // Add data to heartbeat, provider could skip and do nothing if is it too early for example for
   // periodical provider.
-  // Called on every heartbeat from Heartbeater::Thread::TryHeartbeat.
+  // Called on every heartbeat from Heartbeater::Impl::TryHeartbeat.
   virtual void AddData(
       const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) = 0;
 
@@ -66,8 +66,6 @@ class HeartbeatDataProvider {
 
 // Component of the Tablet Server which is responsible for heartbeating to the
 // leader master.
-//
-// TODO: send heartbeats to non-leader masters.
 class Heartbeater {
  public:
   Heartbeater(
@@ -84,13 +82,13 @@ class Heartbeater {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses);
-  std::string get_leader_master_hostport();
+  HostPort get_master_leader_hostport();
 
   ~Heartbeater();
 
  private:
-  class Thread;
-  std::unique_ptr<Thread> thread_;
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {

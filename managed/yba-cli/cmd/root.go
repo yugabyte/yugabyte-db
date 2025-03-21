@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
@@ -79,7 +80,8 @@ func init() {
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
 		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
 	rootCmd.PersistentFlags().Bool("debug", false, "Use debug mode, same as --logLevel debug.")
-	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output. (default false)")
+	rootCmd.PersistentFlags().
+		Bool("disable-color", false, "Disable colors in output. (default false)")
 	rootCmd.PersistentFlags().Bool("wait", true,
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
@@ -98,6 +100,7 @@ func init() {
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
 	rootCmd.AddCommand(auth.RegisterCmd)
+	rootCmd.AddCommand(auth.HostCmd)
 	rootCmd.AddCommand(release.ReleaseCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
@@ -112,8 +115,7 @@ func init() {
 	rootCmd.AddCommand(xcluster.XClusterCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
-	// Example for adding preview commands to the list of available commands
-	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
+	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
 
 }
 

@@ -144,8 +144,6 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) =
-        true;
   }
 
   void TearDown() override;
@@ -167,10 +165,6 @@ class CDCSDKTestBase : public YBTest {
   Status CreateDatabase(
       PostgresMiniCluster* cluster, const std::string& namespace_name = kNamespaceName,
       bool colocated = false);
-
-  Status InitPostgres(PostgresMiniCluster* cluster);
-
-  Status InitPostgres(PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,

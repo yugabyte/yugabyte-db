@@ -28,17 +28,12 @@ namespace yb {
 constexpr auto kExpectedDdlError =
     "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade";
 
-static const MonoDelta kNoDelayBetweenNodes = 0s;
-
 class YsqlMajorUpgradeDdlBlockingTest : public Pg15UpgradeTestBase {
  public:
   YsqlMajorUpgradeDdlBlockingTest() = default;
 
   void SetUp() override {
-    Pg15UpgradeTestBase::SetUp();
-    if (IsTestSkipped()) {
-      return;
-    }
+    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
 
     auto conn = ASSERT_RESULT(CreateConnToTs(std::nullopt));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int)", kCommentTable));
@@ -168,14 +163,10 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
   ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11));
 
   // Finalize upgrade without upgrading all tservers
-  ASSERT_OK(FinalizeYsqlMajorCatalogUpgrade());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
   upgrade_state_ = UpgradeState::kAfterUpgrade;
 
-  ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg15));
-
-  // Pg11 tserver should not be allowed to update the catalog after catalog upgrade has been
-  // finalized.
-  ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11, /*error_expected=*/true));
+  ASSERT_OK(RunDdlFunctions(std::nullopt));
 }
 
 // Make sure we cannot run DDLs during a failed upgrade.
@@ -204,6 +195,112 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestFailedUpgrade) {
   ASSERT_OK(WaitForClusterToStabilize());
 
   ASSERT_OK(RunDdlFunctions(kMixedModeTserverPg11));
+}
+
+// Make sure we can upgrade even when postgres, and system_platform databases do not exist.
+// Make sure prechecks fail if yugabyte database does not exist.
+// Make sure we cannot create or drop databases during the upgrade.
+TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
+  {
+    auto template1_conn = ASSERT_RESULT(cluster_->ConnectToDB("template1", std::nullopt));
+    ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE postgres"));
+    ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE system_platform"));
+    ASSERT_OK(template1_conn.ExecuteFormat("DROP DATABASE yugabyte"));
+
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure("Missing system database 'yugabyte'"));
+
+    ASSERT_OK(template1_conn.ExecuteFormat("CREATE DATABASE yugabyte"));
+    ASSERT_OK(ValidateUpgradeCompatibility());
+  }
+
+  ASSERT_OK(CreateSimpleTable());
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE new_db1"));
+
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  auto validate_db_ddls_fail = [this] {
+    ASSERT_NOK_STR_CONTAINS(
+        ExecuteStatement("CREATE DATABASE new_db2"),
+        "No new namespaces can be created during a major YSQL upgrade");
+    ASSERT_NOK_STR_CONTAINS(ExecuteStatement("DROP DATABASE new_db1"), kExpectedDdlError);
+  };
+
+  ASSERT_NO_FATALS(validate_db_ddls_fail());
+
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  ASSERT_NO_FATALS(validate_db_ddls_fail());
+
+  ASSERT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_NO_FATALS(validate_db_ddls_fail());
+
+  ASSERT_OK(FinalizeUpgrade());
+
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE new_db2"));
+  ASSERT_OK(ExecuteStatement("DROP DATABASE new_db1"));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+// Make sure in-flight DDL transactions are killed by the upgrade.
+TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
+  TestThreadHolder thread_holder;
+
+  // Create table with a comment.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE TABLE tbl1 (a int)"));
+  ASSERT_OK(conn.Execute("COMMENT on TABLE tbl1 IS 'Hi'"));
+  auto oid = ASSERT_RESULT(
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_class WHERE relname = 'tbl1'"));
+
+  // Create index, but block it before indisvalid is set.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
+  Status index_creation_status;
+  std::promise<Status> index_creation_promise;
+  auto index_creation_future = index_creation_promise.get_future();
+  thread_holder.AddThreadFunctor([this, &index_creation_promise] {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    index_creation_promise.set_value(conn.Execute("CREATE INDEX idx1 ON tbl1 (a)"));
+  });
+
+  // Update the comment field in a transaction.
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(
+      conn.ExecuteFormat("UPDATE pg_description SET description = 'Bye' WHERE objoid = $0", oid));
+  const auto check_comment = [&conn, oid](const std::string& expected_comment) -> Status {
+    auto comment = VERIFY_RESULT(conn.FetchRow<std::string>(
+        Format("SELECT description from pg_description WHERE objoid = $0", oid)));
+    SCHECK_EQ(comment, expected_comment, IllegalState, "Unexpected comment");
+    return Status::OK();
+  };
+
+  // Validate connections before yb-master restart.
+  ASSERT_OK(check_comment("Bye"));
+  ASSERT_EQ(index_creation_future.wait_for(0s), std::future_status::timeout);
+
+  // Wait for the index creation to be blocked.
+  SleepFor(10s);
+
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  // yb-master restart should not affect in-flight DDLs.
+  ASSERT_OK(check_comment("Bye"));
+  ASSERT_EQ(index_creation_future.wait_for(0s), std::future_status::timeout);
+
+  // Upgrade YSQL catalog.
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  // DDLs should be killed by the upgrade.
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"), "current transaction is expired or aborted");
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_EQ(index_creation_future.wait_for(5min), std::future_status::ready);
+  ASSERT_NOK_STR_CONTAINS(index_creation_future.get(), kExpectedDdlError);
+
+  // Validate rollback of the DDL.
+  ASSERT_OK(check_comment("Hi"));
 }
 
 }  // namespace yb

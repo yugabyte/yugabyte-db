@@ -134,6 +134,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
   }
 
+  protected void reduceMaxPoolSize(int max_pool_size) throws Exception {
+    Map<String, String> myMap = new HashMap<>();
+    myMap.put("ysql_conn_mgr_max_pools", Integer.toString(max_pool_size));
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
+  }
+
 protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
         throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();

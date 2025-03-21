@@ -35,8 +35,8 @@
 #include "utils/memutils.h"
 
 #include "pg_yb_utils.h"
-#include "executor/ybcModifyTable.h"
-#include "bootstrap/ybcbootstrap.h"
+#include "executor/ybModifyTable.h"
+#include "bootstrap/yb_bootstrap.h"
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,

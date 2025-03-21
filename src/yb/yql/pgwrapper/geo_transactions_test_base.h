@@ -48,9 +48,6 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
   virtual size_t NumRegions() { return 3; }
 
  protected:
-  const std::shared_ptr<tserver::MiniTabletServer> PickPgTabletServer(
-      const MiniCluster::MiniTabletServers& servers) override;
-
   uint64_t GetCurrentVersion();
 
   void CreateTransactionTable(int region);

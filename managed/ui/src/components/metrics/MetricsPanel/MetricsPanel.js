@@ -52,6 +52,7 @@ export default class MetricsPanel extends Component {
   plotGraph = (metricOperation = null) => {
     const {
       metricKey,
+      isMetricsTimezoneEnabled,
       shouldAbbreviateTraceName = true,
       metricMeasure,
       operations = [],
@@ -134,7 +135,9 @@ export default class MetricsPanel extends Component {
       metric.layout.xaxis.hoverformat = metricsTimezone
         ? '%H:%M:%S, %b %d, %Y ' + moment.tz(metricsTimezone).format('[UTC]ZZ')
         : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
-
+      if (isMetricsTimezoneEnabled) {
+        metric.layout.xaxis.autorange = true;
+      }
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {

@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.Map.Entry;
 import java.util.List;
 
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -86,6 +87,10 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
 
       boolean foundBackendPid = false;
       boolean foundTopMemoryContext = false;
+      // With connection manager, getPgBackendPid can return the PID of any
+      // backend process out of pool of physical connections it is maintaining.
+      // Therefore running the test in NONE mode of connection manager to return
+      // the same PID.
       final String EXPECTED_LOG_START_STRING = String.format("logging memory contexts of PID %s",
                                                             getPgBackendPid(connection));
       final String EXPECTED_TOP_MEMORY_CONTEXT_STRING = "level: 0; TopMemoryContext";
@@ -99,6 +104,10 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
         }
       }
 
+      // With connection manager, getPgBackendPid can return the PID of any
+      // backend process out of pool of physical connections it is maintaining.
+      // Therefore running the test in NONE mode of connection manager to return
+      // the same PID.
       assertTrue(String.format("pg_log_backend_memory_contexts should log the contexts " +
                               "of a specific process with PID %s",
                               getPgBackendPid(connection)),

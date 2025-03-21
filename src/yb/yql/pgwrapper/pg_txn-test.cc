@@ -19,6 +19,8 @@
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tablet/tablet.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -555,15 +557,13 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     auto port = cluster_->AllocateFreePort();
     PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
         AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-        pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-        pg_ts->server()->GetSharedMemoryFd()));
+        pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
 
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
     pg_host_ports_[idx] = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
-    pg_supervisors_[idx] = std::make_unique<PgSupervisor>(
-      pg_process_conf, nullptr);
+    pg_supervisors_[idx] = std::make_unique<PgSupervisor>(pg_process_conf, pg_ts->server());
 
     return Status::OK();
   }
@@ -1040,6 +1040,75 @@ TEST_F_EX(PgTxnTest, ReadAtMultipleTimestamps, PgReadCommittedTxnTest) {
             {9, 90, 90, 1090},
             {10, 100, 100, 1100}}));
   }
+}
+
+TEST_F(PgTxnTest, MultiInsertUpdate) {
+  constexpr int kBig = 100000000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test (id INT PRIMARY KEY, value INT)"));
+  TestThreadHolder thread_holder;
+  // Use the same type as key/value in the table.
+  std::atomic<int> counter = 0;
+  for (int i = 0; i != 8; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop_flag = thread_holder.stop_flag(), &counter] {
+      auto conn = ASSERT_RESULT(Connect());
+      std::vector<int> values(5);
+      while (!stop_flag.load()) {
+        std::generate(values.begin(), values.end(), [&counter]() {return ++counter; });
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        for (auto value : values) {
+          ASSERT_OK(conn.ExecuteFormat(
+              "INSERT INTO test VALUES ($0, $1)", value, value + kBig));
+        }
+        ASSERT_OK(conn.CommitTransaction());
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        for (auto value : values) {
+          ASSERT_OK(conn.ExecuteFormat(
+              "UPDATE test SET value = $0 WHERE id = $0", value));
+        }
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
+  thread_holder.WaitAndStop(3s);
+
+  auto res = ASSERT_RESULT((conn.FetchRows<int, int>("SELECT * FROM test ORDER BY id")));
+  ASSERT_EQ(res.size(), counter.load());
+  int i = 0;
+  for (auto [key, value] : res) {
+    ++i;
+    ASSERT_EQ(i, key);
+    ASSERT_EQ(i, value);
+  }
+}
+
+TEST_F(PgTxnTest, CleanupIntentsDuringShutdown) {
+  constexpr int kNumRows = 256;
+  constexpr int64_t kExpectedSum = (kNumRows + 1) * kNumRows / 2;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test SELECT generate_series(1, $0), 0", kNumRows));
+
+  auto tablets = ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test"));
+  for (const auto& tablet : tablets) {
+    tablet->TEST_SleepBeforeApplyIntents(1s * kTimeMultiplier);
+    tablet->TEST_SleepBeforeDeleteIntentsFile(1s * kTimeMultiplier);
+  }
+
+  ASSERT_OK(conn.CommitTransaction());
+  auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
+  ASSERT_EQ(sum, kExpectedSum);
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
+  ASSERT_EQ(sum, kExpectedSum);
 }
 
 } // namespace yb::pgwrapper

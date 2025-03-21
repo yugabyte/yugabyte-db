@@ -277,6 +277,16 @@ const (
 	StopNode = "STOP"
 	// RemoveNode operation
 	RemoveNode = "REMOVE"
+	// DeleteNode operation
+	DeleteNode = "DELETE"
+	// ReplaceNode operation
+	ReplaceNode = "REPLACE"
+	// DecommissionNode operation
+	DecommissionNode = "DECOMMISSION"
+	// HardRebootNode operation
+	HardRebootNode = "HARD_REBOOT"
+	// StartMasterNode operation
+	StartMasterNode = "START_MASTER"
 	// ReprovisionNode operation
 	ReprovisionNode = "REPROVISION"
 	// ReleaseNode operation
@@ -286,6 +296,14 @@ const (
 const (
 	// StorageCustomerConfigType field name to denote in request bodies
 	StorageCustomerConfigType = "STORAGE"
+)
+
+// Cluster Type
+const (
+	// PrimaryCluster of universe
+	PrimaryCluster = "PRIMARY"
+	// ReadReplicaCluster of universe
+	ReadReplicaCluster = "ASYNC"
 )
 
 // Server Type values
@@ -306,6 +324,8 @@ const (
 	EditOperation = "Edit"
 	// SecurityOperation type
 	SecurityOperation = "Security"
+	// PITROperation type
+	PITROperation = "PITR"
 )
 
 // Different resource types that are supported in CLI
@@ -399,14 +419,18 @@ const (
 
 // KMSOpType
 const (
-	// EnableKMSOpType type
-	EnableKMSOpType = "ENABLE"
-	// DisableKMSOpType type
-	DisableKMSOpType = "DISABLE"
 	// RotateKMSConfigKMSOpType type
 	RotateKMSConfigKMSOpType = "ROTATE-KMS-CONFIG"
 	// RotateUniverseKeyKMSOpType type
 	RotateUniverseKeyKMSOpType = "ROTATE-UNIVERSE-KEY"
+)
+
+// OpType
+const (
+	// EnableOpType type
+	EnableOpType = "ENABLE"
+	// DisableOpType type
+	DisableOpType = "DISABLE"
 )
 
 // ResourceType
@@ -445,6 +469,84 @@ const (
 	UnexposedServiceState = "UNEXPOSED"
 	// NoneServiceState type
 	NoneServiceState = "NONE"
+)
+
+// AlertState type
+const (
+	// ActiveAlertState type
+	ActiveAlertState = "ACTIVE"
+	// AcknowledgedAlertState type
+	AcknowledgedAlertState = "ACKNOWLEDGED"
+	// SuspendedAlertState type
+	SuspendedAlertState = "SUSPENDED"
+	// ResolvedAlertState type
+	ResolvedAlertState = "RESOLVED"
+)
+
+// AlertSeverity type
+const (
+	// SevereAlertSeverity type
+	SevereAlertSeverity = "SEVERE"
+	// WarningAlertSeverity type
+	WarningAlertSeverity = "WARNING"
+)
+
+// AlertConfigurationTargetType
+const (
+	// UniverseAlertConfigurationTargetType type
+	UniverseAlertConfigurationTargetType = "UNIVERSE"
+	// PlatformAlertConfigurationTargetType type
+	PlatformAlertConfigurationTargetType = "PLATFORM"
+)
+
+// AlertConfigurationDestinationType
+const (
+	// NoDestinationAlertConfigurationDestinationType type
+	NoDestinationAlertConfigurationDestinationType = "NO_DESTINATION"
+	// DefaultDestinationAlertConfigurationDestinationType type
+	DefaultDestinationAlertConfigurationDestinationType = "DEFAULT_DESTINATION"
+	// SelectedDestinationAlertConfigurationDestinationType type
+	SelectedDestinationAlertConfigurationDestinationType = "SELECTED_DESTINATION"
+)
+
+// XClusterConfigType
+const (
+	// BasicXClusterConfigType type
+	BasicXClusterConfigType = "Basic"
+	// TxnXClusterConfigType type
+	TxnXClusterConfigType = "Txn"
+	// DBXClusterConfigType type
+	DBXClusterConfigType = "Db"
+)
+
+// HttpAuthType
+const (
+	// NoAuthHttpAuthType type
+	NoAuthHttpAuthType = "NONE"
+	// BasicHttpAuthType type
+	BasicHttpAuthType = "BASIC"
+	// TokenHttpAuthType type
+	TokenHttpAuthType = "TOKEN"
+)
+
+// AlertChannelTypes
+const (
+	// EmailAlertChannelType type
+	EmailAlertChannelType = "Email"
+	// PagerDutyAlertChannelType type
+	PagerDutyAlertChannelType = "PagerDuty"
+	// SlackAlertChannelType type
+	SlackAlertChannelType = "Slack"
+	// WebhookAlertChannelType type
+	WebhookAlertChannelType = "WebHook"
+)
+
+// SortDirection
+const (
+	// DescSortDirection
+	DescSortDirection = "DESC"
+	// AscSortDirection
+	AscSortDirection = "ASC"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed

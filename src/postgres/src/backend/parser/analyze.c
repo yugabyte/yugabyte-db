@@ -130,7 +130,7 @@ parse_analyze_fixedparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	if (IsQueryIdEnabled())
@@ -176,7 +176,7 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* make sure all is well with parameter types */
@@ -223,7 +223,7 @@ parse_analyze_withcb(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	if (IsQueryIdEnabled())
@@ -411,14 +411,17 @@ transformStmt(ParseState *pstate, Node *parseTree)
 			break;
 
 		case T_ExplainStmt:
-			/* Preemptively enable timing of storage-layer RPC requests in
+
+			/*
+			 * Preemptively enable timing of storage-layer RPC requests in
 			 * case of Explain stmts. Enabling the timer here allows us to
 			 * capture system catalog requests that happen between the parse
 			 * phase and initialization of Explain context. If we discover in
 			 * the Explain context that the query has the timing option turned
 			 * off, this preemption reprsents a small but constant overhead of
 			 * invoking gettimeofday() twice per system catalog request in the
-			 * pg_analyze (and rewrite) phase. */
+			 * pg_analyze (and rewrite) phase.
+			 */
 			YbToggleSessionStatsTimer(true);
 
 			result = transformExplainStmt(pstate,

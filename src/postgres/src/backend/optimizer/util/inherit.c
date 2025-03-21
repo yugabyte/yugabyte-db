@@ -36,7 +36,7 @@
 #include "utils/rel.h"
 
 /* Yugabyte includes */
-#include "executor/ybcExpr.h"
+#include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
 
 static void expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
@@ -555,7 +555,8 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 	 */
 	if (childOID != parentOID)
 	{
-		bool is_yb_relation = IsYBRelation(parentrel);
+		bool		is_yb_relation = IsYBRelation(parentrel);
+
 		childrte->selectedCols = translate_col_privs(parentrte->selectedCols,
 													 appinfo->translated_vars,
 													 is_yb_relation);
@@ -695,7 +696,8 @@ get_rel_all_updated_cols(PlannerInfo *root, RelOptInfo *rel)
 	 * on the updatedCols, and add them to the result.
 	 */
 	extraUpdatedCols = get_dependent_generated_columns(root, rel->relid,
-													   updatedCols);
+													   updatedCols,
+													   NULL /* yb_generated_cols_source */ );
 
 	return bms_union(updatedCols, extraUpdatedCols);
 }
@@ -720,7 +722,7 @@ translate_col_privs(const Bitmapset *parent_privs,
 	bool		whole_row;
 	int			attno;
 	ListCell   *lc;
-	const int firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttrNumber(is_yb_relation);
+	const int	firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttrNumber(is_yb_relation);
 
 	/* System attributes have the same numbers in all tables */
 	for (attno = firstLowInvalidAttrNumber + 1; attno < 0; attno++)
@@ -916,7 +918,8 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
 				 * Hence re-evaluate pushability.
 				 */
 				childri->yb_pushable = rinfo->yb_pushable ||
-					YbCanPushdownExpr(childri->clause, NULL);
+					YbCanPushdownExpr(childri->clause, NULL,
+									  planner_rt_fetch(parentrel->relid, root)->relid);
 			}
 			childquals = lappend(childquals, childri);
 			/* track minimum security level among child quals */

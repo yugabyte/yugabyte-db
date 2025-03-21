@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -14,7 +13,7 @@ import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,9 +35,8 @@ public class ContinuousBackupConfig extends Model {
   @ApiModelProperty(value = "Continuous backup config UUID")
   private UUID uuid;
 
-  @ManyToOne
   @JoinColumn(name = "storage_config_uuid", referencedColumnName = "config_uuid")
-  @JsonIgnore
+  @ApiModelProperty(value = "storage configuration UUID", accessMode = READ_WRITE)
   private UUID storageConfigUUID;
 
   @ApiModelProperty(value = "wait between backups", accessMode = READ_WRITE)
@@ -55,6 +53,12 @@ public class ContinuousBackupConfig extends Model {
 
   @ApiModelProperty(value = "the folder in storage config to store backups for this YBA")
   private String backupDir;
+
+  @ApiModelProperty(value = "the specific cloud storage path for backups")
+  private String storageLocation;
+
+  @ApiModelProperty(value = "the last time a successful backup occurred")
+  private long lastBackup;
 
   @Transactional
   public static ContinuousBackupConfig create(
@@ -83,5 +87,15 @@ public class ContinuousBackupConfig extends Model {
 
   public static void delete(UUID uuid) {
     find.deleteById(uuid);
+  }
+
+  public void updateLastBackup() {
+    this.lastBackup = Instant.now().toEpochMilli();
+    this.update();
+  }
+
+  public void updateStorageLocation(String storageLocation) {
+    this.storageLocation = storageLocation;
+    this.update();
   }
 }

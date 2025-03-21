@@ -11,8 +11,6 @@ import { useFieldArray, useFormContext } from 'react-hook-form';
 
 import { K8sRegionField } from './ConfigureK8sRegionModal';
 import {
-  K8sCertIssuerType,
-  K8sCertIssuerTypeLabel,
   K8sRegionFieldLabel,
   RegionOperation
 } from './constants';
@@ -66,21 +64,6 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const CERT_ISSUER_TYPE_OPTIONS: OptionProps[] = [
-  {
-    value: K8sCertIssuerType.NONE,
-    label: K8sCertIssuerTypeLabel[K8sCertIssuerType.NONE]
-  },
-  {
-    value: K8sCertIssuerType.ISSUER,
-    label: K8sCertIssuerTypeLabel[K8sCertIssuerType.ISSUER]
-  },
-  {
-    value: K8sCertIssuerType.CLUSTER_ISSUER,
-    label: K8sCertIssuerTypeLabel[K8sCertIssuerType.CLUSTER_ISSUER]
-  }
-];
-
 export const ConfigureK8sAvailabilityZoneField = ({
   regionOperation,
   isFormDisabled,
@@ -94,7 +77,6 @@ export const ConfigureK8sAvailabilityZoneField = ({
   const addZoneField = () => {
     append({
       code: '',
-      certIssuerType: K8sCertIssuerType.NONE,
       editKubeConfigContent: true,
       isNewZone: true
     });
@@ -203,20 +185,16 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 />
               </div>
               <div className={classes.formField}>
-                <div>{K8sRegionFieldLabel.CERT_ISSUER_TYPE}</div>
-                <YBRadioGroupField
+                <div>{K8sRegionFieldLabel.CERT_ISSUER_KIND}</div>
+                <YBInputField
                   control={control}
-                  name={`zones.${index}.certIssuerType`}
-                  options={CERT_ISSUER_TYPE_OPTIONS}
-                  orientation="horizontal"
-                  isDisabled={isFieldDisabled}
+                  name={`zones.${index}.certIssuerKind`}
+                  placeholder={"ClusterIssuer"}
+                  disabled={isFieldDisabled}
+                  fullWidth
                 />
               </div>
-              {([
-                K8sCertIssuerType.CLUSTER_ISSUER,
-                K8sCertIssuerType.ISSUER
-              ] as K8sCertIssuerType[]).includes(zones?.[index].certIssuerType) && (
-                <div className={classes.formField}>
+              <div className={classes.formField}>
                   <div>{K8sRegionFieldLabel.CERT_ISSUER_NAME}</div>
                   <YBInputField
                     control={control}
@@ -226,7 +204,16 @@ export const ConfigureK8sAvailabilityZoneField = ({
                     fullWidth
                   />
                 </div>
-              )}
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.CERT_ISSUER_GROUP}</div>
+                <YBInputField
+                  control={control}
+                  name={`zones.${index}.certIssuerGroup`}
+                  placeholder="cert-manager.io"
+                  disabled={isFieldDisabled}
+                  fullWidth
+                />
+              </div>
               <YBButton
                 className={classes.removeZoneButton}
                 btnIcon="fa fa-trash-o"

@@ -82,45 +82,44 @@ DEFINE_UNKNOWN_bool(rocksdb_disable_compactions, false, "Disable rocksdb compact
 DEFINE_UNKNOWN_bool(rocksdb_compaction_measure_io_stats, false,
     "Measure stats for rocksdb compactions.");
 DEFINE_UNKNOWN_int32(rocksdb_base_background_compactions, -1,
-             "Number threads to do background compactions.");
+    "Number threads to do background compactions.");
 DEFINE_UNKNOWN_int32(rocksdb_max_background_compactions, -1,
-             "Increased number of threads to do background compactions (used when compactions need "
-             "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
+    "Increased number of threads to do background compactions (used when compactions need "
+    "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
 DEFINE_UNKNOWN_int32(rocksdb_level0_file_num_compaction_trigger, 5,
-             "Number of files to trigger level-0 compaction. -1 if compaction should not be "
-             "triggered by number of files at all.");
+    "Number of files to trigger level-0 compaction. -1 if compaction should not be "
+    "triggered by number of files at all.");
 
 DEFINE_UNKNOWN_int32(rocksdb_level0_slowdown_writes_trigger, -1,
-             "The number of files above which writes are slowed down.");
+    "The number of files above which writes are slowed down.");
 DEFINE_UNKNOWN_int32(rocksdb_level0_stop_writes_trigger, -1,
-             "The number of files above which compactions are stopped.");
+    "The number of files above which compactions are stopped.");
 DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_size_ratio, 20,
-             "The percentage upto which files that are larger are include in a compaction.");
+    "The percentage upto which files that are larger are include in a compaction.");
 DEFINE_UNKNOWN_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
-             "Always include files of smaller or equal size in a compaction.");
+    "Always include files of smaller or equal size in a compaction.");
 DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_min_merge_width, 4,
-             "The minimum number of files in a single compaction run.");
-DEFINE_UNKNOWN_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
-             "Use to control write rate of flush and compaction.");
-DEFINE_UNKNOWN_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
-              "Allows to control rate limit sharing/calculation across RocksDB instances\n"
-              "  tserver - rate limit is shared across all RocksDB instances"
-              " at tabset server level\n"
-              "  none - rate limit is calculated independently for every RocksDB instance");
+    "The minimum number of files in a single compaction run.");
+DEFINE_RUNTIME_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
+    "Use to control write rate of flush and compaction.");
+DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
+    "Allows to control rate limit sharing/calculation across RocksDB instances\n"
+    "  tserver - rate limit is shared across all RocksDB instances at tabset server level\n"
+    "  none - rate limit is calculated independently for every RocksDB instance");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
-             "Threshold beyond which compaction is considered large.");
+    "Threshold beyond which compaction is considered large.");
 DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
-             "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
+    "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
 // Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
 // db_max_flushing_bytes will be actual default.
 DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
-             "Maximum number of write buffers that are built up in memory.");
+    "Maximum number of write buffers that are built up in memory.");
 
 // The manifest file persists min/max schema versions in flushed frontiers. A default 10MB limit
 // enables us to support a ~200k colocated tables/1500 databases in the syscatalog tablet
 DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
-             "Maximum size of manifest file before which it is consolidated");
+    "Maximum size of manifest file before which it is consolidated");
 
 DEFINE_RUNTIME_bool(
     rocksdb_advise_random_on_open, true,
@@ -130,19 +129,19 @@ DEFINE_RUNTIME_bool(
 DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
-             "Size of RocksDB filter block (in bytes).");
+    "Size of RocksDB filter block (in bytes).");
 
 DEFINE_UNKNOWN_int64(db_index_block_size_bytes, 32_KB,
-             "Size of RocksDB index block (in bytes).");
+    "Size of RocksDB index block (in bytes).");
 
 DEFINE_UNKNOWN_int64(db_min_keys_per_index_block, 100,
-             "Minimum number of keys per index block.");
+    "Minimum number of keys per index block.");
 
 DEFINE_UNKNOWN_int64(db_write_buffer_size, -1,
-             "Size of RocksDB write buffer (in bytes). -1 to use default.");
+    "Size of RocksDB write buffer (in bytes). -1 to use default.");
 
 DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
-             "Max size (in mb) of the memstore, before needing to flush.");
+    "Max size (in mb) of the memstore, before needing to flush.");
 
 // Use a value slightly less than 2 default mem store sizes.
 DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
@@ -150,14 +149,14 @@ DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
     "After reaching this limit new writes are blocked. 0 - unlimited.");
 
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
-            "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
+    "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
-DEFINE_RUNTIME_AUTO_string(regular_tablets_data_block_key_value_encoding, kExternal,
-    "shared_prefix", "three_shared_parts",
+DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(
+    regular_tablets_data_block_key_value_encoding, kExternal, "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 
@@ -168,25 +167,25 @@ DEFINE_UNKNOWN_int32(num_reserved_small_compaction_threads, -1,
     "threads. It allows splitting small vs. large compactions.");
 
 DEFINE_UNKNOWN_bool(enable_ondisk_compression, true,
-            "Determines whether SSTable compression is enabled or not.");
+    "Determines whether SSTable compression is enabled or not.");
 
 DEFINE_UNKNOWN_int32(priority_thread_pool_size, -1,
-             "Max running workers in compaction thread pool. "
-             "If -1 and max_background_compactions is specified - use max_background_compactions. "
-             "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
+    "Max running workers in compaction thread pool. "
+    "If -1 and max_background_compactions is specified - use max_background_compactions. "
+    "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
 DEFINE_UNKNOWN_string(compression_type, "Snappy",
-              "On-disk compression type to use in RocksDB."
-              "By default, Snappy is used if supported.");
+    "On-disk compression type to use in RocksDB."
+    "By default, Snappy is used if supported.");
 
 DEFINE_UNKNOWN_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
-             "Controls the number of keys to look at for computing the diff encoding.");
+    "Controls the number of keys to look at for computing the diff encoding.");
 
 DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
-             "Controls the number of data blocks to be indexed inside an index block.");
+    "Controls the number of data blocks to be indexed inside an index block.");
 
 DEFINE_UNKNOWN_bool(prioritize_tasks_by_disk, false,
-            "Consider disk load when considering compaction and flush priorities.");
+    "Consider disk load when considering compaction and flush priorities.");
 
 namespace yb {
 
@@ -260,10 +259,29 @@ KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht) {
 
 namespace {
 
+void SetupBloomFilter(rocksdb::ReadOptions& read_options, const BloomFilterOptions& bloom_filter) {
+  if (!FLAGS_use_docdb_aware_bloom_filter) {
+    return;
+  }
+  static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
+  switch (bloom_filter.mode()) {
+    case BloomFilterMode::kInactive:
+      return;
+    case BloomFilterMode::kFixed:
+      read_options.iterator_filter = &bloom_filter_aware_file_filter;
+      read_options.user_key_for_filter = bloom_filter.key();
+      return;
+    case BloomFilterMode::kVariable:
+      read_options.iterator_filter = &bloom_filter_aware_file_filter;
+      read_options.defer_iterator_filter = true;
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(BloomFilterMode, bloom_filter.mode());
+}
+
 rocksdb::ReadOptions PrepareReadOptions(
     rocksdb::DB* rocksdb,
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
@@ -272,13 +290,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
   read_opts.statistics = statistics;
-  if (FLAGS_use_docdb_aware_bloom_filter &&
-    bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
-    DCHECK(user_key_for_filter);
-    static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
-    read_opts.table_aware_file_filter = &bloom_filter_aware_file_filter;
-    read_opts.user_key_for_filter = *user_key_for_filter;
-  }
+  SetupBloomFilter(read_opts, bloom_filter);
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
   read_opts.cache_restart_block_keys = cache_restart_block_keys;
@@ -294,23 +306,21 @@ rocksdb::Statistics* GetRegularDBStatistics(DocDBStatistics* statistics) {
 BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
     const KeyBounds* docdb_key_bounds,
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
     const rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
     rocksdb::Statistics* statistics) {
-  rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(
+      rocksdb, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, statistics);
   return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
 unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const DocDB& doc_db,
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data,
@@ -321,8 +331,8 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
   const auto cache_restart_block_keys = rocksdb::CacheRestartBlockKeys { use_fast_backward_scan };
 
   // TODO(dtxn) do we need separate options for intents db?
-  rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(
+      doc_db.regular, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
       doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan);
@@ -343,8 +353,7 @@ BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
   return CreateRocksDBIterator(
       intentsdb,
       docdb_key_bounds,
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter */,
+      docdb::BloomFilterOptions::Inactive(),
       rocksdb::kDefaultQueryId,
       CreateIntentHybridTimeFileFilter(min_running_ht),
       iterate_upper_bound,

@@ -41,16 +41,26 @@
 #include "utils/resowner_private.h"
 #include "utils/yb_inheritscache.h"
 
-static HTAB *YbPgInheritsCache;
+/*
+ *   Parent oid -> list<child tuples>
+ */
+static HTAB *YbPgInheritsCacheByParent;
+
+/*
+ *   Child oid -> list<parent oids>
+ */
+static HTAB *YbPgInheritsCacheByChild;
 
 static void
 FindChildren(Oid parentOid, List **childTuples)
 {
 	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
 	*childTuples = NIL;
 
-	Relation relation = table_open(InheritsRelationId, AccessShareLock);
+	Relation	relation = table_open(InheritsRelationId, AccessShareLock);
 	ScanKeyData key[1];
+
 	ScanKeyInit(&key[0],
 				Anum_pg_inherits_inhparent,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -61,14 +71,16 @@ FindChildren(Oid parentOid, List **childTuples)
 													   InheritsParentIndexId,
 													   true, NULL, 1, key);
 
-	HeapTuple inheritsTuple = NULL;
+	HeapTuple	inheritsTuple = NULL;
+
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
-		HeapTuple copy_inheritsTuple = heap_copytuple(inheritsTuple);
+		HeapTuple	copy_inheritsTuple = heap_copytuple(inheritsTuple);
+
 		*childTuples = lappend(*childTuples, copy_inheritsTuple);
 		elog(DEBUG3, "Found child %d for parent %d",
-			((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid,
-			parentOid);
+			 ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid,
+			 parentOid);
 	}
 
 	systable_endscan(scan);
@@ -104,112 +116,57 @@ YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry)
 	 * possible for a client to call ReleaseYbPgInheritsCacheEntry after it has
 	 * been invalidated. The refcount and assertions are used to future proof
 	 * the above assumption.
-	*/
+	 */
 	Assert(entry->refcount >= 1);
 	--entry->refcount;
 	if (!IsBootstrapProcessingMode())
 		ResourceOwnerForgetYbPgInheritsRef(CurrentResourceOwner, entry);
 }
 
-static Oid
-YbGetParentRelid(Oid relid)
+static void
+GetChildCacheEntryMiss(Oid relid, YbPgInheritsCacheEntry entry)
 {
-	Relation relation = table_open(InheritsRelationId, AccessShareLock);
-	ScanKeyData key[2];
+	Relation	relation = table_open(InheritsRelationId, AccessShareLock);
+	ScanKeyData key[1];
 
-	/*
-	 * First find the parent of the given child.
-	*/
 	ScanKeyInit(&key[0],
 				Anum_pg_inherits_inhrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(relid));
-	ScanKeyInit(&key[1],
-				Anum_pg_inherits_inhseqno,
-				BTEqualStrategyNumber, F_INT4EQ,
-				Int32GetDatum(1));
 	SysScanDesc scan = ybc_systable_begin_default_scan(relation,
 													   InheritsRelidSeqnoIndexId,
-													   true, NULL, 2, key);
+													   true, NULL, 1, key);
 
-	HeapTuple inheritsTuple = NULL;
-	Oid result = InvalidOid;
+	HeapTuple	inheritsTuple = NULL;
 
+	entry->oid = relid;
+	entry->refcount = 1;
+	entry->tuples = NIL;
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
-		Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(inheritsTuple);
-		result = form->inhparent;
-		break;
+		Assert(((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid == relid);
+		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+		HeapTuple	copy_inheritsTuple = heap_copytuple(inheritsTuple);
+
+		elog(DEBUG3, "Found parent %d for child %d",
+			 ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhparent,
+			 relid);
+		entry->tuples = lappend(entry->tuples, copy_inheritsTuple);
+		MemoryContextSwitchTo(oldcxt);
 	}
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
 
-	return result;
-}
-
-static YbPgInheritsCacheChildEntry
-YbGetChildCacheEntry(YbPgInheritsCacheEntry entry, Oid relid)
-{
-	ListCell *lc;
-	foreach(lc, entry->childTuples)
-	{
-		HeapTuple tuple = (HeapTuple) lfirst(lc);
-		Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(tuple);
-		if (form->inhrelid == relid)
-		{
-			elog(DEBUG3, "YbGetChildCacheEntry hit for relid %d", relid);
-
-			YbPgInheritsCacheChildEntry result =
-				palloc(sizeof(YbPgInheritsCacheChildEntryData));
-			result->cacheEntry = entry;
-			YbPgInheritsIncrementReferenceCount(entry);
-			result->childTuple = tuple;
-			result->childrelid = relid;
-			return result;
-		}
-	}
-	return NULL;
-}
-
-static YbPgInheritsCacheChildEntry
-GetYbChildCacheEntryMiss(Oid relid)
-{
-	elog(DEBUG3,
-		"GetYbPgInheritsChildCacheEntry miss for relid %d", relid);
-
-	Oid parentOid = YbGetParentRelid(relid);
-
-	if (!OidIsValid(parentOid))
-		return NULL;
-
-	elog(DEBUG3,
-		"YbPgInheritsCache: Found parent %d for child %d", parentOid, relid);
-
-	/*
-	 * Populate the cache with the parent of this child tuple.
-	*/
-	YbPgInheritsCacheEntry elem = GetYbPgInheritsCacheEntry(parentOid);
-	if (elem == NULL)
-	{
-		/*
-		 * The previous scan found the parent table for this child, but now we
-		 * are unable to find the parent table. This can only happen if
-		 * somehow the parent and this child was dropped between these two
-		 * scans.
-		*/
-		elog(ERROR, "Possible concurrent DDL: Unable to find parent %d for "
-					"child %d", parentOid, relid);
-	}
-	YbPgInheritsCacheChildEntry result = YbGetChildCacheEntry(elem, relid);
-	ReleaseYbPgInheritsCacheEntry(elem);
-	return result;
 }
 
 void
 YbInitPgInheritsCache()
 {
-	Assert(YbPgInheritsCache == NULL);
-	HASHCTL ctl = {0};
+	Assert(YbPgInheritsCacheByParent == NULL);
+	Assert(YbPgInheritsCacheByChild == NULL);
+
+	HASHCTL		ctl = {0};
+
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(YbPgInheritsCacheEntryData);
 	ctl.hcxt = CacheMemoryContext;
@@ -217,9 +174,14 @@ YbInitPgInheritsCache()
 	 * It is hard to estimate how many partitioned tables there will be, so
 	 * start with a small size and let it grow as needed.
 	*/
-	YbPgInheritsCache =
-		hash_create("YbPgInheritsCache", 8, &ctl,
+	YbPgInheritsCacheByParent =
+		hash_create("YbPgInheritsCacheByParent", 8, &ctl,
 					HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+	YbPgInheritsCacheByChild =
+		hash_create("YbPgInheritsCacheByChild", 8, &ctl,
+					HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
 
 	CacheRegisterRelcacheCallback(YbPgInheritsCacheRelCallback, (Datum) 0);
 	elog(DEBUG3, "Initialized YbPgInherits cache");
@@ -228,8 +190,10 @@ YbInitPgInheritsCache()
 void
 YbPreloadPgInheritsCache()
 {
-	Assert(YbPgInheritsCache);
-	Relation relation = table_open(InheritsRelationId, AccessShareLock);
+	elog(DEBUG3, "preload pg inherits cache");
+	Assert(YbPgInheritsCacheByParent);
+	Assert(YbPgInheritsCacheByChild);
+	Relation	relation = table_open(InheritsRelationId, AccessShareLock);
 	HeapTuple	inheritsTuple;
 
 	SysScanDesc scan = ybc_systable_begin_default_scan(relation,
@@ -237,157 +201,209 @@ YbPreloadPgInheritsCache()
 													   true, NULL, 0, NULL);
 
 	YbPgInheritsCacheEntry entry = NULL;
-	Oid parentOid = InvalidOid;
+	Oid			parentOid = InvalidOid;
+
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
 		Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(inheritsTuple);
-		elog(DEBUG3,
-			"Preloading pg_inherits cache for parent %d, child %d curr "
-			"parentOid %d", form->inhparent, form->inhrelid, parentOid);
 
+		elog(DEBUG3,
+			 "Preloading pg_inherits cache for parent %d, child %d curr "
+			 "parentOid %d", form->inhparent, form->inhrelid, parentOid);
+
+		/* insert into the parent -> child cache */
 		if (parentOid != form->inhparent)
 		{
 			parentOid = form->inhparent;
-			bool found = false;
-			entry = hash_search(YbPgInheritsCache, (void *) &parentOid,
+			bool		found = false;
+
+			entry = hash_search(YbPgInheritsCacheByParent, (void *) &parentOid,
 								HASH_ENTER, &found);
 			Assert(!found);
-			entry->childTuples = NIL;
+			entry->tuples = NIL;
 			entry->refcount = 1;
-			entry->parentOid = parentOid;
+			entry->oid = parentOid;
 		}
 		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-		HeapTuple copy_inheritsTuple = heap_copytuple(inheritsTuple);
-		entry->childTuples = lappend(entry->childTuples, copy_inheritsTuple);
+		HeapTuple	copy_inheritsTuple = heap_copytuple(inheritsTuple);
+
+		entry->tuples = lappend(entry->tuples, copy_inheritsTuple);
+
+		/* insert into the child -> parent cache */
+		bool		foundChildEntry = false;
+		YbPgInheritsCacheEntry childCacheEntry = hash_search(YbPgInheritsCacheByChild,
+															 (void *) &(form->inhrelid), HASH_ENTER,
+															 &foundChildEntry);
+
+		if (!foundChildEntry)
+		{
+			childCacheEntry->oid = form->inhrelid;
+			childCacheEntry->refcount = 1;
+			childCacheEntry->tuples = NULL;
+		}
+		HeapTuple	childCopy_inheritsTuple = heap_copytuple(inheritsTuple);
+
+		childCacheEntry->tuples = lappend(childCacheEntry->tuples, childCopy_inheritsTuple);
 		MemoryContextSwitchTo(oldcxt);
 	}
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
+	elog(DEBUG3,
+		 "Preload complete. Parent cache has %ld entries, "
+		 " child cache has %ld entries.",
+		 hash_get_num_entries(YbPgInheritsCacheByParent),
+		 hash_get_num_entries(YbPgInheritsCacheByChild));
 }
 
 YbPgInheritsCacheEntry
-GetYbPgInheritsCacheEntry(Oid parentOid)
+GetYbPgInheritsCacheEntryByParent(Oid parentOid)
 {
-	Assert(YbPgInheritsCache);
-	bool found = false;
-	YbPgInheritsCacheEntry entry = hash_search(YbPgInheritsCache,
+	Assert(YbPgInheritsCacheByParent);
+	bool		found = false;
+	YbPgInheritsCacheEntry entry = hash_search(YbPgInheritsCacheByParent,
 											   (void *) &parentOid, HASH_ENTER,
 											   &found);
+
 	if (!found)
 	{
-		elog(DEBUG3, "YbPgInheritsCache miss for parent %d", parentOid);
-		entry->parentOid = parentOid;
-		FindChildren(parentOid, &entry->childTuples);
+		elog(DEBUG3, "YbPgInheritsCacheByParent miss for parent %d", parentOid);
+		entry->oid = parentOid;
+		FindChildren(parentOid, &entry->tuples);
 		entry->refcount = 1;
 	}
 	else
 	{
-		elog(DEBUG3, "YbPgInheritsCache hit for parentOid %d", parentOid);
+		elog(DEBUG3, "YbPgInheritsCacheByParent hit for parentOid %d", parentOid);
 	}
 	YbPgInheritsIncrementReferenceCount(entry);
 	return entry;
 }
 
-YbPgInheritsCacheChildEntry
-GetYbPgInheritsChildCacheEntry(Oid relid)
+YbPgInheritsCacheEntry
+GetYbPgInheritsCacheEntryByChild(Oid relid)
 {
-	Assert(YbPgInheritsCache);
+	bool		found = false;
 
-	elog(DEBUG3, "GetYbPgInheritsChildCacheEntry for relid %d", relid);
+	Assert(YbPgInheritsCacheByChild);
+	YbPgInheritsCacheEntry entry = hash_search(YbPgInheritsCacheByChild,
+											   (void *) &relid, HASH_ENTER,
+											   &found);
 
-	HASH_SEQ_STATUS status;
-	YbPgInheritsCacheEntry elem;
-	/*
-	 * The cache is indexed by parent oid, so we need to iterate over the entire
-	 * hash table to find the child tuple.
-	*/
-	hash_seq_init(&status, YbPgInheritsCache);
-	while ((elem = (YbPgInheritsCacheEntry)hash_seq_search(&status)) != NULL)
+	if (!found)
 	{
-		YbPgInheritsCacheChildEntry result = YbGetChildCacheEntry(elem, relid);
-		if (result)
-		{
-			hash_seq_term(&status);
-			return result;
-		}
+		elog(DEBUG3, "YbPgInheritsCacheByChild miss for oid %d", relid);
+		GetChildCacheEntryMiss(relid, entry);
 	}
-	return GetYbChildCacheEntryMiss(relid);
+	else
+	{
+		elog(DEBUG3, "YbPgInheritsCacheByChild hit for oid %d", relid);
+	}
+	YbPgInheritsIncrementReferenceCount(entry);
+	return entry;
 }
 
 void
 ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry)
 {
 	elog(DEBUG3,
-		"ReleaseYbPgInheritsCacheEntry for parentOid %d", entry->parentOid);
+		 "ReleaseYbPgInheritsCacheEntry for oid %d", entry->oid);
 
 	YbPgInheritsDecrementReferenceCount(entry);
 }
 
+
 void
-ReleaseYbPgInheritsChildEntry(YbPgInheritsCacheChildEntry entry)
+YbPgInheritsCacheDelete(YbPgInheritsCacheEntry entry, bool isParentEntry)
 {
 	elog(DEBUG3,
-		"ReleaseYbPgInheritsChildEntry for relid %d", entry->childrelid);
-	ReleaseYbPgInheritsCacheEntry(entry->cacheEntry);
-	pfree(entry);
+		 "YbPgInheritsCacheDelete for oid %d in %s cache",
+		 entry->oid, isParentEntry ? "parent" : "child");
+	Assert(entry->refcount == 1);
+	list_free_deep(entry->tuples);
+	if (isParentEntry)
+	{
+		Assert(YbPgInheritsCacheByParent);
+		if (hash_search(YbPgInheritsCacheByParent,
+						(void *) &entry->oid,
+						HASH_REMOVE,
+						NULL) == NULL)
+			elog(ERROR, "Hash table corrupted. Relid %d", entry->oid);
+	}
+	else
+	{
+		Assert(YbPgInheritsCacheByChild);
+		if (hash_search(YbPgInheritsCacheByChild,
+						(void *) &entry->oid,
+						HASH_REMOVE,
+						NULL) == NULL)
+			elog(ERROR, "Hash table corrupted. Relid %d", entry->oid);
+
+	}
 }
 
 void
-YbPgInheritsCacheDelete(YbPgInheritsCacheEntry entry)
+YbPgInheritsCacheInvalidateImpl(Oid relid, bool isParentEntry)
 {
-	elog(DEBUG3,
-		"YbPgInheritsCacheDelete for parentOid %d", entry->parentOid);
-	Assert(YbPgInheritsCache);
-	Assert(entry->refcount == 1);
-	list_free_deep(entry->childTuples);
-	if (hash_search(YbPgInheritsCache,
-					(void *)&entry->parentOid,
-					HASH_REMOVE,
-					NULL) == NULL)
-		elog(ERROR, "Hash table corrupted. Relid %d", entry->parentOid);
+	HASH_SEQ_STATUS status;
+	YbPgInheritsCacheEntry entry;
+
+	if (isParentEntry)
+	{
+		Assert(YbPgInheritsCacheByParent);
+		hash_seq_init(&status, YbPgInheritsCacheByParent);
+	}
+	else
+	{
+		Assert(YbPgInheritsCacheByChild);
+		hash_seq_init(&status, YbPgInheritsCacheByChild);
+	}
+
+	while ((entry = (YbPgInheritsCacheEntry) hash_seq_search(&status)) != NULL)
+	{
+		/*
+		* Invalidate any entries where this oid is either the entry oid or in the tuple list
+		*/
+		if (relid == InvalidOid || entry->oid == relid)
+		{
+			elog(DEBUG3,
+				 "YbPgInheritsCacheInvalidate: Invalidating %d in %s cache",
+				 entry->oid, isParentEntry ? "parent" : "child");
+
+			/*
+			 * TODO: is it ok to delete hash entries while iterating through
+			 * the hash map?
+			 */
+			YbPgInheritsCacheDelete(entry, isParentEntry);
+			continue;
+		}
+
+		ListCell   *lc;
+
+		foreach(lc, entry->tuples)
+		{
+			HeapTuple	tuple = (HeapTuple) lfirst(lc);
+			Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(tuple);
+
+			if (form->inhrelid == relid)
+			{
+				elog(DEBUG3,
+					 "YbPgInheritsCacheInvalidate: Invalidating cache entry for %d"
+					 " in %s cache due to invalidation of tuple entry %d",
+					 form->inhparent, isParentEntry ? "parent" : "child", relid);
+				YbPgInheritsCacheDelete(entry, isParentEntry);
+				break;
+			}
+		}
+	}
+
+
 }
 
 void
 YbPgInheritsCacheInvalidate(Oid relid)
 {
-	HASH_SEQ_STATUS status;
-	YbPgInheritsCacheEntry entry;
 
-	Assert(YbPgInheritsCache);
-
-	hash_seq_init(&status, YbPgInheritsCache);
-
-	while ((entry = (YbPgInheritsCacheEntry)hash_seq_search(&status)) != NULL)
-	{
-		/*
-		 * If relid is InvalidOid, then we are invalidating the entire cache.
-		 * Otherwise, we are invalidating the cache entry for the given relid.
-		 * We could have a partitioned table that is a child of another
-		 * partitioned table, so we need look for the invalidated relid in both
-		 * the parentoid and child list.
-		*/
-		if (relid == InvalidOid || entry->parentOid == relid)
-		{
-			elog(DEBUG3,
-				"YbPgInheritsCacheInvalidate: Invalidating parent %d",
-				entry->parentOid);
-			YbPgInheritsCacheDelete(entry);
-			continue;
-		}
-
-		ListCell *lc;
-		foreach(lc, entry->childTuples)
-		{
-			HeapTuple tuple = (HeapTuple) lfirst(lc);
-			Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(tuple);
-			if (form->inhrelid == relid)
-			{
-				elog(DEBUG3,
-					"YbPgInheritsCacheInvalidate: Invalidating parent %d "
-					"for child %d", form->inhparent, relid);
-				YbPgInheritsCacheDelete(entry);
-				break;
-			}
-		}
-	}
+	elog(DEBUG3, "YbPgInheritsCacheInvalidate: invalidate request for %d", relid);
+	YbPgInheritsCacheInvalidateImpl(relid, true);
+	YbPgInheritsCacheInvalidateImpl(relid, false);
 }

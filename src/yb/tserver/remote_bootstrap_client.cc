@@ -41,8 +41,8 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -345,8 +345,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
         table.has_index_info() ? std::optional<qlexpr::IndexInfo>(table.index_info())
                                : std::nullopt,
-        table.schema_version(), partition_schema, table.pg_table_id(),
-        tablet::SkipTableTombstoneCheck(table.skip_table_tombstone_check()));
+        table.schema_version(), partition_schema, OpId::FromPB(table.op_id()),
+        HybridTime::FromPB(table.hybrid_time()),
+        table.pg_table_id(), tablet::SkipTableTombstoneCheck(table.skip_table_tombstone_check()));
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
 
     auto tablet_assigned_root_data_dir = VERIFY_RESULT(fs_manager().GetTabletPath(tablet_id_));

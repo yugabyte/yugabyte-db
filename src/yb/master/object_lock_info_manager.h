@@ -17,15 +17,18 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/transaction.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/util/status_callback.h"
 
 namespace yb::rpc {
 class RpcContext;
 }
 
-namespace yb::tablet {
+namespace yb::tserver {
 class TSLocalLockManager;
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 }
 namespace yb::tserver {
 class AcquireObjectLockRequestPB;
@@ -42,7 +45,6 @@ class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
 
 class ObjectLockInfo;
-struct ExpiredLeaseInfo;
 
 class ObjectLockInfoManager {
  public:
@@ -56,18 +58,22 @@ class ObjectLockInfoManager {
   void UnlockObject(
       const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void ReleaseLocksForTxn(const TransactionId& txn_id);
 
-  void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
+  tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
+  void UpdateTabletServerLeaseEpoch(const std::string& tserver_uuid, uint64_t current_lease_epoch);
   void Clear();
-  std::shared_ptr<tablet::TSLocalLockManager> TEST_ts_local_lock_manager();
-  std::shared_ptr<tablet::TSLocalLockManager> ts_local_lock_manager();
+  tserver::TSLocalLockManagerPtr TEST_ts_local_lock_manager();
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager();
 
   // Releases any object locks that may have been taken by the specified tservers's previous
   // incarnations.
-  void ReleaseOldObjectLocks(
-      const std::string& tserver_uuid, uint64 current_incarnation_num, bool wait = false,
+  void ReleaseLocksHeldByExpiredLeaseEpoch(
+      const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait = false,
       std::optional<LeaderEpoch> leader_epoch = std::nullopt);
+
+  void BootstrapLocksPostLoad();
 
  private:
   template <class Req, class Resp>

@@ -303,6 +303,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->amcanmarkpos = (amroutine->ammarkpos != NULL &&
 								  amroutine->amrestrpos != NULL);
 			info->amcostestimate = amroutine->amcostestimate;
+			info->yb_amiscopartitioned = amroutine->yb_amiscopartitioned;
 			info->yb_cached_ybctid_size = 0;
 			Assert(info->amcostestimate != NULL);
 
@@ -365,7 +366,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 						info->nhashcolumns++;
 						info->reverse_sort[i] = false;
 						info->nulls_first[i] = false;
-					} else {
+					}
+					else
+					{
 						info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
 						info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 					}
@@ -2272,10 +2275,15 @@ has_stored_generated_columns(PlannerInfo *root, Index rti)
  * that depend on any column listed in target_cols.  Both the input and
  * result bitmapsets contain column numbers offset by
  * FirstLowInvalidHeapAttributeNumber.
+ *
+ * YB note: The out param yb_generated_cols_source contains a set of columns
+ * that the returned generated columns depend on. These independent columns may
+ * not be a part of target_cols.
  */
 Bitmapset *
 get_dependent_generated_columns(PlannerInfo *root, Index rti,
-								Bitmapset *target_cols)
+								Bitmapset *target_cols,
+								Bitmapset **yb_generated_cols_source)
 {
 	Bitmapset  *dependentCols = NULL;
 	RangeTblEntry *rte = planner_rt_fetch(rti, root);
@@ -2308,8 +2316,14 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 			pull_varattnos_min_attr(expr, 1, &attrs_used, min_attr + 1);
 
 			if (bms_overlap(target_cols, attrs_used))
+			{
 				dependentCols = bms_add_member(dependentCols,
 											   defval->adnum - min_attr);
+
+				if (yb_generated_cols_source)
+					*yb_generated_cols_source = bms_add_members(*yb_generated_cols_source,
+																attrs_used);
+			}
 		}
 	}
 

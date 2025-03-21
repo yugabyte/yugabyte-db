@@ -194,12 +194,17 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
 RemoteTabletServer::~RemoteTabletServer() = default;
 
 Status RemoteTabletServer::InitProxy(YBClient* client) {
+  return ResultToStatus(ObtainProxy(*client));
+}
+
+Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::ObtainProxy(
+    YBClient& client) {
   {
     SharedLock lock(mutex_);
 
     if (proxy_) {
       // Already have a proxy created.
-      return Status::OK();
+      return proxy_;
     }
   }
 
@@ -207,11 +212,11 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
 
   if (proxy_) {
     // Already have a proxy created.
-    return Status::OK();
+    return proxy_;
   }
 
   if (!dns_resolve_stats_) {
-    auto metric_entity = client->metric_entity();
+    auto metric_entity = client.metric_entity();
     if (metric_entity) {
       dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
           metric_entity);
@@ -222,13 +227,13 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
   // based on some kind of policy. For now just use the first always.
   auto hostport = HostPortFromPB(yb::DesiredHostPort(
       public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
-      client->data_->cloud_info_pb_));
+      client.data_->cloud_info_pb_));
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
-  proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
+  proxy_ = std::make_shared<TabletServerServiceProxy>(client.data_->proxy_cache_.get(), hostport);
   proxy_endpoint_ = hostport;
 
-  return Status::OK();
+  return proxy_;
 }
 
 void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
@@ -319,7 +324,7 @@ bool RemoteTabletServer::IsLocalRegion() const {
 
 LocalityLevel RemoteTabletServer::LocalityLevelWith(const CloudInfoPB& cloud_info) const {
   SharedLock lock(mutex_);
-  return PlacementInfoConverter::GetLocalityLevel(cloud_info_pb_, cloud_info);
+  return TablespaceParser::GetLocalityLevel(cloud_info_pb_, cloud_info);
 }
 
 HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) const {

@@ -320,6 +320,8 @@ message DeleteUniverseReplicationRequestPB {
   optional bool skip_producer_stream_deletion = 3 [ default = false ];
   // Used to validate that the request is sent to the correct universe.
   optional string universe_uuid = 4;
+  // producer_namespace_id -> oid_to_bump_above
+  map<string,uint32> producer_namespace_oids = 5;
 }
 
 message DeleteUniverseReplicationResponsePB {
@@ -495,6 +497,19 @@ message UpdateConsumerOnProducerMetadataResponsePB {
   optional uint32 last_compatible_consumer_schema_version = 3;
 
   optional cdc.SchemaVersionsPB schema_versions = 4;
+}
+
+message InsertHistoricalColocatedSchemaPackingRequestPB {
+  optional string replication_group_id = 1;
+  optional string target_parent_table_id = 2;
+  optional uint32 colocation_id = 3;
+  optional uint32 source_schema_version = 4;
+  optional SchemaPB schema = 5;
+}
+
+message InsertHistoricalColocatedSchemaPackingResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 last_compatible_consumer_schema_version = 2;
 }
 
 message InsertPackedSchemaForXClusterTargetRequestPB {
@@ -885,6 +900,8 @@ service MasterReplication {
       returns (UpdateConsumerOnProducerSplitResponsePB);
   rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
       returns (UpdateConsumerOnProducerMetadataResponsePB);
+  rpc InsertHistoricalColocatedSchemaPacking(InsertHistoricalColocatedSchemaPackingRequestPB)
+      returns (InsertHistoricalColocatedSchemaPackingResponsePB);
   rpc InsertPackedSchemaForXClusterTarget(InsertPackedSchemaForXClusterTargetRequestPB)
       returns (InsertPackedSchemaForXClusterTargetResponsePB);
 

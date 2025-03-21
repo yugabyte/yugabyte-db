@@ -15,6 +15,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -47,6 +48,8 @@ DEFINE_test_flag(double, ysql_ddl_rollback_failure_probability, 0.0,
 
 DEFINE_test_flag(double, ysql_ddl_verification_failure_probability, 0.0,
     "Inject random failure of ddl verification operations");
+
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -468,6 +471,9 @@ Status CatalogManager::ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data)
   pb.clear_ysql_ddl_txn_verifier_state();
   pb.clear_transaction();
 
+  RETURN_NOT_OK(
+      GetXClusterManager()->ClearXClusterFieldsAfterYsqlDDL(txn_data.table, pb, txn_data.epoch));
+
   RETURN_NOT_OK(sys_catalog_->Upsert(txn_data.epoch, txn_data.table));
   if (RandomActWithProbability(
       FLAGS_TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification)) {
@@ -620,6 +626,16 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     if (tables.empty()) {
       LOG(INFO) << "Erasing DDL Verification state for " << txn_id;
       ysql_ddl_txn_verfication_state_map_.erase(iter);
+      // At this point, we can be sure that the docdb schema changes have been applied.
+      // For instance, consider the case of an ALTER.
+      // 1. Either the alter waits inline successfully before issuing the commit,
+      // 2. or when the above times out, this branch is involed by the multi step
+      //    TableSchemaVerificationTask's callback post the schema changes have been applied.
+      WARN_NOT_OK(
+          background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
+            DoReleaseObjectLocksIfNecessary(txn_id);
+          }),
+          Format("Failed to submit task for releasing exclusive object locks of txn $0", txn_id));
     } else {
       VLOG(1) << "DDL Verification state for " << txn_id << " has "
               << tables.size() << " tables remaining";
@@ -772,6 +788,14 @@ void CatalogManager::ScheduleTriggerDdlVerificationIfNeeded(
     }),
     Format("Failed to schedule DDL verification for transaction $0", txn));
   }, std::chrono::milliseconds(delay_ms));
+}
+
+void CatalogManager::DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    return;
+  }
+  DEBUG_ONLY_TEST_SYNC_POINT("DoReleaseObjectLocksIfNecessary");
+  object_lock_info_manager_->ReleaseLocksForTxn(txn_id);
 }
 
 } // namespace master

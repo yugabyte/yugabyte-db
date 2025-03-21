@@ -194,7 +194,7 @@ airgap_flag=""
 
 installer_dir="{{ yb_home_dir }}/.install"
 su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
-    -u {{ url }} -t {{ api_key }} --provider_id $provider_id \
+    -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
     --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
     --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
     --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"

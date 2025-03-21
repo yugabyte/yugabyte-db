@@ -234,11 +234,6 @@ class ColumnSchema {
 
   bool is_vector() const;
 
-  // TODO(vector-index) temp solution while DataType::VECTOR is not yet introduced.
-  void MarkAsVector() {
-    is_vector_ = true;
-  }
-
   int32_t order() const {
     return order_;
   }
@@ -347,7 +342,6 @@ class ColumnSchema {
   int32_t pg_typmod_ = 0;
   bool marked_for_deletion_;
   QLValuePB missing_value_;
-  bool is_vector_ = false;
 };
 
 class ContiguousRow;
@@ -553,7 +547,6 @@ class Schema : public MissingValueProvider {
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
-      has_nullables_(false),
       cotable_id_(Uuid::Nil()),
       colocation_id_(kColocationIdNotSet),
       pgschema_name_("") {
@@ -619,6 +612,14 @@ class Schema : public MissingValueProvider {
   // Return the number of columns in this schema
   size_t num_columns() const {
     return cols_.size();
+  }
+
+  bool has_vectors() const {
+    return !vector_column_ids_.empty();
+  }
+
+  const std::vector<ColumnId>& vector_column_ids() const {
+    return vector_column_ids_;
   }
 
   // Return the length of the key prefix in this schema.
@@ -1056,9 +1057,6 @@ class Schema : public MissingValueProvider {
   // Get a column's missing default value.
   Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final;
 
-  // TODO(vector-index) temp solution while DataType::VECTOR is not yet introduced.
-  void SetVectorColumns(const std::vector<ColumnId>& ids);
-
   // Should account for every field in Schema.
   // TODO: Some of them should be in Equals too?
   static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
@@ -1113,10 +1111,12 @@ class Schema : public MissingValueProvider {
   IdMapping id_to_index_;
 
   // Cached indicator whether any columns are nullable.
-  bool has_nullables_;
+  bool has_nullables_ = false;
 
   // Cached indicator whether any columns are static.
   bool has_statics_ = false;
+
+  std::vector<ColumnId> vector_column_ids_;
 
   TableProperties table_properties_;
 

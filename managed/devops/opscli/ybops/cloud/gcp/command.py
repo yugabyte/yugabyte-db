@@ -11,7 +11,7 @@
 from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessCommand, \
     NetworkCommand
 from ybops.cloud.common.method import AddAuthorizedKey, ConfigureInstancesMethod, \
-    ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, UpdateDiskMethod, \
+    ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, \
     CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
     VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
     WaitForConnection, ManageOtelCollector
@@ -22,7 +22,7 @@ from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstanc
     GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
     GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod, GcpPauseInstancesMethod, \
     GcpResumeInstancesMethod, GcpUpdateMountedDisksMethod, GcpDeleteRootVolumesMethod, \
-    GcpTagsMethod, GcpHardRebootInstancesMethod, GcpQueryDeviceNames
+    GcpTagsMethod, GcpHardRebootInstancesMethod, GcpQueryDeviceNames, GcpUpdateDiskMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -41,7 +41,7 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(ListInstancesMethod(self))
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
-        self.add_method(UpdateDiskMethod(self))
+        self.add_method(GcpUpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(GcpChangeInstanceTypeMethod(self))
         self.add_method(GcpPauseInstancesMethod(self))

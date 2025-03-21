@@ -81,8 +81,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -133,8 +135,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -183,7 +187,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     for (TaskType taskType : sequence) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertTrue(tasks.size() > 0);
-      assertEquals(taskType, tasks.get(0).getTaskType());
+      assertEquals("at position " + position, taskType, tasks.get(0).getTaskType());
       position++;
     }
   }

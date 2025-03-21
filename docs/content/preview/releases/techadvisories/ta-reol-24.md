@@ -33,7 +33,7 @@ This means updates will no longer be available, preventing YugabyteDB Anywhere a
 Migrate your YugabyteDB Anywhere installation from Replicated by performing the following steps:
 
 1. Upgrade YugabyteDB Anywhere instances to the latest v2.18 or v2.20 using Replicated.
-1. Migrate from the Replicated-based install to a YBA Installer-based install using the [Migration Steps](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated).
+1. [Migrate from the Replicated-based install to a YBA Installer-based install](../../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 
 ## Details
 
@@ -73,7 +73,7 @@ If you want to upgrade YugabyteDB Anywhere to the latest v2.18 or v2.20, and onl
 1. Upgrade YBA to the latest version of your current branch (using Replicated).
 1. Upgrade YBA to the latest v2.18 (using Replicated).
 1. Upgrade YugabyteDB database nodes to latest v2.14.
-1. [Migrate YugabyteDB Anywhere off Replicated](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated), to YBA Installer.
+1. [Migrate YugabyteDB Anywhere off Replicated](../../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/), to YBA Installer.
 1. Plan the upgrade of database nodes prior to EOL in January 2025.
 
 **Scenario 2**
@@ -85,7 +85,7 @@ If you want to upgrade YugabyteDB Anywhere to the latest v2.18 or 2.20, and leav
 1. Check Replicated [prerequisites](../../../yugabyte-platform/prepare/server-yba/).
 1. Upgrade YBA to the latest version of your current branch (using Replicated).
 1. Upgrade YBA to the latest v2.18 or v2.20 (using Replicated).
-1. [Migrate YugabyteDB Anywhere off Replicated](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated), to YBA Installer.
+1. [Migrate YugabyteDB Anywhere off Replicated](../../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/), to YBA Installer.
 1. Plan the upgrade of database nodes prior to EOL for the respective versions. For more details, refer to [Releases](../../ybdb-releases/#releases).
 
 ### Minimum requirements (Sub-optimal)
@@ -107,4 +107,4 @@ To upgrade YugabyteDB Anywhere to the latest v2.18 or v2.20, and only upgrade yo
 1. Upgrade YugabyteDB Anywhere to the latest v2.14 (using Replicated).
 1. Upgrade YugabyteDB database to the latest v2.14.
 1. Upgrade YugabyteDB Anywhere to the latest v2.18 or v2.20 (using Replicated).
-1. [Migrate YugabyteDB Anywhere off Replicated](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated), to YBA Installer.
+1. [Migrate YugabyteDB Anywhere off Replicated](../../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/), to YBA Installer.

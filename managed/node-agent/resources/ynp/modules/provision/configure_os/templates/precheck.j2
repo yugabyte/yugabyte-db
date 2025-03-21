@@ -76,7 +76,10 @@ fi
 
 # Verify sysctl settings
 verify_sysctl "vm.swappiness" "{{ vm_swappiness }}"
-verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}"
+if [[ "$is_cloud" == "False" ]]; then
+    # We will reboot the node post provisioning is done for CSPs
+    verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}"
+fi
 
 if [[ "$is_cloud" == "False" ]]; then
     # Verify kernel core pattern

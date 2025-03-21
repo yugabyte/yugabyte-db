@@ -35,15 +35,18 @@ namespace {
 const int64_t kCompleteJsonb = 1;
 const std::string kDDLCommandCreateTable = "CREATE TABLE";
 const std::string kDDLCommandCreateIndex = "CREATE INDEX";
+
+const NamespaceId kSourceNamespaceId = "0000abcd000030008000000000000000";
 }
 
 class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
  public:
   explicit XClusterDDLQueueHandlerMocked(
-      const client::YBTableName& table_name, MockTserverXClusterContext& xcluster_context)
+      const client::YBTableName& target_table_name, MockTserverXClusterContext& xcluster_context)
       : XClusterDDLQueueHandler(
-            /* local_client */ nullptr, table_name.namespace_name(), table_name.namespace_id(),
-            /* log_prefix */ "", xcluster_context, /* connect_to_pg_func */ nullptr) {}
+            /* local_client */ nullptr, target_table_name.namespace_name(), kSourceNamespaceId,
+            target_table_name.namespace_id(), /* log_prefix */ "", xcluster_context,
+            /* connect_to_pg_func */ nullptr) {}
 
   Status ProcessDDLQueueTable(
       const std::optional<HybridTime>& apply_safe_time, int num_records = 1) {
@@ -79,6 +82,8 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
     get_rows_to_process_calls_++;
     return rows_;
   }
+
+  Status CheckForFailedQuery() override { return Status::OK(); };
 
   Status ProcessDDLQuery(const DDLQueryInfo& query_info) override { return Status::OK(); }
 

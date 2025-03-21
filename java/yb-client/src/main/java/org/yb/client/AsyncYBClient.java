@@ -897,6 +897,59 @@ public class AsyncYBClient implements AutoCloseable {
             });
   }
 
+  /**
+   * @see YBClient#listStatusAndSchemaOfTabletsForTServer(HostAndPort)
+   */
+  public Deferred<ListTabletsResponse> listStatusAndSchemaOfTabletsForTServer(
+      final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    ListTabletsRequest rpc = new ListTabletsRequest();
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<ListTabletsResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
+   * @see YBClient#getTabletConsensusStateFromTS(String, HostAndPort)
+   */
+  public Deferred<GetConsensusStateResponse> getTabletConsensusStateFromTS(final String tabletId,
+      final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    GetConsensusStateRequest rpc = new GetConsensusStateRequest(tabletId);
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<GetConsensusStateResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
+   * @see YBClient#getLatestEntryOpIds(List)
+   */
+  public Deferred<GetLatestEntryOpIdResponse> getLatestEntryOpIds(final HostAndPort hp,
+      final List<String> tabletIds) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetLatestEntryOpIdRequest rpc = new GetLatestEntryOpIdRequest(tabletIds);
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<GetLatestEntryOpIdResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
   /*
    * Create a CQL keyspace.
    * @param name of the keyspace.
@@ -1149,6 +1202,72 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<IsInitDbDoneResponse> getIsInitDbDone() {
     checkIsClosed();
     IsInitDbDoneRequest rpc = new IsInitDbDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Initiates a major catalog upgrade for YSQL.
+   *
+   * @return a Deferred object that will contain the response of the upgrade request.
+   */
+  public Deferred<StartYsqlMajorCatalogUpgradeResponse> startYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    StartYsqlMajorCatalogUpgradeRequest rpc =
+        new StartYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Checks if the YSQL major catalog upgrade is done.
+   *
+   * @return a Deferred object that will be called back with the response indicating whether the
+   *     YSQL major catalog upgrade is done.
+   */
+  public Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> isYsqlMajorCatalogUpgradeDone() {
+    checkIsClosed();
+    IsYsqlMajorCatalogUpgradeDoneRequest rpc =
+        new IsYsqlMajorCatalogUpgradeDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Finalizes the YSQL major catalog upgrade.
+   *
+   * @return a Deferred object that will contain the response of the finalize operation.
+   */
+  public Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> finalizeYsqlMajorCatalogUpgrade() {
+    checkIsClosed();
+    FinalizeYsqlMajorCatalogUpgradeRequest rpc =
+        new FinalizeYsqlMajorCatalogUpgradeRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Initiates a rollback of the YSQL major catalog version.
+   *
+   * @return a Deferred object that will contain the response of the rollback operation.
+   */
+  public Deferred<RollbackYsqlMajorCatalogVersionResponse> rollbackYsqlMajorCatalogVersion() {
+    checkIsClosed();
+    RollbackYsqlMajorCatalogVersionRequest rpc =
+        new RollbackYsqlMajorCatalogVersionRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Retrieves the YSQL major catalog upgrade state.
+   *
+   * @return a Deferred object containing the response of the YSQL major catalog upgrade state.
+   */
+  public Deferred<GetYsqlMajorCatalogUpgradeStateResponse> getYsqlMajorCatalogUpgradeState() {
+    checkIsClosed();
+    GetYsqlMajorCatalogUpgradeStateRequest rpc =
+        new GetYsqlMajorCatalogUpgradeStateRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1515,7 +1634,23 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Sets existing xCluster replication relationships between the source and target universes to be
+   * Returns the ids of outbound replication groups this namespaceId belongs to.
+   * @param namespaceId namespace id used to find the outbound replication groups; if null,
+   *   all outbound replication group ids will be returned.
+   * @return A deferred object that yields a {@link GetXClusterOutboundReplicationGroupsResponse}
+   *     which contains a list of outbound replication group ids
+   */
+  public Deferred<GetXClusterOutboundReplicationGroupsResponse>
+      getXClusterOutboundReplicationGroups(@Nullable String namespaceId) {
+    checkIsClosed();
+    GetXClusterOutboundReplicationGroupsRequest request =
+        new GetXClusterOutboundReplicationGroupsRequest(masterTable, namespaceId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Sets existing xCluster  replication relationships between the source and target universes to be
    * either active or inactive
    *
    * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.

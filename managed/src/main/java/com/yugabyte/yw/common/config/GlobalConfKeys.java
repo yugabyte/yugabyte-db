@@ -469,6 +469,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Default refresh interval for the KMS providers.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> kmsAllowCiphertrust =
+      new ConfKeyInfo<>(
+          "yb.kms.allow_ciphertrust",
+          ScopeType.GLOBAL,
+          "Allow CipherTrust KMS",
+          "Allow the usage of CipherTrust KMS.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO() Add metadata
   public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
       new ConfKeyInfo<>(
@@ -802,6 +810,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " operations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> xClusterTableStatusLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.table_status_logging_enabled",
+          ScopeType.GLOBAL,
+          "Whether to log information about gathering table statuses in xCluster",
+          "Whether to log information about gathering bad table statuses in xCluster; the logs can"
+              + " be huge and this gives you a leverage to disable it",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
       new ConfKeyInfo<>(
           "yb.xcluster.use_ybc",
@@ -894,6 +911,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Cooldown after disk resize in aws (in hours)",
           "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> gcpHyperdiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.gcp.hyperdisk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          "Cooldown after hyperdisk resize in gcp (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
@@ -1560,12 +1585,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableYNPProvisioning =
+  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
       new ConfKeyInfo<>(
-          "yb.node_agent.use_ynp_provisioning",
+          "yb.node_agent.use_ansible_provisioning",
           ScopeType.GLOBAL,
-          "Use YNP for provisioning",
-          "If enabled use YNP for provisioning",
+          "Use Ansible for provisioning",
+          "If enabled use Ansible for provisioning",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
@@ -1593,4 +1618,29 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable node agent on provider creation by setting the internal flag in the provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_path_style_access",
+          ScopeType.GLOBAL,
+          "Enable Path Access Style for Amazon S3",
+          "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
+      new ConfKeyInfo<>(
+          "yb.ha.k8s_restore_skip_dump_file_delete",
+          ScopeType.GLOBAL,
+          "Restore YBA postgres metadata during Yugaware container restart",
+          "Restore YBA postgres metadata during Yugaware container restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentServerCertExpiryNotice =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server_cert_expiry_notice",
+          ScopeType.GLOBAL,
+          "Node Agent Server Cert Expiry Notice",
+          "Duration to start notifying about expiry before node agent server cert actually expires",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

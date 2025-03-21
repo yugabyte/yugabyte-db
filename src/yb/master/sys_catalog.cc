@@ -46,7 +46,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema_pbutil.h"
@@ -157,6 +157,9 @@ DEFINE_RUNTIME_uint64(delete_systable_rows_batch_bytes, 500_KB,
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
+
+DEFINE_test_flag(double, simulate_catalog_message_read_failure, 0.0,
+                 "Inject random failure of pg_yb_invalidation_messages read from sys_catalog.");
 
 namespace yb {
 namespace master {
@@ -352,7 +355,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), std::nullopt /* index_info */, 0 /* schema_version */,
-      partition_schema, "" /* pg_table_id */,
+      partition_schema, OpId{}, HybridTime{}, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kTrue);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
@@ -824,7 +827,7 @@ Status SysCatalogTable::GetTableSchema(
     QLValue found_entry_type, entry_id, metadata;
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
     SCHECK_EQ(
-        found_entry_type.int8_value(), SysRowEntryType::TABLE, Corruption,
+        SysRowEntryType(found_entry_type.int8_value()), SysRowEntryType::TABLE, Corruption,
         "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
     const Slice& entry_id_value = entry_id.binary_value();
@@ -1097,6 +1100,45 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
   return Status::OK();
 }
 
+namespace {
+Result<std::pair<TablespaceId, boost::optional<ReplicationInfoPB>>> TryParseTablespaceRow(
+    const qlexpr::QLTableRow& source_row, ColumnId oid_col_id, ColumnId options_id) {
+  // Fetch the oid.
+  auto oid = source_row.GetValue(oid_col_id);
+  if (!oid) {
+    return STATUS(Corruption, "Could not read oid column from pg_tablespace");
+  }
+
+  // Get the tablespace id.
+  const TablespaceId tablespace_id = GetPgsqlTablespaceId(oid->uint32_value());
+
+  // Fetch the options specified for the tablespace.
+  const auto& options = source_row.GetValue(options_id);
+  if (!options) {
+    return STATUS(Corruption, "Could not read spcoptions column from pg_tablespace");
+  }
+
+  VLOG(2) << "Tablespace " << tablespace_id << " -> " << options.value().DebugString();
+
+  // If no spcoptions found, then this tablespace has no placement info
+  // associated with it. Tables associated with this tablespace will not
+  // have any custom placement policy.
+  boost::optional<ReplicationInfoPB> replication_info;
+  if (!options->binary_value().empty()) {
+    // Parse the reloptions array associated with this tablespace and construct
+    // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
+    // catalog table. This was stored in postgres as a text array, but processed by DocDB as
+    // a binary value. So first process this binary value and convert it to text array of options.
+    auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
+        options.value()));
+
+    // Fetch the status and print the tablespace option along with the status.
+    replication_info = VERIFY_RESULT(TablespaceParser::FromQLValue(placement_options));
+  }
+  return std::make_pair(tablespace_id, replication_info);
+}
+} // namespace
+
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
@@ -1114,79 +1156,12 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
   // placement info for each tablespace encountered in this catalog table.
   auto tablespace_map = std::make_shared<TablespaceIdToReplicationInfoMap>();
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
-    // Fetch the oid.
-    auto oid = source_row.GetValue(oid_col_id);
-    if (!oid) {
-      return STATUS(Corruption, "Could not read oid column from pg_tablespace");
-    }
-
-    // Get the tablespace id.
-    const TablespaceId tablespace_id = GetPgsqlTablespaceId(oid->uint32_value());
-
-    // Fetch the options specified for the tablespace.
-    const auto& options = source_row.GetValue(options_id);
-    if (!options) {
-      return STATUS(Corruption, "Could not read spcoptions column from pg_tablespace");
-    }
-
-    VLOG(2) << "Tablespace " << tablespace_id << " -> " << options.value().DebugString();
-
-    // If no spcoptions found, then this tablespace has no placement info
-    // associated with it. Tables associated with this tablespace will not
-    // have any custom placement policy.
-    if (options->binary_value().empty()) {
-      // Storing boost::none lets the client know that the tables associated with
-      // this tablespace will not have any custom placement policy for them.
-      const auto& ret = tablespace_map->emplace(tablespace_id, boost::none);
-      // This map should not have already had an element associated with this
-      // tablespace.
-      DCHECK(ret.second);
+    auto result = TryParseTablespaceRow(source_row, oid_col_id, options_id);
+    if (!result.ok()) {
+      LOG(WARNING) << "Could not parse tablespace row: " << result.status();
       continue;
     }
-
-    // Parse the reloptions array associated with this tablespace and construct
-    // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
-    // catalog table. This was stored in postgres as a text array, but processed by DocDB as
-    // a binary value. So first process this binary value and convert it to text array of options.
-    auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
-          options.value()));
-
-    // Fetch the status and print the tablespace option along with the status.
-    ReplicationInfoPB replication_info;
-    PlacementInfoConverter::Placement placement =
-      VERIFY_RESULT(PlacementInfoConverter::FromQLValue(placement_options));
-
-    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
-    for (const auto& block : placement.placement_infos) {
-      auto pb = live_replicas->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(block.cloud);
-      pb->mutable_cloud_info()->set_placement_region(block.region);
-      pb->mutable_cloud_info()->set_placement_zone(block.zone);
-      pb->set_min_num_replicas(block.min_num_replicas);
-
-      if (block.leader_preference < 0) {
-        return STATUS(InvalidArgument, "leader_preference cannot be negative");
-      } else if (static_cast<size_t>(block.leader_preference) > placement.placement_infos.size()) {
-        return STATUS(
-            InvalidArgument,
-            "Priority value cannot be more than the number of zones in the preferred list since "
-            "each priority should be associated with at least one zone from the list");
-      } else if (block.leader_preference > 0) {
-        // Contiguity has already been validated at YSQL layer
-        while (replication_info.multi_affinitized_leaders_size() < block.leader_preference) {
-          replication_info.add_multi_affinitized_leaders();
-        }
-
-        auto zone_set =
-            replication_info.mutable_multi_affinitized_leaders(block.leader_preference - 1);
-        auto ci = zone_set->add_zones();
-        ci->set_placement_cloud(block.cloud);
-        ci->set_placement_region(block.region);
-        ci->set_placement_zone(block.zone);
-      }
-    }
-    live_replicas->set_num_replicas(placement.num_replicas);
-
+    auto& [tablespace_id, replication_info] = *result;
     const auto& ret = tablespace_map->emplace(tablespace_id, replication_info);
     // This map should not have already had an element associated with this
     // tablespace.
@@ -1345,19 +1320,6 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    if (is_colocated_database) {
-      // A table in a colocated database is colocated unless it opted out
-      // of colocation.
-      auto table_info =
-          master_->catalog_manager()->GetTableInfo(GetPgsqlTableId(database_oid, oid));
-
-      if (!table_info) {
-        // Primary key indexes are a separate entry in pg_class but they do not have
-        // their own entry in YugaByte's catalog manager. So, we skip them here.
-        continue;
-      }
-    }
-
     // Process the tablespace oid for this table/index.
     const auto& tablespace_oid_col = row.GetValue(tablespace_col_id);
     if (!tablespace_oid_col) {
@@ -1365,8 +1327,6 @@ Status SysCatalogTable::ReadPgClassInfo(
     }
 
     const uint32 tablespace_oid = tablespace_oid_col->uint32_value();
-    VLOG(1) << "Table { oid: " << oid << ", name: " << table_name << " }"
-            << " has tablespace oid " << tablespace_oid;
 
     boost::optional<TablespaceId> tablespace_id = boost::none;
     // If the tablespace oid is kInvalidOid then it means this table was created
@@ -1392,6 +1352,17 @@ Status SysCatalogTable::ReadPgClassInfo(
     } else {
       table_id = GetPgsqlTableId(database_oid, relfilenode_oid);
     }
+
+    auto table_info = master_->catalog_manager()->GetTableInfo(table_id);
+
+    if (!table_info) {
+      // Some relations (eg: primary key indexes) may exist in pg_class but not in
+      // YugaByte's catalog manager. So, we skip them here.
+      continue;
+    }
+
+    VLOG(1) << "Table { uuid: " << table_id << ", name: " << table_name << " }"
+            << " has tablespace oid " << tablespace_oid;
     const auto& ret = table_to_tablespace_map->emplace(table_id, tablespace_id);
     // The map should not have a duplicate entry with the same oid.
     DCHECK(ret.second);
@@ -1713,6 +1684,62 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   // Cannot find default tablegroup in pg_yb_tablegroup.
   return kPgInvalidOid;
 }
+
+Result<DbOidVersionToMessageListMap>
+SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
+  if (RandomActWithProbability(FLAGS_TEST_simulate_catalog_message_read_failure)) {
+    return STATUS(InternalError, "Injected pg_yb_invalidation_messages read failure for testing.");
+  }
+
+  TRACE_EVENT0("master", "ReadYsqlCatalogInvalationMessages");
+
+  auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
+                                 ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto db_oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName)).rep();
+  const auto current_version_col_id = VERIFY_RESULT(
+      schema.ColumnIdByName(kCurrentVersionColumnName)).rep();
+  const auto messages_col_id = VERIFY_RESULT(schema.ColumnIdByName(kMessagesColumnName)).rep();
+
+  dockv::ReaderProjection projection(schema, {db_oid_col_id, current_version_col_id,
+                                              messages_col_id});
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
+
+  qlexpr::QLTableRow source_row;
+
+  // Loop through the pg_yb_invalidation_messages catalog table. Each row in this table represents
+  // a list of invalidation messages associated with a pair of (db_oid, current_version).
+  // Populate 'messages' with (db_oid, current_version, messages).
+
+  DbOidVersionToMessageListMap messages;
+  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
+    // Fetch the db_oid.
+    const auto db_oid_col = source_row.GetValue(db_oid_col_id);
+    SCHECK(db_oid_col, IllegalState, "Could not read db_oid from pg_yb_invalidation_messages");
+    const uint32_t db_oid = db_oid_col->uint32_value();
+
+    // Fetch the current_version.
+    const auto& current_version_col = source_row.GetValue(current_version_col_id);
+    SCHECK(current_version_col, IllegalState,
+           "Could not read current_version from pg_yb_invalidation_messages");
+    const uint64_t current_version = static_cast<uint64_t>(current_version_col->int64_value());
+
+    // Fetch the messages.
+    const auto& messages_col = source_row.GetValue(messages_col_id);
+    SCHECK(messages_col, IllegalState, "Could not read messages from pg_yb_invalidation_messages");
+    const std::optional<std::string> message_list = messages_col->has_binary_value() ?
+      std::optional<std::string>(static_cast<std::string>(messages_col->binary_value())) :
+      std::nullopt;
+    auto insert_result = messages.insert(
+      std::make_pair(std::make_pair(db_oid, current_version), message_list));
+    // There should not be any duplicate (db_oid, current_version) because it is a primary key.
+    DCHECK(insert_result.second);
+  }
+  return messages;
+}
+
 
 Status SysCatalogTable::WriteBatchIfNeeded(size_t max_batch_bytes,
                                            size_t rows_so_far,

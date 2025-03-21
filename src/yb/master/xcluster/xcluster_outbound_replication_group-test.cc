@@ -31,8 +31,7 @@
 
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
+DECLARE_bool(xcluster_enable_ddl_replication);
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -165,9 +164,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   void SetUp() {
     YBTest::SetUp();
     LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) = UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
-        UseAutomaticMode();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
   }
 
   virtual bool UseAutomaticMode() {
@@ -311,6 +308,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
         return Status::OK();
       },
+      .get_normal_oid_higher_than_any_used_normal_oid_func =
+          [](NamespaceId namespace_id) -> Result<uint32_t> { return 100'000; },
       .get_namespace_func =
           std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
@@ -339,6 +338,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
             }
             return table_designators;
           },
+      .is_automatic_mode_switchover_func = [](NamespaceId) { return false; },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();

@@ -29,7 +29,7 @@
  * If you increment it, make sure you didn't forget to add a new SQL migration
  * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
  */
-#define YB_LAST_USED_OID 8078
+#define YB_LAST_USED_OID 8094
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
@@ -54,15 +54,15 @@ extern Oid	GetNewOidWithIndex(Relation relation, Oid indexId,
 extern Oid	GetNewRelFileNode(Oid reltablespace, Relation pg_class,
 							  char relpersistence);
 
-// TODO: Rename according to new style guide
+/* TODO: Rename according to new style guide */
 extern bool YbIsCatalogNamespaceByName(const char *namespace_name);
 
-extern Oid GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
-									 char relpersistence);
+extern Oid	GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
+									  char relpersistence);
 
-extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
+extern Oid	GetRowTypeOidFromRelOptions(List *relOptions);
 
-extern Oid YbGetColocationIdFromRelOptions(List *relOptions);
+extern Oid	YbGetColocationIdFromRelOptions(List *relOptions);
 
 extern bool YbGetUseInitdbAclFromRelOptions(List *options);
 

@@ -86,11 +86,9 @@ class ArenaWrappedDBIter final : public Iterator {
 
   void RevalidateAfterUpperBoundChange() override;
 
-  bool ScanForward(
-    Slice upperbound, KeyFilterCallback* key_filter_callback,
-    ScanCallback* scan_callback) override;
-
  private:
+  void UpdateFilterKey(Slice user_key_for_filter) override;
+
   DBIter* db_iter_;
   Arena arena_;
 };

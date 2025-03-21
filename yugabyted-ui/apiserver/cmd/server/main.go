@@ -7,6 +7,7 @@ import (
     "apiserver/cmd/server/templates"
     "embed"
     "io/fs"
+    "net"
     "net/http"
     "os"
     "strconv"
@@ -103,8 +104,6 @@ func main() {
     helper, _ := helpers.NewHelperContainer(log)
 
     serverPort := getEnv(serverPortEnv, "15433")
-
-    port := ":" + serverPort
 
     LoadTemplates()
 
@@ -255,7 +254,8 @@ func main() {
     e.GET("/api/migrations", c.GetVoyagerMigrations)
 
     // Get Voyager assement info
-    e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
+    // Deprecating this API as we now use the migration_assessment_v2 API
+    // e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
 
     // Get Voyager assessment report
     e.GET("/api/migration_assessment_v2", c.GetVoyagerAssessmentReport)
@@ -305,6 +305,6 @@ func main() {
     if helpers.BindAddr == "" {
         helpers.BindAddr = helpers.HOST
     }
-    uiBindAddress := helpers.BindAddr + port
+    uiBindAddress := net.JoinHostPort(helpers.BindAddr, serverPort)
     e.Logger.Fatal(e.Start(uiBindAddress))
 }

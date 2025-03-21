@@ -25,6 +25,6 @@
 #include "c.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-typedef YbcPgRowMessage YBCPgVirtualWalRecord;
+typedef YbcPgRowMessage YbVirtualWalRecord;
 
 #endif

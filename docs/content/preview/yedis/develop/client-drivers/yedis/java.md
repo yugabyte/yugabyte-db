@@ -31,7 +31,7 @@ To build your Java application using the YugabyteDB version of the Jedis driver,
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](/preview/tutorials/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - JDK version 1.8 or later
 - Maven 3.3 or later
 

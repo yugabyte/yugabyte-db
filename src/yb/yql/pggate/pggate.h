@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,7 +50,9 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -92,6 +95,11 @@ struct PgMemctxHasher {
   size_t operator()(PgMemctx* value) const;
 };
 
+struct PgDdlCommitInfo {
+  uint32_t db_oid;
+  bool is_silent_altering;
+};
+
 //--------------------------------------------------------------------------------------------------
 // Implements support for CAPI.
 class PgApiImpl {
@@ -122,7 +130,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
+  void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 
@@ -144,7 +152,7 @@ class PgApiImpl {
   Status GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
 
   // Invalidate the sessions table cache.
-  Status InvalidateCache();
+  Status InvalidateCache(uint64_t min_ysql_catalog_version);
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
   bool GetDisableTransparentCacheRefreshRetry();
@@ -154,6 +162,8 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   Result<bool> CatalogVersionTableInPerdbMode();
+  Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
+      uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
@@ -390,6 +400,8 @@ class PgApiImpl {
 
   Status CreateIndexSetVectorOptions(PgStatement *handle, YbcPgVectorIdxOptions *options);
 
+  Status CreateIndexSetHnswOptions(PgStatement *handle, int m, int m0, int ef_construction);
+
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YbcPgTypeEntity **types, uint64_t *data);
 
@@ -409,6 +421,7 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id);
+  Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
                          const YbcPgOid sequence_oid,
@@ -515,6 +528,7 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
+  Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -588,6 +602,8 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const YbcPgExecParameters *exec_params,
                                YbcConstSliceVector ybctids);
 
+  Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
+
   Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
@@ -633,7 +649,7 @@ class PgApiImpl {
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitPlainTransaction();
+  Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
   Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
@@ -642,6 +658,7 @@ class PgApiImpl {
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
   Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+  Status SetDdlStateInPlainTransaction();
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
@@ -697,7 +714,9 @@ class PgApiImpl {
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
-  void AddForeignKeyReferenceIntent(PgOid table_id, bool is_region_local, const Slice& ybctid);
+  void AddForeignKeyReferenceIntent(
+        PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options);
+  void NotifyDeferredTriggersProcessingStarted();
 
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
@@ -739,7 +758,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
-  Status ValidatePlacement(const char *placement_info);
+  Status ValidatePlacement(const char *placement_info, bool check_satisfiable);
 
   Result<bool> CheckIfPitrActive();
 
@@ -759,7 +778,6 @@ class PgApiImpl {
 
   void RollbackSubTransactionScopedSessionState();
   void RollbackTransactionScopedSessionState();
-  Status CommitTransactionScopedSessionState();
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
@@ -780,7 +798,8 @@ class PgApiImpl {
       const ReplicationSlotName& slot_name);
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -790,6 +809,9 @@ class PgApiImpl {
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
       const std::string& stream_id);
 
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t *lag_metric);
+
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
       const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
@@ -797,6 +819,14 @@ class PgApiImpl {
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
+
+  Result<std::string> ExportSnapshot(
+      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
+  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
+      PgTxnSnapshotDescriptor snapshot_descriptor);
+
+  bool HasExportedSnapshots() const;
+  void ClearExportedTxnSnapshots();
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
@@ -823,7 +853,14 @@ class PgApiImpl {
   Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
+  //----------------------------------------------------------------------------------------------
+  // Table Locks.
+  //----------------------------------------------------------------------------------------------
+  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+
  private:
+  void ClearSessionState();
+
   class Interrupter;
 
   class TupleIdBuilder {
@@ -861,8 +898,8 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
 
-  // Local tablet-server shared memory segment handle.
-  tserver::TServerSharedObject tserver_shared_object_;
+  // Local tablet-server shared memory data.
+  tserver::TServerSharedData* tserver_shared_object_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
@@ -873,6 +910,10 @@ class PgApiImpl {
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
   TupleIdBuilder tuple_id_builder_;
+  BufferingSettings buffering_settings_;
+  YbctidReaderProvider ybctid_reader_provider_;
+  PgFKReferenceCache fk_reference_cache_;
+  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 };
 
 }  // namespace yb::pggate

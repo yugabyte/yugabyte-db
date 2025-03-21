@@ -39,7 +39,6 @@ var describeBackupScheduleCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		scheduleName, err := cmd.Flags().GetString("name")
@@ -86,7 +85,7 @@ var describeBackupScheduleCmd = &cobra.Command{
 			backupScheduleAPIFilter.SetUniverseUUIDList(universeUUIDs)
 		}
 
-		backupScheduleAPIDirection := "DESC"
+		backupScheduleAPIDirection := util.DescSortDirection
 		backupScheduleAPISort := "scheduleUUID"
 
 		backupScheduleAPIQuery := ybaclient.SchedulePagedApiQuery{

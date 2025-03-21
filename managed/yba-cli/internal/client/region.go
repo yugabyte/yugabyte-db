@@ -9,8 +9,6 @@ import (
 )
 
 // GetRegion fetches region list of a provider
-func (a *AuthAPIClient) GetRegion(pUUID string) (
-	ybaclient.RegionManagementApiApiGetRegionRequest,
-) {
+func (a *AuthAPIClient) GetRegion(pUUID string) ybaclient.RegionManagementApiApiGetRegionRequest {
 	return a.APIClient.RegionManagementApi.GetRegion(a.ctx, a.CustomerUUID, pUUID)
 }

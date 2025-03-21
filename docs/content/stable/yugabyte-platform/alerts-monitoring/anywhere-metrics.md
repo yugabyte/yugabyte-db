@@ -20,11 +20,13 @@ You access metrics by navigating to **Universes > Universe-Name > Metrics**, as 
 
 ![Metrics Page](/images/yp/metrics_main.png)
 
+By default, metrics use your current timezone as set in your profile. To change timezones, choose a timezone from the timezone menu. If the timezone menu is not available, set the **Enable viewing metrics in timezone** [Global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) option (config key `yb.ui.metrics.enable_timezone`) to true to display it.
+
 Use the time menu to change the range. To zoom in to view granular data points, select a portion of the time range along the y-axis of any chart. This zooms all charts.
 
 ![Fine grained metrics](/images/yp/fine-grain-metrics.png)
 
-Click the refresh button to restore the default time range.
+Click the Refresh button to restore the default time range.
 
 You can create custom PromQL queries and run them against any graph. To do this, from the **Metrics** page, click the Prometheus icon at the top right corner of any metrics graph to display the Prometheus window, then paste your query in the Prometheus query editor.
 

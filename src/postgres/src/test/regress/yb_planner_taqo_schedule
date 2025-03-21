@@ -4,6 +4,6 @@
 # Testsuite for TAQO workloads covering planner/optimizer behavior.
 ####################################################################################################
 # TODO : Following test fails in release builds only needs to be fixed.
-# test: yb_planner_taqo_basic
-test: yb_planner_taqo_seek_next_estimation
-test: yb_planner_taqo_tuning_tests
+# test: yb.orig.planner_taqo_basic
+test: yb.orig.planner_taqo_seek_next_estimation
+test: yb.orig.planner_taqo_tuning_tests

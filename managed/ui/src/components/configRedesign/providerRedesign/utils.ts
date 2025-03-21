@@ -15,20 +15,9 @@ import {
   KUBERNETES_PROVIDERS_MAP,
   KubernetesProviderType
 } from './constants';
-import { K8sCertIssuerType } from './forms/configureRegion/constants';
 import { SupportedAZField, SupportedRegionField } from './forms/configureRegion/types';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
 import { AccessKey, K8sRegionCloudInfo, YBAvailabilityZone, YBProvider, YBRegion } from './types';
-
-export const getCertIssuerType = (k8sRegionCloudInfo: K8sRegionCloudInfo) => {
-  if (k8sRegionCloudInfo.certManagerClusterIssuer) {
-    return K8sCertIssuerType.CLUSTER_ISSUER;
-  }
-  if (k8sRegionCloudInfo.certManagerIssuer) {
-    return K8sCertIssuerType.ISSUER;
-  }
-  return K8sCertIssuerType.NONE;
-};
 
 export const getNtpSetupType = (providerConfig: YBProvider): NTPSetupType => {
   if (

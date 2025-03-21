@@ -1060,7 +1060,7 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 
 			/* Lookup column name, ereport on failure */
 			attrno = attnameAttNum(pstate->p_target_relation, name,
-								   IsYsqlUpgrade /* sysColOK */);
+								   IsYsqlUpgrade /* sysColOK */ );
 			if (attrno == InvalidAttrNumber)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),

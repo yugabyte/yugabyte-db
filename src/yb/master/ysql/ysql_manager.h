@@ -57,7 +57,13 @@ class YsqlManager : public YsqlManagerIf {
 
   Status SetInitDbDone(const LeaderEpoch& epoch);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  // Checks if a YSQL major upgrade is in progress. This is derived from the state of the local
+  // master and its Ysql config.
+  // This will return false until the yb master leader is on the new version, and it will return
+  // false as soon as the YsqlMajorCatalog has been finalized.
+  // Use IsYsqlMajorVersionUpgradeInProgress if a more comprehensive view of the upgrade state is
+  // required.
+  bool IsMajorUpgradeInProgress() const override;
 
   void HandleNewTableId(const TableId& table_id);
 
@@ -102,6 +108,8 @@ class YsqlManager : public YsqlManagerIf {
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
   Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+
+  Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);

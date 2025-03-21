@@ -237,11 +237,16 @@ func init() {
 		"subscription-id", "tenant-id")
 
 	createAzureProviderCmd.Flags().String("network-subscription-id", "",
-		"Azure Network Subscription ID.")
-	createAzureProviderCmd.Flags().String("network-rg", "", "Azure Network Resource Group.")
+		"[Optional] Azure Network Subscription ID. All network resources and NIC "+
+			"resouce of VMs will be created in this group. If left empty, "+
+			"the default subscription ID will be used.")
+	createAzureProviderCmd.Flags().String("network-rg", "",
+		"[Optional] Azure Network Resource Group. All network resources and "+
+			"NIC resouce of VMs will be created in this group. If left empty, "+
+			"the default resource group will be used.")
 
 	createAzureProviderCmd.Flags().String("hosted-zone-id", "",
-		"[Optional] Hosted Zone ID corresponging to Private DNS Zone.")
+		"[Optional] Hosted Zone ID corresponding to Private DNS Zone.")
 
 	createAzureProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the Azure provider. Minimum number of required "+
@@ -392,7 +397,8 @@ func buildAzureImageBundles(imageBundles []string) []ybaclient.ImageBundle {
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
-			errMessage := err.Error() + " Using SSH Port as 22\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

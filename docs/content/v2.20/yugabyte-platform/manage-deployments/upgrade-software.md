@@ -20,6 +20,13 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 {{< /note >}}
 
+{{< note title="Upgrading universes in xCluster Disaster Recovery" >}}
+When upgrading universes in [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/#upgrading-universes-in-dr):
+
+- Use the same version of YugabyteDB on both the source/DR primary and target/DR replica.
+- Upgrade and finalize the target/DR replica before upgrading and finalizing the source/DR primary.
+{{< /note >}}
+
 When performing a database upgrade, do the following:
 
 1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.

@@ -324,6 +324,7 @@ public class NodeConfigValidator {
       case GSUTIL:
       case S3CMD:
       case YB_HOME_DIR_CLEAN:
+      case NTP_SKEW:
       case DATA_DIR_CLEAN:
         {
           return Boolean.parseBoolean(nodeConfig.getValue());
@@ -388,15 +389,10 @@ public class NodeConfigValidator {
       case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
-        {
-          return !input.isDetached();
-        }
       case YB_CONTROLLER_HTTP_PORT:
       case YB_CONTROLLER_RPC_PORT:
         {
-          // TODO change this to !input.isDetached() once the issue of not cleaning up yb_controller
-          // is fixed.
-          return false;
+          return !input.isDetached();
         }
       case NODE_EXPORTER_PORT:
         {
@@ -493,7 +489,7 @@ public class NodeConfigValidator {
         nodeAgentClient.ping(nodeAgent);
         return true;
       } catch (RuntimeException e) {
-        log.error("Failed to connect to node agent {} - {}", nodeAgent.getUuid(), e.getMessage());
+        log.error("Failed to connect to node agent {} - {}", nodeAgent, e.getMessage());
       }
     }
     return false;

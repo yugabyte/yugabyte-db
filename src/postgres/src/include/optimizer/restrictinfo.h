@@ -34,13 +34,15 @@ extern RestrictInfo *commute_restrictinfo(RestrictInfo *rinfo, Oid comm_op);
 extern bool restriction_is_or_clause(RestrictInfo *restrictinfo);
 extern bool restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 											   RelOptInfo *rel);
-
+extern bool yb_can_hash_batched_rinfo(RestrictInfo *batched_rinfo,
+									  Relids outer_relids,
+									  Relids inner_relids);
 extern bool yb_can_batch_rinfo(RestrictInfo *rinfo,
 							   Relids outer_batched_relids,
 							   Relids inner_relids);
 extern RestrictInfo *yb_get_batched_restrictinfo(RestrictInfo *rinfo,
-											  Relids outer_batched_relids,
-											  Relids inner_relids);
+												 Relids outer_batched_relids,
+												 Relids inner_relids);
 extern List *get_actual_clauses(List *restrictinfo_list);
 extern List *extract_actual_clauses(List *restrictinfo_list,
 									bool pseudoconstant);

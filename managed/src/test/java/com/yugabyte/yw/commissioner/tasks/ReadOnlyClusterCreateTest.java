@@ -26,6 +26,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -91,8 +92,10 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -110,6 +113,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -179,7 +184,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -237,7 +242,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
 
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(onPremUniverse.getUniverseUUID()).getUniverseDetails();
@@ -281,5 +286,44 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testClusterOnPremCreateRetries() {
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.currentClusterType = ClusterType.ASYNC;
+    UserIntent userIntent = new UserIntent();
+    Region region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
+    userIntent.numNodes = 1;
+    userIntent.replicationFactor = 1;
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.universeName = defaultUniverse.getName();
+    userIntent.provider = defaultProvider.getUuid().toString();
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
+    taskParams.clusters.add(asyncCluster);
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.creatingUser = defaultUser;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), asyncCluster.uuid);
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter;
+      node.tserverRpcPort = 3333;
+      iter++;
+    }
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Create,
+        CustomerTask.TargetType.Cluster,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ReadOnlyClusterCreate,
+        taskParams);
   }
 }

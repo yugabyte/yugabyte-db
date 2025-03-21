@@ -12,6 +12,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="../../yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+{{< /page-finder/head >}}
+
 {{< tip title="Tip" >}}
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
@@ -24,6 +30,9 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 
 {{< warning >}}
 Review the following information before starting an upgrade.
+{{< /warning >}}
+{{< warning title="YSQL major version upgrades" >}}
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2.25 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
@@ -38,7 +47,7 @@ Review the following information before starting an upgrade.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
-- Roll back is {{<tags/feature/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
+- Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
 - You can upgrade from any version of 2.14.x to any stable version in one go.
 
@@ -59,7 +68,7 @@ During the upgrade phase, you deploy the binaries of the new version to the Yuga
 Before starting the upgrade process, ensure that the cluster is healthy.
 
 1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
-1. Make sure there are no leaderless or under replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
+1. Make sure there are no leaderless or under-replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
 1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
 ![Tablet Servers](/images/manage/upgrade-deployment/tablet-servers.png)
@@ -75,8 +84,8 @@ Install the new version of YugabyteDB in a new directory on every YugabyteDB nod
 For example:
 
 ```sh
-wget https://downloads.yugabyte.com/yugabyte-$NEW_VER.tar.gz
-tar xf yugabyte-$NEW_VER.tar.gz -C /home/yugabyte/softwareyb-$NEW_VER/
+wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-$NEW_VER-linux-x86_64.tar.gz
+tar xf yugabyte-$NEW_VER-linux-x86_64.tar.gz -C /home/yugabyte/softwareyb-$NEW_VER/
 cd /home/yugabyte/softwareyb-$NEW_VER/
 ./bin/post_install.sh
 ```
@@ -215,7 +224,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 {{< warning title="Important" >}}
 
 - Roll back is {{<tags/feature/ea>}} in v2.20.3.0 and {{<tags/feature/ga>}} in v2024.1.0 and higher.
-- Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
+- Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 - You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
 

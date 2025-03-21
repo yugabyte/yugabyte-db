@@ -16,18 +16,25 @@
 #include <atomic>
 #include <mutex>
 
-#include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/shmem/interprocess_semaphore.h"
+#include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
+#include "yb/util/uuid.h"
+
+DEFINE_RUNTIME_uint64(ts_shared_memory_setup_max_wait_ms, 10000,
+                      "Maximum wait time for tserver to set up shared memory state");
 
 DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
                  "Crash while performing pg client send via shared memory.");
@@ -35,11 +42,24 @@ DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
 DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
+using namespace std::literals;
+
 namespace yb::tserver {
 
 namespace {
 
 using SystemClock = std::chrono::system_clock;
+
+Result<std::string> MakeAllocatorName(std::string_view uuid) {
+  // Hex-encoded uuid is too long for allocator name, so base64 encoding is used.
+  std::string uuid_bytes;
+  VERIFY_RESULT(Uuid::FromHexStringBigEndian(std::string(uuid))).ToBytes(&uuid_bytes);
+  std::string out;
+  WebSafeBase64Escape(uuid_bytes, &out);
+  return out;
+}
 
 std::chrono::system_clock::time_point ToSystemBase() {
   auto now_system = SystemClock::now();
@@ -54,95 +74,6 @@ std::chrono::system_clock::time_point ToSystem(CoarseTimePoint tp) {
   }
   return base + std::chrono::duration_cast<SystemClock::duration>(tp.time_since_epoch());
 }
-
-#if defined(BOOST_INTERPROCESS_POSIX_PROCESS_SHARED)
-class Semaphore {
- public:
-  explicit Semaphore(unsigned int initial_count) {
-    int ret = sem_init(&impl_, 1, initial_count);
-    CHECK_NE(ret, -1);
-  }
-
-  Semaphore(const Semaphore&) = delete;
-  void operator=(const Semaphore&) = delete;
-
-  ~Semaphore() {
-    CHECK_EQ(sem_destroy(&impl_), 0);
-  }
-
-  Status Post() {
-    return ResToStatus(sem_post(&impl_), "Post");
-  }
-
-  Status Wait() {
-    return ResToStatus(sem_wait(&impl_), "Wait");
-  }
-
-  template<class TimePoint>
-  Status TimedWait(const TimePoint &abs_time) {
-    // Posix does not support infinity absolute time so handle it here
-    if (boost::interprocess::ipcdetail::is_pos_infinity(abs_time)) {
-      return Wait();
-    }
-
-    auto tspec = boost::interprocess::ipcdetail::timepoint_to_timespec(abs_time);
-    int res = sem_timedwait(&impl_, &tspec);
-    if (res == 0) {
-      return Status::OK();
-    }
-    if (res > 0) {
-      // buggy glibc, copy the returned error code to errno
-      errno = res;
-    }
-    if (errno == ETIMEDOUT) {
-      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
-      return timed_out_status;
-    }
-    if (errno == EINTR) {
-      return Status::OK();
-    }
-    return ResToStatus(res, "TimedWait");
-  }
-
- private:
-  static Status ResToStatus(int res, const char* op) {
-    if (res == 0) {
-      return Status::OK();
-    }
-    return STATUS_FORMAT(RuntimeError, "$0 on semaphore failed: $1", op, errno);
-  }
-
-  sem_t impl_;
-};
-#else
-class Semaphore {
- public:
-  explicit Semaphore(unsigned int initial_count) : impl_(initial_count) {
-  }
-
-  Status Post() {
-    impl_.post();
-    return Status::OK();
-  }
-
-  Status Wait() {
-    impl_.wait();
-    return Status::OK();
-  }
-
-  template<class TimePoint>
-  Status TimedWait(const TimePoint &abs_time) {
-    if (!impl_.timed_wait(abs_time)) {
-      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
-      return timed_out_status;
-    }
-    return Status::OK();
-  }
-
- private:
-  boost::interprocess::interprocess_semaphore impl_;
-};
-#endif
 
 YB_DEFINE_ENUM(SharedExchangeState,
                (kIdle)(kRequestSent)(kProcessingRequest)(kResponseSent)(kShutdown));
@@ -236,7 +167,7 @@ class SharedExchangeHeader {
   Status DoWait(
       SharedExchangeState expected_state,
       std::chrono::system_clock::time_point deadline,
-      Semaphore* semaphore) {
+      InterprocessSemaphore* semaphore) {
     auto state = state_.load(std::memory_order_acquire);
     for (;;) {
       if (state == SharedExchangeState::kShutdown) {
@@ -254,8 +185,8 @@ class SharedExchangeHeader {
     }
   }
 
-  Semaphore request_semaphore_{0};
-  Semaphore response_semaphore_{0};
+  InterprocessSemaphore request_semaphore_{0};
+  InterprocessSemaphore response_semaphore_{0};
   std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
   size_t data_size_;
   std::byte data_[0];
@@ -270,6 +201,147 @@ std::string MakeSharedMemoryName(const std::string& instance_id, uint64_t sessio
 }
 
 } // namespace
+
+Status TServerSharedData::AllocatorsInitialized(SharedMemoryBackingAllocator& allocator) {
+  fully_initialized_ = true;
+  return Status::OK();
+}
+
+Status TServerSharedData::WaitAllocatorsInitialized() {
+  return WaitFor(
+      [this]() -> Result<bool> { return fully_initialized_; },
+      FLAGS_ts_shared_memory_setup_max_wait_ms * 1ms,
+      "Wait for shared memory allocators to be initialized");
+}
+
+SharedMemoryManager::~SharedMemoryManager() {
+  CHECK_OK(ShutdownNegotiator());
+  auto data = data_.get();
+  if (is_parent_ && data) {
+    data->~TServerSharedData();
+  }
+}
+
+Status SharedMemoryManager::InitializeTServer(std::string_view uuid) {
+  is_parent_ = true;
+  return PrepareAllocators(uuid);
+}
+
+Status SharedMemoryManager::PrepareNegotiationTServer() {
+  if (parent_negotiator_thread_) {
+    RETURN_NOT_OK(ShutdownNegotiator());
+  }
+
+  auto negotiator = std::make_shared<AddressSegmentNegotiator>();
+  RETURN_NOT_OK(negotiator->PrepareNegotiation(&address_segment_));
+
+  parent_negotiator_ = negotiator;
+  parent_negotiator_thread_ = VERIFY_RESULT(Thread::Make(
+      "SharedMemoryManager", "Negotiator",
+      &SharedMemoryManager::ExecuteParentNegotiator, this, negotiator));
+
+  return Status::OK();
+}
+
+Status SharedMemoryManager::SkipNegotiation() {
+  address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::ReserveWithoutNegotiation());
+  CHECK_OK(InitializeParentAllocatorsAndObjects());
+  return Status::OK();
+}
+
+Status SharedMemoryManager::InitializePostmaster(int fd) {
+  address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::NegotiateChild(fd));
+  return Status::OK();
+}
+
+Status SharedMemoryManager::InitializePgBackend(std::string_view uuid) {
+  bool pointer_support = address_segment_.Active();
+  if (!pointer_support) {
+    // Shared memory for the case of master and initdb processes does not have pointer support,
+    // since there is no "parent" process like postmaster from which all PG processes are forked
+    // from to do address negotiation with.
+    LOG(INFO) << "Initializing shared memory without pointer support";
+    address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::ReserveWithoutNegotiation());
+  }
+  RETURN_NOT_OK(InitializeChildAllocatorsAndObjects(uuid));
+  if (pointer_support) {
+    RETURN_NOT_OK(SharedData()->WaitAllocatorsInitialized());
+  }
+  return Status::OK();
+}
+
+Status SharedMemoryManager::ShutdownNegotiator() {
+  if (auto negotiator = parent_negotiator_.lock()) {
+    RETURN_NOT_OK(negotiator->Shutdown());
+  }
+  if (parent_negotiator_thread_) {
+    parent_negotiator_thread_->Join();
+    parent_negotiator_thread_.reset();
+  }
+  return Status::OK();
+}
+
+int SharedMemoryManager::NegotiationFd() const {
+  if (auto negotiator = parent_negotiator_.lock()) {
+    return negotiator->GetFd();
+  }
+  return -1;
+}
+
+Status SharedMemoryManager::PrepareAllocators(std::string_view uuid) {
+  if (ready_) {
+    return Status::OK();
+  }
+
+  prepare_state_ = VERIFY_RESULT(allocator_.Prepare(
+      VERIFY_RESULT(MakeAllocatorName(uuid)), sizeof(TServerSharedData)));
+  data_.Set(new (prepare_state_.UserData()) TServerSharedData());
+  return Status::OK();
+}
+
+void SharedMemoryManager::ExecuteParentNegotiator(
+    const std::shared_ptr<AddressSegmentNegotiator>& negotiator) {
+  auto result = negotiator->NegotiateParent();
+  if (!result.ok()) {
+    if (result.status().IsShutdownInProgress()) {
+      return;
+    }
+
+    // FATAL is necessary here: in event of postmaster restart, negotiation may fail in the
+    // (unlikely) situation where the address segment that we were using (and which has initialized
+    // shared memory data structures) is unavailable on the newly started postmaster. In this case,
+    // we make use of tserver restart to renegotiate addresses from scratch.
+    LOG(FATAL) << "Address segment negotiation failed: " << result.status();
+  }
+
+  address_segment_ = std::move(*result);
+
+  CHECK_OK(InitializeParentAllocatorsAndObjects());
+
+  LOG(INFO) << "Finished address segment negotiation";
+}
+
+Status SharedMemoryManager::InitializeParentAllocatorsAndObjects() {
+  if (ready_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(allocator_.InitOwner(address_segment_, std::move(prepare_state_)));
+  auto* data = allocator_.UserData<TServerSharedData>();
+  data_.Set(data);
+  RETURN_NOT_OK(data->AllocatorsInitialized(allocator_));
+  ready_.store(true);
+  return Status::OK();
+}
+
+Status SharedMemoryManager::InitializeChildAllocatorsAndObjects(std::string_view uuid) {
+  if (ready_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(allocator_.InitChild(address_segment_, VERIFY_RESULT(MakeAllocatorName(uuid))));
+  data_.Set(allocator_.UserData<TServerSharedData>());
+  ready_.store(true);
+  return Status::OK();
+}
 
 class SharedExchange::Impl {
  public:

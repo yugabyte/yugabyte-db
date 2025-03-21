@@ -30,6 +30,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client_session.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
@@ -63,6 +64,10 @@ server::Clock* MasterTabletServer::Clock() {
 
 const scoped_refptr<MetricEntity>& MasterTabletServer::MetricEnt() const {
   return metric_entity_;
+}
+
+tserver::TSLocalLockManagerPtr MasterTabletServer::ts_local_lock_manager() const {
+  return nullptr;
 }
 
 Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(
@@ -147,7 +152,7 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
   }
 }
 
-tserver::TServerSharedData& MasterTabletServer::SharedObject() {
+ConcurrentPointerReference<tserver::TServerSharedData> MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }
 
@@ -155,6 +160,12 @@ Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB* resp) const {
   return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
+}
+
+Status MasterTabletServer::GetTserverCatalogMessageLists(
+    const tserver::GetTserverCatalogMessageListsRequestPB& req,
+    tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
+  return master_->GetTserverCatalogMessageLists(req, resp);
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
@@ -225,12 +236,23 @@ Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }
 
+Result<tserver::PgTxnSnapshot> MasterTabletServer::GetLocalPgTxnSnapshot(
+  const tserver::PgTxnSnapshotLocalId& snapshot_id) {
+  LOG(WARNING) << "Unexpected call of " << __PRETTY_FUNCTION__;
+  return STATUS_FORMAT(InternalError, "Unexpected call of $0", __PRETTY_FUNCTION__);
+}
+
 bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
 const std::string& MasterTabletServer::permanent_uuid() const {
   return master_->permanent_uuid();
+}
+
+Result<std::string> MasterTabletServer::GetUniverseUuid() const {
+  LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
 }
 
 } // namespace master

@@ -1,6 +1,3 @@
--- Fail the script on the first error
-\set ON_ERROR_STOP on
-
 -- Drop AGGREGATE
 DROP AGGREGATE IF EXISTS my_sum(integer);
 

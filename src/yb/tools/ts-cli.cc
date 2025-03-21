@@ -64,12 +64,10 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 
-using std::ostringstream;
-using std::shared_ptr;
-using std::string;
-using std::vector;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftConfigPB;
+using yb::consensus::StartRemoteBootstrapRequestPB;
+using yb::consensus::StartRemoteBootstrapResponsePB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -77,6 +75,8 @@ using yb::server::ReloadCertificatesRequestPB;
 using yb::server::ReloadCertificatesResponsePB;
 using yb::server::ServerStatusPB;
 using yb::tablet::TabletStatusPB;
+using yb::tserver::AcquireObjectLockRequestPB;
+using yb::tserver::AcquireObjectLockResponsePB;
 using yb::tserver::ClearAllMetaCachesOnServerRequestPB;
 using yb::tserver::ClearAllMetaCachesOnServerResponsePB;
 using yb::tserver::ClearUniverseUuidRequestPB;
@@ -89,18 +89,14 @@ using yb::tserver::FlushTabletsRequestPB;
 using yb::tserver::FlushTabletsResponsePB;
 using yb::tserver::IsTabletServerReadyRequestPB;
 using yb::tserver::IsTabletServerReadyResponsePB;
-using yb::tserver::ListTabletsRequestPB;
-using yb::tserver::ListTabletsResponsePB;
-using yb::tserver::TabletServerAdminServiceProxy;
-using yb::tserver::TabletServerServiceProxy;
 using yb::tserver::ListMasterServersRequestPB;
 using yb::tserver::ListMasterServersResponsePB;
-using yb::tserver::AcquireObjectLockRequestPB;
-using yb::tserver::AcquireObjectLockResponsePB;
+using yb::tserver::ListTabletsRequestPB;
+using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::ReleaseObjectLockRequestPB;
 using yb::tserver::ReleaseObjectLockResponsePB;
-using yb::consensus::StartRemoteBootstrapRequestPB;
-using yb::consensus::StartRemoteBootstrapResponsePB;
+using yb::tserver::TabletServerAdminServiceProxy;
+using yb::tserver::TabletServerServiceProxy;
 
 const char* const kListTabletsOp = "list_tablets";
 const char* const kVerifyTabletOp = "verify_tablet";
@@ -120,13 +116,13 @@ const char* const kFlushTabletOp = "flush_tablet";
 const char* const kFlushAllTabletsOp = "flush_all_tablets";
 const char* const kCompactTabletOp = "compact_tablet";
 const char* const kCompactAllTabletsOp = "compact_all_tablets";
+const char* const kCompactVectorIndexOp = "compact_vector_index";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
 const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
 const char* const kAcquireObjectLockOp = "acquire_object_lock";
-const char* const kReleaseObjectLockOp = "release_object_lock";
 const char* const kReleaseAllLocksForTxnOp = "release_all_locks_for_txn";
 
 DEFINE_NON_RUNTIME_string(server_address, "localhost",
@@ -151,7 +147,7 @@ PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 // non-zero exit code. Should be used in main().
 #define CHECK_ARGC_OR_RETURN_WITH_USAGE(op, expected) \
   do { \
-    const string& _op = (op); \
+    const std::string& _op = (op); \
     const int _expected = (expected); \
     if (argc != _expected) { \
       /* We substract 2 from _expected because we don't want to count argv[0] or [1]. */ \
@@ -206,11 +202,11 @@ class TsAdminClient {
   // Sets the gflag 'flag' to 'val' on the remote server via RPC.
   // If 'force' is true, allows setting flags even if they're not marked as
   // safe to change at runtime.
-  Status SetFlag(const string& flag, const string& val,
+  Status SetFlag(const std::string& flag, const std::string& val,
                  bool force);
 
   // Validates the value of a flag without actually setting it.
-  Status ValidateFlagValue(const string& flag, const string& val);
+  Status ValidateFlagValue(const std::string& flag, const std::string& val);
 
   // Refreshes all gflags on the remote server to the flagfile, via RPC.
   Status RefreshFlags();
@@ -231,7 +227,7 @@ class TsAdminClient {
                       tablet::TabletDataState delete_type);
 
   Status UnsafeConfigChange(const std::string& tablet_id,
-                            const std::vector<string>& peers);
+                            const std::vector<std::string>& peers);
 
 
   // Sets hybrid_time to the value of the tablet server's current hybrid_time.
@@ -245,14 +241,22 @@ class TsAdminClient {
 
   // Flush or compact a given tablet on a given tablet server.
   // If 'tablet_id' is empty string, flush or compact all tablets.
-  Status FlushTablets(const std::string& tablet_id, bool is_compaction);
+  Status CompactTablets(const std::string& tablet_id);
+
+  // For a given tablet, compact vector index chunks into a single chunk for the provided vector
+  // indexes. If input vector indexes are empty, compacts all vector indexes for the given tablet.
+  Status CompactVectorIndex(const TableId& tablet_id, const TableIds& vector_index_ids);
+
+  // Flush or compact a given tablet on a given tablet server.
+  // If 'tablet_id' is empty string, flush or compact all tablets.
+  Status FlushTablets(const std::string& tablet_id);
 
   // Verify the given tablet against its indexes
   // Assume the tablet belongs to a main table
   Status VerifyTablet(
       const std::string& tablet_id,
-      const std::vector<string>& index_ids,
-      const string& start_key,
+      const std::vector<std::string>& index_ids,
+      const std::string& start_key,
       const int num_rows);
 
   // Trigger a reload of TLS certificates.
@@ -270,21 +274,22 @@ class TsAdminClient {
   Status ClearUniverseUuid();
 
   Status AcquireObjectLock(
-      const string& txn_id_str, const string& reuse_version, const string& subtxn_id,
-      const string& database_id, const string& object_id, const std::string& lock_mode);
-  Status ReleaseObjectLock(
-      const string& txn_id_str, const string& reuse_version, const string& subtxn_id,
-      const string& database_id, int argc, char** argv);
+      const std::string& txn_id_str, const std::string& subtxn_id, const std::string& database_id,
+      const std::string& object_id, const std::string& lock_mode);
   Status ReleaseAllLocksForTxn(
-      const string& txn_id_str, const string& reuse_version, const string& subtxn_id);
+      const std::string& txn_id_str, const std::string& subtxn_id);
 
  private:
+  Status FlushOrCompactsTabletsImpl(
+    const std::string& tablet_id, bool is_compaction,
+    std::optional<std::reference_wrapper<const TableIds>> vector_index_ids);
+
   std::string addr_;
   MonoDelta timeout_;
   bool initted_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
-  shared_ptr<server::GenericServiceProxy> generic_proxy_;
+  std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
   std::unique_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::unique_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::unique_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
@@ -292,7 +297,7 @@ class TsAdminClient {
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
 
-TsAdminClient::TsAdminClient(string addr, int64_t timeout_millis)
+TsAdminClient::TsAdminClient(std::string addr, int64_t timeout_millis)
     : addr_(std::move(addr)),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
       initted_(false) {}
@@ -344,7 +349,7 @@ Result<std::shared_ptr<server::GenericServiceProxy>> TsAdminClient::MakeGenericS
   return proxy;
 }
 
-Status TsAdminClient::ListTablets(vector<StatusAndSchemaPB>* tablets) {
+Status TsAdminClient::ListTablets(std::vector<StatusAndSchemaPB>* tablets) {
   CHECK(initted_);
 
   ListTabletsRequestPB req;
@@ -382,7 +387,7 @@ Status TsAdminClient::GetNumUnbootstrappedTablets(int64_t* num_unbootstrapped_ta
   return Status::OK();
 }
 
-Status TsAdminClient::SetFlag(const string& flag, const string& val,
+Status TsAdminClient::SetFlag(const std::string& flag, const std::string& val,
                               bool force) {
   server::SetFlagRequestPB req;
   server::SetFlagResponsePB resp;
@@ -404,7 +409,7 @@ Status TsAdminClient::SetFlag(const string& flag, const string& val,
   }
 }
 
-Status TsAdminClient::ValidateFlagValue(const string& flag, const string& val) {
+Status TsAdminClient::ValidateFlagValue(const std::string& flag, const std::string& val) {
   server::ValidateFlagValueRequestPB req;
   server::ValidateFlagValueResponsePB resp;
   RpcController rpc;
@@ -428,8 +433,8 @@ Status TsAdminClient::RefreshFlags() {
 
 Status TsAdminClient::VerifyTablet(
     const std::string& tablet_id,
-    const std::vector<string>& index_ids,
-    const string& start_key,
+    const std::vector<std::string>& index_ids,
+    const std::string& start_key,
     const int num_rows) {
   tserver::VerifyTableRowRangeRequestPB req;
   tserver::VerifyTableRowRangeResponsePB resp;
@@ -461,7 +466,7 @@ Status TsAdminClient::VerifyTablet(
 Status TsAdminClient::GetTabletSchema(const std::string& tablet_id,
                                       SchemaPB* schema) {
   VLOG(1) << "Fetching schema for tablet " << tablet_id;
-  vector<StatusAndSchemaPB> tablets;
+  std::vector<StatusAndSchemaPB> tablets;
   RETURN_NOT_OK(ListTablets(&tablets));
   for (const StatusAndSchemaPB& pair : tablets) {
     if (pair.tablet_status().tablet_id() == tablet_id) {
@@ -526,8 +531,8 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
-Status TsAdminClient::DeleteTablet(const string& tablet_id,
-                                   const string& reason,
+Status TsAdminClient::DeleteTablet(const std::string& tablet_id,
+                                   const std::string& reason,
                                    tablet::TabletDataState delete_type) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
@@ -552,7 +557,7 @@ Status TsAdminClient::DeleteTablet(const string& tablet_id,
 }
 
 Status TsAdminClient::UnsafeConfigChange(const std::string& tablet_id,
-                                         const std::vector<string>& peers) {
+                                         const std::vector<std::string>& peers) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
 
@@ -618,7 +623,9 @@ Status TsAdminClient::CountIntents(int64_t* num_intents) {
   return Status::OK();
 }
 
-Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compaction) {
+Status TsAdminClient::FlushOrCompactsTabletsImpl(
+  const std::string& tablet_id, bool is_compaction,
+  std::optional<std::reference_wrapper<const TableIds>> vector_index_ids) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
 
@@ -632,6 +639,17 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
   } else {
     req.set_all_tablets(true);
   }
+
+  if (vector_index_ids.has_value()) {
+    const auto& index_ids = vector_index_ids->get();
+    req.set_all_vector_indexes(index_ids.empty());
+    if (!index_ids.empty()) {
+      for (const auto& index_id : index_ids) {
+        req.add_vector_index_ids(index_id);
+      }
+    }
+  }
+
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
   req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
                                   : tserver::FlushTabletsRequestPB::FLUSH);
@@ -647,6 +665,22 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
             << (tablet_id.empty() ? "all tablets" : "tablet <" + tablet_id + ">")
             << std::endl;
   return Status::OK();
+}
+
+Status TsAdminClient::CompactTablets(const std::string& tablet_id) {
+  return FlushOrCompactsTabletsImpl(
+      tablet_id, /* is_compaction = */ true, /* vector_index_ids = */ std::nullopt);
+}
+
+Status TsAdminClient::CompactVectorIndex(
+    const TableId& tablet_id, const TableIds& vector_index_ids) {
+  return FlushOrCompactsTabletsImpl(
+      tablet_id, /* is_compaction = */ true, std::cref(vector_index_ids));
+}
+
+Status TsAdminClient::FlushTablets(const std::string& tablet_id) {
+  return FlushOrCompactsTabletsImpl(
+      tablet_id, /* is_compaction = */ false, /* vector_index_ids = */ std::nullopt);
 }
 
 Status TsAdminClient::ReloadCertificates() {
@@ -750,8 +784,8 @@ Status TsAdminClient::ClearUniverseUuid() {
 }
 
 Status TsAdminClient::AcquireObjectLock(
-    const string& txn_id_str, const string& reuse_version, const string& subtxn_id,
-    const string& database_id, const string& object_id, const std::string& lock_mode) {
+    const std::string& txn_id_str, const std::string& subtxn_id,
+    const std::string& database_id, const std::string& object_id, const std::string& lock_mode) {
   SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
   static const std::unordered_map<std::string, TableLockType> lock_key_entry_map = {
     {"ACCESS_SHARE", ACCESS_SHARE},
@@ -773,7 +807,6 @@ Status TsAdminClient::AcquireObjectLock(
 
   auto txn_id = VERIFY_RESULT(TransactionId::FromString(txn_id_str));
   req.set_txn_id(txn_id.data(), txn_id.size());
-  req.set_txn_reuse_version(stoi(reuse_version));
   req.set_subtxn_id(stoi(subtxn_id));
   req.set_session_host_uuid(FLAGS_server_address);
   auto* object_lock_req = req.add_object_locks();
@@ -787,7 +820,6 @@ Status TsAdminClient::AcquireObjectLock(
     return StatusFromPB(resp.error().status());
   }
   std::cout << "Acquired lock for txn=" << txn_id
-            << " reuse_version=" << reuse_version
             << " subtxn id=" << subtxn_id
             << " on object with id=" << object_id
             << " database id=" << database_id
@@ -795,45 +827,8 @@ Status TsAdminClient::AcquireObjectLock(
   return Status::OK();
 }
 
-Status TsAdminClient::ReleaseObjectLock(
-    const string& txn_id_str, const string& reuse_version, const string& subtxn_id,
-    const string& database_id, int argc, char** argv) {
-  SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
-
-  tserver::ReleaseObjectLockRequestPB req;
-  tserver::ReleaseObjectLockResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  auto txn_id = VERIFY_RESULT(TransactionId::FromString(txn_id_str));
-  req.set_txn_id(txn_id.data(), txn_id.size());
-  req.set_txn_reuse_version(stoi(reuse_version));
-  req.set_subtxn_id(stoi(subtxn_id));
-  req.set_session_host_uuid(FLAGS_server_address);
-  std::ostringstream object_ids_stream;
-  for (int i = 6; i < argc; i++) {
-    object_ids_stream << " " << argv[i];
-    auto* object_lock_req = req.add_object_locks();
-    object_lock_req->set_database_oid(stoi(database_id));
-    object_lock_req->set_object_oid(atoi(argv[i]));
-  }
-
-  RETURN_NOT_OK(ts_proxy_->ReleaseObjectLocks(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  std::cout << "Released all locks on objects with ids" << object_ids_stream.str()
-            << " database id=" <<  database_id
-            << " for txn=" << txn_id
-            << " reuse_version=" << reuse_version
-            << " subtxn id=" << subtxn_id
-            << " at tserver local object lock manager" << std::endl;
-  return Status::OK();
-}
-
 Status TsAdminClient::ReleaseAllLocksForTxn(
-    const string& txn_id_str, const string& reuse_version, const string& subtxn_id) {
+    const std::string& txn_id_str, const std::string& subtxn_id) {
   SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
 
   tserver::ReleaseObjectLockRequestPB req;
@@ -843,26 +838,23 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
 
   auto txn_id = VERIFY_RESULT(TransactionId::FromString(txn_id_str));
   req.set_txn_id(txn_id.data(), txn_id.size());
-  req.set_txn_reuse_version(stoi(reuse_version));
   req.set_session_host_uuid(FLAGS_server_address);
   if (!subtxn_id.empty()) {
     req.set_subtxn_id(stoi(subtxn_id));
   }
-  req.set_release_all_locks(true);
   RETURN_NOT_OK(ts_proxy_->ReleaseObjectLocks(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
   std::cout << "Released all locks for txn id=" << txn_id
-            << " reuse_version=" << reuse_version << " subtxn=" << subtxn_id
-            << " at tserver local object lock manager" << std::endl;
+            << " subtxn=" << subtxn_id << " at tserver local object lock manager" << std::endl;
   return Status::OK();
 }
 
 namespace {
 
 void SetUsage(const char* argv0) {
-  ostringstream str;
+  std::ostringstream str;
 
   str << argv0 << " [--server_address=<addr>] <operation> <flags>\n"
       << "<operation> must be one of:\n"
@@ -883,6 +875,8 @@ void SetUsage(const char* argv0) {
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kCompactTabletOp << " <tablet_id>\n"
       << "  " << kCompactAllTabletsOp << "\n"
+      << "  " << kCompactVectorIndexOp
+      << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kVerifyTabletOp
       << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n"
       << "  " << kReloadCertificatesOp << "\n"
@@ -890,15 +884,12 @@ void SetUsage(const char* argv0) {
       << "  " << kListMasterServersOp << "\n"
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kAcquireObjectLockOp
-      << " <txn id> <reuse_version> <subtxn id> <database_id> <object_id> <lock type>\n"
-      << "  " << kReleaseObjectLockOp
-      << " <txn id> <reuse_version> <subtxn id> <database_id> <object_id> [<object_id>..]\n"
-      << "  " << kReleaseAllLocksForTxnOp
-      << " <txn id> <reuse_version> [subtxn id]\n";
+      << " <txn id> <subtxn id> <database_id> <object_id> <lock type>\n"
+      << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n";
   google::SetUsageMessage(str.str());
 }
 
-string GetOp(int argc, char** argv) {
+std::string GetOp(int argc, char** argv) {
   if (argc < 2) {
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
     exit(1);
@@ -915,9 +906,9 @@ static int TsCliMain(int argc, char** argv) {
   SetUsage(argv[0]);
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(argv[0]);
-  const string addr = FLAGS_server_address;
+  const std::string addr = FLAGS_server_address;
 
-  string op = GetOp(argc, argv);
+  std::string op = GetOp(argc, argv);
 
   TsAdminClient client(addr, FLAGS_timeout_ms);
 
@@ -928,7 +919,7 @@ static int TsCliMain(int argc, char** argv) {
   if (op == kListTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    vector<StatusAndSchemaPB> tablets;
+    std::vector<StatusAndSchemaPB> tablets;
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ListTablets(&tablets),
                                     "Unable to list tablets on " + addr);
     for (const StatusAndSchemaPB& status_and_schema : tablets) {
@@ -947,7 +938,7 @@ static int TsCliMain(int argc, char** argv) {
       dockv::Partition partition;
       dockv::Partition::FromPB(ts.partition(), &partition);
 
-      string state = tablet::RaftGroupStatePB_Name(ts.state());
+      std::string state = tablet::RaftGroupStatePB_Name(ts.state());
       std::cout << "Tablet id: " << ts.tablet_id() << std::endl;
       std::cout << "State: " << state << std::endl;
       std::cout << "Table name: " << ts.table_name() << std::endl;
@@ -956,13 +947,13 @@ static int TsCliMain(int argc, char** argv) {
       std::cout << "Schema: " << schema.ToString() << std::endl;
     }
   } else if (op == kVerifyTabletOp) {
-    string tablet_id = argv[2];
+    std::string tablet_id = argv[2];
     int num_indexes = std::stoi(argv[3]);
-    std::vector<string> index_ids;
+    std::vector<std::string> index_ids;
     for (int i = 0; i < num_indexes; i++) {
       index_ids.push_back(argv[4 + i]);
     }
-    string start_key = argv[num_indexes + 4];
+    std::string start_key = argv[num_indexes + 4];
     int num_rows = std::stoi(argv[num_indexes + 5]);
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
@@ -972,7 +963,7 @@ static int TsCliMain(int argc, char** argv) {
   } else if (op == kAreTabletsRunningOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    vector<StatusAndSchemaPB> tablets;
+    std::vector<StatusAndSchemaPB> tablets;
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ListTablets(&tablets),
                                     "Unable to list tablets on " + addr);
     bool all_running = true;
@@ -1025,20 +1016,20 @@ static int TsCliMain(int argc, char** argv) {
   } else if (op == kTabletStateOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 
-    string tablet_id = argv[2];
+    std::string tablet_id = argv[2];
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.PrintConsensusState(tablet_id), "Unable to print tablet state");
   } else if (op == kDumpTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 
-    string tablet_id = argv[2];
+    std::string tablet_id = argv[2];
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DumpTablet(tablet_id),
                                     "Unable to dump tablet");
   } else if (op == kDeleteTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
 
-    string tablet_id = argv[2];
-    string reason = argv[3];
+    std::string tablet_id = argv[2];
+    std::string reason = argv[3];
     tablet::TabletDataState state = FLAGS_force ? tablet::TABLET_DATA_DELETED :
                                                   tablet::TABLET_DATA_TOMBSTONED;
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DeleteTablet(tablet_id, reason, state),
@@ -1048,8 +1039,8 @@ static int TsCliMain(int argc, char** argv) {
       CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
     }
 
-    string tablet_id = argv[2];
-    vector<string> peers;
+    std::string tablet_id = argv[2];
+    std::vector<std::string> peers;
     for (int i = 3; i < argc; i++) {
       peers.push_back(argv[i]);
     }
@@ -1081,25 +1072,37 @@ static int TsCliMain(int argc, char** argv) {
   } else if (op == kFlushTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 
-    string tablet_id = argv[2];
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(tablet_id, false /* is_compaction */),
+    std::string tablet_id = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(tablet_id),
                                     "Unable to flush tablet");
   } else if (op == kFlushAllTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string(), false /* is_compaction */),
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string()),
                                     "Unable to flush all tablets");
   } else if (op == kCompactTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 
-    string tablet_id = argv[2];
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(tablet_id, true /* is_compaction */),
+    std::string tablet_id = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CompactTablets(tablet_id),
                                     "Unable to compact tablet");
   } else if (op == kCompactAllTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string(), true /* is_compaction */),
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CompactTablets(std::string()),
                                     "Unable to compact all tablets");
+  } else if (op == kCompactVectorIndexOp) {
+    if (argc < 3) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+    }
+
+    TableId tablet_id = argv[2];
+    TableIds vector_index_ids;
+    for (int i = 3; i < argc; i++) {
+      vector_index_ids.push_back(argv[i]);
+    }
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CompactVectorIndex(tablet_id, vector_index_ids),
+                                    "Unable to compact vector index");
   } else if (op == kReloadCertificatesOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
@@ -1108,8 +1111,8 @@ static int TsCliMain(int argc, char** argv) {
   } else if (op == kRemoteBootstrapOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
 
-    string target_server = argv[2];
-    string tablet_id = argv[3];
+    std::string target_server = argv[2];
+    std::string tablet_id = argv[3];
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.RemoteBootstrap(target_server, tablet_id),
                                     "Unable to run remote bootstrap");
   } else if (op == kListMasterServersOp) {
@@ -1128,24 +1131,17 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ClearUniverseUuid(),
                                     "Unable to clear universe uuid on " + addr);
   } else if (op == kAcquireObjectLockOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 8);
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 7);
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.AcquireObjectLock(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]),
+        client.AcquireObjectLock(argv[2], argv[3], argv[4], argv[5], argv[6]),
         "Unable to acquire object lock");
-  } else if (op == kReleaseObjectLockOp) {
-    if (argc < 7) {
-      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 7);
-    }
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.ReleaseObjectLock(argv[2], argv[3], argv[4], argv[5], argc, argv),
-        "Unable to release object lock");
   } else if (op == kReleaseAllLocksForTxnOp) {
-    if (argc < 4) {
-      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+    if (argc < 3) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
     }
-    std::string subtxn = argc > 4 ? argv[4] : "";
+    std::string subtxn = argc > 3 ? argv[3] : "";
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.ReleaseAllLocksForTxn(argv[2], argv[3], subtxn),
+        client.ReleaseAllLocksForTxn(argv[2], subtxn),
         "Unable to release all locks for given transaction");
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;

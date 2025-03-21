@@ -114,12 +114,6 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     options->transaction_table_num_tablets = 3;
   }
 
-  const std::shared_ptr<tserver::MiniTabletServer> PickPgTabletServer(
-      const MiniCluster::MiniTabletServers& servers) override {
-    // Force postgres to run on first TS.
-    return servers[0];
-  }
-
   std::vector<yb::tserver::TabletServerOptions> ExtraTServerOptions() override {
     std::vector<yb::tserver::TabletServerOptions> extra_tserver_options;
     for (int i = 1; i <= 3; ++i) {

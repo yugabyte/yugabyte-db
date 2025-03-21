@@ -36,7 +36,8 @@ var listXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUniName)) == 0 || len(strings.TrimSpace(targetUniName)) == 0 {
+		if len(strings.TrimSpace(sourceUniName)) == 0 ||
+			len(strings.TrimSpace(targetUniName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Missing source or target universe name\n", formatter.RedColor))
@@ -44,52 +45,28 @@ var listXClusterCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-		universeListRequest := authAPI.ListUniverses()
 
-		sourceUniName, err := cmd.Flags().GetString("source-universe-name")
+		sourceUniverseName, err := cmd.Flags().GetString("source-universe-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		targetUniverseName, err := cmd.Flags().GetString("target-universe-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		sourceUniverseList, response, err := universeListRequest.Name(sourceUniName).Execute()
-		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "List - Get Source Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-		}
-		if len(sourceUniverseList) < 1 {
-			logrus.Fatalf(
-				formatter.Colorize(
-					fmt.Sprintf("No universes with name: %s found\n", sourceUniName),
-					formatter.RedColor,
-				))
-		}
-		sourceUniverse := sourceUniverseList[0]
-
-		targetUniName, err := cmd.Flags().GetString("target-universe-name")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		targetUniniverseList, response, err := universeListRequest.Name(targetUniName).Execute()
-		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "List - Get Target Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-		}
-		if len(targetUniniverseList) < 1 {
-			logrus.Fatalf(
-				formatter.Colorize(
-					fmt.Sprintf("No universes with name: %s found\n", targetUniName),
-					formatter.RedColor,
-				))
-		}
-		targetUniverse := targetUniniverseList[0]
+		sourceUniverse, targetUniverse := GetSourceAndTargetXClusterUniverse(
+			authAPI, sourceUniverseName, targetUniverseName, "", "", "List")
 
 		sourceDetails := sourceUniverse.GetUniverseDetails()
 		sourceXClusterConfigList := sourceDetails.GetSourceXClusterConfigs()
 		if len(sourceXClusterConfigList) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No source xcluster found in universe: %s\n", sourceUniName),
+					fmt.Sprintf(
+						"No source xcluster found in universe: %s\n",
+						sourceUniverse.GetName(),
+					),
 					formatter.RedColor,
 				))
 		}
@@ -99,16 +76,23 @@ var listXClusterCmd = &cobra.Command{
 		if len(targetXClusterConfigList) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No target xcluster found in universe: %s\n", targetUniName),
+					fmt.Sprintf(
+						"No target xcluster found in universe: %s\n",
+						targetUniverse.GetName(),
+					),
 					formatter.RedColor,
 				))
 		}
 
-		xclusterUUIDs := util.FindCommonStringElements(sourceXClusterConfigList, targetXClusterConfigList)
+		xclusterUUIDs := util.FindCommonStringElements(
+			sourceXClusterConfigList,
+			targetXClusterConfigList,
+		)
 		if len(xclusterUUIDs) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No xclusters found between universes %s and %s\n", sourceUniName, targetUniName),
+					fmt.Sprintf("No xclusters found between universes %s and %s\n",
+						sourceUniverse.GetName(), targetUniverse.GetName()),
 					formatter.RedColor,
 				))
 		}

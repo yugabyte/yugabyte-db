@@ -66,7 +66,6 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
-
   const [showSourceObjects, setShowSourceObjects] = React.useState<boolean>(false);
 
   return (
@@ -118,7 +117,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
             </Grid>
             <Grid item xs={6}>
               <Typography variant="body2" className={classes.value}>
-                {migration?.source_db?.schema ?? "N/A"}
+                {migration?.source_db?.schema?.replaceAll('|', ', ') ?? "N/A"}
               </Typography>
             </Grid>
             <Grid item xs={3}>

@@ -322,6 +322,7 @@ interface K8sCloudInfo extends K8sCloudInfoBase {
   kubernetesProvider: KubernetesProvider;
   kubernetesPullSecret: string; // filepath
 
+  kubeConfigContent?: string; // Kube Config can be specified at the Provider, Region and Zone level
   kubeConfig?: string; // filepath
 }
 
@@ -476,8 +477,9 @@ type GCPRegionCloudInfoMutation = GCPRegionCloudInfoBase;
 type GCPRegionCloudInfo = GCPRegionCloudInfoBase;
 
 interface K8sRegionCloudInfoBase {
-  certManagerClusterIssuer?: string;
-  certManagerIssuer?: string;
+  certManagerIssuerKind?: string;
+  certManagerIssuerName?: string;
+  certManagerIssuerGroup?: string;
   kubeDomain?: string;
   kubeNamespace?: string;
   kubePodAddressTemplate?: string;

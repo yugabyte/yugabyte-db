@@ -24,12 +24,15 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_client.service.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
 
 namespace yb {
 
@@ -68,10 +71,10 @@ class TserverXClusterContextIf;
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
-    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (GetTserverCatalogVersionInfo) \
+    (GetTserverCatalogMessageLists) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
@@ -85,7 +88,6 @@ class TserverXClusterContextIf;
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (ServersMetrics) \
-    (SetActiveSubTransaction) \
     (TabletsMetadata) \
     (TabletServerCount) \
     (TruncateTable) \
@@ -97,6 +99,14 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (AcquireObjectLock) \
+    (ExportTxnSnapshot) \
+    (SetTxnSnapshot) \
+    (ClearExportedTxnSnapshots) \
+    /**/
+
+#define YB_PG_CLIENT_TRIVIAL_METHODS \
+    (PollVectorIndexReady) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see
@@ -113,7 +123,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
-      const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+      const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
       const TserverXClusterContextIf* xcluster_context = nullptr,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
@@ -123,8 +133,11 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
-  void InvalidateTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+  void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
+  Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
+
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
 
   size_t TEST_SessionsCount();
 
@@ -134,8 +147,15 @@ class PgClientServiceImpl : public PgClientServiceIf {
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext context) override;
 
+#define YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE(r, data, method) \
+  Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      CoarseTimePoint deadline) override;
+
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
  private:
   class Impl;
@@ -175,6 +195,11 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+
+  Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
+      const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {
+    return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
+  }
 
  private:
   PgClientServiceIf* impl_;

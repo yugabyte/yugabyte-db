@@ -40,4 +40,8 @@ void SetupError(TabletServerErrorPB* error, const Status& s) {
   error->set_code(code);
 }
 
+void SetupError(AppStatusPB* error, const Status& s) {
+  StatusToPB(s, error);
+}
+
 } // namespace yb::tserver

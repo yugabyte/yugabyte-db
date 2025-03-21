@@ -95,7 +95,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
   - `txid_current`
   - `pg_stat_replication`
 
-  Additionally, the functions responsible for pulling changes instead of the server streaming it are unsupported as well. They are described in [Replication Functions](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-REPLICATION) in the PostgreSQL documentation.
+  Additionally, the functions responsible for pulling changes instead of the server streaming it are unsupported as well. They are described in [Replication Functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-REPLICATION) in the PostgreSQL documentation.
 
 - Restriction on DDLs
 
@@ -103,7 +103,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - There should be a primary key on the table you want to stream the changes from.
 
-- CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
+- CDC is not supported on tables (both source and target) for xCluster replication. Issues [25371](https://github.com/yugabyte/yugabyte-db/issues/25371) and [15534](https://github.com/yugabyte/yugabyte-db/issues/15534).
 
 - Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations after the replication slot is created. However, you can perform these operations before creating the replication slot without any issues.
 
@@ -116,3 +116,5 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 
 - Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
+
+- A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. Tracked in issue [20755](https://github.com/yugabyte/yugabyte-db/issues/20755).

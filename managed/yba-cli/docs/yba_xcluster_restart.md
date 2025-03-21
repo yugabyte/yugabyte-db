@@ -1,6 +1,6 @@
 ## yba xcluster restart
 
-Restart replication for databases in the YugabyteDB Anywhere sxCluster configuration
+Restart replication for databases in the YugabyteDB Anywhere xCluster configuration
 
 ### Synopsis
 
@@ -22,9 +22,9 @@ yba xcluster restart --uuid <xcluster-uuid> --storage-config-name <storage-confi
   -u, --uuid string                  [Required] The uuid of the xcluster to restart.
       --storage-config-name string   [Required] Storage config to be used for taking the backup for replication. 
       --dry-run                      [Optional] Run the pre-checks without actually running the subtasks. (default false)
-      --table-uuid string            [Optional] Comma separated list of source universe table uuids to restart. If not specified, all tables will be restarted.
+      --table-uuids string           [Optional] Comma separated list of source universe table IDs/UUIDs to restart. If not specified, all tables will be restarted.
       --parallelism int              [Optional] Number of concurrent commands to run on nodes over SSH via "yb_backup" script. (default 8)
-      --force-delete                 [Optional] Force restart the universe xcluster despite errors. (default false)
+      --force-delete                 [Optional] Force delete components of the universe xcluster despite errors during restart. May leave stale states and replication streams on the participating universes. (default false)
   -f, --force                        [Optional] Bypass the prompt for non-interactive usage.
   -h, --help                         help for restart
 ```

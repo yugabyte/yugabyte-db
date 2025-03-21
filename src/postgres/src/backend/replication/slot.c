@@ -52,7 +52,7 @@
 #include "utils/builtins.h"
 
 /* YB includes. */
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -105,12 +105,12 @@ int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
 /* Constants for plugin names */
-const char* YB_OUTPUT_PLUGIN = "yboutput";
-const char* PG_OUTPUT_PLUGIN = "pgoutput";
+const char *YB_OUTPUT_PLUGIN = "yboutput";
+const char *PG_OUTPUT_PLUGIN = "pgoutput";
 
 /* Constants for replication slot LSN types */
-const char* LSN_TYPE_SEQUENCE = "SEQUENCE";
-const char* LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
+const char *LSN_TYPE_SEQUENCE = "SEQUENCE";
+const char *LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
 
 static void ReplicationSlotShmemExit(int code, Datum arg);
 static void ReplicationSlotDropAcquired(void);
@@ -281,13 +281,13 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 */
 	if (IsYugaByteEnabled())
 	{
-		int32_t max_clock_skew;
+		int32_t		max_clock_skew;
 
 		/* TODO(#24025): This must be removed once we support two_phase. */
 		if (two_phase)
 			ereport(ERROR,
-			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("two_phase is not supported")));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("two_phase is not supported")));
 
 		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
 								 yb_consistent_snapshot_time, lsn_type);
@@ -530,9 +530,9 @@ retry:
 	if (IsYugaByteEnabled())
 	{
 		YbcReplicationSlotDescriptor *yb_replication_slot;
-		int							 replica_identity_idx = 0;
-		HTAB						 *replica_identities;
-		HASHCTL						 ctl;
+		int			replica_identity_idx = 0;
+		HTAB	   *replica_identities;
+		HASHCTL		ctl;
 
 		YBCGetReplicationSlot(name, &yb_replication_slot);
 
@@ -583,20 +583,23 @@ retry:
 		ctl.hcxt = GetCurrentMemoryContext();
 
 		replica_identities = hash_create("yb_repl_slot_replica_identities",
-										 32, /* start small and extend */
+										 32,	/* start small and extend */
 										 &ctl, HASH_ELEM | HASH_BLOBS);
 		for (replica_identity_idx = 0;
 			 replica_identity_idx <
 			 yb_replication_slot->replica_identities_count;
 			 replica_identity_idx++)
 		{
-			YbcPgReplicaIdentityDescriptor *desc =
+			YbcPgReplicaIdentityDescriptor *desc;
+			YbcPgReplicaIdentityDescriptor *value;
+
+			desc =
 				&yb_replication_slot->replica_identities[replica_identity_idx];
 
-			YbcPgReplicaIdentityDescriptor *value = hash_search(replica_identities,
-																&desc->table_oid,
-																HASH_ENTER,
-																NULL);
+			value = hash_search(replica_identities,
+								&desc->table_oid,
+								HASH_ENTER,
+								NULL);
 			value->table_oid = desc->table_oid;
 			value->identity_type = desc->identity_type;
 		}
@@ -824,6 +827,7 @@ ReplicationSlotDrop(const char *name, bool nowait)
 	if (IsYugaByteEnabled())
 	{
 		YbcReplicationSlotDescriptor *yb_replication_slot;
+
 		YBCGetReplicationSlot(name, &yb_replication_slot);
 
 		if (yb_replication_slot->active)
@@ -1771,7 +1775,7 @@ CreateSlotOnDisk(ReplicationSlot *slot)
 	if (!IsYugaByteEnabled())
 	{
 		/* Write the actual state file. */
-		slot->dirty = true;			/* signal that we really need to write */
+		slot->dirty = true;		/* signal that we really need to write */
 		SaveSlotToPath(slot, tmppath, ERROR);
 	}
 
@@ -2177,11 +2181,11 @@ YBCGetReplicaIdentityForRelation(Oid relid)
 	Assert(MyReplicationSlot);
 	Assert(MyReplicationSlot->data.yb_replica_identities);
 
-	bool found;
+	bool		found;
+	YbcPgReplicaIdentityDescriptor *value;
 
-	YbcPgReplicaIdentityDescriptor *value =
-		hash_search(MyReplicationSlot->data.yb_replica_identities, &relid,
-					HASH_FIND, &found);
+	value = hash_search(MyReplicationSlot->data.yb_replica_identities, &relid,
+						HASH_FIND, &found);
 
 	Assert(found);
 	return value->identity_type;

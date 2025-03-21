@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
@@ -24,7 +25,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -36,7 +36,6 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -78,18 +77,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(
-        taskParams().clusters,
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
-        null,
-        null);
+    createPreflightNodeCheckTasks(taskParams().clusters);
 
-    createCheckCertificateConfigTask(
-        taskParams().clusters,
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
-        taskParams().rootCA,
-        taskParams().getClientRootCA(),
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    createCheckCertificateConfigTask(taskParams().clusters);
   }
 
   protected void freezeUniverseInTxn(Universe universe) {
@@ -342,6 +332,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
     }
+    if (!nodesToProvision.isEmpty()) {
+      // Update the DNS entry for this universe to add new tservers.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
 
     // Add new nodes to load balancer.
     createManageLoadBalancerTasks(
@@ -413,6 +408,17 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createXClusterConfigUpdateMasterAddressesTask();
     }
 
+    if (!tserversToBeRemoved.isEmpty()) {
+      // Update the DNS entry for this universe to remove tservers.
+      createDnsManipulationTask(
+              DnsManager.DnsCommandType.Edit,
+              false,
+              universe,
+              tserversToBeRemoved.stream()
+                  .map(t -> t.cloudInfo.private_ip)
+                  .collect(Collectors.toSet()))
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
       // Remove nodes from load balancer.
@@ -540,16 +546,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       postCreateChangeConfigTask.accept(
           ChangeMasterConfig.OpType.RemoveMaster, mastersToRemove.get(idx));
     }
-  }
-
-  public void createCheckCertificateConfigTask(
-      Collection<Cluster> clusters,
-      Set<NodeDetails> nodes,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA,
-      boolean enableClientToNodeEncrypt) {
-    createCheckCertificateConfigTask(
-        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
   }
 
   protected void setToBeRemovedState(NodeDetails currentNode) {

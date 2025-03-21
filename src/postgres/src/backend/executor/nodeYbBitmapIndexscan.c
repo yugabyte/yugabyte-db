@@ -59,17 +59,19 @@ yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
 	YbBitmapIndexScan *plan = (YbBitmapIndexScan *) node->ss.ps.plan;
 
 	IndexScanDesc scandesc = node->biss_ScanDesc;
+
 	scandesc->yb_exec_params = &estate->yb_exec_params;
 	scandesc->yb_scan_plan = (Scan *) plan;
 	scandesc->fetch_ybctids_only = true;
 	scandesc->heapRelation = node->ss.ss_currentRelation;
 
-	const bool is_colocated =
-		YbGetTableProperties(node->ss.ss_currentRelation)->is_colocated;
-	const bool is_primary =
-		scandesc->heapRelation->rd_pkindex == node->biss_RelationDesc->rd_id;
+	const bool	is_colocated = YbGetTableProperties(node->ss.ss_currentRelation)->is_colocated;
+	const bool	is_primary = scandesc->heapRelation->rd_pkindex == node->biss_RelationDesc->rd_id;
 
-	/* primary keys on colocated indexes don't have a secondary index in their request */
+	/*
+	 * primary keys on colocated indexes don't have a secondary index in their
+	 * request
+	 */
 	if (is_colocated && is_primary)
 		scandesc->yb_rel_pushdown =
 			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
@@ -102,19 +104,10 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 		*/
 		node->biss_ScanDesc =
 			index_beginscan_bitmap(node->biss_RelationDesc,
-								estate->es_snapshot,
-								node->biss_NumScanKeys);
+								   estate->es_snapshot,
+								   node->biss_NumScanKeys);
 
 		yb_init_bitmap_index_scandesc(node);
-
-		/*
-		* If no run-time keys to calculate, go ahead and pass the scankeys to the
-		* index AM.
-		*/
-		if (node->biss_NumRuntimeKeys == 0 && node->biss_NumArrayKeys == 0)
-			index_rescan(node->biss_ScanDesc,
-						node->biss_ScanKeys, node->biss_NumScanKeys,
-						NULL, 0);
 	}
 
 	/*
@@ -152,7 +145,6 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	}
 	else
 	{
-		yb_init_bitmap_index_scandesc(node);
 		bitmap = yb_tbm_create(work_mem * 1024L);
 	}
 
@@ -161,16 +153,15 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	 */
 	while (doscan)
 	{
+		index_rescan(node->biss_ScanDesc,
+					 node->biss_ScanKeys, node->biss_NumScanKeys,
+					 NULL, 0);
 		nTuples += (double) yb_index_getbitmap(scandesc, bitmap);
 
 		CHECK_FOR_INTERRUPTS();
 
 		doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
 										   node->biss_NumArrayKeys);
-		if (doscan)				/* reset index scan */
-			index_rescan(node->biss_ScanDesc,
-						 node->biss_ScanKeys, node->biss_NumScanKeys,
-						 NULL, 0);
 	}
 
 	/* must provide our own instrumentation support */
@@ -191,7 +182,6 @@ void
 ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 {
 	ExprContext *econtext = node->biss_RuntimeContext;
-	EState		*estate = node->ss.ps.state;
 
 	/*
 	 * Reset the runtime-key context so we don't leak memory as each outer
@@ -222,12 +212,9 @@ ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 		node->biss_RuntimeKeysReady = true;
 
 	if (node->biss_ScanDesc == NULL)
-	{
-		node->biss_ScanDesc = index_beginscan_bitmap(node->biss_RelationDesc,
-													 estate->es_snapshot,
-													 node->biss_NumScanKeys);
-		yb_init_bitmap_index_scandesc(node);
-	}
+		return;
+
+	yb_init_bitmap_index_scandesc(node);
 
 	/*
 	 * Bitmap Index aggregate pushdown currently cannot support recheck,
@@ -243,15 +230,9 @@ ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	node->biss_requires_recheck |=
 		YbPredetermineNeedsRecheck(node->biss_ScanDesc->heapRelation,
 								   node->biss_RelationDesc,
-								   true /* xs_want_itup */,
+								   true /* xs_want_itup */ ,
 								   node->biss_ScanKeys,
 								   node->biss_NumScanKeys);
-
-	/* reset index scan */
-	if (node->biss_RuntimeKeysReady)
-		index_rescan(node->biss_ScanDesc,
-					 node->biss_ScanKeys, node->biss_NumScanKeys,
-					 NULL, 0);
 }
 
 /* ----------------------------------------------------------------
@@ -397,9 +378,9 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 						   &indexstate->biss_NumArrayKeys);
 
 	indexstate->biss_requires_recheck = YbPredetermineNeedsRecheck(relation, index,
-										 true /* xs_want_itup */,
-										 indexstate->biss_ScanKeys,
-										 indexstate->biss_NumScanKeys);
+																   true /* xs_want_itup */ ,
+																   indexstate->biss_ScanKeys,
+																   indexstate->biss_NumScanKeys);
 
 	/* Got the info for aggregate pushdown. EXPLAIN can return now. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)

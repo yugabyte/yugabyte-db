@@ -63,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +116,28 @@ public class LocalNodeManager {
   @Setter private int ipRangeEnd = 100;
 
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private DnsManager dnsManager;
+
+  private boolean checkDNS = false;
+
+  public static class LocalDNSManager extends DnsManager {
+    public Map<UUID, Set<String>> ipsList = new HashMap<>();
+
+    @Override
+    public ShellResponse manipulateDnsRecord(
+        DnsCommandType type,
+        UUID providerUUID,
+        String hostedZoneId,
+        String domainNamePrefix,
+        String nodeIpCsv) {
+      if (type == DnsCommandType.Create || type == DnsCommandType.Edit) {
+        ipsList.put(providerUUID, new HashSet<>(Arrays.asList(nodeIpCsv.split(","))));
+      } else if (type == DnsCommandType.Delete) {
+        ipsList.remove(providerUUID);
+      }
+      return ShellResponse.create(ERROR_CODE_SUCCESS, "");
+    }
+  }
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
@@ -127,6 +150,10 @@ public class LocalNodeManager {
   public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
     log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
     this.additionalGFlags = additionalGFlags;
+  }
+
+  public void setCheckDNS(boolean checkDNS) {
+    this.checkDNS = checkDNS;
   }
 
   // Temporary method.
@@ -706,6 +733,11 @@ public class LocalNodeManager {
     provider.save();
   }
 
+  private Set<String> getDnsSet(NodeInfo nodeInfo) {
+    return ((LocalDNSManager) dnsManager)
+        .ipsList.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+  }
+
   public void startProcessForNode(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
@@ -725,6 +757,11 @@ public class LocalNodeManager {
         executable = localCloudInfo.getYugabyteBinDir() + "/" + MASTER_EXECUTABLE;
         break;
       case TSERVER:
+        Set<String> dnsSet = getDnsSet(nodeInfo);
+        if (checkDNS && dnsSet.contains(nodeInfo.ip)) {
+          throw new IllegalStateException(
+              "Node " + nodeInfo.ip + " is prematurely in the dns list " + dnsSet);
+        }
         executable = localCloudInfo.getYugabyteBinDir() + "/" + TSERVER_EXECUTABLE;
         break;
       case CONTROLLER:
@@ -771,6 +808,12 @@ public class LocalNodeManager {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
     log.debug("Killing process {}", process.pid());
+
+    Set<String> dnsSet = getDnsSet(nodeInfo);
+    if (serverType == UniverseTaskBase.ServerType.TSERVER && dnsSet.contains(nodeInfo.ip)) {
+      throw new IllegalStateException(
+          "Node " + nodeInfo.ip + " is still in the dns list " + dnsSet);
+    }
     killProcess(process.pid(), true);
   }
 

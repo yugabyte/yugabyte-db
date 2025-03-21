@@ -197,7 +197,7 @@ class MetadataUpdater:
             archives.append(release_as_dict)
         new_metadata[ARCHIVES_KEY] = archives
 
-        self.write_metadata_file(new_metadata)
+        self.write_metadata_file(new_metadata, warn_no_land=True)
         logging.info(
             f"Wrote information for {len(artifacts_to_use)} pre-built "
             f"yugabyte-db-thirdparty archives to {self.archive_metadata_path}.")
@@ -364,12 +364,17 @@ class MetadataUpdater:
 
     def write_metadata_file(
             self,
-            new_metadata: ThirdPartyArchivesYAML) -> None:
+            new_metadata: ThirdPartyArchivesYAML,
+            warn_no_land: bool = False) -> None:
         yaml = common_util.get_ruamel_yaml_instance()
         string_stream = StringIO()
         yaml.dump(new_metadata, string_stream)
         yaml_lines = string_stream.getvalue().split('\n')
         new_lines = []
+        if warn_no_land:
+            new_lines.append(
+                '# This file was generated from a thirdparty PR, not a release. DO NOT LAND.')
+            new_lines.append('')
         for line in yaml_lines:
             if line.startswith('  -'):
                 new_lines.append('')

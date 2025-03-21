@@ -195,10 +195,8 @@ class BootstrapTest : public LogTestBase {
     Schema schema = SchemaBuilder(src_schema).Build();
     auto partition = CreateDefaultPartition(schema);
 
-    auto table_info = std::make_shared<TableInfo>(
-        "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
-        schema, qlexpr::IndexMap(), std::nullopt /* index_info */, 0 /* schema_version */,
-        partition.first, "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
+    auto table_info = TableInfo::TEST_Create(
+        log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema, partition.first);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
@@ -358,7 +356,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
                       "537468697320697320612074657374206D7574617465");
 
   // And it should also include the latest opids.
-  EXPECT_EQ("term: 1 index: 1", boot_info.last_id.ShortDebugString());
+  EXPECT_EQ("1.1", AsString(boot_info.last_id));
 }
 
 // Bootstrap should fail if no ConsensusMetadata file exists.
@@ -393,7 +391,7 @@ TEST_F(BootstrapTest, TestCommitFirstMessageBySpecifyingCommittedIndexInSecond) 
   TabletPtr tablet;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
-  ASSERT_OPID_EQ(boot_info.last_committed_id, insert_opid);
+  ASSERT_EQ(boot_info.last_committed_id, OpId::FromPB(insert_opid));
 
   // Confirm that one operation was applied.
   vector<string> results;
@@ -507,7 +505,7 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   TabletPtr tablet;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 0);
-  ASSERT_OPID_EQ(boot_info.last_committed_id, second_opid);
+  ASSERT_EQ(boot_info.last_committed_id, OpId::FromPB(second_opid));
 
   // Confirm that the insert op was applied.
   vector<string> results;
@@ -531,11 +529,9 @@ TEST_F(BootstrapTest, TestBootstrapHighOpIdIndex) {
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
-  OpIdPB last_opid;
-  last_opid.set_term(1);
-  last_opid.set_index(current_index_ - 1);
-  ASSERT_OPID_EQ(last_opid, boot_info.last_id);
-  ASSERT_OPID_EQ(last_opid, boot_info.last_committed_id);
+  OpId last_opid(1, current_index_ - 1);
+  ASSERT_EQ(last_opid, boot_info.last_id);
+  ASSERT_EQ(last_opid, boot_info.last_committed_id);
 }
 
 struct BootstrapInputEntry {

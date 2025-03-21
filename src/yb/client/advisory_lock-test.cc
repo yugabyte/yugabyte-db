@@ -48,8 +48,16 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
-const int kNumAdvisoryLocksTablets = 1;
-const uint32_t kDBOid = 10000;
+using tserver::AdvisoryLockMode;
+using tserver::YsqlAdvisoryLocksTable;
+using tserver::YsqlAdvisoryLocksTableLockId;
+
+namespace {
+
+constexpr int kNumAdvisoryLocksTablets = 1;
+constexpr uint32_t kDBOid = 10000;
+constexpr YsqlAdvisoryLocksTableLockId kDefaultLockId{
+    .db_oid = kDBOid, .class_oid = 0, .objid = 0, .objsubid = 1};
 
 void CheckNumIntents(MiniCluster* cluster, size_t expected_num_records, const TableId& id = "") {
   auto peers = ListTableActiveTabletLeadersPeers(cluster, id);
@@ -67,13 +75,13 @@ void CheckNumIntents(MiniCluster* cluster, size_t expected_num_records, const Ta
   ASSERT_TRUE(found) << "No active leader found";
 }
 
-bool IsStatusSkipLocking(const Status& s) {
-  if (s.ok() || !s.IsInternalError()) {
-    return false;
-  }
-  const TransactionError txn_err(s);
-  return txn_err.value() == TransactionErrorCode::kSkipLocking;
+[[nodiscard]] bool IsStatusSkipLocking(const Status& s) {
+  return !s.ok() &&
+         s.IsInternalError() &&
+         TransactionError(s).value() == TransactionErrorCode::kSkipLocking;
 }
+
+} // namespace
 
 class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
  public:
@@ -81,19 +89,16 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     MiniClusterTestWithClient::SetUp();
 
     SetFlags();
-    auto opts = MiniClusterOptions();
-    opts.num_tablet_servers = 3;
-    opts.num_masters = 1;
-    cluster_.reset(new MiniCluster(opts));
+    cluster_.reset(new MiniCluster({.num_masters = 1, .num_tablet_servers = 3}));
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
     if (ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_enable_advisory_locks)) {
       ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
     }
-    sidecars_ = std::make_unique<rpc::Sidecars>();
   }
 
+ protected:
   Status WaitForCreateTableToFinishAndLoadTable() {
     client::YBTableName table_name(
         YQL_DATABASE_CQL, master::kSystemNamespaceName,
@@ -101,7 +106,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     RETURN_NOT_OK(client_->WaitForCreateTableToFinish(
         table_name, CoarseMonoClock::Now() + 10s * kTimeMultiplier));
     advisory_locks_table_.emplace(ValueAsFuture(client_.get()));
-    table_ = VERIFY_RESULT(advisory_locks_table_->GetTable());
+    table_ = VERIFY_RESULT(advisory_locks_table_->TEST_GetTable());
     return Status::OK();
   }
 
@@ -117,10 +122,6 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     return client_->LookupAllTabletsFuture(table_, CoarseMonoClock::Now() + 10s).get();
   }
 
-  Result<client::YBTablePtr> GetTable() {
-    return tserver::YsqlAdvisoryLocksTable(ValueAsFuture(client_.get())).GetTable();
-  }
-
   Result<client::YBTransactionPtr> StartTransaction(
       IsolationLevel level = IsolationLevel::SNAPSHOT_ISOLATION) {
     auto* server = cluster_->mini_tablet_server(0)->server();
@@ -134,15 +135,31 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     return txn->CommitFuture(TransactionRpcDeadline()).get();
   }
 
- protected:
   virtual void SetFlags() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = kNumAdvisoryLocksTablets;
   }
 
-  std::unique_ptr<rpc::Sidecars> sidecars_;
+  auto MakeLockOp(
+      const YsqlAdvisoryLocksTable::LockId& lock_id,
+      AdvisoryLockMode mode = AdvisoryLockMode::LOCK_EXCLUSIVE) {
+    return advisory_locks_table_->MakeLockOp(lock_id, mode, /* wait = */ true);
+  }
+
+  auto MakeLockOpNoWait(
+      const YsqlAdvisoryLocksTable::LockId& lock_id,
+      AdvisoryLockMode mode = AdvisoryLockMode::LOCK_EXCLUSIVE) {
+    return advisory_locks_table_->MakeLockOp(lock_id, mode, /* wait = */ false);
+  }
+
+  auto MakeUnlockOp(
+      const YsqlAdvisoryLocksTable::LockId& lock_id,
+      AdvisoryLockMode mode = AdvisoryLockMode::LOCK_EXCLUSIVE) {
+    return advisory_locks_table_->MakeUnlockOp(lock_id, mode);
+  }
+
   client::YBTablePtr table_;
-  std::optional<tserver::YsqlAdvisoryLocksTable> advisory_locks_table_;
+  std::optional<YsqlAdvisoryLocksTable> advisory_locks_table_;
 };
 
 TEST_F(AdvisoryLockTest, TestAdvisoryLockTableCreated) {
@@ -153,15 +170,11 @@ TEST_F(AdvisoryLockTest, AcquireXactExclusiveLock_Int8) {
   auto session = NewSession();
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
   // Acquire the same lock in the same session with non blocking mode.
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 5, table_->id());
   ASSERT_OK(Commit(txn));
 }
@@ -170,15 +183,12 @@ TEST_F(AdvisoryLockTest, AcquireXactExclusiveLock_Int4) {
   auto session = NewSession();
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 1, 1, 2, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  constexpr YsqlAdvisoryLocksTableLockId kLockId{kDBOid, 1, 1, 2};
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kLockId))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
   // Acquire the same lock in the same session with non blocking mode.
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 1, 1, 2, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOpNoWait(kLockId))));
   CheckNumIntents(cluster_.get(), 5, table_->id());
   ASSERT_OK(Commit(txn));
 }
@@ -187,33 +197,25 @@ TEST_F(AdvisoryLockTest, TryAcquireXactExclusiveLock) {
   auto session = NewSession();
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
   auto session2 = NewSession();
   auto txn2 = ASSERT_RESULT(StartTransaction());
   session2->SetTransaction(txn2);
   // Acquire the same lock in a different session with non blocking mode.
-  auto s = session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ false, sidecars_.get())));
+  auto s = session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOpNoWait(kDefaultLockId)));
   ASSERT_TRUE(IsStatusSkipLocking(s)) << s;
 
   ASSERT_OK(Commit(txn));
-  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ false, sidecars_.get()))));
+  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOpNoWait(kDefaultLockId))));
 
   ASSERT_OK(Commit(txn2));
 }
 
 TEST_F(AdvisoryLockTest, AcquireAdvisoryLockWithoutTransaction) {
   auto session = NewSession();
-  auto s = session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get())));
+  auto s = session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId)));
   LOG(INFO) << s;
   ASSERT_NOK(s);
   ASSERT_TRUE(s.IsInvalidArgument());
@@ -226,17 +228,15 @@ TEST_F(AdvisoryLockTest, AcquireLocksInDifferentDBs) {
   auto session = NewSession();
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
   auto session2 = NewSession();
   auto txn2 = ASSERT_RESULT(StartTransaction());
   session2->SetTransaction(txn2);
-  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid + 1, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  auto another_db_lock_id = kDefaultLockId;
+  ++another_db_lock_id.db_oid;
+  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(another_db_lock_id))));
   CheckNumIntents(cluster_.get(), 6, table_->id());
 }
 
@@ -245,22 +245,18 @@ TEST_F(AdvisoryLockTest, ShareLocks) {
   auto session = NewSession();
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_SHARE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(
+      kDefaultLockId, AdvisoryLockMode::LOCK_SHARE))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
   auto session2 = NewSession();
   auto txn2 = ASSERT_RESULT(StartTransaction());
   session2->SetTransaction(txn2);
-  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_SHARE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(
+      kDefaultLockId, AdvisoryLockMode::LOCK_SHARE))));
   CheckNumIntents(cluster_.get(), 6, table_->id());
 
-  auto s = session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ false, sidecars_.get())));
+  auto s = session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOpNoWait(kDefaultLockId)));
   ASSERT_TRUE(IsStatusSkipLocking(s)) << s;
 }
 
@@ -268,36 +264,30 @@ TEST_F(AdvisoryLockTest, WaitOnConflict) {
   auto session = NewSession();
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
-  auto session2 = NewSession();
-  auto txn2 = ASSERT_RESULT(StartTransaction());
-  session2->SetTransaction(txn2);
-  TestThreadHolder thread_holder;
   std::atomic_bool session2_locked{false};
-  thread_holder.AddThreadFunctor([session2, this, &session2_locked] {
-    ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-        /* wait= */ true, sidecars_.get()))));
-    session2_locked.store(true);
-  });
-  SleepFor(1s);
-  ASSERT_FALSE(session2_locked.load());
-  ASSERT_OK(Commit(txn));
-  thread_holder.JoinAll();
+  {
+    auto session2 = NewSession();
+    session2->SetTransaction(ASSERT_RESULT(StartTransaction()));
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([session2, this, &session2_locked] {
+      ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
+      session2_locked.store(true);
+    });
+    SleepFor(1s);
+    ASSERT_FALSE(session2_locked.load());
+    ASSERT_OK(Commit(txn));
+  }
+  ASSERT_TRUE(session2_locked.load());
 }
 
 TEST_F(AdvisoryLockTest, LeaderChange) {
   // Acquired locks should be found after leader change.
   auto session = NewSession();
-  auto txn = ASSERT_RESULT(StartTransaction());
-  session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  session->SetTransaction(ASSERT_RESULT(StartTransaction()));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 3, table_->id());
 
   auto tablets = ASSERT_RESULT(GetTablets());
@@ -314,12 +304,9 @@ TEST_F(AdvisoryLockTest, LeaderChange) {
 
   // Another session shouldn't be able to acquire the lock.
   auto session2 = NewSession();
-  auto txn2 = ASSERT_RESULT(StartTransaction());
-  session2->SetTransaction(txn2);
+  session2->SetTransaction(ASSERT_RESULT(StartTransaction()));
   // Acquire the same lock in a different session with non blocking mode.
-  auto s = session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ false, sidecars_.get())));
+  auto s = session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOpNoWait(kDefaultLockId)));
   ASSERT_TRUE(IsStatusSkipLocking(s)) << s;
   CheckNumIntents(cluster_.get(), 3, table_->id());
 }
@@ -330,22 +317,16 @@ TEST_F(AdvisoryLockTest, UnlockAllAdvisoryLocks) {
   // TODO(advisory-lock #24079): This transaction should be a virtual transaction.
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   // There would be 1 for txn metadata entry.
   // Each lock will have 1 txn reverse index + 1 primary intent.
   CheckNumIntents(cluster_.get(), 7, table_->id());
 
-  // Rlease all locks.
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockAllOp(
-      kDBOid, sidecars_.get()))));
+  // Release all locks.
+  ASSERT_OK(session->TEST_ApplyAndFlush(
+      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOp(kDBOid))));
   // Should be just txn metadata left unremoved.
   CheckNumIntents(cluster_.get(), 1, table_->id());
 
@@ -353,9 +334,7 @@ TEST_F(AdvisoryLockTest, UnlockAllAdvisoryLocks) {
   auto session2 = NewSession();
   auto txn2 = ASSERT_RESULT(StartTransaction());
   session2->SetTransaction(txn2);
-  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   CheckNumIntents(cluster_.get(), 4, table_->id());
 
   ASSERT_OK(Commit(txn));
@@ -369,56 +348,43 @@ TEST_F(AdvisoryLockTest, Unlock) {
   auto txn = ASSERT_RESULT(StartTransaction());
   session->SetTransaction(txn);
 
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-      /* wait= */ true, sidecars_.get()))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
+  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
   // There would be 1 for txn metadata entry.
   // Each lock will have 1 txn reverse index + 1 primary intent.
   CheckNumIntents(cluster_.get(), 7, table_->id());
 
   // Releasing a non-existing share lock should fail.
-  ASSERT_TRUE(IsStatusSkipLocking(
-      session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_SHARE, sidecars_.get())))));
+  ASSERT_TRUE(IsStatusSkipLocking(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeUnlockOp(
+      kDefaultLockId, AdvisoryLockMode::LOCK_SHARE)))));
 
   std::atomic_bool session2_locked{false};
-  auto session2 = NewSession();
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([session2, this, &session2_locked] {
-    auto txn2 = ASSERT_RESULT(StartTransaction());
-    session2->SetTransaction(txn2);
-    CHECK_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateLockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE,
-        /* wait= */ true, sidecars_.get()))));
-    session2_locked.store(true);
-  });
+  {
+    auto session2 = NewSession();
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([session2, this, &session2_locked] {
+      session2->SetTransaction(ASSERT_RESULT(StartTransaction()));
+      CHECK_OK(session2->TEST_ApplyAndFlush(ASSERT_RESULT(MakeLockOp(kDefaultLockId))));
+      session2_locked.store(true);
+    });
 
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get()))));
-  CheckNumIntents(cluster_.get(), 5, table_->id());
-  SleepFor(1s);
-  ASSERT_FALSE(session2_locked.load());
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get()))));
-  CheckNumIntents(cluster_.get(), 3, table_->id());
-  SleepFor(1s);
-  ASSERT_FALSE(session2_locked.load());
-  ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
-      kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get()))));
-  CheckNumIntents(cluster_.get(), 1, table_->id());
-  thread_holder.JoinAll();
+    ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeUnlockOp(kDefaultLockId))));
+    CheckNumIntents(cluster_.get(), 5, table_->id());
+    SleepFor(1s);
+    ASSERT_FALSE(session2_locked.load());
+    ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeUnlockOp(kDefaultLockId))));
+    CheckNumIntents(cluster_.get(), 3, table_->id());
+    SleepFor(1s);
+    ASSERT_FALSE(session2_locked.load());
+    ASSERT_OK(session->TEST_ApplyAndFlush(ASSERT_RESULT(MakeUnlockOp(kDefaultLockId))));
+    CheckNumIntents(cluster_.get(), 1, table_->id());
+  }
   ASSERT_TRUE(session2_locked.load());
 
   // All locks have been released. Any unlock requests should fail.
-  ASSERT_TRUE(IsStatusSkipLocking(
-    session->TEST_ApplyAndFlush(ASSERT_RESULT(advisory_locks_table_->CreateUnlockOp(
-        kDBOid, 0, 0, 1, PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, sidecars_.get())))));
+  ASSERT_TRUE(IsStatusSkipLocking(session->TEST_ApplyAndFlush(
+      ASSERT_RESULT(MakeUnlockOp(kDefaultLockId)))));
   ASSERT_OK(Commit(txn));
 }
 
@@ -430,10 +396,10 @@ class AdvisoryLocksDisabledTest : public AdvisoryLockTest {
   }
 };
 
-TEST_F(AdvisoryLocksDisabledTest, ToggleAdvisoryLockFlag) {
+TEST_F_EX(AdvisoryLockTest, ToggleAdvisoryLockFlag, AdvisoryLocksDisabledTest) {
   // Wait for the background task to run a few times.
   SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * kTimeMultiplier * 3ms);
-  auto res = GetTable();
+  auto res = tserver::YsqlAdvisoryLocksTable(ValueAsFuture(client_.get())).TEST_GetTable();
   ASSERT_NOK(res);
   ASSERT_TRUE(res.status().IsNotSupported());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;

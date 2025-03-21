@@ -134,7 +134,7 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
         test_tablet_ptrs.push_back(tablet_peer->shared_tablet());
       }
       ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(
-          test_tablet_ptrs, should_wait /* should_wait */));
+          test_tablet_ptrs, AdminCompactionOptions { should_wait }));
     }
   }
 

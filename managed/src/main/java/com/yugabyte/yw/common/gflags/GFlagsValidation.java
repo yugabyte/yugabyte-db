@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
@@ -47,12 +48,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import javax.inject.Singleton;
 import lombok.EqualsAndHashCode;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -248,9 +249,19 @@ public class GFlagsValidation {
   }
 
   public void validateConnectionPoolingGflags(
-      Universe universe, Map<String, String> connectionPoolingGflags) {
-    if (connectionPoolingGflags.isEmpty()) {
+      Universe universe, Map<UUID, SpecificGFlags> connectionPoolingGflags) {
+    if (connectionPoolingGflags == null || connectionPoolingGflags.isEmpty()) {
       return;
+    }
+
+    // Check if the UUIDs are valid cluster UUIDs.
+    Set<UUID> clusterUUIDs = connectionPoolingGflags.keySet();
+    for (UUID clusterUUID : clusterUUIDs) {
+      Cluster cluster = universe.getCluster(clusterUUID);
+      if (cluster == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Cluster with UUID '%s' does not exist.", clusterUUID));
+      }
     }
 
     // Get the right connection pooling gflags list for preview vs stable version.
@@ -305,16 +316,26 @@ public class GFlagsValidation {
 
     // If there are extra gflags not related to connection pooling for that DB version, throw an
     // error. Else validation is successful.
-    if (!allowedGflagsForCurrentVersion.containsAll(connectionPoolingGflags.keySet())) {
+    List<String> invalidConnectionPoolingGflags = new ArrayList<>();
+
+    // Get the list of all gflag keys from the cluster's SpecificGFlags objects.
+    Set<String> allGflagKeys = new HashSet<>();
+    for (SpecificGFlags specificGFlags : connectionPoolingGflags.values()) {
+      allGflagKeys.addAll(SpecificGFlags.fetchAllGFlagsFlat(specificGFlags));
+    }
+
+    for (String flag : allGflagKeys) {
+      if (!allowedGflagsForCurrentVersion.contains(flag) && !flag.startsWith("ysql_conn_mgr")) {
+        invalidConnectionPoolingGflags.add(flag);
+      }
+    }
+    if (!invalidConnectionPoolingGflags.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot set gflag(s) '%s' as they are not related to Connection Pooling in version"
+              "Cannot set gflags '%s' as they are not related to Connection Pooling in version"
                   + " '%s'.",
-              CollectionUtils.subtract(
-                      connectionPoolingGflags.keySet(), allowedGflagsForCurrentVersion)
-                  .toString(),
-              ybdbVersion));
+              invalidConnectionPoolingGflags.toString(), ybdbVersion));
     }
     LOG.info(
         "Successfully validated that all the gflags '{}' are related to connection pooling for"

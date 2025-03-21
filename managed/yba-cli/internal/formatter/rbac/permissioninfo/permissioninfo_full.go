@@ -111,7 +111,7 @@ func (fp *FullPermissionInfoContext) startSubsection(format string) (*template.T
 }
 
 func (fp *FullPermissionInfoContext) subSection(name string) {
-	fp.Output.Write([]byte("\n\n"))
+	fp.Output.Write([]byte("\n"))
 	fp.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fp.Output.Write([]byte("\n"))
 }

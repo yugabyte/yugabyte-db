@@ -1067,7 +1067,7 @@ array_out(PG_FUNCTION_ARGS)
 		if (my_extra == NULL)
 		{
 			fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
-													  sizeof(ArrayMetaState));
+														  sizeof(ArrayMetaState));
 			my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
 			my_extra->element_type = ~element_type;
 		}
@@ -1078,11 +1078,11 @@ array_out(PG_FUNCTION_ARGS)
 			 * Get info about element type, including its output conversion proc
 			 */
 			get_type_io_data(element_type, IOFunc_output,
-						 &my_extra->typlen, &my_extra->typbyval,
-						 &my_extra->typalign, &my_extra->typdelim,
-						 &my_extra->typioparam, &my_extra->typiofunc);
+							 &my_extra->typlen, &my_extra->typbyval,
+							 &my_extra->typalign, &my_extra->typdelim,
+							 &my_extra->typioparam, &my_extra->typiofunc);
 			fmgr_info_cxt(my_extra->typiofunc, &my_extra->proc,
-					fcinfo->flinfo->fn_mcxt);
+						  fcinfo->flinfo->fn_mcxt);
 			my_extra->element_type = element_type;
 		}
 		typlen = my_extra->typlen;
@@ -1148,17 +1148,19 @@ array_out(PG_FUNCTION_ARGS)
 				if (decode_options->option == 't')
 				{
 					YbDatumDecodeOptions tz_datum_decodeOptions;
+
 					tz_datum_decodeOptions.timezone = decode_options->timezone;
 					tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 					values[i] = DatumGetCString(FunctionCall2(decode_options->elem_finfo, itemvalue,
-								PointerGetDatum(&tz_datum_decodeOptions)));
+															  PointerGetDatum(&tz_datum_decodeOptions)));
 				}
 				else if (decode_options->option == 'r' &&
-						decode_options->range_datum_decode_options != NULL)
+						 decode_options->range_datum_decode_options != NULL)
 				{
-					YbDatumDecodeOptions* range_decodeOptions = decode_options->range_datum_decode_options;
+					YbDatumDecodeOptions *range_decodeOptions = decode_options->range_datum_decode_options;
+
 					values[i] = DatumGetCString(FunctionCall2(decode_options->elem_finfo, itemvalue,
-								PointerGetDatum(range_decodeOptions)));
+															  PointerGetDatum(range_decodeOptions)));
 				}
 				else
 				{
@@ -3410,6 +3412,104 @@ construct_array(Datum *elems, int nelems,
 
 	return construct_md_array(elems, NULL, 1, dims, lbs,
 							  elmtype, elmlen, elmbyval, elmalign);
+}
+
+/*
+ * Like construct_array(), where elmtype must be a built-in type, and
+ * elmlen/elmbyval/elmalign is looked up from hardcoded data.  This is often
+ * useful when manipulating arrays from/for system catalogs.
+ */
+ArrayType *
+construct_array_builtin(Datum *elems, int nelems, Oid elmtype)
+{
+	int			elmlen;
+	bool		elmbyval;
+	char		elmalign;
+
+	switch (elmtype)
+	{
+		case CHAROID:
+			elmlen = 1;
+			elmbyval = true;
+			elmalign = TYPALIGN_CHAR;
+			break;
+
+		case CSTRINGOID:
+			elmlen = -2;
+			elmbyval = false;
+			elmalign = TYPALIGN_CHAR;
+			break;
+
+		case FLOAT4OID:
+			elmlen = sizeof(float4);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case FLOAT8OID:
+			elmlen = sizeof(float8);
+			elmbyval = FLOAT8PASSBYVAL;
+			elmalign = TYPALIGN_DOUBLE;
+			break;
+
+		case INT2OID:
+			elmlen = sizeof(int16);
+			elmbyval = true;
+			elmalign = TYPALIGN_SHORT;
+			break;
+
+		case INT4OID:
+			elmlen = sizeof(int32);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case INT8OID:
+			elmlen = sizeof(int64);
+			elmbyval = FLOAT8PASSBYVAL;
+			elmalign = TYPALIGN_DOUBLE;
+			break;
+
+		case NAMEOID:
+			elmlen = NAMEDATALEN;
+			elmbyval = false;
+			elmalign = TYPALIGN_CHAR;
+			break;
+
+		case OIDOID:
+		case REGTYPEOID:
+			elmlen = sizeof(Oid);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case TEXTOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		case TIDOID:
+			elmlen = sizeof(ItemPointerData);
+			elmbyval = false;
+			elmalign = TYPALIGN_SHORT;
+			break;
+
+		case XIDOID:
+			elmlen = sizeof(TransactionId);
+			elmbyval = true;
+			elmalign = TYPALIGN_INT;
+			break;
+
+		default:
+			elog(ERROR, "type %u not supported by construct_array_builtin()", elmtype);
+			/* keep compiler quiet */
+			elmlen = 0;
+			elmbyval = false;
+			elmalign = 0;
+	}
+
+	return construct_array(elems, nelems, elmtype, elmlen, elmbyval, elmalign);
 }
 
 /*

@@ -12,11 +12,11 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
-# ybcbootstrap contains YugaByte utilites for initdb bootstrap.
 OBJS = \
+	yb_bootstrap.o \
+	\
 	bootparse.o \
-	bootstrap.o \
-    ybcbootstrap.o
+	bootstrap.o
 
 include $(top_srcdir)/src/backend/common.mk
 

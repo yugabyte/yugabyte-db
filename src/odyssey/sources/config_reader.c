@@ -149,8 +149,10 @@ typedef enum {
 
 	/* YB */
 	OD_YB_USE_AUTH_BACKEND,
+	OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL,
 	OD_YB_ENABLE_MULTI_ROUTE_POOL,
 	OD_YB_YSQL_MAX_CONNECTIONS,
+	OD_YB_MAX_POOLS,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -324,8 +326,11 @@ static od_keyword_t od_config_keywords[] = {
 
 	/* YB */
 	od_keyword("yb_use_auth_backend", OD_YB_USE_AUTH_BACKEND),
+	od_keyword("yb_optimized_extended_query_protocol",
+		   OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL),
 	od_keyword("yb_enable_multi_route_pool", OD_YB_ENABLE_MULTI_ROUTE_POOL),
 	od_keyword("yb_ysql_max_connections", OD_YB_YSQL_MAX_CONNECTIONS),
+	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
 
 	{ 0, 0, 0 },
 };
@@ -2424,6 +2429,14 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
+		/* yb_optimized_extended_query_protocol */
+		case OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL:
+			if (!od_config_reader_yes_no(
+				    reader,
+				    &config->yb_optimized_extended_query_protocol)) {
+				goto error;
+			}
+			continue;
 		/* yb_enable_multi_route_pool */
 		case OD_YB_ENABLE_MULTI_ROUTE_POOL:
 			if (!od_config_reader_yes_no(reader,
@@ -2435,6 +2448,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_YB_YSQL_MAX_CONNECTIONS:
 			if (!od_config_reader_number(reader,
 						     &config->yb_ysql_max_connections)) {
+				goto error;
+			}
+			continue;
+		/* yb_max_pools */
+		case OD_YB_MAX_POOLS:
+			if (!od_config_reader_number(reader,
+						     &config->yb_max_pools)) {
 				goto error;
 			}
 			continue;

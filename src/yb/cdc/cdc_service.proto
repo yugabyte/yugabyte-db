@@ -68,6 +68,7 @@ service CDCService {
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
   rpc InitVirtualWALForCDC (InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
+  rpc GetLagMetrics (GetLagMetricsRequestPB) returns (GetLagMetricsResponsePB);
   rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
   rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
       returns (DestroyVirtualWALForCDCResponsePB);
@@ -158,14 +159,32 @@ enum CDCCheckpointType {
   EXPLICIT = 2; // Used for CDC
 }
 
+message ReplicationSlotHashRangePB {
+  optional uint32 start_range = 1;
+  optional uint32 end_range = 2;
+}
+
 message InitVirtualWALForCDCRequestPB {
   optional uint64 session_id = 1;
   optional bytes stream_id = 2;
   repeated string table_id = 3;
+  // Represents the hash range constraints for replication slot i.e [start range, end range).
+  // Tablets with start hash range falling in these slot's hash range will be polled.
+  optional ReplicationSlotHashRangePB slot_hash_range = 4;
+  optional uint64 active_pid = 5;
 }
 
 message InitVirtualWALForCDCResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message GetLagMetricsRequestPB {
+  optional bytes stream_id = 1;
+}
+
+message GetLagMetricsResponsePB {
+  optional CDCErrorPB error = 1;
+  optional int64 lag_metric = 2;
 }
 
 message GetConsistentChangesRequestPB {

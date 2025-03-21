@@ -84,7 +84,11 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
-	/* YB relation scans are optimized for the "Don't care about order" direction. */
+
+	/*
+	 * YB relation scans are optimized for the "Don't care about order"
+	 * direction.
+	 */
 	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexOnlyScan *) node->ss.ps.plan)->indexorderdir))
 	{
@@ -156,6 +160,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	 * OK, now that we have what we need, fetch the next tuple.
 	 */
 	MemoryContext oldcontext;
+
 	/*
 	 * To handle dead tuple for temp table, we shouldn't store its index
 	 * in per-tuple memory context.
@@ -275,8 +280,10 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			ExprState *recheckqual = node->yb_indexqual_for_recheck
-				? node->yb_indexqual_for_recheck : node->recheckqual;
+			ExprState  *recheckqual = (node->yb_indexqual_for_recheck ?
+									   node->yb_indexqual_for_recheck :
+									   node->recheckqual);
+
 			/*
 			 * Don't reset per-tuple memory context in YB, as the scanned tuple
 			 * resides there.
@@ -349,6 +356,10 @@ StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup, TupleDesc itupdesc)
 	ExecClearTuple(slot);
 	index_deform_tuple(itup, itupdesc, slot->tts_values, slot->tts_isnull);
 	ExecStoreVirtualTuple(slot);
+
+	TABLETUPLE_YBCTID(slot) = INDEXTUPLE_YBCTID(itup); /* ybidxbasectid */
+	slot->ts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix; /* ybuniqueidxkeysuffix */
+
 }
 
 /*
@@ -684,12 +695,12 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 		indexstate->yb_ioss_might_recheck =
 			yb_index_might_recheck(currentRelation,
 								   indexstate->ioss_RelationDesc,
-								   true /* xs_want_itup */,
+								   true /* xs_want_itup */ ,
 								   indexstate->ioss_ScanKeys,
 								   indexstate->ioss_NumScanKeys);
 
 		/* Got the info for aggregate pushdown.  EXPLAIN can return now. */
-		if  (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+		if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 			return indexstate;
 	}
 
@@ -743,8 +754,9 @@ yb_init_indexonly_scandesc(IndexOnlyScanState *node)
 	if (IsYugaByteEnabled())
 	{
 		IndexScanDesc scandesc = node->ioss_ScanDesc;
-		EState *estate = node->ss.ps.state;
+		EState	   *estate = node->ss.ps.state;
 		IndexOnlyScan *plan = (IndexOnlyScan *) node->ss.ps.plan;
+
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
@@ -880,7 +892,7 @@ yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node)
 	 * up a dummy scan slot to hold as many attributes as there are
 	 * pushed aggregates.
 	 */
-	TupleDesc tupdesc =
-		CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs));
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs));
+
 	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
 }

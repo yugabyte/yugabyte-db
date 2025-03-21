@@ -135,7 +135,7 @@ const rocksdb::KeyValueEntry& PerformRocksDBSeek(
       const auto cmp = result->key.compare(seek_key);
       if (cmp > 0) {
         VLOG_WITH_FUNC(4)
-            << "Seek because position after current: " << dockv::BestEffortDocDBKeyToStr(seek_key);
+            << "Seek because position before current: " << dockv::BestEffortDocDBKeyToStr(seek_key);
         result = &iter->Seek(seek_key);
         ++stats.seek;
       } else if (cmp < 0) {

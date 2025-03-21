@@ -62,34 +62,6 @@ class DocDBPerfTest : public DocDBTestBase {
     }
   }
 
-  void TestScanForward(
-      size_t expected_num_keys, const std::string& perf_test_string, bool use_key_filter_callback,
-      Slice upperbound) {
-    TestScanPerformance(
-        expected_num_keys, perf_test_string,
-        [use_key_filter_callback, upperbound](auto* iter) -> std::pair<size_t, size_t> {
-          size_t scanned_keys = 0;
-          size_t total_size = 0;
-          rocksdb::ScanCallback scan_callback = [&scanned_keys, &total_size](
-                                                    const Slice& key, const Slice& value) -> bool {
-            scanned_keys++;
-            total_size += key.size() + value.size();
-            return true;
-          };
-
-          rocksdb::KeyFilterCallback kf_callback =
-              [](Slice prefixed_key, size_t shared_bytes,
-                 Slice delta) -> rocksdb::KeyFilterCallbackResult {
-            return rocksdb::KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
-          };
-
-          auto key_filter_callback = use_key_filter_callback ? &kf_callback : nullptr;
-          EXPECT_TRUE(iter->ScanForward(upperbound, key_filter_callback, &scan_callback));
-
-          return {scanned_keys, total_size};
-        });
-  }
-
   void TestScanNext(
       size_t expected_num_keys, const std::string& perf_test_string, bool use_fast_next = false) {
     TestScanPerformance(
@@ -158,18 +130,6 @@ class DocDBPerfTest : public DocDBTestBase {
     LOG(INFO) << "Wrote " << count << ", validating performance";
     TestScanNext(count, "Next");
     TestScanNext(count, "FastNext", /* use_fast_next */ true);
-    TestScanForward(
-        count, "ScanForward (no kf and no upperbound)", /* use_filter_callback = */ false,
-        Slice());
-    TestScanForward(
-        count, "ScanForward (with kf and no upperbound)", /* use_filter_callback = */ true,
-        Slice());
-    TestScanForward(
-        count, "ScanForward (with kf+upperbound)", /* use_filter_callback = */ true,
-        upperbound.AsSlice());
-    TestScanForward(
-        count, "ScanForward (with upperbound and no kf)", /* use_filter_callback = */ false,
-        upperbound.AsSlice());
   }
 };
 

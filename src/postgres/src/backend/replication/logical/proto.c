@@ -428,12 +428,11 @@ logicalrep_write_insert(StringInfo out, TransactionId xid, Relation rel,
 	pq_sendint32(out, RelationGetRelid(rel));
 
 	if (IsYugaByteEnabled())
-		elog(DEBUG2, "proto: INSERT newtuple: %s",
-			 YbTupleTableSlotToString(newslot));
+		elog(DEBUG2, "proto: INSERT newtuple: %s", YbSlotToString(newslot));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newslot, binary, columns,
-						   NULL /* yb_is_omitted */);
+						   NULL /* yb_is_omitted */ );
 }
 
 /*
@@ -492,8 +491,7 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 
 		if (IsYugaByteEnabled())
 			elog(DEBUG2, "proto: UPDATE oldtuple: %s",
-				 YbTupleTableSlotToStringWithIsOmitted(oldslot,
-													   yb_old_is_omitted));
+				 YbSlotToStringWithIsOmitted(oldslot, yb_old_is_omitted));
 
 		logicalrep_write_tuple(out, rel, oldslot, binary, columns,
 							   yb_old_is_omitted);
@@ -501,8 +499,7 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 
 	if (IsYugaByteEnabled())
 		elog(DEBUG2, "proto: UPDATE newtuple: %s",
-			 YbTupleTableSlotToStringWithIsOmitted(newslot,
-												   yb_new_is_omitted));
+			 YbSlotToStringWithIsOmitted(newslot, yb_new_is_omitted));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newslot, binary, columns,
@@ -578,11 +575,10 @@ logicalrep_write_delete(StringInfo out, TransactionId xid, Relation rel,
 		pq_sendbyte(out, 'K');	/* old key follows */
 
 	if (IsYugaByteEnabled())
-		elog(DEBUG2, "proto: DELETE oldtuple: %s",
-			 YbTupleTableSlotToString(oldslot));
+		elog(DEBUG2, "proto: DELETE oldtuple: %s", YbSlotToString(oldslot));
 
 	logicalrep_write_tuple(out, rel, oldslot, binary, columns,
-						   NULL /* yb_is_omitted */);
+						   NULL /* yb_is_omitted */ );
 }
 
 /*
@@ -845,7 +841,7 @@ logicalrep_write_tuple(StringInfo out, Relation rel, TupleTableSlot *slot,
 			 * Treat omitted column as an unchanged toast column so that the
 			 * client will ignore it.
 			 */
-			pq_sendbyte(out, 'u'); /* unchanged toast column */
+			pq_sendbyte(out, 'u');	/* unchanged toast column */
 			continue;
 		}
 

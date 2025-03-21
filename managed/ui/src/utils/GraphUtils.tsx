@@ -39,12 +39,10 @@ export const getTabContent = (
 
   const getMetricsSessionTimezone = () => {
     const metricsTimezone = sessionStorage.getItem('metricsTimezone');
-    if (metricsTimezone === DEFAULT_TIMEZONE.value || isEmptyString(metricsTimezone)) {
-      return getUserTimezone();
-    }
     return metricsTimezone;
   };
 
+  const timezone = isMetricsTimezoneEnabled ? getMetricsSessionTimezone() : getUserTimezone();
   if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
     /* Logic here is, since there will be multiple instances of GraphTab
       we basically would have metrics data keyed off tab type. So we
@@ -79,11 +77,10 @@ export const getTabContent = (
             metricMeasure={metricMeasure}
             operations={uniqueOperations}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
+            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
             updateTimestamp={updateTimestamp}
             printMode={printMode}
-            metricsTimezone={
-              isMetricsTimezoneEnabled ? getMetricsSessionTimezone() : getUserTimezone()
-            }
+            metricsTimezone={timezone}
           />
         ) : null;
       })
@@ -101,14 +98,7 @@ export const getTabContent = (
     //Hide empty panels for master pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-master-') != null) {
-      const skipList = [
-        'Tablet Server',
-        'YSQL Ops',
-        'YCQL Ops',
-        'YEDIS Ops',
-        'YEDIS Advanced',
-        'Resource'
-      ];
+      const skipList = ['Tablet Server', 'YSQL Ops', 'YCQL Ops', 'Resource'];
       if (skipList.includes(title)) {
         return null;
       }

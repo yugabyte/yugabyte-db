@@ -57,6 +57,7 @@
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/pg_yb_invalidation_messages.h"
 #include "commands/defrem.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -206,7 +207,7 @@ IsCatalogNamespace(Oid namespaceId)
 bool
 YbIsCatalogNamespaceByName(const char *namespace_name)
 {
-	Oid namespace_oid;
+	Oid			namespace_oid;
 
 	namespace_oid = namespace_name ?
 		LookupExplicitNamespace(namespace_name, true) :
@@ -286,6 +287,7 @@ IsSharedRelation(Oid relationId)
 		relationId == SubscriptionRelationId ||
 		relationId == TableSpaceRelationId ||
 		relationId == YBCatalogVersionRelationId ||
+		relationId == YbInvalidationMessagesRelationId ||
 		relationId == YbProfileRelationId ||
 		relationId == YbRoleProfileRelationId ||
 		relationId == YBLogicalClientVersionRelationId)
@@ -311,6 +313,7 @@ IsSharedRelation(Oid relationId)
 		relationId == TablespaceNameIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == YBCatalogVersionDbOidIndexId ||
+		relationId == YbInvalidationMessagesIndexId ||
 		relationId == YbProfileOidIndexId ||
 		relationId == YbProfileRolnameIndexId ||
 		relationId == YbRoleProfileOidIndexId ||
@@ -336,19 +339,23 @@ IsSharedRelation(Oid relationId)
 		relationId == PgTablespaceToastTable ||
 		relationId == PgTablespaceToastIndex)
 		return true;
-	/* In test mode, there might be shared relations other than predefined ones. */
+
+	/*
+	 * In test mode, there might be shared relations other than predefined
+	 * ones.
+	 */
 	if (yb_test_system_catalogs_creation)
 	{
 		/* To avoid cycle */
 		if (relationId == RelationRelationId)
 			return false;
 
-		Relation  pg_class = table_open(RelationRelationId, AccessShareLock);
-		HeapTuple tuple    = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relationId));
+		Relation	pg_class = table_open(RelationRelationId, AccessShareLock);
+		HeapTuple	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relationId));
 
-		bool result = HeapTupleIsValid(tuple)
-			? ((Form_pg_class) GETSTRUCT(tuple))->relisshared
-			: false;
+		bool		result = (HeapTupleIsValid(tuple) ?
+							  ((Form_pg_class) GETSTRUCT(tuple))->relisshared :
+							  false);
 
 		if (HeapTupleIsValid(tuple))
 			heap_freetuple(tuple);
@@ -457,9 +464,9 @@ GetBackendOidFromRelPersistence(char relpersistence)
 bool
 DoesRelFileExist(const RelFileNodeBackend *rnode)
 {
-	bool 	collides;
-	char 	*rpath = relpath(*rnode, MAIN_FORKNUM);
-	int 	fd = BasicOpenFile(rpath, O_RDONLY | PG_BINARY);
+	bool		collides;
+	char	   *rpath = relpath(*rnode, MAIN_FORKNUM);
+	int			fd = BasicOpenFile(rpath, O_RDONLY | PG_BINARY);
 
 	if (fd >= 0)
 	{
@@ -560,8 +567,12 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 * pg_upgrade; doing so would risk collisions with the OIDs it wants to
 	 * assign.  Hitting this assert means there's some path where we failed to
 	 * ensure that a type OID is determined by commands in the dump script.
+	 * YB: We may get here during extension upgrade (while executing
+	 * ALTER EXTENSION). Extension upgrade in YB is done as part of
+	 * pg_upgrade.
 	 */
-	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
+	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId
+		   || yb_extension_upgrade);
 
 	if (IsYugaByteEnabled())
 	{
@@ -638,8 +649,11 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * If we ever get here during pg_upgrade, there's something wrong; all
 	 * relfilenode assignments during a binary-upgrade run should be
 	 * determined by commands in the dump script.
+	 * YB: We may get here during extension upgrade (while executing
+	 * ALTER EXTENSION). Extension upgrade in YB is done as part of
+	 * pg_upgrade.
 	 */
-	Assert(!IsBinaryUpgrade || yb_binary_restore);
+	Assert(!IsBinaryUpgrade || yb_binary_restore || yb_extension_upgrade);
 
 	/* This logic should match RelationInitPhysicalAddr */
 	rnode.node.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;
@@ -804,12 +818,15 @@ IsTableOidUnused(Oid table_oid,
 				 char relpersistence)
 {
 	RelFileNodeBackend rnode;
-	Oid				   oidIndex;
-	bool			   collides;
+	Oid			oidIndex;
+	bool		collides;
 
 	/* First check for if the oid is used in pg_class. */
 
-	/* TODO(Alex): The relcache will cache the identity of the OID index for us */
+	/*
+	 * TODO(Alex): The relcache will cache the identity of the OID index for
+	 * us
+	 */
 	oidIndex = ClassOidIndexId;
 
 	if (!OidIsValid(oidIndex))
@@ -838,11 +855,12 @@ IsTableOidUnused(Oid table_oid,
 		rnode.backend = GetBackendOidFromRelPersistence(relpersistence);
 
 		/* This logic should match RelationInitPhysicalAddr */
-		rnode.node.spcNode = reltablespace ? reltablespace
-										   : MyDatabaseTableSpace;
-		rnode.node.dbNode = (rnode.node.spcNode == GLOBALTABLESPACE_OID)
-								? InvalidOid
-								: MyDatabaseId;
+		rnode.node.spcNode = (reltablespace ?
+							  reltablespace :
+							  MyDatabaseTableSpace);
+		rnode.node.dbNode = ((rnode.node.spcNode == GLOBALTABLESPACE_OID) ?
+							 InvalidOid :
+							 MyDatabaseId);
 
 		rnode.node.relNode = table_oid;
 
@@ -869,10 +887,12 @@ GetTableOidFromRelOptions(List *relOptions,
 
 	foreach(opt_cell, relOptions)
 	{
-		DefElem *def = (DefElem *) lfirst(opt_cell);
+		DefElem    *def = (DefElem *) lfirst(opt_cell);
+
 		if (strcmp(def->defname, "table_oid") == 0)
 		{
-			const char* hintmsg;
+			const char *hintmsg;
+
 			if (!parse_oid(defGetString(def), &table_oid, &hintmsg))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -880,8 +900,9 @@ GetTableOidFromRelOptions(List *relOptions,
 						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 			if (OidIsValid(table_oid))
 			{
-				Relation pg_class_desc =
-					table_open(RelationRelationId, RowExclusiveLock);
+				Relation	pg_class_desc = table_open(RelationRelationId,
+													   RowExclusiveLock);
+
 				is_oid_free = IsTableOidUnused(table_oid,
 											   reltablespace,
 											   pg_class_desc,
@@ -916,14 +937,16 @@ Oid
 YbGetColocationIdFromRelOptions(List *relOptions)
 {
 	ListCell   *opt_cell;
-	Oid        colocation_id;
+	Oid			colocation_id;
 
 	foreach(opt_cell, relOptions)
 	{
-		DefElem *def = (DefElem *) lfirst(opt_cell);
+		DefElem    *def = (DefElem *) lfirst(opt_cell);
+
 		if (strcmp(def->defname, "colocation_id") == 0)
 		{
-			const char* hintmsg;
+			const char *hintmsg;
+
 			if (!parse_oid(defGetString(def), &colocation_id, &hintmsg))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -945,17 +968,19 @@ YbGetColocationIdFromRelOptions(List *relOptions)
 Oid
 GetRowTypeOidFromRelOptions(List *relOptions)
 {
-	ListCell  *opt_cell;
-	Oid       row_type_oid;
-	Relation  pg_type_desc;
-	HeapTuple tuple;
+	ListCell   *opt_cell;
+	Oid			row_type_oid;
+	Relation	pg_type_desc;
+	HeapTuple	tuple;
 
 	foreach(opt_cell, relOptions)
 	{
-		DefElem *def = (DefElem *) lfirst(opt_cell);
+		DefElem    *def = (DefElem *) lfirst(opt_cell);
+
 		if (strcmp(def->defname, "row_type_oid") == 0)
 		{
-			const char* hintmsg;
+			const char *hintmsg;
+
 			if (!parse_oid(defGetString(def), &row_type_oid, &hintmsg))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -984,12 +1009,13 @@ GetRowTypeOidFromRelOptions(List *relOptions)
 bool
 YbGetUseInitdbAclFromRelOptions(List *options)
 {
-	ListCell  *opt_cell;
+	ListCell   *opt_cell;
 
 	foreach(opt_cell, options)
 	{
-		// Don't care about multiple occurrences, this reloption is internal.
-		DefElem *def = lfirst_node(DefElem, opt_cell);
+		/* Don't care about multiple occurrences, this reloption is internal. */
+		DefElem    *def = lfirst_node(DefElem, opt_cell);
+
 		if (strcmp(def->defname, "use_initdb_acl") == 0)
 			return defGetBoolean(def);
 	}

@@ -3,5 +3,5 @@
 ####################################################################################################
 # Postgres Testsuites: This suite includes tests pertaining to replica identity
 ####################################################################################################
-test: yb_pg_replica_identity
-test: yb_replica_identity
+test: yb.port.replica_identity
+test: yb.orig.replica_identity

@@ -119,6 +119,7 @@ public class OtelCollectorConfigFormat {
     private boolean enabled;
     private String initial_interval;
     private String max_interval;
+    private String max_elapsed_time;
   }
 
   @Data

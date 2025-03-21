@@ -959,6 +959,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + " nodes")
     private ProxyConfig proxyConfig;
 
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.25.1.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
+    private boolean useClockbound = false;
+
     @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();
@@ -1574,6 +1580,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private String softwareVersion;
 
     @ApiModelProperty private int autoFlagConfigVersion;
+
+    @ApiModelProperty private String targetUpgradeSoftwareVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.

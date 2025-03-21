@@ -20,16 +20,16 @@ import (
     "github.com/jackc/pgx/v4"
     "github.com/jackc/pgx/v4/pgxpool"
     "github.com/labstack/echo/v4"
+    "github.com/yugabyte/yb-voyager/yb-voyager/src/ybversion"
 )
 
 const LOGGER_FILE_NAME = "api_voyager"
-const MIGRATION_CAVEATS_UI_DISPLAY_STR ="MIGRATION CAVEATS"
+const MIGRATION_CAVEATS_UI_DISPLAY_STR = "MIGRATION CAVEATS"
 
 // Gets one row for each unique migration_uuid, and also gets the highest migration_phase and
 // invocation for import/export
 // Need to ignore rows with migration_phase 3 i.e. schema analysis
-const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string = 
-`SELECT * FROM (
+const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string = `SELECT * FROM (
 
     SELECT migration_uuid, migration_phase AS highest_export_phase,
             MAX(invocation_sequence) AS highest_export_invocation
@@ -91,7 +91,10 @@ const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
 
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
-    "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED'"
+    "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED' " +
+    "ORDER BY invocation_sequence DESC " +
+    "LIMIT 1"
+
 
 const RETRIEVE_IMPORT_SCHEMA_STATUS string = "SELECT status " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
@@ -104,7 +107,7 @@ type VoyagerMigrationsQueryFuture struct {
 
 type AssessmentReportQueryFuture struct {
     Report helpers.AssessmentVisualisationMetadata
-    Error error
+    Error  error
 }
 
 type VoyagerDataMigrationMetricsFuture struct {
@@ -124,22 +127,46 @@ type MigrateSchemaPhasesInfo struct {
 }
 
 type MigrateSchemaUIDetailFuture struct {
-    SuggestionsErrors []models.ErrorsAndSuggestionsDetails
-    SqlObjects        []models.SqlObjectsDetails
-    Error             error
+    VoyagerVersion          string
+    TargetDbVersion         string
+    SchemaAnalysisIssues    []SchemaAnalysisIssues
+    SqlObjects              []DatabaseObjects
+    Error                   error
 }
 
 type PayloadReport struct {
-    Summary SchemaAnalyzeReport                  `json:"summary"`
-    Issues  []models.ErrorsAndSuggestionsDetails `json:"issues"`
+    VoyagerVersion  string                  `json:"VoyagerVersion"`
+    TargetDbVersion string                  `json:"TargetDBVersion"`
+    Summary         SchemaAnalyzeReport     `json:"Summary"`
+    Issues          []SchemaAnalysisIssues  `json:"Issues"`
+}
+
+type SchemaAnalysisIssues struct {
+    IssueType               string                           `json:"IssueType"`
+    ObjectType              string                           `json:"ObjectType"`
+    ObjectName              string                           `json:"ObjectName"`
+    Reason                  string                           `json:"Reason"`
+    SqlStatement            string                           `json:"SqlStatement"`
+    FilePath                string                           `json:"FilePath"`
+    Suggestion              string                           `json:"Suggestion"`
+    GH                      string                           `json:"GH"`
+    DocsLink                string                           `json:"DocsLink"`
+    MinimumVersionsFixedIn  map[string]*ybversion.YBVersion  `json:"MinimumVersionsFixedIn"`
 }
 
 type SchemaAnalyzeReport struct {
-    DbName          string                     `json:"dbName"`
-    SchemaName      string                     `json:"schemaName"`
-    DbVersion       string                     `json:"dbVersion"`
-    Notes           string                     `json:"notes"`
-    DatabaseObjects []models.SqlObjectsDetails `json:"databaseObjects"`
+    DbName          string               `json:"dbName"`
+    SchemaName      []string             `json:"schemaName"`
+    DbVersion       string               `json:"dbVersion"`
+    Notes           string               `json:"notes"`
+    DatabaseObjects []DatabaseObjects    `json:"databaseObjects"`
+}
+
+type DatabaseObjects struct {
+    ObjectType   string  `json:"objectType"`
+    TotalCount   int32   `json:"totalCount"`
+    InvalidCount int32   `json:"invalidCount"`
+    ObjectNames  string  `json:"objectNames"`
 }
 
 type AllVoyagerMigrations struct {
@@ -171,7 +198,7 @@ var MigrationPhaseStrings = []string{
     "Export Data",
     "Import Schema",
     "Import Data",
-    "Verify",      
+    "Verify",
 }
 
 func (c *Container) GetVoyagerMigrations(ctx echo.Context) error {
@@ -246,7 +273,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         Migrations: []models.VoyagerMigrationDetails{},
         Error:      nil,
     }
-    
+
     rows, err := conn.Query(context.Background(), RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL)
     if err != nil {
         log.Errorf(fmt.Sprintf("[%s] Error while executing query: [%s]",
@@ -415,7 +442,7 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
         migrationDetailsStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
         migrationDetailsStruct.MigrationName = "Migration_" +
             strings.Split(migrationDetailsStruct.MigrationUuid, "-")[4]
-        
+
         if dbIp.Status == pgtype.Present {
             // dbIp determines whether port and db type are for source or target
             var dbIpStruct DbIp
@@ -592,91 +619,22 @@ func getMigrateSchemaTaskInfoFuture(log logger.Logger, conn *pgxpool.Pool, migra
     determineStatusOfMigrateSchmeaPhases(log, conn, &schemaPhaseInfoList,
         &migrateSchemaTaskInfo)
 
-    // Finding the count for manual refactoring using Issues field of Schema analysis report.
-    dbObjectConversionIssuesMap := map[string]int{}
-    for _, conversionIssue := range migrateSchemaTaskInfo.SuggestionsErrors {
-        count, ok := dbObjectConversionIssuesMap[conversionIssue.ObjectType]
-        if ok {
-            count++
-            dbObjectConversionIssuesMap[conversionIssue.ObjectType] = count
-        } else {
-            dbObjectConversionIssuesMap[conversionIssue.ObjectType] = 1
-        }
-    }
-
-    // Computing the count for automatic, invalid, and manual refactoring fields
-    // for each sql object type.
     recommendedRefactoringList := []models.RefactoringCount{}
-    for _, sqlObject := range migrateSchemaTaskInfo.SqlObjects {
+    for _, sqlObject := range migrateSchemaTaskInfo.CurrentAnalysisReport.SqlObjects {
         var refactorCount models.RefactoringCount
         refactorCount.SqlObjectType = sqlObject.ObjectType
         refactorCount.Automatic = sqlObject.TotalCount - sqlObject.InvalidCount
         refactorCount.Invalid = sqlObject.InvalidCount
-        issueCount, ok := dbObjectConversionIssuesMap[sqlObject.ObjectType]
-        if ok {
-            refactorCount.Manual = int32(issueCount)
+        if sqlObject.Issues != nil {
+            refactorCount.Manual = int32(len(sqlObject.Issues))
         } else {
             refactorCount.Manual = 0
         }
         recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
     }
 
-    migrateSchemaTaskInfo.CurrentAnalysisReport.RecommendedRefactoring.RefactorDetails =
+    migrateSchemaTaskInfo.CurrentAnalysisReport.RecommendedRefactoring =
         recommendedRefactoringList
-
-    conversionIssuesForSuggestedRefacotring := map[string]models.UnsupportedSqlWithDetails{}
-    for _, conversionIssue := range migrateSchemaTaskInfo.SuggestionsErrors {
-
-        if conversionIssue.IssueType == "migration_caveats" {
-            conversionIssuesByIssueType, ok :=
-                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType]
-
-            if ok {
-                conversionIssuesByIssueType.Count = conversionIssuesByIssueType.Count + 1
-                conversionIssuesByIssueType.SuggestionsErrors = append(
-                    conversionIssuesByIssueType.SuggestionsErrors, conversionIssue)
-                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType] =
-                    conversionIssuesByIssueType
-            } else {
-                var newConversionIssuesByType models.UnsupportedSqlWithDetails
-                newConversionIssuesByType.Count = 1
-                newConversionIssuesByType.UnsupportedType = MIGRATION_CAVEATS_UI_DISPLAY_STR
-                newConversionIssuesByType.SuggestionsErrors =
-                    append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
-                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType] =
-                    newConversionIssuesByType
-            }
-
-        } else {
-
-            conversionIssuesByObjectType, ok :=
-            conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType]
-            if ok {
-                conversionIssuesByObjectType.Count = conversionIssuesByObjectType.Count + 1
-                conversionIssuesByObjectType.SuggestionsErrors = append(
-                    conversionIssuesByObjectType.SuggestionsErrors, conversionIssue)
-                conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType] =
-                    conversionIssuesByObjectType
-            } else {
-                var newConversionIssuesByType models.UnsupportedSqlWithDetails
-                newConversionIssuesByType.Count = 1
-                newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
-                newConversionIssuesByType.SuggestionsErrors =
-                    append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
-                conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType] =
-                    newConversionIssuesByType
-            }
-
-        }
-    }
-
-    var conversionIssuesDetailsWithCountList []models.UnsupportedSqlWithDetails
-    for _, value := range conversionIssuesForSuggestedRefacotring {
-        conversionIssuesDetailsWithCountList = append(conversionIssuesDetailsWithCountList, value)
-    }
-
-    migrateSchemaTaskInfo.CurrentAnalysisReport.UnsupportedFeatures =
-        conversionIssuesDetailsWithCountList
 
     MigrateSchemaTaskInfoResponse.Data = migrateSchemaTaskInfo
     future <- MigrateSchemaTaskInfoResponse
@@ -715,14 +673,56 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
                     log.Errorf(fmt.Sprintf("[%s] Error while fetching migrate schema UI Details",
                         LOGGER_FILE_NAME))
                     log.Errorf(migrateSchemaUIDetails.Error.Error())
-                    migrateSchemaTaskInfo.SuggestionsErrors = nil
-                    migrateSchemaTaskInfo.SqlObjects = nil
+                    migrateSchemaTaskInfo.AnalysisHistory = nil
                     migrateSchemaTaskInfo.AnalyzeSchema = "N/A"
                     continue
                 }
-                migrateSchemaTaskInfo.SuggestionsErrors = migrateSchemaUIDetails.SuggestionsErrors
-                migrateSchemaTaskInfo.SqlObjects = migrateSchemaUIDetails.SqlObjects
+                var sqlObjectsIssuesMap = map[string][]models.AnalysisIssueDetails{}
+                for _, issue := range migrateSchemaUIDetails.SchemaAnalysisIssues {
+                    _, ok := sqlObjectsIssuesMap[issue.ObjectType]
+                    if !ok {
+                        sqlObjectsIssuesMap[issue.ObjectType] = []models.AnalysisIssueDetails{}
+                    }
+                    issueToBeAdded := models.AnalysisIssueDetails{
+                        IssueType: issue.IssueType,
+                        ObjectName: issue.ObjectName,
+                        Reason: issue.Reason,
+                        SqlStatement: issue.SqlStatement,
+                        FilePath: issue.FilePath,
+                        Suggestion: issue.Suggestion,
+                        GH: issue.GH,
+                        DocsLink: issue.DocsLink,
+                    }
+                    for _, ybVersion := range issue.MinimumVersionsFixedIn {
+                        issueToBeAdded.MinimumVersionsFixedIn = append(
+                            issueToBeAdded.MinimumVersionsFixedIn, ybVersion.String())
+                    }
 
+                    sqlObjectsIssuesMap[issue.ObjectType] = append(
+                        sqlObjectsIssuesMap[issue.ObjectType], issueToBeAdded)
+                }
+
+                for _, sqlObject := range migrateSchemaUIDetails.SqlObjects {
+                    sqlObjectToBeAdded := models.SqlObjectsDetails{
+                        ObjectType: sqlObject.ObjectType,
+                        TotalCount: sqlObject.TotalCount,
+                        InvalidCount: sqlObject.InvalidCount,
+                        ObjectNames: sqlObject.ObjectNames,
+                    }
+                    issues, ok := sqlObjectsIssuesMap[sqlObject.ObjectType]
+                    if ok {
+                        sqlObjectToBeAdded.Issues = issues
+                    } else {
+                        sqlObjectToBeAdded.Issues = nil
+                    }
+
+                    migrateSchemaTaskInfo.CurrentAnalysisReport.SqlObjects = append(
+                        migrateSchemaTaskInfo.CurrentAnalysisReport.SqlObjects, sqlObjectToBeAdded)
+                }
+                migrateSchemaTaskInfo.CurrentAnalysisReport.VoyagerVersion =
+                    migrateSchemaUIDetails.VoyagerVersion
+                migrateSchemaTaskInfo.CurrentAnalysisReport.TargetDbVersion =
+                    migrateSchemaUIDetails.TargetDbVersion
                 migrateSchemaTaskInfo.AnalyzeSchema = "complete"
             } else {
                 migrateSchemaTaskInfo.ExportSchema = "in-progress"
@@ -731,7 +731,7 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
             future := make(chan string)
             go fetchSchemaImportStatus(log, conn, phaseInfo.migrationUuid,
                 phaseInfo.migrationPhase, phaseInfo.invocationSeq, future)
-            importSchemaStatus := <- future
+            importSchemaStatus := <-future
 
             if importSchemaStatus == "COMPLETED" {
                 migrateSchemaTaskInfo.ImportSchema = "complete"
@@ -749,30 +749,30 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
 
 func fetchSchemaImportStatus(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
     migrationPhase int, invocationSq int, future chan string) {
-        log.Infof(fmt.Sprintf("[%s] Executing Query: [%s]", LOGGER_FILE_NAME,
-            RETRIEVE_IMPORT_SCHEMA_STATUS))
-        var schemaImportStatus string
-        row := conn.QueryRow(context.Background(), RETRIEVE_IMPORT_SCHEMA_STATUS, migrationUuid,
-                                migrationPhase, invocationSq)
-        err := row.Scan(&schemaImportStatus)
-        log.Infof(fmt.Sprintf("schema import status: [%s]", schemaImportStatus))
-        if err != nil {
-            log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
-                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
-            log.Errorf(err.Error())
-            future <- "none"
-            return
-        }
-        future <- schemaImportStatus
+    log.Infof(fmt.Sprintf("[%s] Executing Query: [%s]", LOGGER_FILE_NAME,
+        RETRIEVE_IMPORT_SCHEMA_STATUS))
+    var schemaImportStatus string
+    row := conn.QueryRow(context.Background(), RETRIEVE_IMPORT_SCHEMA_STATUS, migrationUuid,
+        migrationPhase, invocationSq)
+    err := row.Scan(&schemaImportStatus)
+    log.Infof(fmt.Sprintf("schema import status: [%s]", schemaImportStatus))
+    if err != nil {
+        log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
+            LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+        log.Errorf(err.Error())
+        future <- "none"
+        return
     }
+    future <- schemaImportStatus
+}
 
 func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
     migrationPhase int, invocationSq int, future chan MigrateSchemaUIDetailFuture) {
 
     MigrateSchemaUIDetailResponse := MigrateSchemaUIDetailFuture{
-        SuggestionsErrors: []models.ErrorsAndSuggestionsDetails{},
-        SqlObjects:        []models.SqlObjectsDetails{},
-        Error:             nil,
+        SchemaAnalysisIssues: []SchemaAnalysisIssues{},
+        SqlObjects:           []DatabaseObjects{},
+        Error:                nil,
     }
 
     log.Infof(fmt.Sprintf("[%s] Executing Query: [%s]", LOGGER_FILE_NAME,
@@ -797,7 +797,7 @@ func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, mi
             log.Errorf(fmt.Sprintf("[%s] Error during row scan", LOGGER_FILE_NAME))
             log.Errorf(err.Error())
             MigrateSchemaUIDetailResponse.SqlObjects = nil
-            MigrateSchemaUIDetailResponse.SuggestionsErrors = nil
+            MigrateSchemaUIDetailResponse.SchemaAnalysisIssues = nil
             future <- MigrateSchemaUIDetailResponse
             return
         }
@@ -809,12 +809,14 @@ func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, mi
             LOGGER_FILE_NAME))
         log.Errorf(err.Error())
         MigrateSchemaUIDetailResponse.SqlObjects = nil
-        MigrateSchemaUIDetailResponse.SuggestionsErrors = nil
+        MigrateSchemaUIDetailResponse.SchemaAnalysisIssues = nil
         future <- MigrateSchemaUIDetailResponse
         return
     }
+    MigrateSchemaUIDetailResponse.VoyagerVersion = schemaAnalyzeReport.VoyagerVersion
+    MigrateSchemaUIDetailResponse.TargetDbVersion = schemaAnalyzeReport.TargetDbVersion
     MigrateSchemaUIDetailResponse.SqlObjects = schemaAnalyzeReport.Summary.DatabaseObjects
-    MigrateSchemaUIDetailResponse.SuggestionsErrors = schemaAnalyzeReport.Issues
+    MigrateSchemaUIDetailResponse.SchemaAnalysisIssues = schemaAnalyzeReport.Issues
 
     future <- MigrateSchemaUIDetailResponse
 }
@@ -827,19 +829,8 @@ func extractValue(line string) string {
     return strings.Trim(strings.TrimSpace(parts[1]), "\"")
 }
 
-func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
+func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
 
-    migrationAssesmentInfo := models.MigrationAssesmentInfo{}
-    assesmentComplexityInfo := []models.AssesmentComplexityInfo{}
-    migrationAssesmentInfo.ComplexityOverview = assesmentComplexityInfo
-    migrationAssesmentInfo.TopErrors = []string{}
-    migrationAssesmentInfo.TopSuggestions = []string{}
-    migrationAssesmentInfo.AssesmentStatus = false
-
-    conn, err := c.GetConnection("yugabyte")
-    if err != nil {
-        return ctx.String(http.StatusInternalServerError, err.Error())
-    }
     // Detect operating system
     var osName string
     if strings.EqualFold(runtime.GOOS, "linux") {
@@ -891,82 +882,6 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
     } else if strings.EqualFold(runtime.GOOS, "darwin") {
       osName = "darwin"
     }
-    migrationAssesmentInfo.OperatingSystem = osName
-
-    // Compute the top errors and suggestions
-    var migrationUuid string
-    migrationUuid = ctx.QueryParam("uuid")
-    future := make(chan MigrateSchemaUIDetailFuture)
-    go fetchMigrateSchemaUIDetailsByUUID(c.logger, conn, migrationUuid, 1, 2, future)
-    migrateSchemaUIDetails := <-future
-    if migrateSchemaUIDetails.Error != nil {
-        c.logger.Errorf(fmt.Sprintf("[%s] Error while fetching migrate schema UI Details",
-            LOGGER_FILE_NAME))
-        c.logger.Errorf(migrateSchemaUIDetails.Error.Error())
-    }
-
-    if migrateSchemaUIDetails.SqlObjects == nil {
-        return ctx.JSON(http.StatusOK, migrationAssesmentInfo)
-    }
-
-    //TO-DO: rank the errors and suggestions
-    var errors = make(map[string]int)
-    var suggestions = make(map[string]int)
-    for _, suggestionsError := range migrateSchemaUIDetails.SuggestionsErrors {
-        errors[suggestionsError.Reason]++
-        suggestions[suggestionsError.Suggestion]++
-    }
-
-    for key := range errors {
-        migrationAssesmentInfo.TopErrors = append(migrationAssesmentInfo.TopErrors, key)
-    }
-
-    for key := range suggestions {
-        migrationAssesmentInfo.TopSuggestions = append(migrationAssesmentInfo.TopSuggestions, key)
-    }
-
-    var assesmentComplexity models.AssesmentComplexityInfo
-    var sqlObjectCount int32
-    for _, sqlObject := range migrateSchemaUIDetails.SqlObjects {
-        if sqlObject.ObjectType == "TABLE" {
-            assesmentComplexity.TableCount = sqlObject.TotalCount
-        }
-        sqlObjectCount = sqlObjectCount + sqlObject.TotalCount
-    }
-    assesmentComplexity.SqlObjectsCount = sqlObjectCount
-
-    // Fetching schmea and complexity details
-    voyagerDetailsrows, err := conn.Query(context.Background(),
-        RETRIEVE_VOYAGER_MIGRATION_DETAILS, migrationUuid, 0, 2)
-    if err != nil {
-        c.logger.Errorf(fmt.Sprintf("[%s] Error while querying for assesment details",
-            LOGGER_FILE_NAME))
-        c.logger.Errorf(err.Error())
-    }
-
-    for voyagerDetailsrows.Next() {
-        rowStruct := models.VoyagerMigrationDetails{}
-        var invocation_ts time.Time
-        var complexity pgtype.Text
-        err = voyagerDetailsrows.Scan(&rowStruct.SourceDb.Database, &rowStruct.SourceDb.Schema,
-            &rowStruct.Status, &invocation_ts, &complexity, &rowStruct.SourceDb.Engine)
-        if err != nil {
-            c.logger.Errorf(fmt.Sprintf("[%s] Error while scanning for assesment details",
-                LOGGER_FILE_NAME))
-            c.logger.Errorf(err.Error())
-        }
-        assesmentComplexity.Schema = rowStruct.SourceDb.Schema
-        assesmentComplexity.Complexity = complexity.String
-    }
-
-    assesmentComplexityInfo = append(assesmentComplexityInfo, assesmentComplexity)
-    migrationAssesmentInfo.ComplexityOverview = assesmentComplexityInfo
-    migrationAssesmentInfo.AssesmentStatus = true
-
-    return ctx.JSON(http.StatusOK, migrationAssesmentInfo)
-}
-
-func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
 
     migrationUuid := ctx.QueryParam("uuid")
 
@@ -979,18 +894,19 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
 
     voyagerAssessmentReportResponse := models.MigrationAssessmentReport{
+        OperatingSystem:        osName,
+        VoyagerVersion:         "",
+        TargetDbVersion:        "",
         AssessmentStatus:       true,
         Summary:                models.AssessmentReportSummary{},
         SourceEnvironment:      models.SourceEnvironmentInfo{},
         SourceDatabase:         models.SourceDatabaseInfo{},
         TargetRecommendations:  models.TargetClusterRecommendationDetails{},
-        RecommendedRefactoring: models.RecommendedRefactoringGraph{},
-        UnsupportedDataTypes:   []models.UnsupportedSqlInfo{},
-        UnsupportedFunctions:   []models.UnsupportedSqlInfo{},
-        UnsupportedFeatures:    []models.UnsupportedSqlInfo{},
+        RecommendedRefactoring: []models.RefactoringCount{},
+        AssessmentIssues:       []models.AssessmentCategoryInfo{},
     }
 
-    assessmentReportVisualisationData := <- future
+    assessmentReportVisualisationData := <-future
     if assessmentReportVisualisationData.Error != nil {
         if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
             voyagerAssessmentReportResponse.AssessmentStatus = false
@@ -1001,6 +917,11 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         }
     }
 
+    voyagerAssessmentReportResponse.VoyagerVersion =
+        assessmentReportVisualisationData.Report.VoyagerVersion
+    voyagerAssessmentReportResponse.TargetDbVersion =
+        assessmentReportVisualisationData.Report.TargetDbVersion
+
     assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
 
     estimatedTime := int64(math.Round(
@@ -1009,6 +930,8 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         fmt.Sprintf("%v Minutes", estimatedTime)
     voyagerAssessmentReportResponse.Summary.MigrationComplexity =
         assessmentReportVisualisationData.Report.MigrationComplexity
+    voyagerAssessmentReportResponse.Summary.MigrationComlexityExplanation =
+        assessmentReportVisualisationData.Report.MigrationComplexityExplanation
     voyagerAssessmentReportResponse.Summary.Summary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
 
@@ -1025,7 +948,6 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize
     voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize =
         assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize
-
 
     voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
@@ -1047,22 +969,20 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
 
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfColocatedTables =
-            int64(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
+        int64(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfShardedTables =
-            int64(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
+        int64(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeColocatedTables =
-            assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalColocatedSize
+            assessmentReportVisualisationData.Report.TargetRecommendations.TotalColocatedSize
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeShardedTables =
-            assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalShardedSize
+        assessmentReportVisualisationData.Report.TargetRecommendations.TotalShardedSize
 
     dbObjectsMap := map[string]int{}
-    for _, dbObject := range assessmentReport.SchemaSummary.DBObjects {
-       dbObjectsMap[dbObject.ObjectType] = dbObject.TotalCount
+    for _, dbObject := range assessmentReportVisualisationData.Report.SchemaSummary.DBObjects {
+        dbObjectsMap[dbObject.ObjectType] = dbObject.TotalCount
     }
 
     dbObjectConversionIssuesMap := map[string]int{}
@@ -1076,23 +996,8 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         }
     }
 
-    // recommendedRefactoringList := []models.RefactoringCount{}
-    // for sqlObjectType, sqlObjectcount := range dbObjectsMap {
-    //     var refactorCount models.RefactoringCount
-    //     refactorCount.SqlObjectType = sqlObjectType
-    //     issueCount, ok := dbObjectConversionIssuesMap[sqlObjectType]
-    //     if ok {
-    //         refactorCount.Automatic = int32(sqlObjectcount - issueCount)
-    //         refactorCount.Manual = int32(issueCount)
-    //     } else {
-    //         refactorCount.Automatic = int32(sqlObjectcount)
-    //         refactorCount.Manual = 0
-    //     }
-    //     recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
-    // }
-
     recommendedRefactoringList := []models.RefactoringCount{}
-    for _, dbObject := range assessmentReport.SchemaSummary.DBObjects {
+    for _, dbObject := range assessmentReportVisualisationData.Report.SchemaSummary.DBObjects {
         var refactorCount models.RefactoringCount
         refactorCount.SqlObjectType = dbObject.ObjectType
         refactorCount.Automatic = int32(dbObject.TotalCount - dbObject.InvalidCount)
@@ -1106,70 +1011,10 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
     }
 
-    voyagerAssessmentReportResponse.RecommendedRefactoring.RefactorDetails =
-            recommendedRefactoringList
+    voyagerAssessmentReportResponse.RecommendedRefactoring = recommendedRefactoringList
 
-    unsupportedDataTypeMap := make(map[string]models.UnsupportedSqlInfo)
-    for _, unsupportedDataType := range assessmentReport.UnsupportedDataTypes {
-
-        column := fmt.Sprintf("%s.%s.%s", unsupportedDataType.SchemaName,
-            unsupportedDataType.TableName, unsupportedDataType.ColumnName)
-        _, ok := unsupportedDataTypeMap[unsupportedDataType.DataType]
-        if ok {
-            unsupportedDataTypeInfo := unsupportedDataTypeMap[unsupportedDataType.DataType]
-            unsupportedDataTypeInfo.Count += 1
-            unsupportedDataTypeInfo.Objects = append(unsupportedDataTypeInfo.Objects,
-                models.UnsupportedSqlObjectData{
-                    ObjectName: column,
-                    SqlStatement: column,
-                },
-            )
-            unsupportedDataTypeMap[unsupportedDataType.DataType] = unsupportedDataTypeInfo
-        } else {
-            unsupportedDataTypeInfo := models.UnsupportedSqlInfo{
-                UnsupportedType: unsupportedDataType.DataType,
-                Count: 1,
-                Objects: []models.UnsupportedSqlObjectData{
-                    models.UnsupportedSqlObjectData{
-                        ObjectName: column,
-                        SqlStatement: column,
-                    },
-                },
-                DocsLink: "",
-            }
-            unsupportedDataTypeMap[unsupportedDataType.DataType] = unsupportedDataTypeInfo
-        }
-    }
-
-    var unsupportedDataTypesList []models.UnsupportedSqlInfo
-    for _, unsupportedDataType := range unsupportedDataTypeMap {
-        unsupportedDataTypesList = append(unsupportedDataTypesList, unsupportedDataType)
-    }
-
-    voyagerAssessmentReportResponse.UnsupportedDataTypes = unsupportedDataTypesList
-
-    // Convert the backend model []UnsupportedFeatures into UX model []UnsupportedSqlInfo
-    // to-do: Need to confirm with Voyager team on mapping
-    var unsupportedFeaturesList []models.UnsupportedSqlInfo
-    for _, unsupportedFeatureType := range assessmentReport.UnsupportedFeatures{
-        unsupportedFeature := models.UnsupportedSqlInfo{}
-        unsupportedFeature.UnsupportedType = unsupportedFeatureType.FeatureName
-        unsupportedFeature.Count = int32(len(unsupportedFeatureType.Objects))
-        unsupportedFeature.DocsLink = unsupportedFeatureType.DocsLink
-        unsupportedFeature.Objects = []models.UnsupportedSqlObjectData{}
-        for _, obj := range unsupportedFeatureType.Objects {
-            unsupportedFeature.Objects = append(unsupportedFeature.Objects,
-                models.UnsupportedSqlObjectData{
-                    ObjectName: obj.ObjectName,
-                    SqlStatement: obj.SqlStatement,
-                },
-            )
-        }
-        if (unsupportedFeature.Count != 0) {
-            unsupportedFeaturesList = append(unsupportedFeaturesList, unsupportedFeature)
-        }
-    }
-    voyagerAssessmentReportResponse.UnsupportedFeatures = unsupportedFeaturesList
+    voyagerAssessmentReportResponse.AssessmentIssues = getAssessmentIssueList(c.logger,
+        assessmentReportVisualisationData.Report)
 
     return ctx.JSON(http.StatusOK, voyagerAssessmentReportResponse)
 }
@@ -1177,76 +1022,159 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
 func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string, conn *pgxpool.Pool,
     future chan AssessmentReportQueryFuture) {
 
-        MigrationAsessmentReportResponse := AssessmentReportQueryFuture{
-            Report: helpers.AssessmentVisualisationMetadata{},
-            Error: nil,
-        }
-        log.Infof(fmt.Sprintf("migration uuid: %s", migrationUuid))
-        var assessmentReportPayload string
-        var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
-        row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
+    MigrationAsessmentReportResponse := AssessmentReportQueryFuture{
+        Report: helpers.AssessmentVisualisationMetadata{},
+        Error:  nil,
+    }
+    log.Infof(fmt.Sprintf("migration uuid: %s", migrationUuid))
+    var assessmentReportPayload string
+    var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
+    row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
 
-        err := row.Scan(&assessmentReportPayload)
+    err := row.Scan(&assessmentReportPayload)
 
-        if err != nil {
-
-            log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
-                LOGGER_FILE_NAME, "RETRIEVE_ASSESSMENT_REPORT"))
-            log.Errorf(err.Error())
-            MigrationAsessmentReportResponse.Error = err
-            future <- MigrationAsessmentReportResponse
-            return
-        }
-
-        err = json.Unmarshal([]byte(assessmentReportPayload), &assessmentVisualisationData)
-        if err != nil {
-            log.Errorf(fmt.Sprintf("[%s] Error while JSON Unmarshal of the assessment report.",
-                    LOGGER_FILE_NAME))
-            log.Errorf(err.Error())
-        }
-
-        MigrationAsessmentReportResponse.Report = assessmentVisualisationData
+    if err != nil {
+        log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
+            LOGGER_FILE_NAME, RETRIEVE_ASSESSMENT_REPORT))
+        log.Errorf(err.Error())
+        MigrationAsessmentReportResponse.Error = err
         future <- MigrationAsessmentReportResponse
+        return
     }
 
-    func (c *Container) GetAssessmentSourceDBDetails(ctx echo.Context) error {
+    err = json.Unmarshal([]byte(assessmentReportPayload), &assessmentVisualisationData)
+    if err != nil {
+        log.Errorf(fmt.Sprintf("[%s] Error while JSON Unmarshal of the assessment report.",
+          LOGGER_FILE_NAME))
+        log.Errorf(err.Error())
+    }
 
-        migrationUuid := ctx.QueryParam("uuid")
+    MigrationAsessmentReportResponse.Report = assessmentVisualisationData
+    future <- MigrationAsessmentReportResponse
+}
 
-        conn, err := c.GetConnection("yugabyte")
-        if err != nil {
-            return ctx.String(http.StatusInternalServerError, err.Error())
-        }
+func getAssessmentIssueList(log logger.Logger, voyagerAssessmentReportResponse helpers.
+    AssessmentVisualisationMetadata) []models.AssessmentCategoryInfo {
 
-        future := make(chan AssessmentReportQueryFuture)
-        go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+    response := []models.AssessmentCategoryInfo{}
 
-        assessmentSourceDBDetails := models.AssessmentSourceDbObject {
-            SqlObjectsCount: []models.SqlObjectCount{},
-            SqlObjectsMetadata: []models.SqlObjectMetadata{},
-        }
+    assessmentIssuesCategoryMap := make(map[string]models.AssessmentCategoryInfo)
+    assessmentIssuesMap := make(map[string]models.AssessmentIssueInfo)
 
-        assessmentReportVisualisationData := <- future
+    addIssue := func(issueType string, issue helpers.VoyagerAssessmentIssueInfo) {
+        _, issuePresent := assessmentIssuesMap[issueType]
 
-        if assessmentReportVisualisationData.Error != nil {
-            if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
-                return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
-            } else {
-                return ctx.String(http.StatusInternalServerError,
-                    assessmentReportVisualisationData.Error.Error())
+        if issuePresent {
+            assessmentIssue := assessmentIssuesMap[issueType]
+            assessmentIssue.Count += 1
+            assessmentIssue.Objects = append(assessmentIssue.Objects,
+                models.UnsupportedSqlObjectData{
+                    ObjectType:   issue.ObjectType,
+                    ObjectName:   issue.ObjectName,
+                    SqlStatement: issue.SqlStatement,
+                },
+            )
+            assessmentIssuesMap[issueType] = assessmentIssue
+
+        } else {
+            assessmentIssuesMap[issueType] = models.AssessmentIssueInfo{
+                Type:        issue.Type,
+                Name:        issue.Name,
+                Description: issue.Description,
+                Count:       1,
+                Impact:      issue.Impact,
+                Objects: []models.UnsupportedSqlObjectData{
+                    {
+                        ObjectType:   issue.ObjectType,
+                        ObjectName:   issue.ObjectName,
+                        SqlStatement: issue.SqlStatement,
+                    },
+                },
+                DocsLink: issue.DocsLink,
             }
+            addedIssue := assessmentIssuesMap[issueType]
+            for _, ybVersion := range issue.MinimumVersionsFixedIn {
+                addedIssue.MinimumVersionsFixedIn = append(
+                    addedIssue.MinimumVersionsFixedIn, ybVersion.String())
+            }
+            assessmentIssuesMap[issueType] = addedIssue
         }
+    }
 
-        assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+    for _, issue := range voyagerAssessmentReportResponse.AssessmentIssues {
+        issueCategory := issue.Category
+        issueType := fmt.Sprintf("%s.%s", issueCategory, issue.Type)
 
-        sqlMetadataList := []models.SqlObjectMetadata{}
-        tableIndexList := assessmentReport.TableIndexStats
-        setForSchemaObjectPairs := map[string]int{}
-        for _, dbObjectStat := range assessmentReport.SchemaSummary.DBObjects {
-          var sqlMetadata1 models.SqlObjectMetadata
-          allObjectNames := dbObjectStat.ObjectNames
-          allObjectNamesArray := strings.Split(allObjectNames, ", ")
-          for _, currentObjName := range allObjectNamesArray {
+        _, issueCategoryPresent := assessmentIssuesMap[issueCategory]
+
+        if issueCategoryPresent {
+            addIssue(issueType, issue)
+        } else {
+            assessmentIssuesCategoryMap[issueCategory] = models.AssessmentCategoryInfo{
+                Category:            issueCategory,
+                CategoryDescription: issue.CategoryDescription,
+                Issues:              []models.AssessmentIssueInfo{},
+            }
+            addIssue(issueType, issue)
+        }
+    }
+
+    for issueType, issueInfo := range assessmentIssuesMap {
+        issueCategory := strings.Split(issueType, ".")[0]
+
+        if issueCategoryInfo, ok := assessmentIssuesCategoryMap[issueCategory]; ok {
+            issueCategoryInfo.Issues = append(issueCategoryInfo.Issues, issueInfo)
+            assessmentIssuesCategoryMap[issueCategory] = issueCategoryInfo
+        } else {
+            log.Debugf(fmt.Sprintf("IssueType %s not found", issueType))
+        }
+    }
+
+    for _, issueCategoryInfo := range assessmentIssuesCategoryMap {
+        response = append(response, issueCategoryInfo)
+    }
+
+    return response
+}
+
+func (c *Container) GetAssessmentSourceDBDetails(ctx echo.Context) error {
+
+    migrationUuid := ctx.QueryParam("uuid")
+
+    conn, err := c.GetConnection("yugabyte")
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+
+    future := make(chan AssessmentReportQueryFuture)
+    go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+
+    assessmentSourceDBDetails := models.AssessmentSourceDbObject{
+        SqlObjectsCount:    []models.SqlObjectCount{},
+        SqlObjectsMetadata: []models.SqlObjectMetadata{},
+    }
+
+    assessmentReportVisualisationData := <-future
+
+    if assessmentReportVisualisationData.Error != nil {
+        if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+            return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
+        } else {
+            return ctx.String(http.StatusInternalServerError,
+                assessmentReportVisualisationData.Error.Error())
+        }
+    }
+
+    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+
+    sqlMetadataList := []models.SqlObjectMetadata{}
+    tableIndexList := assessmentReport.TableIndexStats
+    setForSchemaObjectPairs := map[string]int{}
+    for _, dbObjectStat := range assessmentReport.SchemaSummary.DBObjects {
+        var sqlMetadata1 models.SqlObjectMetadata
+        allObjectNames := dbObjectStat.ObjectNames
+        allObjectNamesArray := strings.Split(allObjectNames, ", ")
+        for _, currentObjName := range allObjectNamesArray {
             sqlMetadata1.SqlType = strings.ToLower(dbObjectStat.ObjectType)
 
             sqlMetadata1.Size = -1
@@ -1254,113 +1182,112 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
             sqlMetadata1.ObjectName = currentObjName
             setForSchemaObjectPairs[strings.ToLower(currentObjName)] = len(sqlMetadataList)
             sqlMetadataList = append(sqlMetadataList, sqlMetadata1)
-          }
         }
+    }
 
-        for _, dbObjectStat := range tableIndexList {
-          currentObjectName := string(dbObjectStat.SchemaName) + "." +
+    for _, dbObjectStat := range tableIndexList {
+        currentObjectName := string(dbObjectStat.SchemaName) + "." +
             string(dbObjectStat.ObjectName)
-          // Here searching with and without schema names is important because of inconsistent
-          // payload
-          objectNameLower := strings.ToLower(currentObjectName)
-          objectNameOnlyLower := strings.ToLower(string(dbObjectStat.ObjectName))
-          index, exists := setForSchemaObjectPairs[objectNameLower]
-          if !exists {
+        // Here searching with and without schema names is important because of inconsistent
+        // payload
+        objectNameLower := strings.ToLower(currentObjectName)
+        objectNameOnlyLower := strings.ToLower(string(dbObjectStat.ObjectName))
+        index, exists := setForSchemaObjectPairs[objectNameLower]
+        if !exists {
             index, exists = setForSchemaObjectPairs[objectNameOnlyLower]
-          }
-          if exists {
+        }
+        if exists {
             sqlMetadataList[index].Iops = dbObjectStat.Reads
             sqlMetadataList[index].Size = dbObjectStat.SizeInBytes
             sqlMetadataList[index].ObjectName = currentObjectName
-          }
         }
-
-        assessmentSourceDBDetails.SqlObjectsMetadata = sqlMetadataList
-
-        sqlObjectsList := []models.SqlObjectCount{}
-
-        dbObjectsFromReport :=
-            assessmentReportVisualisationData.Report.AssessmentJsonReport.SchemaSummary.DBObjects
-        for _, value := range dbObjectsFromReport {
-            var sqlObject1 models.SqlObjectCount
-            sqlObject1.SqlType = value.ObjectType
-            sqlObject1.Count = int32(value.TotalCount)
-            sqlObjectsList = append(sqlObjectsList, sqlObject1)
-        }
-
-        assessmentSourceDBDetails.SqlObjectsCount = sqlObjectsList
-        return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
     }
 
-    func (c *Container) GetTargetRecommendations(ctx echo.Context) error {
+    assessmentSourceDBDetails.SqlObjectsMetadata = sqlMetadataList
 
-        migrationUuid := ctx.QueryParam("uuid")
+    sqlObjectsList := []models.SqlObjectCount{}
 
-        conn, err := c.GetConnection("yugabyte")
-        if err != nil {
-            return ctx.String(http.StatusInternalServerError, err.Error())
+    dbObjectsFromReport :=
+        assessmentReportVisualisationData.Report.AssessmentJsonReport.SchemaSummary.DBObjects
+    for _, value := range dbObjectsFromReport {
+        var sqlObject1 models.SqlObjectCount
+        sqlObject1.SqlType = value.ObjectType
+        sqlObject1.Count = int32(value.TotalCount)
+        sqlObjectsList = append(sqlObjectsList, sqlObject1)
+    }
+
+    assessmentSourceDBDetails.SqlObjectsCount = sqlObjectsList
+    return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
+}
+
+func (c *Container) GetTargetRecommendations(ctx echo.Context) error {
+
+    migrationUuid := ctx.QueryParam("uuid")
+
+    conn, err := c.GetConnection("yugabyte")
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+
+    future := make(chan AssessmentReportQueryFuture)
+    go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+
+    assessmentReportVisualisationData := <-future
+
+    targetRecommendationDetails := models.AssessmentTargetRecommendationObject{
+        NumOfColocatedTables:     0,
+        TotalSizeColocatedTables: 0,
+        NumOfShardedTable:        0,
+        TotalSizeShardedTables:   0,
+        RecommendationDetails:    []models.TargetRecommendationItem{},
+    }
+
+    if assessmentReportVisualisationData.Error != nil {
+        if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+            return ctx.JSON(http.StatusOK, targetRecommendationDetails)
+        } else {
+            return ctx.String(http.StatusInternalServerError,
+                assessmentReportVisualisationData.Error.Error())
         }
+    }
 
-        future := make(chan AssessmentReportQueryFuture)
-        go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
 
-        assessmentReportVisualisationData := <- future
-
-        targetRecommendationDetails := models.AssessmentTargetRecommendationObject {
-            NumOfColocatedTables: 0,
-            TotalSizeColocatedTables: 0,
-            NumOfShardedTable: 0,
-            TotalSizeShardedTables: 0,
-            RecommendationDetails: []models.TargetRecommendationItem{},
-        }
-
-        if assessmentReportVisualisationData.Error != nil {
-            if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
-                return ctx.JSON(http.StatusOK, targetRecommendationDetails)
-            } else {
-                return ctx.String(http.StatusInternalServerError,
-                    assessmentReportVisualisationData.Error.Error())
-            }
-        }
-
-        assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
-
-        targetRecommendationDetails.NumOfColocatedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
-        targetRecommendationDetails.TotalSizeColocatedTables =
+    targetRecommendationDetails.NumOfColocatedTables =
+        int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
+    targetRecommendationDetails.TotalSizeColocatedTables =
         assessmentReportVisualisationData.Report.
-            TargetSizingRecommendations.TotalColocatedSize
-        targetRecommendationDetails.NumOfShardedTable =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
-        targetRecommendationDetails.TotalSizeShardedTables =
-            assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalShardedSize
+            TargetRecommendations.TotalColocatedSize
+    targetRecommendationDetails.NumOfShardedTable =
+        int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
+    targetRecommendationDetails.TotalSizeShardedTables =
+        assessmentReportVisualisationData.Report.
+            TargetRecommendations.TotalShardedSize
+    tableRecommendations := map[string]string{}
 
-        tableRecommendations := map[string]string{}
-
-        for _, value := range assessmentReport.Sizing.SizingRecommendation.ColocatedTables {
-            tableName := strings.Split(value, ".")[1]
-            tableRecommendations[tableName] = "Colocated"
-        }
-
-        for _, value := range assessmentReport.Sizing.SizingRecommendation.ShardedTables {
-            tableName := strings.Split(value, ".")[1]
-            tableRecommendations[tableName] = "Sharded"
-        }
-
-        recommendationsList := []models.TargetRecommendationItem{}
-        for _, dbObjectStat := range assessmentReport.TableIndexStats {
-            var recommendation1 models.TargetRecommendationItem
-            _, ok := tableRecommendations[dbObjectStat.ObjectName]
-            if ok {
-                recommendation1.TableName = dbObjectStat.ObjectName
-                recommendation1.SchemaRecommendation =
-                    tableRecommendations[dbObjectStat.ObjectName]
-                recommendation1.DiskSize = dbObjectStat.SizeInBytes
-                recommendationsList = append(recommendationsList, recommendation1)
-            }
-        }
-        targetRecommendationDetails.RecommendationDetails = recommendationsList
-
-        return ctx.JSON(http.StatusOK, targetRecommendationDetails)
+    for _, value := range assessmentReport.Sizing.SizingRecommendation.ColocatedTables {
+        tableName := strings.Split(value, ".")[1]
+        tableRecommendations[tableName] = "Colocated"
     }
+
+    for _, value := range assessmentReport.Sizing.SizingRecommendation.ShardedTables {
+        tableName := strings.Split(value, ".")[1]
+        tableRecommendations[tableName] = "Sharded"
+    }
+
+    recommendationsList := []models.TargetRecommendationItem{}
+    for _, dbObjectStat := range assessmentReport.TableIndexStats {
+        var recommendation1 models.TargetRecommendationItem
+        _, ok := tableRecommendations[dbObjectStat.ObjectName]
+        if ok {
+            recommendation1.TableName = dbObjectStat.ObjectName
+            recommendation1.SchemaRecommendation =
+                tableRecommendations[dbObjectStat.ObjectName]
+            recommendation1.DiskSize = dbObjectStat.SizeInBytes
+            recommendationsList = append(recommendationsList, recommendation1)
+        }
+    }
+    targetRecommendationDetails.RecommendationDetails = recommendationsList
+
+    return ctx.JSON(http.StatusOK, targetRecommendationDetails)
+}

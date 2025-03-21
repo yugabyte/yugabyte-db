@@ -68,7 +68,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
     if (response.has("connections")) {
       for (JsonNode objNode : response.get("connections")) {
         if (objNode.has("backend_type")
-            && objNode.get("backend_type").asText().equalsIgnoreCase("client backend")
+            && (objNode.get("backend_type").asText().equalsIgnoreCase("client backend")
+                || objNode.get("backend_type").asText().startsWith("yb-conn-mgr"))
             && objNode.has("backend_status")
             && !objNode.get("backend_status").asText().equalsIgnoreCase("idle")) {
           try {
@@ -88,6 +89,14 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
             rowData.put("appName", params.application_name);
             rowData.put("clientHost", params.host);
             rowData.put("clientPort", params.port);
+
+            // query_id and leader pid are only present on pg15 and above.
+            if (params.leader_pid != -1) {
+              rowData.put("leader_pid", params.leader_pid);
+            }
+            if (params.query_id != -1) {
+              rowData.put("query_id", params.query_id);
+            }
 
             ArrayNode ysqlArray;
             if (!responseJson.has("ysql")) {

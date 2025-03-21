@@ -21,10 +21,14 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 
+#include "yb/util/concurrent_value.h"
+
+#include "yb/yql/pgwrapper/pg_wrapper_context.h"
+
 namespace yb {
 namespace tserver {
 
-class DbServerBase : public server::RpcAndWebServerBase {
+class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWrapperContext {
  public:
   DbServerBase(
       std::string name, const server::ServerBaseOptions& options,
@@ -32,14 +36,11 @@ class DbServerBase : public server::RpcAndWebServerBase {
       std::shared_ptr<MemTracker> mem_tracker);
   ~DbServerBase();
 
-  int GetSharedMemoryFd();
-
   client::TransactionManager& TransactionManager();
 
   client::TransactionPool& TransactionPool();
 
   virtual MonoDelta default_client_timeout() = 0;
-  virtual const std::string& permanent_uuid() const = 0;
   virtual void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) = 0;
 
   virtual client::LocalTabletFilter CreateLocalTabletFilter() = 0;
@@ -48,7 +49,15 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
   const std::shared_future<client::YBClient*>& client_future() const;
 
-  tserver::TServerSharedData& shared_object();
+  Status StartSharedMemoryNegotiation() override;
+
+  Status StopSharedMemoryNegotiation() override;
+
+  Status SkipSharedMemoryNegotiation();
+
+  int SharedMemoryNegotiationFd() override;
+
+  ConcurrentPointerReference<TServerSharedData> shared_object() const;
 
   Status Init() override;
 
@@ -61,8 +70,7 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
   void WriteMainMetaCacheAsJson(JsonWriter* writer);
 
-  // Shared memory owned by the tablet server.
-  std::unique_ptr<tserver::TServerSharedObject> shared_object_;
+  std::unique_ptr<SharedMemoryManager> shared_mem_manager_;
 
   std::unique_ptr<client::AsyncClientInitializer> async_client_init_;
 

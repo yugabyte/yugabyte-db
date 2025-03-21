@@ -544,6 +544,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/tasks/$tUUID<[^/]+>/retry'
     },
+    ROLLBACK_TASKS: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/tasks/$tUUID<[^/]+>/rollback'
+    },
     CONFIGURE_UNIVERSE: {
         requestType: ApiRequestType.POST,
         endpoint: '/universe_configure'

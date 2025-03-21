@@ -275,6 +275,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
+  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
+    if (isYsqlConnMgr) {
+      LOG.info("Switching to postgres port:" + reason);
+      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+    }
+  }
+
   /**
    * Add ysql_pg_conf_csv flag values using this method to avoid clobbering existing values.
    * @param flagMap the map of flags to mutate
@@ -319,7 +326,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_enable_reindex", "true");
-    flagMap.put("TEST_ysql_hide_catalog_version_increment_log", "true");
     flagMap.put("ysql_conn_mgr_sequence_support_mode", "session");
 
     return flagMap;
@@ -554,6 +560,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  public String formatPGId(String str) {
+    // For all details - see PG function: fmtId()
+    String result = "\"";
+    for (int i = 0; i < str.length(); ++i) {
+      // Quote: " -> ""
+      if (str.charAt(i) == '\"')
+        result += '\"';
+
+      result += str.charAt(i);
+    }
+    result += '\"';
+    return result;
+  }
+
   /** Drop entities owned by non-system roles, and drop custom roles. */
   private void cleanUpCustomEntities() throws Exception {
     LOG.info("Cleaning up roles");
@@ -571,7 +591,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           for (String role : roles) {
             boolean isPersistent = persistentUsers.contains(role);
             LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
-            stmt.execute("DROP OWNED BY " + role + " CASCADE");
+            stmt.execute("DROP OWNED BY " + formatPGId(role) + " CASCADE");
           }
 
           // Documentation for DROP OWNED BY explicitly states that databases and tablespaces
@@ -593,7 +613,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
             boolean isPersistent = persistentUsers.contains(role);
             if (!isPersistent) {
               LOG.info("Dropping role {}", role);
-              stmt.execute("DROP ROLE " + role);
+              stmt.execute("DROP ROLE " + formatPGId(role));
             }
           }
         } catch (Exception e) {
@@ -722,8 +742,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // getBackendPID(), a JDBC api, caches the pid of the backend process at
       // the time of creating a connection. With connection manager it do not
       // return a valid pid as no dedicated backend process is attached to
-      // connection. Therefore execute sql query to find out.
-      assertTrue(warmupMode == ConnectionManagerWarmupMode.NONE);
+      // connection. Therefore execute sql query to find one of the pid out of
+      // pool of physical connections (backend processes). It can return a pid
+      // of any one of the backend process out of the pool depends which physical
+      // connection is free to attach to logical connection to excute 'SELECT
+      // pg_backend_pid()'.
       try (Statement stmt = connection.createStatement()) {
         ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
         assertTrue(rs.next());
@@ -1086,6 +1109,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       throws SQLException, TimeoutException, InterruptedException {
     // Maintain our map saying how many statements are being run by each backend pid.
     // Later we can determine (possibly) stuck backends based on this.
+    // With connection manager, getPgBackendPid can return the PID of any
+    // backend process out of pool of physical connections it is maintaining.
+    // Therefore use it carefully depending on the context.
     final int backendPid = getPgBackendPid(statement.getConnection());
 
     AtomicReference<SQLException> sqlExceptionWrapper = new AtomicReference<>();

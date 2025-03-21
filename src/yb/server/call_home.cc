@@ -31,7 +31,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/user.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 using std::string;
 using std::vector;
@@ -123,7 +123,7 @@ class MetricsCollector : public Collector {
 
   void Collect(CollectionLevel collection_level) {
     std::stringstream s;
-    JsonWriter w(&s, JsonWriter::COMPACT);
+    JsonWriter w(&s, JsonWriter::COMPACT_ESCAPE_STR);
     Status status = server_->metric_registry()->WriteAsJson(&w, MetricJsonOptions());
     if (!status.ok()) {
       json_ = "\"metrics\":{}";

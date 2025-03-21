@@ -1,4 +1,5 @@
-Table name: customers
+- Table name: customers
+- Database name: yugabyte
 - Table information:
 |Table Name       |Table Groupname |Colocated |
 +-----------------+----------------+----------+
@@ -19,7 +20,8 @@ Table name: customers
 
 ============================================================
 
-Table name: orders
+- Table name: orders
+- Database name: yugabyte
 - Table information:
 |Table Name    |Table Groupname |Colocated |
 +--------------+----------------+----------+
@@ -41,7 +43,8 @@ Table name: orders
 
 ============================================================
 
-Table name: order_items
+- Table name: order_items
+- Database name: yugabyte
 - Table information:
 |Table Name         |Table Groupname |Colocated |
 +-------------------+----------------+----------+
@@ -62,7 +65,8 @@ Table name: order_items
 
 ============================================================
 
-Table name: products
+- Table name: products
+- Database name: yugabyte
 - Table information:
 |Table Name      |Table Groupname |Colocated |
 +----------------+----------------+----------+
@@ -83,7 +87,8 @@ Table name: products
 
 ============================================================
 
-Table name: product_categories
+- Table name: product_categories
+- Database name: yugabyte
 - Table information:
 |Table Name                |Table Groupname |Colocated |
 +--------------------------+----------------+----------+
@@ -103,7 +108,8 @@ Table name: product_categories
 
 ============================================================
 
-Table name: categories
+- Table name: categories
+- Database name: yugabyte
 - Table information:
 |Table Name        |Table Groupname |Colocated |
 +------------------+----------------+----------+
@@ -123,7 +129,8 @@ Table name: categories
 
 ============================================================
 
-Table name: inventory
+- Table name: inventory
+- Database name: yugabyte
 - Table information:
 |Table Name       |Table Groupname |Colocated |
 +-----------------+----------------+----------+
@@ -139,7 +146,8 @@ Table name: inventory
 
 ============================================================
 
-Table name: warehouses
+- Table name: warehouses
+- Database name: yugabyte
 - Table information:
 |Table Name        |Table Groupname |Colocated |
 +------------------+----------------+----------+
@@ -159,7 +167,8 @@ Table name: warehouses
 
 ============================================================
 
-Table name: employees
+- Table name: employees
+- Database name: yugabyte
 - Table information:
 |Table Name       |Table Groupname |Colocated |
 +-----------------+----------------+----------+

@@ -32,30 +32,6 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
-'/migration_assesment':
-  get:
-    summary: Get Voyager data migration metrics
-    description: Get Voyager data migration metrics
-    operationId: GetVoyagerMigrationAssesmentDetails
-    tags:
-      - voyager-info
-    parameters:
-      - name: uuid
-        in: query
-        description: uuid of the voyager migration task
-        required: true
-        style: form
-        explode: false
-        schema:
-          type: string
-          format: uuid
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/VoyagerAssesmentResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
 '/migrate_schema':
   get:
     summary: Get Voyager data migration metrics

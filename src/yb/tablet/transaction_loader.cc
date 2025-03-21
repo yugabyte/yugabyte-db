@@ -58,8 +58,7 @@ docdb::BoundedRocksDbIterator CreateFullScanIterator(
     rocksdb::DB* db, std::shared_ptr<rocksdb::ReadFileFilter> filter) {
   return docdb::BoundedRocksDbIterator(docdb::CreateRocksDBIterator(
       db, &docdb::KeyBounds::kNoBounds,
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId, filter,
+      docdb::BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId, filter,
       /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse));
 }
 
@@ -215,7 +214,7 @@ class TransactionLoader::Executor {
           continue;
         }
 
-        auto state = docdb::ApplyTransactionState::FromPB(*pb);
+        auto state = docdb::ApplyStateWithCommitInfo::FromPB(*pb);
         if (!state.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state from stored pb "
               << state.status();
@@ -223,10 +222,7 @@ class TransactionLoader::Executor {
           continue;
         }
 
-        auto it = loader_.pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
-          .state = state.get(),
-          .commit_ht = HybridTime(pb->commit_ht())
-        }).first;
+        auto it = loader_.pending_applies_.emplace(*txn_id, *state).first;
 
         VLOG_WITH_PREFIX(4) << "Loaded pending apply for " << *txn_id << ": "
                             << it->second.ToString();
@@ -454,7 +450,7 @@ Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
   return load_status_;
 }
 
-std::optional<ApplyStateWithCommitHt> TransactionLoader::GetPendingApply(
+std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingApply(
     const TransactionId& id) const {
   if (pending_applies_removed_.load(std::memory_order_acquire)) {
     return std::nullopt;

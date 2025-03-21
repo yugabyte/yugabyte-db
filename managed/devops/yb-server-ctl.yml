@@ -121,36 +121,33 @@
     - "{{ vars_file | default(placeholder_vars_file) }}"
   tasks:
     - block:
-      - set_fact:
-          prometheus_systemd_unit_dir: "/lib/systemd/system"
-      - set_fact:
-          prometheus_systemd_unit_dir: "/usr/lib/systemd/system"
-        when: ansible_os_family == "Suse"
-
       - block:
         - name: Check node exporter service exists
-          stat:
-            path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
+          shell: "systemctl cat node_exporter.service 2>/dev/null | head -1 | sed -e 's/#\\s*//g'"
           register: node_exporter_stat
+          ignore_errors: True
+
         - name: Log node_exporter_stat
           debug:
             var: node_exporter_stat
-        - name: Stop node exporter service
-          service:
-            enabled: yes
-            name: node_exporter
-            state: stopped
-          become: yes
-          become_method: sudo
-          when: node_exporter_stat.stat.exists
 
-        - name: Delete node exporter service
-          file:
-            path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
-            state: absent
-          become: yes
-          become_method: sudo
-        when: clean_node_exporter is defined and clean_node_exporter|bool
+        - block:
+          - name: Stop node exporter service
+            service:
+              enabled: yes
+              name: node_exporter
+              state: stopped
+            become: yes
+            become_method: sudo
+
+          - name: Delete node exporter service
+            file:
+              path: "{{ node_exporter_stat.stdout }}"
+              state: absent
+            become: yes
+            become_method: sudo
+            when: clean_node_exporter is defined and clean_node_exporter|bool
+          when: node_exporter_stat.stdout is match("/*")
 
       - name: Perform daemon-reload for removed services
         shell:

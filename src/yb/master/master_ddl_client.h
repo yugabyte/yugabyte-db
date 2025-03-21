@@ -33,6 +33,9 @@ class MasterDDLClient {
 
   Status WaitForCreateNamespaceDone(const NamespaceId& id, MonoDelta timeout);
 
+  Result<RefreshYsqlLeaseInfoPB> RefreshYsqlLease(
+      const std::string& permanent_uuid, int64_t instance_seqno);
+
  private:
   MasterDdlProxy proxy_;
 };

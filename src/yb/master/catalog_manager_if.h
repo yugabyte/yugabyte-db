@@ -91,6 +91,8 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const = 0;
 
+  virtual Status InvalidateTserverOidCaches() = 0;
+
   virtual Result<uint64_t> IncrementYsqlCatalogVersion() = 0;
 
   virtual Result<std::vector<TableDescription>> CollectTables(
@@ -128,6 +130,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
       bool use_cache,
       DbOidToCatalogVersionMap* versions,
       uint64_t* fingerprint) = 0;
+  virtual Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 

@@ -15,7 +15,9 @@ rightNav:
   hideH4: true
 ---
 
-Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic. The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Also, each statement in a read committed transactions works on a new latest snapshot of the database, implying that any data committed before the statement was issued, is visible to the statement.
+Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic.
+
+The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Also, each statement in a read committed transactions works on a new latest snapshot of the database, implying that any data committed before the statement was issued, is visible to the statement.
 
 A read committed transaction in PostgreSQL doesn't raise serialization errors because it internally retries conflicting rows in the statement's execution as of the latest versions of those rows, as soon as conflicting concurrent transactions have finished. This mechanism allows single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflicting rows are re-attempted on the latest version of the row after the conflicting transactions are complete).
 

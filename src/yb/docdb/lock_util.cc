@@ -15,7 +15,61 @@
 
 namespace yb::docdb {
 
+using dockv::IntentTypeSet;
+
+bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
+  auto lhs_value = to_underlying(lhs);
+  auto rhs_value = to_underlying(rhs);
+  // The rules are the following:
+  // 1) At least one intent should be strong for conflict.
+  // 2) Read and write conflict only with opposite type.
+  return ((lhs_value & dockv::kStrongIntentFlag) || (rhs_value & dockv::kStrongIntentFlag)) &&
+         ((lhs_value & dockv::kWriteIntentFlag) != (rhs_value & dockv::kWriteIntentFlag));
+}
+
+LockState IntentTypeMask(dockv::IntentType intent_type, LockState single_intent_mask) {
+  return single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
+}
+
 namespace {
+
+// Generate conflict mask for all possible subsets of intent type set. The i-th index of the
+// returned array represents a conflict mask for the i-th possible IntentTypeSet. To determine if a
+// given IntentTypeSet i conflicts with the key's existing LockState l, you can do the following:
+// bool is_conflicting = kIntentTypeSetConflicts[i.ToUintPtr()] & l != 0;
+std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateConflicts() {
+  std::array<LockState, dockv::kIntentTypeSetMapSize> result;
+  for (size_t idx = 0; idx < dockv::kIntentTypeSetMapSize; ++idx) {
+    result[idx] = 0;
+    for (auto intent_type : IntentTypeSet(idx)) {
+      for (auto other_intent_type : dockv::IntentTypeList()) {
+        if (IntentTypesConflict(intent_type, other_intent_type)) {
+          result[idx] |= IntentTypeMask(other_intent_type);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+// Generate array of LockState's with one entry for each possible subset of intent type set, where
+// each intent type has the provided count.
+std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateLockStatesWithCount(uint64_t count) {
+  DCHECK_EQ(count & kFirstIntentTypeMask, count);
+  std::array<LockState, dockv::kIntentTypeSetMapSize> result;
+  for (size_t idx = 0; idx != dockv::kIntentTypeSetMapSize; ++idx) {
+    result[idx] = 0;
+    for (auto intent_type : IntentTypeSet(idx)) {
+      result[idx] |= IntentTypeMask(intent_type, count);
+    }
+  }
+  return result;
+}
+
+uint16_t LockStateIntentCount(LockState num_waiting, dockv::IntentType intent_type) {
+  return (num_waiting >> (to_underlying(intent_type) * kIntentTypeBits))
+      & kFirstIntentTypeMask;
+}
 
 Status FormSharedLock(
     ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types,
@@ -37,6 +91,38 @@ Status AddObjectsToLock(
 }
 
 } // namespace
+
+// Maps IntentTypeSet to a LockState mask which determines if another LockState will conflict with
+// any of the elements present in the IntentTypeSet.
+const IntentTypeSetMap kIntentTypeSetConflicts = GenerateConflicts();
+
+// Maps IntentTypeSet to the LockState representing one count for each intent type in the set. Can
+// be used to "add one" occurence of an IntentTypeSet to an existing key's LockState.
+const IntentTypeSetMap kIntentTypeSetAdd = GenerateLockStatesWithCount(1);
+
+// Maps IntentTypeSet to the LockState representing max count for each intent type in the set. Can
+// be used to extract a LockState corresponding to having only that set's elements counts present.
+const IntentTypeSetMap kIntentTypeSetMask = GenerateLockStatesWithCount(kFirstIntentTypeMask);
+
+bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
+  for (auto intent1 : lhs) {
+    for (auto intent2 : rhs) {
+      if (IntentTypesConflict(intent1, intent2)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::string LockStateDebugString(LockState state) {
+  return Format(
+      "{ num_weak_read: $0 num_weak_write: $1 num_strong_read: $2 num_strong_write: $3 }",
+      LockStateIntentCount(state, dockv::IntentType::kWeakRead),
+      LockStateIntentCount(state, dockv::IntentType::kWeakWrite),
+      LockStateIntentCount(state, dockv::IntentType::kStrongRead),
+      LockStateIntentCount(state, dockv::IntentType::kStrongWrite));
+}
 
 // We associate a list of <KeyEntryType, IntentTypeSet> to each table lock type such that the
 // table lock conflict matrix of postgres is preserved.

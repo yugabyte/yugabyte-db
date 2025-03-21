@@ -13,6 +13,7 @@
 #pragma once
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "storage/sinval.h"
 
 /*
  * Enum representing how the catalog version is stored on this cluster.
@@ -24,9 +25,9 @@
  */
 typedef enum YbCatalogVersionType
 {
-	CATALOG_VERSION_UNSET,           /* Not yet set. */
-	CATALOG_VERSION_PROTOBUF_ENTRY,  /* Old protobuf-based version. */
-	CATALOG_VERSION_CATALOG_TABLE,   /* New table-based version. */
+	CATALOG_VERSION_UNSET,		/* Not yet set. */
+	CATALOG_VERSION_PROTOBUF_ENTRY, /* Old protobuf-based version. */
+	CATALOG_VERSION_CATALOG_TABLE,	/* New table-based version. */
 } YbCatalogVersionType;
 
 extern YbCatalogVersionType yb_catalog_version_type;
@@ -37,7 +38,9 @@ extern uint64_t YbGetMasterCatalogVersion();
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 													  bool is_global_ddl,
-													  const char *command_tag);
+													  const char *command_tag,
+													  const SharedInvalidationMessage *invalMessages,
+													  int nmsgs);
 
 /* Send a request to create the master catalog version for the given database. */
 extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
@@ -55,4 +58,4 @@ extern bool YbIsSystemCatalogChange(Relation rel);
 extern YbCatalogVersionType YbGetCatalogVersionType();
 
 /* Get actual db_oid for pg_yb_catalog_version */
-Oid YbMasterCatalogVersionTableDBOid();
+Oid			YbMasterCatalogVersionTableDBOid();

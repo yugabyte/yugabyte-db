@@ -172,14 +172,20 @@ message TSSnapshotsInfoPB {
   repeated TSSnapshotRestorationInfoPB restorations = 3;
 }
 
-message YsqlCatalogVersionPB {
+// This matches a row in pg_yb_invalidation_messages table, which has a composite primary
+// key of (db_oid, current_version). For each pair of (db_oid, current_version), there is
+// a list of invalidation messages. The table pg_yb_invalidation_messages also has a message
+// time column that is used to delete old messages from pg_yb_invalidation_messages, but it is
+// not needed by tserver so it is skipped here.
+message YsqlCatalogInvalMessagesPB {
   optional uint32 db_oid = 1;
   optional uint64 current_version = 2;
-  optional uint64 last_breaking_version = 3;
+  // Serialized/encoded message list related to PG catalog cache invalidation.
+  optional bytes message_list = 3;
 }
 
-message DBCatalogVersionDataPB {
-  repeated YsqlCatalogVersionPB db_catalog_versions = 1;
+message DBCatalogInvalMessagesDataPB {
+  repeated YsqlCatalogInvalMessagesPB db_catalog_inval_messages = 1;
 }
 
 // Heartbeat sent from the tablet-server to the master
@@ -253,15 +259,6 @@ message TSHeartbeatRequestPB {
       xcluster_consumer_replication_status = 23;
 }
 
-message ClientOperationLeaseUpdatePB {
-  optional fixed64 lease_deadline_ht = 1;
-  optional bool new_lease = 2;
-  optional uint64 lease_epoch = 3;
-  // TODO: If this ends up being too big, consider adding a way to break this up
-  // into multiple messages.
-  optional tserver.DdlLockEntriesPB ddl_lock_entries = 4;
-}
-
 message TSHeartbeatResponsePB {
   optional MasterErrorPB error = 1;
 
@@ -300,7 +297,8 @@ message TSHeartbeatResponsePB {
 
   optional uint64 ysql_last_breaking_catalog_version = 15;
 
-  optional DBCatalogVersionDataPB db_catalog_version_data = 20;
+  optional tserver.DBCatalogVersionDataPB db_catalog_version_data = 20;
+  optional DBCatalogInvalMessagesDataPB db_catalog_inval_messages_data = 28;
 
   optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
 
@@ -332,7 +330,11 @@ message TSHeartbeatResponsePB {
 
   optional string universe_uuid = 25;
 
-  optional ClientOperationLeaseUpdatePB op_lease_update = 26;
+  // Only set if error is set. When set, indicates that the yb-master believes
+  // the server to be in a severe bad state and should be immediately shutdown.
+  optional bool is_fatal_error = 27;
+
+  optional uint32 oid_cache_invalidations_count = 29;
 }
 
 service MasterHeartbeat {

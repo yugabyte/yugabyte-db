@@ -1,8 +1,8 @@
 ---
 title: YugabyteDB Quick start for Kubernetes
 headerTitle: Quick start
-linkTitle: Kubernetes
-headcontent: Create a local cluster on a single host
+linkTitle: Quick start
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
   - /quick-start-kubernetes/
@@ -19,7 +19,7 @@ unversioned: true
     </a>
   </li>
   <li class="active">
-    <a href="../../quick-start/" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
@@ -30,7 +30,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -245,7 +245,7 @@ $ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte 
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{< yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -536,6 +536,6 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
 ## YugabyteDB Kubernetes Operator
 
-A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#tech-preview-tp) (not recommended for production use) in v2024.1 and in [Early Access](/preview/releases/versioning/#early-access-ea) in v2024.2. The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+The YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
 For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

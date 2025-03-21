@@ -51,6 +51,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
@@ -75,6 +76,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
@@ -108,6 +110,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
@@ -131,6 +134,7 @@ import play.Environment;
 public class MainModule extends AbstractModule {
   private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
+  private final String DEFAULT_OIDC_SCOPE = "openid profile email";
 
   public MainModule(Environment environment, Config config) {
     this.config = config;
@@ -227,6 +231,7 @@ public class MainModule extends AbstractModule {
     bind(PlatformScheduler.class).asEagerSingleton();
     bind(AccessKeyRotationUtil.class).asEagerSingleton();
     bind(GcpEARServiceUtil.class).asEagerSingleton();
+    bind(CiphertrustEARServiceUtil.class).asEagerSingleton();
     bind(YbcUpgrade.class).asEagerSingleton();
     bind(XClusterScheduler.class).asEagerSingleton();
     bind(PerfAdvisorScheduler.class).asEagerSingleton();
@@ -242,6 +247,7 @@ public class MainModule extends AbstractModule {
     bind(YBReconcilerFactory.class).asEagerSingleton();
     bind(ReleasesUtils.class).asEagerSingleton();
     bind(ReleaseContainerFactory.class).asEagerSingleton();
+    bind(SoftwareUpgradeHelper.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
@@ -276,27 +282,41 @@ public class MainModule extends AbstractModule {
               INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());
         }
       }
-      OidcConfiguration oidcConfiguration = new OidcConfiguration();
-      oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
-      oidcConfiguration.setSecret(config.getString("yb.security.secret"));
-      oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
-      setProviderMetadata(config, oidcConfiguration);
-      oidcConfiguration.setMaxClockSkew(3600);
-      oidcConfiguration.setResponseType("code");
-      OIDCProviderMetadata metadata = oidcConfiguration.findProviderMetadata();
-      // Retain existing behaviour.
-      if (metadata
-          .getTokenEndpointAuthMethods()
-          .contains(ClientAuthenticationMethod.CLIENT_SECRET_POST)) {
-        oidcConfiguration.setClientAuthenticationMethod(
-            ClientAuthenticationMethod.CLIENT_SECRET_POST);
-      } else if (metadata
-          .getTokenEndpointAuthMethods()
-          .contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)) {
-        oidcConfiguration.setClientAuthenticationMethod(
-            ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+      try {
+        OidcConfiguration oidcConfiguration = new OidcConfiguration();
+        oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
+        oidcConfiguration.setSecret(config.getString("yb.security.secret"));
+        String scope = config.getString("yb.security.oidcScope");
+        // Use default scope if key is accidently set to blank string.
+        if (StringUtils.isBlank(scope)) {
+          scope = DEFAULT_OIDC_SCOPE;
+          log.info(
+              "Using default OIDC scope {} since \"yb.security.oidcScope\" is set as blank.",
+              DEFAULT_OIDC_SCOPE);
+        }
+        oidcConfiguration.setScope(scope);
+        setProviderMetadata(config, oidcConfiguration);
+        oidcConfiguration.setMaxClockSkew(3600);
+        oidcConfiguration.setResponseType("code");
+        OIDCProviderMetadata metadata = oidcConfiguration.findProviderMetadata();
+        // Retain existing behaviour.
+        if (metadata
+            .getTokenEndpointAuthMethods()
+            .contains(ClientAuthenticationMethod.CLIENT_SECRET_POST)) {
+          oidcConfiguration.setClientAuthenticationMethod(
+              ClientAuthenticationMethod.CLIENT_SECRET_POST);
+        } else if (metadata
+            .getTokenEndpointAuthMethods()
+            .contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)) {
+          oidcConfiguration.setClientAuthenticationMethod(
+              ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+        }
+        return new OidcClient(oidcConfiguration);
+      } catch (Exception e) {
+        log.error(
+            "Error while creating OIDC client. SSO login might fail. Please check OIDC config.", e);
+        return new OidcClient();
       }
-      return new OidcClient(oidcConfiguration);
     } else {
       log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
       // todo: fail fast instead of relying on log?

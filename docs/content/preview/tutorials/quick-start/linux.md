@@ -1,9 +1,9 @@
 ---
 title: YugabyteDB Quick start for Linux
 headerTitle: Quick start
-linkTitle: Linux
-description: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
-headcontent: Create a local cluster on a single host
+linkTitle: Quick start
+headcontent: Get started in less than 5 minutes in the cloud or on your desktop
+description: Get started using YugabyteDB in less than five minutes on Linux.
 aliases:
   - /quick-start/linux/
   - /preview/quick-start/linux/
@@ -21,7 +21,7 @@ unversioned: true
     </a>
   </li>
   <li class="active">
-    <a href="../../quick-start/" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
@@ -32,7 +32,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -71,35 +71,33 @@ Because each tablet maps to its own file, you can create a very large number of 
 
 ### Download
 
-YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
-
 The following instructions are for downloading the Preview release of YugabyteDB, which is recommended for development and testing only. For other versions, see [Releases](/preview/releases/).
 
-Download YugabyteDB as follows:
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-1. Download the YugabyteDB package using one of the following `wget` commands:
+Download and extract YugabyteDB as follows:
 
-    ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
-    ```
+{{< tabpane text=true >}}
 
-    Or:
+  {{% tab header="x86" lang="x86" %}}
 
-    ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
-    ```
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+```
 
-1. Extract the package and then change directories to the YugabyteDB home.
+  {{% /tab %}}
 
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
+  {{% tab header="aarch64" lang="aarch64" %}}
 
-    Or:
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+```
 
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ### Configure
 
@@ -116,10 +114,12 @@ Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to crea
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-./bin/yugabyted start
+./bin/yugabyted start --advertise_address 127.0.0.1
 ```
 
-{{% includeMarkdown "./include-connect.md" %}}
+Note: By default, yugabyted on Linux-based machines binds to the internal IP address. If it fails to do so, set the --advertise_address flag.
+
+{{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
 
 ## Build an application
 

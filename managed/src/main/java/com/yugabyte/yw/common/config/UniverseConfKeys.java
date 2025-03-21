@@ -47,6 +47,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Integer> nodeCheckTimeoutDdlSec =
+      new ConfKeyInfo<>(
+          "yb.health.nodeCheckTimeoutDdlSec",
+          ScopeType.UNIVERSE,
+          "Node Checkout Time for DDL check",
+          "The timeout (in seconds) for node check operation as part of universe health check in"
+              + " case DDL atomicity check is performed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_check_enabled",
@@ -968,6 +978,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "to be created; otherwise, it will fail the operation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> xClusterNetworkConnectivityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.enabled",
+          ScopeType.UNIVERSE,
+          "Enable network connectivity check for xCluster",
+          "If this flag is true on the source universe, a ping and port accessibility "
+              + "check from each node of the target universe to all the source universe nodes will "
+              + "be performed",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterNetworkConnectivityCheckPingCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.ping_command_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout used for network connectivity check for xCluster setup",
+          "The network connectivity check for xCluster ping all the source nodes from the "
+              + "target nodes; this is the timeout used to indicate how long the ping command "
+              + "should wait for the response",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -1141,6 +1171,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration>
+      xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
+          new ConfKeyInfo<>(
+              "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
+              ScopeType.UNIVERSE,
+              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
+                  + " source universe during failover task execution",
+              "If the source universe is down, this RPC call will time out during failover"
+                  + " operation, increasing the failover task execution time; The lower the value,"
+                  + " the less time the failover task will take to complete. If it is set to zero,"
+                  + " this subtask during failover will be skipped providing a faster failover"
+                  + " execution time.",
+              ConfDataType.DurationType,
+              ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
@@ -1452,6 +1496,54 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Queue Wait Time for Tasks",
           "Wait time for a queued task before the running task can be evicted forcefully.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> certManagerCommonNameRequired =
+      new ConfKeyInfo<>(
+          "yb.tls.cert_manager.common_name_required",
+          ScopeType.UNIVERSE,
+          "Common Name Required for Certificates",
+          "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_otel_operator_check",
+          ScopeType.UNIVERSE,
+          "Skip OpenTelemetry Operator Check",
+          "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
+          ScopeType.UNIVERSE,
+          "Wait Attempts for major catalog upgrade",
+          "Wait Attempts for major catalog upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableDBApis =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.allow_disable",
+          ScopeType.UNIVERSE,
+          "Allow users to disable DB APIs",
+          "Allow users to disable DB APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockboundCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clockbound synchronization check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> clockboundCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.timeout",
+          ScopeType.UNIVERSE,
+          "Clockbound synchronization check timeout",
+          "Clockbound synchronization check timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

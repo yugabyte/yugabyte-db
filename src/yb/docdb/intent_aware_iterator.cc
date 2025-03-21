@@ -58,6 +58,9 @@ DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
                       "After number of next calls is reached this limit, use seek to find non "
                       "future record.");
 
+DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
+                    "Disable optimization to ignore non-existent keys for read restart.");
+
 namespace yb::docdb {
 
 using dockv::KeyBytes;
@@ -745,8 +748,9 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
     DCHECK_ONLY_NOTNULL(entry_source_);
     VLOG(4) << "Fetched key " << DebugDumpKeyToStr(result.key)
             << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
-            << ", with time: " << result.write_time.ToString()
-            << ", while read bounds are: " << read_time_;
+            << ", with time: " << result.write_time
+            << ", while read bounds are: " << read_time_
+            << ", value: " << result.value.ToDebugHexString();
 
     YB_TRANSACTION_DUMP(
         Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
@@ -847,7 +851,7 @@ void IntentAwareIterator::ProcessIntent() {
 
   // Ignore intent past read limit.
   if (decoded.value_time > decoded.MaxAllowedValueTime(encoded_read_time_)) {
-    VLOG_WITH_FUNC(4) << "Returnin as decoded.value_time > "
+    VLOG_WITH_FUNC(4) << "Returning as decoded.value_time > "
                          "decoded.MaxAllowedValueTime(encoded_read_time_)";
     return;
   }
@@ -1369,6 +1373,17 @@ Result<HybridTime> IntentAwareIterator::RestartReadHt() const {
   return decoded_max_seen_ht.hybrid_time();
 }
 
+EncodedDocHybridTime IntentAwareIterator::ObtainLastSeenHtCheckpoint() {
+  return max_seen_ht_;
+}
+
+void IntentAwareIterator::RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) {
+  if (ANNOTATE_UNPROTECTED_READ(FLAGS_disable_last_seen_ht_rollback)) {
+    return;
+  }
+  max_seen_ht_ = last_seen_ht;
+}
+
 HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
   return CHECK_RESULT(max_seen_ht_.Decode()).hybrid_time();
 }
@@ -1402,6 +1417,10 @@ bool IntentAwareIterator::HandleStatus(const Status& status) {
 
   status_ = status;
   return false;
+}
+
+void IntentAwareIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  iter_.UpdateFilterKey(user_key_for_filter);
 }
 
 #ifndef NDEBUG

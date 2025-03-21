@@ -63,6 +63,11 @@ extern bool yb_pushdown_is_not_null;
 extern bool yb_enable_pg_locks;
 
 /*
+ * GUC that toggles whether pg_locks correctly formats and integrates advisory locks info.
+ */
+extern bool yb_pg_locks_integrate_advisory_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;
@@ -140,6 +145,12 @@ extern bool yb_allow_replication_slot_lsn_types;
 extern char* yb_default_replica_identity;
 
 /*
+ * GUC variable that enable replication slot consumption of consistent changes from a hash range
+ * of table.
+ */
+extern bool yb_enable_consistent_replication_from_hash_range;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -160,6 +171,7 @@ extern int yb_xcluster_consistency_level;
  */
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
+extern bool yb_disable_catalog_version_check;
 
 /*
  * Allows for customizing the number of rows to be prefetched.
@@ -231,6 +243,20 @@ typedef enum {
 extern int yb_read_after_commit_visibility;
 
 extern bool yb_allow_block_based_sampling_algorithm;
+
+extern bool yb_allow_separate_requests_for_sampling_stages;
+
+extern bool yb_refresh_matview_in_place;
+
+extern bool yb_disable_auto_analyze;
+
+extern int yb_major_version_upgrade_compatibility;
+
+extern bool yb_upgrade_to_pg15_completed;
+
+extern bool yb_extension_upgrade;
+
+extern bool yb_mixed_mode_expression_pushdown;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

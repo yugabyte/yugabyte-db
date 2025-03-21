@@ -31,7 +31,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Colocation](colocation/) | YugabyteDB allows for closely related data to reside together via colocation. Learn how to co-locate tables. | Single-node<br/>local/cloud |
 | [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi-node<br/>local |
 | [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single-node<br/>local/cloud |
-| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single-node<br/>local |
+| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point-in-time recovery. | Single-node<br/>local |
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
@@ -124,7 +124,7 @@ You can start ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -153,7 +153,7 @@ To run the examples in YugabyteDB Aeon, create a single- or multi-node universe 
 
   {{% tab header="Single-node cluster" lang="YBM Single" %}}
 
-Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+Examples requiring a single-node cluster can be run using the free [Sandbox](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
 If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
@@ -161,9 +161,9 @@ If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, 
 
   {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
 
-Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
 
-To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
+To create a single region three-node cluster, refer to [Create a single-region cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
   {{% /tab %}}
 
@@ -173,7 +173,7 @@ Save your cluster credentials in a convenient location. You will use them to con
 
 **Connect to your clusters**
 
-You can run Explore exercises in YugabyteDB Aeon using the [Cloud Shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/):
+You can run Explore exercises in YugabyteDB Aeon using the [Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/):
 
 1. In YugabyteDB Aeon, on the **Clusters** page, select your cluster.
 1. Click **Connect**.
@@ -265,7 +265,7 @@ java -Dnode=<host name> \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
     ```
 -->
-- `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
+- `<path-to-cluster-certificate>` with the path to the [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
   </div>
 

@@ -9,9 +9,15 @@ import {
   RESET_CUSTOMER_TASKS,
   FETCH_FAILED_TASK_DETAIL,
   FETCH_FAILED_TASK_DETAIL_RESPONSE,
-  PATCH_TASKS_FOR_CUSTOMER
+  PATCH_TASKS_FOR_CUSTOMER,
+  SHOW_TASK_IN_DRAWER,
+  HIDE_TASK_IN_DRAWER,
+  SHOW_TASK_BANNER,
+  HIDE_TASK_BANNER,
+  HIDE_ALL_TASK_BANNERS
 } from '../actions/tasks';
 import moment from 'moment';
+import { get, mapValues, set } from 'lodash';
 
 import {
   getInitialState,
@@ -23,7 +29,9 @@ import {
 const INITIAL_STATE = {
   taskProgressData: getInitialState({}),
   customerTaskList: [],
-  failedTasks: getInitialState([])
+  failedTasks: getInitialState([]),
+  showTaskInDrawer: '',
+  taskBannerInfo: {}
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -51,11 +59,13 @@ export default function (state = INITIAL_STATE, action) {
       // Patch_For_tasks fetches tasks for the universe and add it to the list of tasks.
       // but, again if this action is called it overrides the previous list of tasks.
       // this causes ui to flicker. so, we are filtering the old tasks and adding the new tasks.
-      const taskAbsent = state.customerTaskList.filter(task => !taskMap[task.id]);
+      const taskAbsent = state.customerTaskList.filter((task) => !taskMap[task.id]);
       taskListResultArray.push(...taskAbsent);
       return {
         ...state,
-        customerTaskList: taskListResultArray.sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
+        customerTaskList: taskListResultArray.sort((a, b) =>
+          moment(b.createTime).isBefore(a.createTime) ? -1 : 1
+        )
       };
     }
     case FETCH_CUSTOMER_TASKS_FAILURE:
@@ -74,9 +84,49 @@ export default function (state = INITIAL_STATE, action) {
       return {
         ...state,
         customerTaskList: state.customerTaskList
-        .filter((task) => task.targetUUID !== action.payload.universeUUID)
-        .concat(action.payload.tasks)
-        .sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
+          .filter((task) => task.targetUUID !== action.payload.universeUUID)
+          .concat(action.payload.tasks)
+          .sort((a, b) => (moment(b.createTime).isBefore(a.createTime) ? -1 : 1))
+      };
+    case SHOW_TASK_IN_DRAWER:
+      return { ...state, showTaskInDrawer: action.payload };
+    case HIDE_TASK_IN_DRAWER:
+      return { ...state, showTaskInDrawer: '' };
+    case SHOW_TASK_BANNER: {
+      const bannerInfos = {
+        ...state.taskBannerInfo
+      };
+      const alreadyExists = get(bannerInfos, [
+        action.payload.universeUUID,
+        action.payload.taskUUID
+      ]);
+      if (!alreadyExists || alreadyExists.visible !== false) {
+        set(bannerInfos, [action.payload.universeUUID, action.payload.taskUUID], {
+          visible: true,
+          timestamp: Date.now(),
+          taskUUID: action.payload.taskUUID
+        });
+      }
+      return { ...state, taskBannerInfo: bannerInfos };
+    }
+    case HIDE_TASK_BANNER:
+      set(
+        state.taskBannerInfo,
+        [action.payload.universeUUID, action.payload.taskUUID, 'visible'],
+        false
+      );
+      return {
+        ...state
+      };
+    case HIDE_ALL_TASK_BANNERS:
+      state.taskBannerInfo[action.payload.universeUUID] = mapValues(
+        state.taskBannerInfo[action.payload.universeUUID],
+        (value) => {
+          return { ...value, visible: false };
+        }
+      );
+      return {
+        ...state
       };
     default:
       return state;

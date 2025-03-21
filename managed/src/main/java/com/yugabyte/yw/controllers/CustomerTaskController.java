@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
@@ -17,6 +20,8 @@ import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
+import com.yugabyte.yw.forms.filters.TaskApiFilter;
+import com.yugabyte.yw.forms.paging.TaskPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -24,15 +29,25 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.filters.TaskFilter;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
 import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import com.yugabyte.yw.models.paging.TaskPagedApiResponse;
+import com.yugabyte.yw.models.paging.TaskPagedQuery;
+import com.yugabyte.yw.models.paging.TaskPagedResponse;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.ExpressionList;
+import io.ebean.Query;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
@@ -42,11 +57,13 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -117,6 +134,7 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.status = taskProgress.get("status").asText();
       taskData.abortable = taskProgress.get("abortable").asBoolean();
       taskData.retryable = taskProgress.get("retryable").asBoolean();
+      taskData.canRollback = taskProgress.get("canRollback").asBoolean();
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();
@@ -148,7 +166,7 @@ public class CustomerTaskController extends AuthenticatedController {
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       return taskData;
     } catch (RuntimeException e) {
-      LOG.error("Error fetching task progress for {}. TaskInfo is not found", task.getTaskUUID());
+      LOG.error("Error fetching task progress for {} : {}", task.getTaskUUID(), e);
       return null;
     }
   }
@@ -175,23 +193,23 @@ public class CustomerTaskController extends AuthenticatedController {
     return buildTaskListMap(customer, customerTaskList);
   }
 
-  private Map<UUID, List<CustomerTaskFormData>> buildTaskListMap(
-      Customer customer, List<CustomerTask> customerTaskList) {
+  private Map<UUID, CustomerTask> buildLastTaskByTargetMap(List<CustomerTask> customerTaskList) {
+    return customerTaskList.stream()
+        .filter(c -> c.getCompletionTime() != null)
+        .collect(
+            Collectors.toMap(
+                CustomerTask::getTargetUUID,
+                Function.identity(),
+                (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
+  }
 
-    Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
-    Map<UUID, CustomerTask> lastTaskByTargetMap =
-        customerTaskList.stream()
-            .filter(c -> c.getCompletionTime() != null)
-            .collect(
-                Collectors.toMap(
-                    CustomerTask::getTargetUUID,
-                    Function.identity(),
-                    (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
+  private Map<UUID, Set<String>> buildAllowRetryTasksByTargetMap(Customer customer) {
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap = new HashMap<>();
     Map<UUID, String> updatingTaskByTargetMap =
         commissioner.getUpdatingTaskUUIDsForTargets(customer.getId());
     Map<UUID, String> placementModificationTaskByTargetMap =
         commissioner.getPlacementModificationTaskUUIDsForTargets(customer.getId());
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap = new HashMap<>();
+
     updatingTaskByTargetMap.forEach(
         (universeUUID, taskUUID) ->
             allowRetryTasksByTargetMap
@@ -202,6 +220,16 @@ public class CustomerTaskController extends AuthenticatedController {
             allowRetryTasksByTargetMap
                 .computeIfAbsent(universeUUID, k -> new HashSet<>())
                 .add(taskUUID));
+
+    return allowRetryTasksByTargetMap;
+  }
+
+  private Map<UUID, List<CustomerTaskFormData>> buildTaskListMap(
+      Customer customer, List<CustomerTask> customerTaskList) {
+
+    Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
+    Map<UUID, CustomerTask> lastTaskByTargetMap = buildLastTaskByTargetMap(customerTaskList);
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap = buildAllowRetryTasksByTargetMap(customer);
     List<List<CustomerTask>> batches =
         Lists.partition(
             customerTaskList,
@@ -229,6 +257,85 @@ public class CustomerTaskController extends AuthenticatedController {
       }
     }
     return taskListMap;
+  }
+
+  public enum SortBy implements PagedQuery.SortByIF {
+    createTime("createTime");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.createTime;
+    }
+  }
+
+  public TaskPagedApiResponse pagedList(TaskPagedQuery pagedQuery, Customer customer) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.createTime);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
+    Query<CustomerTask> query = createQueryByFilter(pagedQuery.getFilter()).query();
+    TaskPagedResponse response = performPagedQuery(query, pagedQuery, TaskPagedResponse.class);
+    return createResponse(response, customer);
+  }
+
+  public ExpressionList<CustomerTask> createQueryByFilter(TaskFilter filter) {
+
+    ExpressionList<CustomerTask> query = CustomerTask.find.query().where();
+
+    query.eq("customer_uuid", filter.getCustomerUUID());
+    if (!CollectionUtils.isEmpty(filter.getTargetList())) {
+      appendInClause(query, "target", filter.getTargetList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getTargetUUIDList())) {
+      appendInClause(query, "target_uuid", filter.getTargetUUIDList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getTypeList())) {
+      appendInClause(query, "type", filter.getTypeList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getTypeNameList())) {
+      appendInClause(query, "type_name", filter.getTypeNameList());
+    }
+    if (filter.getDateRangeStart() != null && filter.getDateRangeEnd() != null) {
+      query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
+    }
+    if (!CollectionUtils.isEmpty(filter.getStatus())) {
+      appendInClause(query, "status", filter.getStatus());
+    }
+    return query;
+  }
+
+  public TaskPagedApiResponse createResponse(TaskPagedResponse response, Customer customer) {
+    List<CustomerTask> tasks = response.getEntities();
+    Map<UUID, List<TaskInfo>> subTaskInfos =
+        TaskInfo.getSubTasks(
+            tasks.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet()));
+    Map<UUID, CustomerTask> lastTaskByTargetMap = buildLastTaskByTargetMap(tasks);
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap = buildAllowRetryTasksByTargetMap(customer);
+    List<CustomerTaskFormData> taskList =
+        tasks.parallelStream()
+            .map(
+                r ->
+                    commissioner
+                        .buildTaskStatus(
+                            r,
+                            subTaskInfos.getOrDefault(r.getTaskUUID(), Collections.emptyList()),
+                            allowRetryTasksByTargetMap,
+                            lastTaskByTargetMap)
+                        .map(taskProgress -> buildCustomerTaskFromData(r, taskProgress))
+                        .orElse(null))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    return response.setData(taskList, new TaskPagedApiResponse());
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -262,6 +369,37 @@ public class CustomerTaskController extends AuthenticatedController {
       flattenList.addAll(task);
     }
     return PlatformResults.withData(flattenList);
+  }
+
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List Tasks (paginated)",
+      response = TaskPagedApiResponse.class,
+      nickname = "listTasksV2")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PageTasksRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.paging.TaskPagedApiQuery",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result pageTaskList(UUID customerUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    TaskPagedApiQuery apiQuery = parseJsonAndValidate(request, TaskPagedApiQuery.class);
+    TaskApiFilter apiFilter = apiQuery.getFilter();
+    TaskFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
+    TaskPagedQuery query = apiQuery.copyWithFilter(filter, TaskPagedQuery.class);
+
+    TaskPagedApiResponse tasks = pagedList(query, customer);
+
+    return PlatformResults.withData(tasks);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -370,6 +508,44 @@ public class CustomerTaskController extends AuthenticatedController {
             Audit.TargetType.CustomerTask,
             taskUUID.toString(),
             Audit.ActionType.Retry,
+            Json.toJson(taskInfo),
+            customerTask.getTaskUUID());
+
+    return new PlatformResults.YBPTask(customerTask.getTaskUUID(), customerTask.getTargetUUID())
+        .asResult();
+  }
+
+  @ApiOperation(
+      value = "Rollback a Universe or Provider task",
+      notes = "Rollback a Universe or Provider task.",
+      response = PlatformResults.YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = "details.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = TaskInfo.class,
+                identifier = "tasks",
+                columnName = "uuid"))
+  })
+  public Result rollbackTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
+    CustomerTask customerTask = customerTaskManager.rollbackCustomerTask(customerUUID, taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for target {}:{}",
+        customerTask.getTaskUUID(),
+        customerTask.getTargetUUID(),
+        customerTask.getTargetName());
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.CustomerTask,
+            taskUUID.toString(),
+            Audit.ActionType.Rollback,
             Json.toJson(taskInfo),
             customerTask.getTaskUUID());
 

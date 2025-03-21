@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	pb "node-agent/generated/service"
 	"os"
 	"os/user"
 	"path"
@@ -44,7 +43,8 @@ const (
 	GetCustomersApiEndpoint = "/api/customers"
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
-	RequestIdHeader         = "X-REQUEST-ID"
+	RequestIdHeader         = "x-request-id"
+	CorrelationIdHeader     = "x-correlation-id"
 
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -93,7 +93,10 @@ const (
 )
 
 const (
+	// CorrelationId is to correlate calls with YBA logs.
 	CorrelationId ContextKey = "correlation-id"
+	// RequestId is to track for a request on this server.
+	RequestId ContextKey = "request-id"
 )
 
 var (
@@ -107,9 +110,6 @@ type ContextKey string
 
 // Handler is a generic handler func.
 type Handler func(context.Context) (any, error)
-
-// RPCResponseConverter is the converter for response in async executor.
-type RPCResponseConverter func(any) (*pb.DescribeTaskResponse, error)
 
 // UserDetail is a placeholder for OS user.
 type UserDetail struct {
@@ -131,13 +131,14 @@ func ExtractBaseURL(value string) (string, error) {
 	var baseUrl string
 	if parsedUrl.Port() == "" {
 		baseUrl = fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Hostname())
+	} else {
+		baseUrl = fmt.Sprintf(
+			"%s://%s:%s",
+			parsedUrl.Scheme,
+			parsedUrl.Hostname(),
+			parsedUrl.Port(),
+		)
 	}
-	baseUrl = fmt.Sprintf(
-		"%s://%s:%s",
-		parsedUrl.Scheme,
-		parsedUrl.Hostname(),
-		parsedUrl.Port(),
-	)
 	return baseUrl, nil
 }
 
@@ -149,11 +150,6 @@ func PlatformGetProvidersEndpoint(cuuid string) string {
 // Returns the platform endpoint for fetching the provider.
 func PlatformGetProviderEndpoint(cuuid, puuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers/%s", cuuid, puuid)
-}
-
-// Returns the platform endpoint for fetching access keys for a provider.
-func PlatformGetAccessKeysEndpoint(cuuid, puuid string) string {
-	return fmt.Sprintf("/api/customers/%s/providers/%s/access_keys", cuuid, puuid)
 }
 
 // Returns the platform endpoint for fetching Users.
@@ -337,17 +333,15 @@ func UserInfo(username string) (*UserDetail, error) {
 		User: userAcc, UserID: uint32(uid), GroupID: uint32(gid), IsCurrent: isCurrent}, nil
 }
 
-// CorrelationID returns the correlation ID from the context.
-func CorrelationID(ctx context.Context) string {
-	if v := ctx.Value(CorrelationId); v != nil {
-		return v.(string)
+// InheritTracingIDs inherits the tracing related info from a context.
+func InheritTracingIDs(fromCtx context.Context, toCtx context.Context) context.Context {
+	resultCtx := toCtx
+	for _, val := range TracingIDs {
+		if v := fromCtx.Value(val); v != nil {
+			resultCtx = context.WithValue(resultCtx, val, v.(string))
+		}
 	}
-	return ""
-}
-
-// WithCorrelationID creates a child context with correlation ID.
-func WithCorrelationID(ctx context.Context, corrId string) context.Context {
-	return context.WithValue(ctx, CorrelationId, corrId)
+	return resultCtx
 }
 
 // ConvertType converts a type from one to another.

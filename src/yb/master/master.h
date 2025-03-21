@@ -107,6 +107,8 @@ class Master : public tserver::DbServerBase {
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
+  MasterTabletServer* tablet_server() const { return master_tablet_server_.get(); }
+
   CatalogManagerIf* catalog_manager() const;
 
   CatalogManager* catalog_manager_impl() const { return CHECK_NOTNULL(catalog_manager_.get()); }
@@ -218,6 +220,10 @@ class Master : public tserver::DbServerBase {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const;
+
   Status ReloadKeysAndCertificates() override;
 
   std::string GetCertificateDetails() override;
@@ -225,6 +231,8 @@ class Master : public tserver::DbServerBase {
   void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
   const std::string& permanent_uuid() const override;
+
+  void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
  protected:
   Status RegisterServices();

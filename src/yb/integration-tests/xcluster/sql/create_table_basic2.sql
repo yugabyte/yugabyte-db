@@ -15,6 +15,7 @@
 -- e inherits from c (two-level single inheritance)
 -- f inherits from e (three-level single inheritance)
 --
+
 CREATE TABLE a_star (
 	class		char,
 	a 			int4
@@ -99,14 +100,6 @@ CREATE TABLE array_index_op_test (
 
 CREATE TABLE testjsonb (
        j jsonb
-);
-
-CREATE TABLE unknowntab (
-	u unknown    -- fail
-);
-
-CREATE TYPE unknown_comptype AS (
-	u unknown    -- fail
 );
 
 CREATE TABLE IF NOT EXISTS test_tsvector(

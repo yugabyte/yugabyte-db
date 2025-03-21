@@ -126,6 +126,16 @@ class PgsqlWriteOperation :
       const PgsqlColumnValuePB& column_value, dockv::PgTableRow* returning_table_row,
       qlexpr::QLExprResult* result, RowPackContext* pack_context);
 
+  // Handle removal of a single vector caused by any reason.
+  Status FillRemovedVectorId(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id);
+  // Handle removal of vectors caused by applying DELETE statement.
+  Status HandleDeletedVectorIds(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+  // Handle removal of vectors caused by applying UPDATE statement.
+  Status HandleUpdatedVectorIds(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+
   const dockv::ReaderProjection& projection() const;
 
   //------------------------------------------------------------------------------------------------
@@ -162,7 +172,7 @@ struct PgsqlReadOperationData {
   const TransactionOperationContext& txn_op_context;
   const YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
-  VectorIndexPtr vector_index;
+  DocVectorIndexPtr vector_index;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
@@ -209,6 +219,10 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Result<std::tuple<size_t, bool>> ExecuteSampleBlockBased();
 
+  // Only for backward compatibility with older releases which expect ExecuteSampleBlockBased
+  // to perform both stages for colocated tables in one run.
+  Result<std::tuple<size_t, bool>> DEPRECATED_ExecuteSampleBlockBasedColocated();
+
   void BindReadTimeToPagingState(const ReadHybridTime& read_time);
 
   Status PopulateResultSet(const dockv::PgTableRow& table_row,
@@ -221,7 +235,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
   Result<bool> SetPagingState(
-      YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
+      YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time,
+      ReadKey page_from_read_key);
 
   Result<size_t> ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options);
 

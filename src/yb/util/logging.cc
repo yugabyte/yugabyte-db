@@ -506,4 +506,13 @@ bool LogRateThrottler::TooMany() {
 
 } // namespace logging_internal
 
+std::string RemoveLogPrefixColon(const std::string& log_prefix) {
+  DCHECK(log_prefix.ends_with(": "));
+  return log_prefix.substr(0, log_prefix.size() - 2);
+}
+
+std::string AddSuffixToLogPrefix(const std::string& log_prefix, const std::string& suffix) {
+  return RemoveLogPrefixColon(log_prefix) + suffix + ": ";
+}
+
 } // namespace yb

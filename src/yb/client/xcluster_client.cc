@@ -341,7 +341,8 @@ Status XClusterClient::RemoveNamespaceFromUniverseReplication(
 
 Status XClusterClient::DeleteUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
-    const UniverseUuid& target_universe_uuid) {
+    const UniverseUuid& target_universe_uuid,
+    std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
 
   master::DeleteUniverseReplicationRequestPB req;
@@ -349,6 +350,10 @@ Status XClusterClient::DeleteUniverseReplication(
   req.set_ignore_errors(ignore_errors);
   if (!target_universe_uuid.IsNil()) {
     req.set_universe_uuid(target_universe_uuid.ToString());
+  }
+  for (const auto& [namespace_id, oid_to_bump] : source_namespace_id_to_oid_to_bump_above) {
+    auto& producer_namespace_oids = *req.mutable_producer_namespace_oids();
+    producer_namespace_oids[namespace_id] = oid_to_bump;
   }
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(DeleteUniverseReplication, req);
@@ -796,6 +801,25 @@ Result<std::vector<xrepl::StreamId>> XClusterClient::GetXClusterStreams(const Ta
     stream_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id())));
   }
   return stream_ids;
+}
+
+Result<master::InsertHistoricalColocatedSchemaPackingResponsePB>
+XClusterClient::InsertHistoricalColocatedSchemaPacking(
+    const xcluster::ProducerTabletInfo& producer_tablet_info,
+    const xcluster::ConsumerTabletInfo& consumer_tablet_info, uint32_t colocation_id,
+    uint32_t source_schema_version, const SchemaPB& source_schema) {
+  master::InsertHistoricalColocatedSchemaPackingRequestPB req;
+  req.set_replication_group_id(producer_tablet_info.replication_group_id.ToString());
+  req.set_target_parent_table_id(consumer_tablet_info.table_id);
+  req.set_colocation_id(colocation_id);
+  req.set_source_schema_version(source_schema_version);
+  req.mutable_schema()->CopyFrom(source_schema);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(InsertHistoricalColocatedSchemaPacking, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
 }
 
 Status XClusterClient::InsertPackedSchemaForXClusterTarget(

@@ -16,8 +16,11 @@
 
 #include <fstream>
 
+#include "catalog/pg_type_d.h"
+
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
@@ -29,7 +32,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -161,6 +163,19 @@ YBPgErrorCode FetchErrorCode(YbcStatus s) {
   // If we have PgsqlError explicitly set, we decode it
   YBPgErrorCode result = pg_err_ptr != nullptr ? PgsqlErrorTag::Decode(pg_err_ptr)
                                                : YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+
+  // If there's a schema version mismatch, we need to return the status code 40001.
+  // When we get a schema version mismatch, DocDB will set the PgsqlResponsePB::RequestStatus
+  // to PGSQL_STATUS_SCHEMA_VERSION_MISMATCH. Note that this is a separate field from the above
+  // PgsqlErrorTag.
+  const uint8_t* pgsql_err_ptr = wrapper->ErrorData(PgsqlRequestStatusTag::kCategory);
+  if (PgsqlRequestStatusTag::Decode(pgsql_err_ptr) ==
+      PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
+    LOG_IF(DFATAL, result != YBPgErrorCode::YB_PG_INTERNAL_ERROR)
+        << "Expected schema version mismatch error to be YB_PG_INTERNAL_ERROR, got "
+        << ToString(result);
+    result = YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+  }
 
   // If the error is the default generic YB_PG_INTERNAL_ERROR (as we also set in AsyncRpc::Failed)
   // then we try to deduce it from a transaction error.
@@ -524,12 +539,16 @@ const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
   return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
 }
 
+int YBCAshRemoveComponentFromWaitStateCode(uint32_t code) {
+  return ash::WaitStateInfo::AshRemoveComponentFromWaitStateCode(code);
+}
+
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }
 
-bool YBCIsNonColocatedYbctidsOnlyFetch(const YbcPgPrepareParameters *params) {
-  return params->fetch_ybctids_only && !params->querying_colocated_table;
+bool YBCIsNonembeddedYbctidsOnlyFetch(const YbcPgPrepareParameters *params) {
+  return params->fetch_ybctids_only && !params->embedded_idx;
 }
 
 bool YBIsMajorUpgradeInitDb() {
@@ -540,6 +559,305 @@ bool YBIsMajorUpgradeInitDb() {
   }
 
   return cached_value;
+}
+
+const char *YBCGetOutFuncName(YbcPgOid typid) {
+  switch (typid) {
+    case BOOLOID:
+      return "boolout";
+    case BYTEAOID:
+      return "byteaout";
+    case CHAROID:
+      return "charout";
+    case NAMEOID:
+      return "nameout";
+    case INT8OID:
+      return "int8out";
+    case INT2OID:
+      return "int2out";
+    case INT4OID:
+      return "int4out";
+    case REGPROCOID:
+      return "regprocout";
+    case TEXTOID:
+      return "textout";
+    case TIDOID:
+      return "tidout";
+    case XIDOID:
+      return "xidout";
+    case CIDOID:
+      return "cidout";
+    case JSONOID:
+      return "json_out";
+    case XMLOID:
+      return "xml_out";
+    case POINTOID:
+      return "point_out";
+    case LSEGOID:
+      return "lseg_out";
+    case PATHOID:
+      return "path_out";
+    case BOXOID:
+      return "box_out";
+    case LINEOID:
+      return "line_out";
+    case FLOAT4OID:
+      return "float4out";
+    case FLOAT8OID:
+      return "float8out";
+    case CIRCLEOID:
+      return "circle_out";
+    case CASHOID:
+      return "cash_out";
+    case MACADDROID:
+      return "macaddr_out";
+    case INETOID:
+      return "inet_out";
+    case CIDROID:
+      return "cidr_out";
+    case MACADDR8OID:
+      return "macaddr8_out";
+    case ACLITEMOID:
+      return "aclitemout";
+    case BPCHAROID:
+      return "bpcharout";
+    case VARCHAROID:
+      return "varcharout";
+    case DATEOID:
+      return "date_out";
+    case TIMEOID:
+      return "time_out";
+    case TIMESTAMPOID:
+      return "timestamp_out";
+    case TIMESTAMPTZOID:
+      return "timestamptz_out";
+    case INTERVALOID:
+      return "interval_out";
+    case TIMETZOID:
+      return "timetz_out";
+    case BITOID:
+      return "bit_out";
+    case VARBITOID:
+      return "varbit_out";
+    case NUMERICOID:
+      return "numeric_out";
+    case REGPROCEDUREOID:
+      return "regprocedureout";
+    case REGOPEROID:
+      return "regoperout";
+    case REGOPERATOROID:
+      return "regoperatorout";
+    case REGCLASSOID:
+      return "regclassout";
+    case REGTYPEOID:
+      return "regtypeout";
+    case REGROLEOID:
+      return "regroleout";
+    case REGNAMESPACEOID:
+      return "regnamespaceout";
+    case UUIDOID:
+      return "uuid_out";
+    case LSNOID:
+      return "pg_lsn_out";
+    case TSQUERYOID:
+      return "tsqueryout";
+    case REGCONFIGOID:
+      return "regconfigout";
+    case REGDICTIONARYOID:
+      return "regdictionaryout";
+    case JSONBOID:
+      return "jsonb_out";
+    case TXID_SNAPSHOTOID:
+      return "pg_snapshot_out";
+    case RECORDOID:
+      return "record_out";
+    case CSTRINGOID:
+      return "cstring_out";
+    case ANYOID:
+      return "any_out";
+    case VOIDOID:
+      return "void_out";
+    case TRIGGEROID:
+      return "trigger_out";
+    case LANGUAGE_HANDLEROID:
+      return "language_handler_out";
+    case INTERNALOID:
+      return "internal_out";
+    case ANYELEMENTOID:
+      return "anyelement_out";
+    case ANYNONARRAYOID:
+      return "anynonarray_out";
+    case ANYENUMOID:
+      return "anyenum_out";
+    case FDW_HANDLEROID:
+      return "fdw_handler_out";
+    case INDEX_AM_HANDLEROID:
+      return "index_am_handler_out";
+    case TSM_HANDLEROID:
+      return "tsm_handler_out";
+    case ANYRANGEOID:
+      return "anyrange_out";
+    case INT2VECTOROID:
+      return "int2vectorout";
+    case OIDVECTOROID:
+      return "oidvectorout";
+    case TSVECTOROID:
+      return "tsvectorout";
+    case GTSVECTOROID:
+      return "gtsvectorout";
+    case POLYGONOID:
+      return "poly_out";
+    case INT4RANGEOID:
+      return "int4out";
+    case NUMRANGEOID:
+      return "numeric_out";
+    case TSRANGEOID:
+      return "timestamp_out";
+    case TSTZRANGEOID:
+      return "timestamptz_out";
+    case DATERANGEOID:
+      return "date_out";
+    case INT8RANGEOID:
+      return "int8out";
+    case XMLARRAYOID:
+      return "xml_out";
+    case LINEARRAYOID:
+      return "line_out";
+    case CIRCLEARRAYOID:
+      return "circle_out";
+    case MONEYARRAYOID:
+      return "cash_out";
+    case BOOLARRAYOID:
+      return "boolout";
+    case BYTEAARRAYOID:
+      return "byteaout";
+    case CHARARRAYOID:
+      return "charout";
+    case NAMEARRAYOID:
+      return "nameout";
+    case INT2ARRAYOID:
+      return "int2out";
+    case INT2VECTORARRAYOID:
+      return "int2vectorout";
+    case INT4ARRAYOID:
+      return "int4out";
+    case REGPROCARRAYOID:
+      return "regprocout";
+    case TEXTARRAYOID:
+      return "textout";
+    case OIDARRAYOID:
+      return "oidout";
+    case CIDRARRAYOID:
+      return "cidr_out";
+    case TIDARRAYOID:
+      return "tidout";
+    case XIDARRAYOID:
+      return "xidout";
+    case CIDARRAYOID:
+      return "cidout";
+    case OIDVECTORARRAYOID:
+      return "oidvectorout";
+    case BPCHARARRAYOID:
+      return "bpcharout";
+    case VARCHARARRAYOID:
+      return "varcharout";
+    case INT8ARRAYOID:
+      return "int8out";
+    case POINTARRAYOID:
+      return "point_out";
+    case LSEGARRAYOID:
+      return "lseg_out";
+    case PATHARRAYOID:
+      return "path_out";
+    case BOXARRAYOID:
+      return "box_out";
+    case FLOAT4ARRAYOID:
+      return "float4out";
+    case FLOAT8ARRAYOID:
+      return "float8out";
+    case ACLITEMARRAYOID:
+      return "aclitemout";
+    case MACADDRARRAYOID:
+      return "macaddr_out";
+    case MACADDR8ARRAYOID:
+      return "macaddr8_out";
+    case INETARRAYOID:
+      return "inet_out";
+    case CSTRINGARRAYOID:
+      return "cstring_out";
+    case TIMESTAMPARRAYOID:
+      return "timestamp_out";
+    case DATEARRAYOID:
+      return "date_out";
+    case TIMEARRAYOID:
+      return "time_out";
+    case TIMESTAMPTZARRAYOID:
+      return "timestamptz_out";
+    case INTERVALARRAYOID:
+      return "interval_out";
+    case NUMERICARRAYOID:
+      return "numeric_out";
+    case TIMETZARRAYOID:
+      return "timetz_out";
+    case BITARRAYOID:
+      return "bit_out";
+    case VARBITARRAYOID:
+      return "varbit_out";
+    case REGPROCEDUREARRAYOID:
+      return "regprocedureout";
+    case REGOPERARRAYOID:
+      return "regoperout";
+    case REGOPERATORARRAYOID:
+      return "regoperatorout";
+    case REGCLASSARRAYOID:
+      return "regclassout";
+    case REGTYPEARRAYOID:
+      return "regtypeout";
+    case REGROLEARRAYOID:
+      return "regroleout";
+    case REGNAMESPACEARRAYOID:
+      return "regnamespaceout";
+    case UUIDARRAYOID:
+      return "uuid_out";
+    case PG_LSNARRAYOID:
+      return "pg_lsn_out";
+    case TSVECTORARRAYOID:
+      return "tsvectorout";
+    case GTSVECTORARRAYOID:
+      return "gtsvectorout";
+    case TSQUERYARRAYOID:
+      return "tsqueryout";
+    case REGCONFIGARRAYOID:
+      return "regconfigout";
+    case REGDICTIONARYARRAYOID:
+      return "regdictionaryout";
+    case JSONARRAYOID:
+      return "json_out";
+    case JSONBARRAYOID:
+      return "jsonb_out";
+    case TXID_SNAPSHOTARRAYOID:
+      return "pg_snapshot_out";
+    case RECORDARRAYOID:
+      return "record_out";
+    case ANYARRAYOID:
+      return "any_out";
+    case POLYGONARRAYOID:
+      return "poly_out";
+    case INT4RANGEARRAYOID:
+      return "int4out";
+    case NUMRANGEARRAYOID:
+      return "numeric_out";
+    case TSRANGEARRAYOID:
+      return "timestamp_out";
+    case TSTZRANGEARRAYOID:
+      return "timestamptz_out";
+    case DATERANGEARRAYOID:
+      return "date_out";
+    case INT8RANGEARRAYOID:
+      return "int8out";
+    default:
+      return NULL;
+  }
 }
 
 } // extern "C"

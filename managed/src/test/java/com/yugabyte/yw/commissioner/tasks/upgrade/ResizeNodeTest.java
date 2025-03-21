@@ -58,6 +58,7 @@ import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -169,7 +170,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         expected);
   }
 
-  @Parameters({"aws, GP3, true", "aws, GP2, false", "gcp, null, false", "azu, null, false"})
+  @Parameters({
+    "aws, GP3, true",
+    "aws, GP2, false",
+    "gcp, Persistent, false",
+    "gcp, Hyperdisk_Balanced, true",
+    "azu, null, false"
+  })
   @Test
   public void testResizeNodeIopsThroughputAvailable(
       String cloudTypeStr, @Nullable String storageTypeStr, boolean expected) {
@@ -254,8 +261,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             mockBaseTaskDependencies.getConfGetter()));
   }
 
+  @Parameters({"aws, GP3", "gcp, Hyperdisk_Balanced", "gcp, Hyperdisk_Extreme"})
   @Test
-  public void testAwsBackToBackResizeNode() {
+  public void testBackToBackResizeNode(String providerType, String storageType) {
+    Common.CloudType cloudType = Common.CloudType.valueOf(providerType);
+    String cooldownParam;
+    if (cloudType == Common.CloudType.aws) {
+      cooldownParam = "yb.aws.disk_resize_cooldown_hours";
+    } else {
+      cooldownParam = "yb.gcp.hyperdisk_resize_cooldown_hours";
+      // changing provider
+      defaultUniverse =
+          Universe.saveDetails(
+              defaultUniverse.getUniverseUUID(),
+              universe -> {
+                UniverseDefinitionTaskParams.UserIntent userIntent =
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent;
+                userIntent.provider = gcpProvider.getUuid().toString();
+                userIntent.providerType = cloudType;
+                userIntent.deviceInfo.storageType =
+                    PublicCloudConstants.StorageType.valueOf(storageType);
+              });
+      createInstanceType(
+          gcpProvider.getUuid(),
+          defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+      createInstanceType(gcpProvider.getUuid(), NEW_INSTANCE_TYPE);
+    }
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         defaultUniverse.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent targetIntent = primaryCluster.userIntent.clone();
@@ -271,7 +302,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             targetIntent,
             defaultUniverse,
             mockBaseTaskDependencies.getConfGetter()));
-    RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "3");
+    RuntimeConfigEntry.upsertGlobal(cooldownParam, "3");
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -295,7 +326,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             defaultUniverse,
             mockBaseTaskDependencies.getConfGetter()));
     // Changing window size.
-    RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "1");
+    RuntimeConfigEntry.upsertGlobal(cooldownParam, "1");
     assertTrue(
         ResizeNodeParams.checkResizeIsPossible(
             primaryUUID,
@@ -519,9 +550,16 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, false);
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown
+          || subTask.getTaskType() == TaskType.CheckForClusterServers
+          || subTask.getTaskType() == TaskType.CheckUnderReplicatedTablets) {
+        Assert.fail();
+      }
+    }
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(false))
+        .precheckTasks(new TaskType[0])
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToTservers()

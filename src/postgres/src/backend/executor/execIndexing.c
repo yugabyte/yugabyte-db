@@ -118,7 +118,7 @@
 
 /* Yugabyte includes */
 #include "catalog/pg_am_d.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "funcapi.h"
 #include "utils/relcache.h"
 
@@ -321,8 +321,8 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 	/* Check whether to apply noDupErr to this index */
 	applyNoDupErr = noDupErr &&
 		(arbiterIndexes == NIL ||
-			list_member_oid(arbiterIndexes,
-							indexRelation->rd_index->indexrelid));
+		 list_member_oid(arbiterIndexes,
+						 indexRelation->rd_index->indexrelid));
 
 	/*
 	 * The index AM does the actual insertion, plus uniqueness checking.
@@ -373,7 +373,7 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 					 checkUnique,	/* type of uniqueness check to do */
 					 indexUnchanged,	/* UPDATE without logical change? */
 					 indexInfo,
-					 false /* yb_shared_insert */);
+					 false /* yb_shared_insert */ );
 
 	/*
 	 * If the index has an associated exclusion constraint, check that.
@@ -416,11 +416,11 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 												 tupleid, values, isnull,
 												 estate, false,
 												 waitMode, violationOK, NULL,
-												 NULL /* ybConflictSlot */);
+												 NULL /* ybConflictSlot */ );
 	}
 
 	if ((checkUnique == UNIQUE_CHECK_PARTIAL ||
-			indexInfo->ii_ExclusionOps != NULL) &&
+		 indexInfo->ii_ExclusionOps != NULL) &&
 		!satisfiesConstraint)
 	{
 		/*
@@ -595,12 +595,13 @@ YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
 	if (!(IsYBRelation(heapRelation) && indexRelation->rd_index->indisprimary))
 	{
 		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-		yb_index_delete(indexRelation, /* index relation */
-						values,	/* array of index Datums */
-						isnull,	/* null flags */
-						ybctid,	/* ybctid */
+
+		yb_index_delete(indexRelation,	/* index relation */
+						values, /* array of index Datums */
+						isnull, /* null flags */
+						ybctid, /* ybctid */
 						heapRelation,	/* heap relation */
-						indexInfo);	/* index AM may need this */
+						indexInfo); /* index AM may need this */
 		MemoryContextSwitchTo(oldContext);
 	}
 }
@@ -623,7 +624,7 @@ ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tupl
 	Relation	heapRelation;
 	IndexInfo **indexInfoArray;
 	ExprContext *econtext;
-	TupleTableSlot	*slot;
+	TupleTableSlot *slot;
 	bool		isYBRelation;
 
 	/*
@@ -734,13 +735,14 @@ YbExecDoUpdateIndexTuple(ResultRelInfo *resultRelInfo,
 	FormIndexDatum(indexInfo, slot, estate, values, isnull);
 
 	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-	yb_index_update(indexRelation, /* index relation */
-					values,	/* array of index Datums */
-					isnull,	/* null flags */
+
+	yb_index_update(indexRelation,	/* index relation */
+					values,		/* array of index Datums */
+					isnull,		/* null flags */
 					oldYbctid,	/* old ybctid */
 					newYbctid,	/* ybctid */
-					resultRelInfo->ri_RelationDesc,	/* heap relation */
-					indexInfo);	/* index AM may need this */
+					resultRelInfo->ri_RelationDesc, /* heap relation */
+					indexInfo); /* index AM may need this */
 	MemoryContextSwitchTo(oldContext);
 }
 
@@ -760,13 +762,15 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 	RelationPtr relationDescs;
 	IndexInfo **indexInfoArray;
 	ExprContext *econtext;
-	TupleTableSlot	*deleteSlot;
-	List	   *insertIndexes = NIL; /* A list of indexes whose tuples need to be reinserted */
-	List	   *deleteIndexes = NIL; /* A list of indexes whose tuples need to be deleted */
+	TupleTableSlot *deleteSlot;
+	List	   *insertIndexes = NIL;	/* A list of indexes whose tuples need
+										 * to be reinserted */
+	List	   *deleteIndexes = NIL;	/* A list of indexes whose tuples need
+										 * to be deleted */
 	List	   *result = NIL;
-	Datum		newYbctid = is_pk_updated ?
-							YBCGetYBTupleIdFromSlot(slot) :
-							(Datum) NULL;
+	Datum		newYbctid = (is_pk_updated ?
+							 YBCGetYBTupleIdFromSlot(slot) :
+							 (Datum) NULL);
 
 	/*
 	 * Get information from the result relation info structure.
@@ -796,8 +800,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 	{
 		Relation	indexRelation = relationDescs[i];
 		IndexInfo  *indexInfo;
-		const AttrNumber offset =
-			YBGetFirstLowInvalidAttributeNumber(resultRelInfo->ri_RelationDesc);
+		const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(resultRelInfo->ri_RelationDesc);
 
 		/*
 		 * For an update command check if we need to skip index.
@@ -810,6 +813,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 			continue;
 
 		Form_pg_index indexData = indexRelation->rd_index;
+
 		/*
 		 * Primary key is a part of the base relation in Yugabyte and does not
 		 * need to be updated here.
@@ -878,7 +882,10 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 
 			if (!deleteApplicable)
 			{
-				/* Neither deletes nor updates applicable. Nothing to be done for this index. */
+				/*
+				 * Neither deletes nor updates applicable. Nothing to be done
+				 * for this index.
+				 */
 				continue;
 			}
 
@@ -968,10 +975,12 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		 * issue the deletes, followed by the inserts.
 		 */
 
-		int j = 0;
+		int			j = 0;
+
 		for (; j < indexData->indnkeyatts; j++)
 		{
 			const AttrNumber bms_idx = indexData->indkey.values[j] - offset;
+
 			if (bms_is_member(bms_idx, updatedCols))
 				break;
 		}
@@ -994,7 +1003,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 								 slot, ybctid, newYbctid, estate);
 	}
 
-	ListCell	*lc;
+	ListCell   *lc;
 	int			index;
 
 	econtext->ecxt_scantuple = deleteSlot;
@@ -1012,10 +1021,10 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		index = lfirst_int(lc);
 		if (YbExecDoInsertIndexTuple(resultRelInfo, relationDescs[index],
 									 indexInfoArray[index], slot, estate,
-									 false /* noDupErr */,
-									 NULL /* specConflict */,
-									 NIL /* arbiterIndexes */,
-									 true /* update */,
+									 false /* noDupErr */ ,
+									 NULL /* specConflict */ ,
+									 NIL /* arbiterIndexes */ ,
+									 true /* update */ ,
 									 tupleid))
 			result = lappend_oid(result, RelationGetRelid(relationDescs[index]));
 	}
@@ -1108,18 +1117,18 @@ ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 			* appropriate values for the column(s) of the index.
 			*/
 		FormIndexDatum(indexInfo,
-						slot,
-						estate,
-						values,
-						isnull);
+					   slot,
+					   estate,
+					   values,
+					   isnull);
 
 		satisfiesConstraint =
 			check_exclusion_or_unique_constraint(heapRelation, indexRelation,
-													indexInfo, &invalidItemPtr,
-													values, isnull, estate, false,
-													CEOUC_WAIT, true,
-													conflictTid,
-													ybConflictSlot);
+												 indexInfo, &invalidItemPtr,
+												 values, isnull, estate, false,
+												 CEOUC_WAIT, true,
+												 conflictTid,
+												 ybConflictSlot);
 		if (!satisfiesConstraint)
 			return false;
 	}
@@ -1232,13 +1241,13 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 
 	for (i = 0; i < indnkeyatts; i++)
 	{
+		/*
+		 * YB expects invalid strategy for NULL search.
+		 * See YbShouldPushdownScanPrimaryKey.
+		 */
 		ScanKeyEntryInitialize(&scankeys[i],
 							   isnull[i] ? SK_ISNULL | SK_SEARCHNULL : 0,
 							   i + 1,
-							   /*
-								* YB expects invalid strategy for NULL search.
-								* See YbShouldPushdownScanPrimaryKey.
-								*/
 							   isnull[i] ? InvalidStrategy : constr_strats[i],
 							   InvalidOid,
 							   index_collations[i],
@@ -1325,7 +1334,8 @@ retry:
 		 * code block.
 		 * TODO(Mikhail) Verify correctness in YugaByte transaction management for on-conflict.
 		 */
-		if (!IsYBRelation(heap)) {
+		if (!IsYBRelation(heap))
+		{
 			xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
 				DirtySnapshot.xmin : DirtySnapshot.xmax;
 
@@ -1355,7 +1365,8 @@ retry:
 		if (violationOK)
 		{
 			conflict = true;
-			if (IsYBRelation(heap)) {
+			if (IsYBRelation(heap))
+			{
 				Assert(!*ybConflictSlot);
 				*ybConflictSlot = existing_slot;
 			}
@@ -1433,7 +1444,7 @@ check_exclusion_constraint(Relation heap, Relation index,
 												values, isnull,
 												estate, newIndex,
 												CEOUC_WAIT, false, NULL,
-												NULL /* ybConflictSlot */);
+												NULL /* ybConflictSlot */ );
 }
 
 /*
@@ -1722,9 +1733,10 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 	 *   was never activated for single keys)
 	 * - it is likely less performant
 	 */
-	Datum dvalues[num_slots];
-	bool dnulls[num_slots];
-	int array_len = 0;
+	Datum		dvalues[num_slots];
+	bool		dnulls[num_slots];
+	int			array_len = 0;
+
 	for (i = 0; i < num_slots; ++i)
 	{
 		Datum		values[INDEX_MAX_KEYS];
@@ -1735,6 +1747,7 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 		 * to this slot.
 		 */
 		TupleTableSlot *slot = slots[i];
+
 		if (slot->tts_tableOid != resultRelInfo->ri_RelationDesc->rd_id)
 			continue;
 
@@ -1759,7 +1772,8 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 
 		if (!indexInfo->ii_NullsNotDistinct)
 		{
-			bool found_null = false;
+			bool		found_null = false;
+
 			for (int j = 0; j < indnkeyatts; j++)
 			{
 				if (isnull[j])
@@ -1816,7 +1830,7 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 	 * Create the array used for the RHS of the batch read RPC.
 	 * Parts copied from ExecEvalArrayExpr.
 	 */
-	ArrayType *result;
+	ArrayType  *result;
 	int			ndims = 0;
 	int			dims[MAXDIM];
 	int			lbs[MAXDIM];
@@ -1831,6 +1845,7 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 	if (indnkeyatts == 1)
 	{
 		FormData_pg_attribute att = index->rd_att->attrs[0];
+
 		elmtype = att.atttypid;
 		elmlen = att.attlen;
 		elmbyval = att.attbyval;
@@ -1851,9 +1866,11 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 
 	/* Fill the scan key used for the batch read RPC. */
 	ScanKeyData this_scan_key_data;
-	ScanKey this_scan_key = &this_scan_key_data;
-	int sk_retain_nulls_flag =
-		indexInfo->ii_NullsNotDistinct ? YB_SK_SEARCHARRAY_RETAIN_NULLS : 0;
+	ScanKey		this_scan_key = &this_scan_key_data;
+	int			sk_retain_nulls_flag = (indexInfo->ii_NullsNotDistinct ?
+										YB_SK_SEARCHARRAY_RETAIN_NULLS :
+										0);
+
 	if (indnkeyatts == 1)
 	{
 		ScanKeyEntryInitialize(this_scan_key,
@@ -1861,7 +1878,7 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 							   1,
 							   constr_strats[0],
 							   elmtype,
-							   index_collations[0],	/* TODO(jason): check this */
+							   index_collations[0], /* TODO(jason): check this */
 							   constr_procs[0],
 							   PointerGetDatum(result));
 	}
@@ -1878,7 +1895,7 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 								   InvalidOid,
 								   index_collations[i],
 								   constr_procs[i],
-								   0 /* argument */);
+								   0 /* argument */ );
 		}
 		scankeys[0].sk_argument = PointerGetDatum(result);
 		scankeys[indnkeyatts - 1].sk_flags |= SK_ROW_END;
@@ -1936,8 +1953,10 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 
 		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 		YbcPgInsertOnConflictKeyInfo info = {existing_slot};
-		YbcPgYBTupleIdDescriptor *descr =
-			YBCBuildUniqueIndexYBTupleId(index, existing_values, existing_isnull);
+		YbcPgYBTupleIdDescriptor *descr = YBCBuildUniqueIndexYBTupleId(index,
+																	   existing_values,
+																	   existing_isnull);
+
 		HandleYBStatus(YBCPgAddInsertOnConflictKey(descr, yb_ioc_state, &info));
 		MemoryContextSwitchTo(oldcontext);
 
@@ -1980,7 +1999,7 @@ YbShouldCheckUniqueOrExclusionIndex(IndexInfo *indexInfo,
 		return false;
 
 	Assert(indexInfo->ii_ReadyForInserts ==
-		indexRelation->rd_index->indisready);
+		   indexRelation->rd_index->indisready);
 
 	if (!indexInfo->ii_Unique && !indexInfo->ii_ExclusionOps)
 		return false;

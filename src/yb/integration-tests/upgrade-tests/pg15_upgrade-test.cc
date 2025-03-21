@@ -86,6 +86,21 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
   ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
   ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
 
+  // We should not be allowed to finalize before upgrading all tservers.
+  ASSERT_NOK_STR_CONTAINS(
+      FinalizeYsqlMajorCatalogUpgrade(),
+      "Cannot finalize YSQL major catalog upgrade before all yb-tservers have been upgraded to the "
+      "current version: yb-tserver(s) not on the correct version");
+  // We should not be allowed to rollback before rolling back all tservers.
+  ASSERT_NOK_STR_CONTAINS(
+      RollbackYsqlMajorCatalogVersion(),
+      "Cannot rollback YSQL major catalog while yb-tservers are running on a newer YSQL major "
+      "version: yb-tserver(s) not on the correct version");
+
+  ASSERT_NOK_STR_CONTAINS(
+      PromoteAutoFlags(),
+      "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
+
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
   {
@@ -100,7 +115,16 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
 
 TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
 
-TEST_F(Pg15UpgradeTest, SimpleTableRollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
+TEST_F(Pg15UpgradeTest, SimpleTableRollback) {
+  ASSERT_OK(TestRollbackWithSimpleTable());
+
+// Disabled the re-upgrade step on debug builds because it times out.
+#if defined(NDEBUG)
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+#endif
+}
 
 TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
@@ -782,8 +806,7 @@ TEST_F(Pg15UpgradeTest, Matviews) {
   ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3, 4, 5, 6, 7}));
 }
 
-// Blocked by #24226
-TEST_F(Pg15UpgradeTest, YB_DISABLE_TEST(PartitionedTables)) {
+TEST_F(Pg15UpgradeTest, PartitionedTables) {
   // Set up partitioned tables
   ASSERT_OK(ExecuteStatements({
     "CREATE TABLE t_r (v INT, z TEXT, PRIMARY KEY(v ASC)) PARTITION BY RANGE (v)",
@@ -1003,8 +1026,7 @@ TEST_F(Pg15UpgradeTest, Tablegroup) {
     "CREATE TABLE e(i text) TABLEGROUP test_grant",
     "CREATE INDEX ON e(i)"
   }));
-  ASSERT_OK(UpgradeClusterToMixedMode());
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 
   // After the upgrade, the tablegroup ACL must allow user_1 to create a table in the tablegroup,
   // but not user_2.
@@ -1029,16 +1051,15 @@ class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
     Pg15UpgradeTest::SetUpOptions(opts);
   }
 
-  Status ValidateUpgradeCompatibility() override {
+  Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte") override {
     setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
-    return Pg15UpgradeTest:: ValidateUpgradeCompatibility();
+    return Pg15UpgradeTest::ValidateUpgradeCompatibility(user_name);
   }
 };
 
 // Make sure upgrade succeeds in non auth universes even if there is no tserver on the master node.
 TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
-  static const MonoDelta no_delay_between_nodes = 0s;
-  ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
@@ -1046,18 +1067,16 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
   ASSERT_OK(master_tserver->Restart());
   ASSERT_OK(WaitForClusterToStabilize());
 
-  ASSERT_OK(RestartAllTServersInCurrentVersion(no_delay_between_nodes));
+  ASSERT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(FinalizeUpgrade());
 }
 
 // If there is no tserver on the master node make sure the upgrade fails unless the yugabyte_upgrade
 // user is created.
 TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
-  static const MonoDelta no_delay_between_nodes = 0s;
-
-// Disabled the rollback step on debug builds and MacOS because it times out.
-#if !defined(__APPLE__) && defined(NDEBUG)
-  ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
+// Disabled the rollback step on debug builds because it times out.
+#if defined(NDEBUG)
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   {
     auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
@@ -1069,7 +1088,7 @@ TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
 #endif
 
   // Rollback and create the upgrade user.
-  ASSERT_OK(RestartAllMastersInOldVersion(no_delay_between_nodes));
+  ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
 
   const auto password = "yugabyte";
   // Set the password in the environment variable, which will propagate it to all child processes
@@ -1079,7 +1098,7 @@ TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
   ASSERT_OK(ExecuteStatement(Format(
       "CREATE USER $0 WITH SUPERUSER PASSWORD '$1'", FLAGS_ysql_major_upgrade_user, password)));
 
-  ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
@@ -1087,12 +1106,20 @@ TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
   ASSERT_OK(master_tserver->Restart());
   ASSERT_OK(WaitForClusterToStabilize());
 
-  ASSERT_OK(RestartAllTServersInCurrentVersion(no_delay_between_nodes));
+  ASSERT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(FinalizeUpgrade());
 }
 
 TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
   ASSERT_OK(TestUpgradeWithSimpleTable());
+}
+
+TEST_F(Pg15UpgradeTestWithAuth, NoYugabyteUserPassword) {
+  ASSERT_OK(ExecuteStatement("ALTER USER yugabyte WITH PASSWORD NULL"));
+  ASSERT_NOK_STR_CONTAINS(cluster_->ConnectToDB(), "password authentication failed");
+
+  // We should still be able to upgrade the cluster.
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
 TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {
@@ -1262,10 +1289,7 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
   Pg15UpgradeSequenceTest() = default;
 
   void SetUp() override {
-    Pg15UpgradeTest::SetUp();
-    if (IsTestSkipped()) {
-      return;
-    }
+    TEST_SETUP_SUPER(Pg15UpgradeTest);
 
     ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
     // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
@@ -1406,18 +1430,6 @@ TEST_F(Pg15UpgradeTest, YbGinIndex) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, CheckPushdownIsDisabled) {
-  // Whether or not pushdown is enabled, pg_upgrade --check will not error.
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
-  ASSERT_OK(ValidateUpgradeCompatibility());
-
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "true"));
-  ASSERT_OK(ValidateUpgradeCompatibility());
-
-  // However, when we actually run the YSQL upgrade, pg_upgrade will error if pushdown is enabled.
-  ASSERT_NOK(UpgradeClusterToMixedMode());
-}
-
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
   ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
 
@@ -1483,4 +1495,161 @@ TEST_F(Pg15UpgradeSequenceTest, IdentityColumn) {
     ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
   }
 }
+
+TEST_F(Pg15UpgradeTest, Tablespaces) {
+  const auto simple_spc = "ts_invalid";
+  const auto pg11_spc = "ts11";
+  const auto pg15_spc = "ts15";
+  const auto simple_tbl = "tbl_invalid";
+  const auto pg11_tbl = "tbl11";
+  const auto pg15_tbl = "tbl15";
+  const auto create_table = "CREATE TABLE $0 (a int) TABLESPACE $1";
+  const auto create_tablespace = R"#(
+    CREATE TABLESPACE $0 WITH (replica_placement='{
+      "num_replicas" : 1,
+      "placement_blocks": [{
+        "cloud"            : "cloud1",
+        "region"           : "datacenter1",
+        "zone"             : "rack1",
+        "min_num_replicas" : 1
+      }]
+    }')
+  )#";
+
+  std::map<std::string, int> expected_rows = {
+    {simple_tbl, 0},
+    {pg11_tbl, 0},
+    {pg15_tbl, 0}
+  };
+
+  std::map<std::string, std::string> expected_tablespaces = {
+    {simple_tbl, simple_spc},
+    {pg11_tbl, pg11_spc},
+  };
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE $0 LOCATION '/invalid'", simple_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_tablespace, pg11_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_table, pg11_tbl, pg11_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_table, simple_tbl, simple_spc));
+  }
+
+  const auto check_tablespace = [this, &expected_tablespaces, &expected_rows]() -> Status {
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
+    for (const auto &[tbl, spc] : expected_tablespaces) {
+      auto tblspace_name_result = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
+        "SELECT spcname FROM pg_tablespace ts "
+        "INNER JOIN pg_class pg_c ON pg_c.reltablespace = ts.oid "
+        "WHERE pg_c.relname = '$0'",
+        tbl)));
+      SCHECK_EQ(tblspace_name_result, spc, IllegalState, "Tablespace name mismatch");
+
+      // Insert and validate row count
+      RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", tbl));
+      SCHECK_EQ(
+          ++expected_rows[tbl],
+          VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(Format("SELECT COUNT(*) FROM $0", tbl))),
+          IllegalState,
+          Format("Row count mismatch for table $0", tbl));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_OK(check_tablespace());
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_OK(check_tablespace());
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.ExecuteFormat(create_tablespace, pg15_spc));
+    ASSERT_OK(conn.ExecuteFormat(create_table, pg15_tbl, pg15_spc));
+    expected_tablespaces[pg15_tbl] = pg15_spc;
+  }
+
+  ASSERT_OK(check_tablespace());
+}
+
+TEST_F(Pg15UpgradeTest, DroppedColumnTest) {
+  const auto insert_stmt = "INSERT INTO t VALUES ($0)";
+  const auto kT1SelectStmt = "SELECT * FROM t ORDER BY a";
+  const auto kT2SelectStmt = "SELECT * FROM t2 ORDER BY a2";
+  std::string t1_expected_rows = "1, 3, NULL, foo; 11, 13, NULL, foo; 21, 23, 24, foo";
+  size_t next_row = 30;
+  const auto kT2ExpectedRows = "2, 2000, 1";
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (a int, b int, c int)"));
+    ASSERT_OK(conn.ExecuteFormat(insert_stmt, "1, 2, 3"));
+    ASSERT_OK(conn.ExecuteFormat(insert_stmt, "11, 12, 13"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t DROP COLUMN b"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN d int"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN e text DEFAULT 'foo'"));
+    ASSERT_OK(conn.ExecuteFormat(insert_stmt, "21, 23, 24"));
+
+    auto result = ASSERT_RESULT(conn.FetchAllAsString(kT1SelectStmt));
+    ASSERT_EQ(result, t1_expected_rows);
+
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE t2 (a2 int, b2 int, c2 int, d2 int, PRIMARY KEY(d2 HASH, a2 ASC))"));
+    ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP COLUMN b2"));
+    ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (2, 2000, 1)"));
+  }
+
+  auto run_validations = [&](std::optional<size_t> ts_id = std::nullopt) -> Status {
+    const auto kT1ExpectedCols = "a, 1; ........pg.dropped.2........, 2; c, 3; d, 4; e, 5";
+    const auto kT2ExpectedCols = "a2, 1; ........pg.dropped.2........, 2; c2, 3; d2, 4";
+
+    auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
+    auto result = VERIFY_RESULT(
+        conn.FetchAllAsString("SELECT attname, attnum FROM pg_attribute WHERE attrelid = "
+                              "'t'::pg_catalog.regclass AND attnum >= 0 ORDER BY attnum"));
+    SCHECK_EQ(result, kT1ExpectedCols, IllegalState, "t1 validation failed");
+
+    result = VERIFY_RESULT(
+        conn.FetchAllAsString("SELECT attname, attnum FROM pg_attribute WHERE attrelid = "
+                              "'t2'::pg_catalog.regclass AND attnum >= 0"));
+    SCHECK_EQ(result, kT2ExpectedCols, IllegalState, "t2 validation failed");
+
+    result = VERIFY_RESULT(conn.FetchAllAsString(kT2SelectStmt));
+    SCHECK_EQ(result, kT2ExpectedRows, IllegalState, "Mismatch in t2 rows");
+
+    result = VERIFY_RESULT(conn.FetchAllAsString(kT1SelectStmt));
+    SCHECK_EQ(result, t1_expected_rows, IllegalState, "Mismatch in t1 rows");
+
+    const auto next_value = Format("$0, $1, $2", next_row + 1, next_row + 3, next_row + 4);
+    next_row += 10;
+    RETURN_NOT_OK(conn.ExecuteFormat(insert_stmt, next_value));
+    t1_expected_rows += Format("; $0, foo", next_value);
+
+    result = VERIFY_RESULT(conn.FetchAllAsString(kT1SelectStmt));
+    SCHECK_EQ(result, t1_expected_rows, IllegalState, "Mismatch in t1 rows after insert");
+
+    return Status::OK();
+  };
+
+  ASSERT_OK(run_validations());
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_OK(run_validations(kMixedModeTserverPg11));
+  ASSERT_OK(run_validations(kMixedModeTserverPg15));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_OK(run_validations());
+}
+
+TEST_F(Pg15UpgradeTest, YbSuperuserRole) {
+  ASSERT_OK(ExecuteStatements(
+      {"CREATE ROLE \"yb_superuser\" INHERIT CREATEROLE CREATEDB BYPASSRLS",
+       "GRANT \"pg_read_all_stats\" TO \"yb_superuser\""}));
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+}
+
 }  // namespace yb

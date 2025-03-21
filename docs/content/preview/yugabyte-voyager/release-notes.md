@@ -13,6 +13,84 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.13 - March 11, 2025
+
+### Enhancements
+
+- Merged the ALTER TABLE ADD constraints DDL (Primary Key, Unique Key, and Check Constraints) with the CREATE TABLE statement, reducing the number of DDLs to analyze/review and improving overall import schema performance.
+- Introduced a guardrails check to ensure live migration uses a single, fixed table list throughout the migration, preventing any changes to the table list once the migration has started.
+
+### Bug Fixes
+
+- Fixed an issue where the `iops-capture-interval` flag in the assess-migration command did not honor the user-defined value and always defaulted to its preset.
+- Fixed an issue in the IOPs calculation logic, ensuring it counts the number of scans (both sequential and index) instead of using `seq_tup_read` for read statistics.
+- Fixed an issue causing a NumberFormatException during the cutover phase of live migration if a sequence was assigned to a non-integer column.
+- Fixed an issue leading to a nil pointer exception when sending the diagnostics for import data to the source/source-replica.
+- Fixed an issue where importing data to the target for a new migration (if CDC was enabled in a previous run) failed due to ALTER operations on metadata tables carrying over from the last migration.
+
+## v1.8.12 - February 25, 2025
+
+### Enhancements
+
+- Added support for installing yb-voyager on RHEL 9.
+- Installer script now installs the postgres-17-client package on Ubuntu instead of postgresql-17.
+- Improved import-data snapshot performance by importing multiple tables at the same time.
+- Enhanced the grant permissions script for PostgreSQL 15 and later to grant the SET permission on `session_replication_role` to source-db-user. This eliminates the need for you to disable Foreign Keys and triggers on the source database before running import-data-to-source.
+
+## v1.8.11 - February 11, 2025
+
+### ​​Enhancements
+
+- Updated the Assessment and Schema Analysis reports to detect the following unsupported PostgreSQL features:
+  - Listen / Notify events
+  - Two-Phase Commit
+  - Setting compression method with COMPRESSION clause in CREATE / ALTER TABLE
+  - Create Database options for locale, collation, strategy, and OID-related settings
+- Enhanced the JSON assessment report to include only the new assessment issue format, removing the old format that used separate fields for each issue category.
+- The import data status command now reports tables where the import has not yet started, improving visibility for bulk imports (import data file).
+- The assess-migration command now checks the source database IOPS and issues a warning if it is zero.
+
+### Bug fixes
+
+- Fixed the status reporting via import data status when resuming the import for tables from a CSV data file that includes a header row.
+- Fixed the guardrail checks for live migration in Oracle and MySQL by removing the ora2pg dependency check.
+
+## v1.8.10 - January 28, 2025
+
+### Enhancements
+
+- **Air-gapped Installation:** Improved air-gapped installation to no longer require `gcc` on the client machine running `yb-voyager`.
+- **Enhanced Assessment and Schema Analysis reports:**
+  - Enhanced the **Assessment Report** with a single section summarizing all issues in a table. Each issue includes a summary and an expandable section for more details. You can now sort issues based on criteria such as category, type, or impact.
+  - Detects the following unsupported features from PostgreSQL -
+    - SQL Body in Create Function
+    - Common table expressions (WITH queries) that have MATERIALIZED clause.
+    - Non-decimal integer literals
+  - When running assess-migration/analyze-schema against YugabyteDB {{<release "2.25.0.0">}} and later, the following issues are no longer reported, as they are fixed:
+    - Stored generated columns
+    - Before Row triggers on partitioned tables
+    - Multi-range datatypes
+    - Security invoker issues
+    - Deterministic attribute with COLLATION
+    - Foreign key references to partitioned tables
+    - SQL body in function
+    - Unique Nulls Not distinct
+    - Regex functions
+    - Range aggregate functions
+    - JSONB subscripting
+    - Copy FROM .. WHERE
+    - CTE with Materialized clause
+- **yugabyted control plane:** Enhanced the information sent to yugabyted for the migration assessment phase to also include the Migration Complexity Explanation.
+
+### Bug fixes
+
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2155) where data migration for the `hstore` datatype in live migration from source PostgreSQL was failing with errors and causing panics during the `import-data` step.
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2200) in `import schema` where SQL bodies in `FUNCTION` DDL statements were not being parsed correctly.
+
+## v1.8.9.1 - January 20, 2025
+
+- Fixed a [regression](https://github.com/yugabyte/yb-voyager/issues/2204) introduced in v1.8.8, for password authentication in the `import data` command, where the command fails with error `failed to connect to target-host server error (FATAL: password authentication failed for user (SQLSTATE 28P01)`.
+
 ## v1.8.9 - January 14, 2025
 
 ### New features
@@ -23,18 +101,18 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - Enhanced Assessment and Schema Analysis Reports to detect unsupported PostgreSQL features from PG 12 up to PG 17, including:
-  - Regexp functions (regexp_count, regexp_instr, regexp_like)
-  - Security Invoker Views
-  - JSON constructor and JSON Query functions
-  - IS_JSON predicate clauses (IS_JSON, IS JSON SCALAR, IS JSON OBJECT, IS JSON ARRAY)
-  - Aggregate functions, such as anyvalue, range_agg, range_intersect_agg
-  - COPY command syntax, such as COPY FROM ... WHERE and COPY ... ON_ERROR
-  - Multirange datatypes, like int4multirange, int8multirange, datemultirange, and so on
-  - FETCH FIRST … WITH TIES subclause in SELECT statement
-  - Foreign Key referencing a partitioned table
-  - JSONB subscripting in DML, DDL, or PL/PGSQL
-  - UNIQUE NULLS NOT DISTINCT in CREATE/ALTER TABLE statement
-  - The deterministic attribute in CREATE COLLATION
+  - Regexp functions (regexp_count, regexp_instr, regexp_like).
+  - Security Invoker Views.
+  - JSON constructor and JSON Query functions.
+  - IS_JSON predicate clauses (IS_JSON, IS JSON SCALAR, IS JSON OBJECT, IS JSON ARRAY).
+  - Aggregate functions, such as anyvalue, range_agg, range_intersect_agg.
+  - COPY command syntax, such as COPY FROM ... WHERE and COPY ... ON_ERROR.
+  - Multirange datatypes, like int4multirange, int8multirange, datemultirange, and so on.
+  - FETCH FIRST … WITH TIES subclause in SELECT statement.
+  - Foreign Key referencing a partitioned table.
+  - JSONB subscripting in DML, DDL, or PL/PGSQL.
+  - UNIQUE NULLS NOT DISTINCT in CREATE/ALTER TABLE statement.
+  - The deterministic attribute in CREATE COLLATION.
   - MERGE statements.
 
 ### Bug fixes
@@ -310,7 +388,7 @@ To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CON
 
 ### Enhancements
 
-- The live migration workflow has been optimized for [Importing indexes and triggers](../migrate/live-migrate/#import-indexes-and-triggers) on the target YugabyteDB. Instead of creating indexes on target after cutover, they can now be created concurrently with the CDC phase of `import-data-to-target`. This ensures that the time consuming task of creating indexes on the target YugabyteDB is completed before the cutover process.
+- The live migration workflow has been optimized for [Importing indexes and triggers](../migrate/live-migrate/#import-data-to-target) on the target YugabyteDB. Instead of creating indexes on target after cutover, they can now be created concurrently with the CDC phase of `import-data-to-target`. This ensures that the time consuming task of creating indexes on the target YugabyteDB is completed before the cutover process.
 
 - The `--post-import-data` flag of import schema has been renamed to `--post-snapshot-import` to incorporate live migration workflows.
 

@@ -1,4 +1,4 @@
 # contrib/passwordcheck/yb_schedule
 
-test: yb_pg_passwordcheck
-test: yb_pg_passwordcheck_extra
+test: yb.port.passwordcheck
+test: yb.port.passwordcheck_extra

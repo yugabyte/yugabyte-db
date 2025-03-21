@@ -4,10 +4,10 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This suite includes all tests on datatypes that are enabled for YugaByte.
 ####################################################################################################
-test: yb_pg_boolean
+test: yb.port.boolean
 # LOG sequence number
-test: yb_pg_pg_lsn
-test: yb_pg_inet
-test: yb_pg_macaddr
-test: yb_pg_macaddr8
-test: yb_hash_func
+test: yb.port.pg_lsn
+test: yb.port.inet
+test: yb.port.macaddr
+test: yb.port.macaddr8
+test: yb.orig.hash_func

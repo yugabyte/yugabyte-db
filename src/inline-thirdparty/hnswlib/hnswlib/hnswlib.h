@@ -122,21 +122,21 @@ static bool AVX512Capable() {
 #include <string.h>
 
 namespace hnswlib {
-typedef size_t labeltype;
 
 // This can be extended to store state for filtering (e.g. from a std::set)
+template<typename label_t>
 class BaseFilterFunctor {
  public:
-    virtual bool operator()(hnswlib::labeltype id) { return true; }
+    virtual bool operator()(label_t id) { return true; }
     virtual ~BaseFilterFunctor() {};
 };
 
-template<typename dist_t>
+template<typename dist_t, typename label_t>
 class BaseSearchStopCondition {
  public:
-    virtual void add_point_to_result(labeltype label, const void *datapoint, dist_t dist) = 0;
+    virtual void add_point_to_result(label_t label, const void *datapoint, dist_t dist) = 0;
 
-    virtual void remove_point_from_result(labeltype label, const void *datapoint, dist_t dist) = 0;
+    virtual void remove_point_from_result(label_t label, const void *datapoint, dist_t dist) = 0;
 
     virtual bool should_stop_search(dist_t candidate_dist, dist_t lowerBound) = 0;
 
@@ -144,7 +144,7 @@ class BaseSearchStopCondition {
 
     virtual bool should_remove_extra() = 0;
 
-    virtual void filter_results(std::vector<std::pair<dist_t, labeltype >> &candidates) = 0;
+    virtual void filter_results(std::vector<std::pair<dist_t, label_t >> &candidates) = 0;
 
     virtual ~BaseSearchStopCondition() {}
 };
@@ -183,17 +183,17 @@ class SpaceInterface {
     virtual ~SpaceInterface() {}
 };
 
-template<typename dist_t>
+template<typename dist_t, typename label_t>
 class AlgorithmInterface {
  public:
-    virtual void addPoint(const void *datapoint, labeltype label, bool replace_deleted = false) = 0;
+    virtual void addPoint(const void *datapoint, label_t label, bool replace_deleted = false) = 0;
 
-    virtual std::priority_queue<std::pair<dist_t, labeltype>>
-        searchKnn(const void*, size_t, BaseFilterFunctor* isIdAllowed = nullptr) const = 0;
+    virtual std::priority_queue<std::pair<dist_t, label_t>>
+        searchKnn(const void*, size_t, BaseFilterFunctor<label_t>* isIdAllowed = nullptr) const = 0;
 
     // Return k nearest neighbor in the order of closer fist
-    virtual std::vector<std::pair<dist_t, labeltype>>
-        searchKnnCloserFirst(const void* query_data, size_t k, BaseFilterFunctor* isIdAllowed = nullptr) const;
+    virtual std::vector<std::pair<dist_t, label_t>>
+        searchKnnCloserFirst(const void* query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr) const;
 
     virtual void saveIndex(const std::string &location) = 0;
 
@@ -203,11 +203,11 @@ class AlgorithmInterface {
     }
 };
 
-template<typename dist_t>
-std::vector<std::pair<dist_t, labeltype>>
-AlgorithmInterface<dist_t>::searchKnnCloserFirst(const void* query_data, size_t k,
-                                                 BaseFilterFunctor* isIdAllowed) const {
-    std::vector<std::pair<dist_t, labeltype>> result;
+template<typename dist_t, typename label_t>
+std::vector<std::pair<dist_t, label_t>>
+AlgorithmInterface<dist_t, label_t>::searchKnnCloserFirst(
+        const void* query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed) const {
+    std::vector<std::pair<dist_t, label_t>> result;
 
     // here searchKnn returns the result in the order of further first
     auto ret = searchKnn(query_data, k, isIdAllowed);

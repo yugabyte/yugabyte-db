@@ -65,6 +65,7 @@ The following S3 IAM permissions are required:
 "s3:PutObject",
 "s3:GetObject",
 "s3:ListBucket",
+"s3:ListAllMyBuckets",
 "s3:GetBucketLocation"
 ```
 
@@ -117,7 +118,7 @@ For instructions on setting up Workload Identity, see [Use Workload Identity](ht
 
 To enable GCP IAM when installing YugabyteDB Anywhere, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
 
-To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides).
+To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
 
 To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 

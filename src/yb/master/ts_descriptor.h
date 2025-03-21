@@ -84,17 +84,14 @@ namespace master {
 class TSRegistrationPB;
 class TSInformationPB;
 class TServerMetricsPB;
+class RefreshYsqlLeaseInfoPB;
 
-struct ClientOperationLeaseUpdate {
-  ClientOperationLeaseUpdate() :
-    lease_deadline(HybridTime()),
-    new_lease(false) {}
+struct YsqlLeaseUpdate {
 
-  HybridTime lease_deadline;
-  bool new_lease;
-  uint64_t lease_epoch;
+  bool new_lease = false;
+  uint64_t lease_epoch = 0;
 
-  ClientOperationLeaseUpdatePB ToPB();
+  RefreshYsqlLeaseInfoPB ToPB();
 };
 
 using ProxyTuple = util::SharedPtrTuple<
@@ -104,8 +101,9 @@ using ProxyTuple = util::SharedPtrTuple<
   cdc::CDCServiceProxy,
   consensus::ConsensusServiceProxy>;
 
-struct PersistentTServerInfo
-    : public Persistent<SysTabletServerEntryPB> {};
+struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
+  bool IsLive() const;
+};
 
 // Master-side view of a single tablet server.
 //
@@ -132,7 +130,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   static TSDescriptorPtr LoadFromEntry(
       const std::string& permanent_uuid, const SysTabletServerEntryPB& metadata,
-      CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache, HybridTime now);
+      CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache, MonoTime load_time);
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
@@ -146,8 +144,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // from the heartbeat request. This method also validates that this is the latest heartbeat
   // request received from the tserver. If not, this method does no mutations and returns an error
   // status.
-  Result<std::optional<ClientOperationLeaseUpdate>> UpdateFromHeartbeat(
-      const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock, HybridTime hybrid_time);
+  Status UpdateFromHeartbeat(const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
 
   // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
@@ -345,16 +342,17 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
-  std::pair<std::optional<TSDescriptor::WriteLock>, std::optional<uint64_t>> MaybeUpdateLiveness(
-      MonoTime mono_time, HybridTime hybrid_time) EXCLUDES(mutex_);
+  std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>> MaybeUpdateLiveness(
+      MonoTime time) EXCLUDES(mutex_);
 
-  bool HasLiveClientOperationLease() const;
+  std::pair<YsqlLeaseUpdate, std::optional<TSDescriptor::WriteLock>> RefreshYsqlLease();
+
+  bool HasLiveYsqlOperationLease() const;
 
  private:
   mutable rw_spinlock mutex_;
   template <class TProxy>
-  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
-                          std::shared_ptr<TProxy>* result_cache);
+  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result, std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
@@ -416,7 +414,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
 
-  HybridTime client_operation_lease_deadline_ GUARDED_BY(mutex_);
+  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
 
   // The physical and hybrid times on the tserver represented by this object at the time it sent the
   // last heartbeat received by this master.

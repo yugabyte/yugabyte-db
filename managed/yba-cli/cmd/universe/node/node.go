@@ -25,15 +25,16 @@ var NodeCmd = &cobra.Command{
 
 func init() {
 	NodeCmd.Flags().SortFlags = false
-	// stop -> remove -> release
-	NodeCmd.AddCommand(addNodeCmd)
+	NodeCmd.PersistentFlags().SortFlags = false
 	NodeCmd.AddCommand(startNodeCmd)
 	NodeCmd.AddCommand(rebootNodeCmd)
 	NodeCmd.AddCommand(listNodeCmd)
 	NodeCmd.AddCommand(stopNodeCmd)
-	NodeCmd.AddCommand(removeNodeCmd)
 	NodeCmd.AddCommand(reprovisionNodeCmd)
-	NodeCmd.AddCommand(releaseNodeCmd)
+	NodeCmd.AddCommand(decommissionNodeCmd)
+	NodeCmd.AddCommand(replaceNodeCmd)
+	NodeCmd.AddCommand(hardRebootNodeCmd)
+	NodeCmd.AddCommand(startMasterNodeCmd)
 
 	NodeCmd.PersistentFlags().StringP("name", "n", "",
 		"[Required] The name of the universe for the corresponding node operations.")

@@ -1,0 +1,5 @@
+# Dependency for yb_cacheinfo and yb_catalog_cache_hashing
+test: yb.orig.create_function
+
+test: yb.orig.cacheinfo
+test: yb.orig.catalog_cache_hashing

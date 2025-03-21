@@ -365,7 +365,7 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
                  bool need_full_metadata,
                  tserver::WriteRequestPB* req) {
   SetMetadata(metadata, need_full_metadata, req->mutable_write_batch());
-  if (metadata.background_transaction_id) {
+  if (metadata.background_transaction_meta) {
     // Indicates an attempt to acquire either a session-level or transaction-level advisory lock.
     // The background_transaction_id ensures no conflicts occur between session-level and
     // transaction-level advisory locks within the same session.
@@ -375,7 +375,10 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
     //   the session-level transaction, if exists. Note that a session level transaction is only
     //   created on demand when we encounter a session advisory lock request.
     req->mutable_write_batch()->set_background_transaction_id(
-        metadata.background_transaction_id->data(), metadata.background_transaction_id->size());
+        metadata.background_transaction_meta->transaction_id.data(),
+        metadata.background_transaction_meta->transaction_id.size());
+    req->mutable_write_batch()->set_background_txn_status_tablet(
+        metadata.background_transaction_meta->status_tablet);
   }
   if (metadata.pg_session_req_version) {
     // Populate the current request version for a session level transaction. This is used to unblock
@@ -399,6 +402,7 @@ template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     const AsyncRpcData& data, YBConsistencyLevel consistency_level)
     : AsyncRpc(data, consistency_level) {
+  // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
@@ -439,7 +443,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
 
 template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::~AsyncRpcBase() {
-  req_.release_tablet_id();
+  (void) req_.release_tablet_id();
 }
 
 template <class Req, class Resp>
@@ -596,7 +600,10 @@ template <class Repeated>
 void ReleaseOps(Repeated* repeated) {
   auto size = repeated->size();
   if (size) {
-    repeated->ExtractSubrange(0, size, nullptr);
+    // ExtractSubrange with nullptr for last argument will hit debug assertion, probably due to
+    // unsafety with arenas. We don't use arenas here, so it's not an issue, and
+    // UnsafeArenaExtractSubrange provides the same behavior (but without DCHECK).
+    repeated->UnsafeArenaExtractSubrange(0, size, nullptr);
   }
 }
 

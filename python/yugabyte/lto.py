@@ -418,7 +418,7 @@ class LinkHelper:
             ldd_output_line_match = LDD_OUTPUT_LINE_RE.match(line)
             if ldd_output_line_match:
                 so_name = ldd_output_line_match.group(1)
-                so_path = ldd_output_line_match.group(2)
+                so_path = os.path.realpath(ldd_output_line_match.group(2))
                 if so_path.startswith(self.thirdparty_path + '/'):
                     static_lib_path = self.convert_to_static_lib(so_path)
                     if static_lib_path:

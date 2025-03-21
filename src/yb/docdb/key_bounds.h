@@ -77,6 +77,13 @@ struct DocDB {
   }
 };
 
+// Contains encoded partition start/end key. See description for
+// PartitionSchema::GetEncodedPartitionKey.
+struct EncodedPartitionBounds {
+  KeyBuffer start_key;
+  KeyBuffer end_key;
+};
+
 // Checks whether key belongs to specified key_bounds, always true if key_bounds is nullptr.
 bool IsWithinBounds(const KeyBounds* key_bounds, const Slice& key);
 

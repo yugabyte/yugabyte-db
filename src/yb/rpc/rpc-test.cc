@@ -671,7 +671,7 @@ TEST_F(TestRpc, TestSendingReceivingMemTrackers) {
 
 Result<MetricPtr> GetMetric(
     const MetricEntityPtr& metric_entity, const MetricPrototype& prototype) {
-  const auto& metric_map = metric_entity->UnsafeMetricsMapForTests();
+  const auto& metric_map = metric_entity->TEST_UsageMetricsMap();
 
   auto it = metric_map.find(&prototype);
   if (it == metric_map.end()) {

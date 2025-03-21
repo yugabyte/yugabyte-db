@@ -130,6 +130,14 @@ YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
 
+struct AdminCompactionOptions {
+  const bool should_wait;
+  TableIdsPtr vector_index_ids;
+
+  explicit AdminCompactionOptions(bool should_wait_) : should_wait(should_wait_)
+  {}
+};
+
 // Keeps track of the tablets hosted on the tablet server side.
 //
 // TODO: will also be responsible for keeping the local metadata about
@@ -395,7 +403,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.
-  Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
+  Status TriggerAdminCompaction(const TabletPtrs& tablets, const AdminCompactionOptions& options);
 
   // Create Metadata cache atomically and return the metadata cache object.
   client::YBMetaDataCache* CreateYBMetaDataCache();
@@ -627,7 +635,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
       const std::string& source_addr, const std::string& debug_session_string);
 
-  rpc::ThreadPool* VectorIndexThreadPool();
+  void UpdateCompactFlushRateLimitBytesPerSec();
+
+  rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
 
   const CoarseTimePoint start_time_;
 
@@ -804,8 +814,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
+  // Callback for FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec update handling.
+  FlagCallbackRegistration rate_limiter_flag_callback_;
+
   std::mutex vector_index_thread_pool_mutex_;
-  AtomicUniquePtr<rpc::ThreadPool> vector_index_thread_pool_;
+  std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
+      vector_index_thread_pools_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

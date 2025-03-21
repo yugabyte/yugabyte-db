@@ -30,15 +30,17 @@
 #include "funcapi.h"
 #include "nodes/execnodes.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
-#define YB_WAIT_EVENT_DESC_COLS 4
+#define YB_WAIT_EVENT_DESC_COLS_V1 4
+#define YB_WAIT_EVENT_DESC_COLS_V2 5
 
 static const char *yb_not_applicable =
-	"Inherited from PostgreSQL. Check "
-	"https://www.postgresql.org/docs/current/monitoring-stats.html "
-	"for description.";
+"Inherited from PostgreSQL. Check "
+"https://www.postgresql.org/docs/current/monitoring-stats.html "
+"for description.";
 
 static const char *pgstat_get_wait_activity(WaitEventActivity w);
 static const char *pgstat_get_wait_client(WaitEventClient w);
@@ -61,7 +63,8 @@ uint32	   *my_wait_event_info = &local_my_wait_event_info;
 static YbcWaitEventInfo yb_local_my_wait_event_info;
 YbcWaitEventInfoPtr yb_my_wait_event_info = {
 	&yb_local_my_wait_event_info.wait_event,
-	&yb_local_my_wait_event_info.rpc_code};
+	&yb_local_my_wait_event_info.rpc_code,
+};
 
 
 /*
@@ -102,9 +105,11 @@ pgstat_reset_wait_event_storage(void)
 void
 yb_pgstat_set_wait_event_storage(PGPROC *proc)
 {
-	yb_my_wait_event_info = (YbcWaitEventInfoPtr){
+	yb_my_wait_event_info = (YbcWaitEventInfoPtr)
+	{
 		&proc->wait_event_info,
-		&proc->yb_rpc_code};
+			&proc->yb_rpc_code,
+	};
 
 	/* pgstat_report_wait_start updates my_wait_event_info */
 	my_wait_event_info = &proc->wait_event_info;
@@ -119,9 +124,11 @@ yb_pgstat_set_wait_event_storage(PGPROC *proc)
 void
 yb_pgstat_reset_wait_event_storage(void)
 {
-	yb_my_wait_event_info = (YbcWaitEventInfoPtr){
+	yb_my_wait_event_info = (YbcWaitEventInfoPtr)
+	{
 		&yb_local_my_wait_event_info.wait_event,
-		&yb_local_my_wait_event_info.rpc_code};
+			&yb_local_my_wait_event_info.rpc_code,
+	};
 
 	my_wait_event_info = &local_my_wait_event_info;
 }
@@ -326,7 +333,7 @@ pgstat_get_wait_activity(WaitEventActivity w)
 			event_name = "YbAshMain";
 			break;
 		case WAIT_EVENT_YB_ACTIVITY_END:
-			Assert(false); /* should not be used to instrument */
+			Assert(false);		/* should not be used to instrument */
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -372,7 +379,7 @@ pgstat_get_wait_client(WaitEventClient w)
 			event_name = "WalSenderWriteData";
 			break;
 		case WAIT_EVENT_YB_CLIENT_END:
-			Assert(false); /* should not be used to instrument */
+			Assert(false);		/* should not be used to instrument */
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -550,7 +557,7 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 			event_name = "YBParallelScanEmpty";
 			break;
 		case WAIT_EVENT_YB_IPC_END:
-			Assert(false); /* should not be used to instrument */
+			Assert(false);		/* should not be used to instrument */
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -599,7 +606,7 @@ pgstat_get_wait_timeout(WaitEventTimeout w)
 			event_name = "YBTxnConflictBackoff";
 			break;
 		case WAIT_EVENT_YB_TIMEOUT_END:
-			Assert(false); /* should not be used to instrument */
+			Assert(false);		/* should not be used to instrument */
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -846,7 +853,7 @@ pgstat_get_wait_io(WaitEventIO w)
 			event_name = "CopyCommandStreamWrite";
 			break;
 		case WAIT_EVENT_YB_IO_END:
-			Assert(false); /* should not be used to instrument */
+			Assert(false);		/* should not be used to instrument */
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -1191,6 +1198,9 @@ yb_get_wait_lwlock_desc(BuiltinTrancheIds tranche_id)
 		case LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER:
 			desc = "A YSQL backend is waiting for YB query diagnostics circular buffer memory access.";
 			break;
+		case LWTRANCHE_YB_TERMINATED_QUERIES:
+			desc = "A YSQL backend is waiting for YB terminated queries buffer memory access.";
+			break;
 		case LWTRANCHE_LOCK_FASTPATH:
 		case LWTRANCHE_MULTIXACTMEMBER_BUFFER:
 		case LWTRANCHE_MULTIXACTOFFSET_BUFFER:
@@ -1230,8 +1240,10 @@ static void
 yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 						Tuplestorestate *tupstore)
 {
-	Datum		values[YB_WAIT_EVENT_DESC_COLS];
-	bool		nulls[YB_WAIT_EVENT_DESC_COLS];
+	int			ncols = YbGetNumberOfFunctionOutputColumns(F_YB_WAIT_EVENT_DESC);
+	Datum		values[ncols];
+	bool		nulls[ncols];
+
 	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, 0, sizeof(nulls));
 
@@ -1239,6 +1251,8 @@ yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 	values[1] = CStringGetTextDatum(pgstat_get_wait_event_type(code));
 	values[2] = CStringGetTextDatum(pgstat_get_wait_event(code));
 	values[3] = CStringGetTextDatum(desc);
+	if (ncols >= YB_WAIT_EVENT_DESC_COLS_V2)
+		values[4] = YBCAshRemoveComponentFromWaitStateCode(UInt32GetDatum(code));
 
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 }
@@ -1341,7 +1355,7 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	/* description related to lwlocks */
 	for (i = 0; i < LWTRANCHE_FIRST_USER_DEFINED; ++i)
 	{
-		if (i == 0 || i == 10 || i == 45) /* deprecated, see lwlocknames.txt */
+		if (i == 0 || i == 10 || i == 45)	/* deprecated, see lwlocknames.txt */
 			continue;
 
 		yb_insert_pg_events(PG_WAIT_LWLOCK | i, tupdesc, tupstore);
@@ -1351,4 +1365,15 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
+}
+
+bool
+YbIsIdleWaitEvent(uint32 wait_event_info)
+{
+	uint32		classId = wait_event_info & 0xFF000000;
+
+	if (classId == PG_WAIT_ACTIVITY || classId == PG_WAIT_EXTENSION)
+		return true;
+
+	return false;
 }

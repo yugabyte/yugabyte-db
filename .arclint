@@ -5,7 +5,6 @@
      "(src/yb/common/ql_type[.]cc$)",
      "(src/yb/gutil/valgrind[.]h$)",
      "([.]ipynb$)",
-     "([.]sql$)",
      "([.]txt$)",
      "(^src/odyssey/.*$)",
      "(^src/inline-thirdparty/.*$)",
@@ -50,7 +49,8 @@
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
      "(^yb_release_manifest.json$)",
-     "(^managed/client/java/.*/pom.xml)"
+     "(^managed/client/java/.*/pom.xml)",
+     "(^yugabyted-ui/ui/package-lock.json)"
   ],
   "linters": {
     "go-files": {
@@ -59,7 +59,7 @@
      },
      "go-files-length": {
          "type": "text",
-         "text.max-line-length": 100,
+        "text.max-line-length": 120,
          "include": "(^managed/yba-cli/.*[.]go$)",
          "severity": {
              "2": "disabled"
@@ -77,6 +77,8 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "([.]csv$)",
+        "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
@@ -150,7 +152,6 @@
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
-        "(^src/postgres/third-party-extensions/)",
         "(^src/yb/)"
       ],
       "include": [
@@ -159,16 +160,54 @@
       ],
       "script-and-regex.script": "src/lint/postgres.sh",
       "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "regress_schedule": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/.+/yb_[^/]*schedule$)"
+      ],
+      "script-and-regex.script": "src/lint/regress_schedule.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "regress_test": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)",
+        "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*yb[^/]*$)"
+      ],
+      "script-and-regex.script": "src/lint/regress_test.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "typedefs_list": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/typedefs_list.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "unique_sort": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/lint/upstream_repositories.csv$)",
+        "(^src/postgres/src/.+/yb[^/]*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/unique_sort.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+)/m"
     },
     "ybc_pg": {
       "type": "script-and-regex",
       "include": [
-        "(^src/yb/yql/.+/ybc_.*[.]h$)"
+        "(^src/yb/yql/.+/ybc_[^/]*[.]h$)"
       ],
       "script-and-regex.script": "src/lint/ybc_pg.sh",
       "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     },
     "yql_extern_c": {
       "type": "script-and-regex",
@@ -177,7 +216,7 @@
       ],
       "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     }
   }
 }

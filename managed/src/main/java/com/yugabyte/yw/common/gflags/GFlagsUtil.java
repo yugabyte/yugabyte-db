@@ -42,7 +42,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
@@ -128,6 +128,8 @@ public class GFlagsUtil {
   public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
   public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
       "ysql_enable_read_committed_isolation";
+  public static final String YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY =
+      "ysql_yb_major_version_upgrade_compatibility";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -143,6 +145,7 @@ public class GFlagsUtil {
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
+  public static final String TIME_SOURCE = "time_source";
 
   public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
       "timestamp_history_retention_interval_sec";
@@ -314,6 +317,10 @@ public class GFlagsUtil {
           String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
     }
 
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()) {
+      extra_gflags.put(TIME_SOURCE, "clockbound");
+    }
+
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
@@ -387,6 +394,14 @@ public class GFlagsUtil {
       extra_gflags.put(
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
+    }
+    // This flag needs to be set during major version upgrade to being compatible with the old
+    // postgres version.
+    if (taskParam.enableYSQL
+        && taskParam.ysqlMajorVersionUpgradeState != null
+        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+            taskParam.ysqlMajorVersionUpgradeState)) {
+      extra_gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
     }
 
     return extra_gflags;
@@ -736,7 +751,16 @@ public class GFlagsUtil {
       gflags.put(ENABLE_YSQL, "true");
       if (taskParam.enableConnectionPooling) {
         gflags.put(ENABLE_YSQL_CONN_MGR, "true");
-        gflags.put(ALLOWED_PREVIEW_FLAGS_CSV, ENABLE_YSQL_CONN_MGR);
+        String ybdbVersion =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        if (Util.compareYBVersions(
+                ybdbVersion,
+                Util.CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION,
+                Util.CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION,
+                true)
+            < 0) {
+          gflags.put(ALLOWED_PREVIEW_FLAGS_CSV, ENABLE_YSQL_CONN_MGR);
+        }
         gflags.put(
             PSQL_PROXY_BIND_ADDRESS,
             String.format(
@@ -751,9 +775,6 @@ public class GFlagsUtil {
                 taskParam.overrideNodePorts
                     ? taskParam.communicationPorts.ysqlServerRpcPort
                     : node.ysqlServerRpcPort));
-        if (!taskParam.connectionPoolingGflags.isEmpty()) {
-          gflags.putAll(taskParam.connectionPoolingGflags);
-        }
       } else {
         gflags.put(
             PSQL_PROXY_BIND_ADDRESS,
@@ -787,12 +808,10 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
-    return getYsqlPgConfCsv(auditLogConfig, taskParams.ysqlMajorVersionUpgradeState);
+    return getYsqlPgConfCsv(taskParams.auditLogConfig);
   }
 
-  public static String getYsqlPgConfCsv(
-      AuditLogConfig auditLogConfig, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+  public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
     List<String> ysqlPgConfCsvEntries = new ArrayList<>();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
@@ -829,10 +848,6 @@ public class GFlagsUtil {
             encodeBooleanPgAuditFlag(
                 "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
       }
-    }
-    if (ysqlMajorVersionUpgradeState != null
-        && !ysqlMajorVersionUpgradeState.equals(YsqlMajorVersionUpgradeState.FINALIZE)) {
-      ysqlPgConfCsvEntries.add("yb_enable_expression_pushdown=false");
     }
     return String.join(",", ysqlPgConfCsvEntries);
   }

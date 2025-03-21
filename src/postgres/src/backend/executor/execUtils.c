@@ -202,6 +202,8 @@ CreateExecutorState(void)
 	estate->yb_exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
 	estate->yb_exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
 
+	estate->yb_exec_params.yb_index_check = false;
+
 	return estate;
 }
 
@@ -254,11 +256,13 @@ FreeExecutorState(EState *estate)
 		estate->es_partition_directory = NULL;
 	}
 
-	ListCell *lc;
-	foreach (lc, estate->yb_es_pk_proutes)
+	ListCell   *lc;
+
+	foreach(lc, estate->yb_es_pk_proutes)
 	{
 		PartitionTupleRouting *proute = lfirst(lc);
-		ExecCleanupTupleRouting(NULL /* mtstate */, proute);
+
+		ExecCleanupTupleRouting(NULL /* mtstate */ , proute);
 	}
 	list_free(estate->yb_es_pk_proutes);
 

@@ -11,7 +11,6 @@ import {
   NodeToNodeTLSField,
   RootCertificateField,
   TimeSyncField,
-  YEDISField,
   YCQLField,
   YSQLField
 } from '../../fields';
@@ -145,10 +144,6 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                   <YCQLField disabled={!isCreatePrimary} enforceAuth={isAuthEnforced} />
                 </Box>
                 <Box className={helperClasses.settingsContainerDivider}></Box>
-
-                <Box mt={3} ml={2} mb={2}>
-                  <YEDISField disabled={!isCreatePrimary} />
-                </Box>
               </Box>
             </Box>
 
@@ -162,7 +157,7 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
 
               <Box className={helperClasses.settingsContainerBorder}>
                 <Box mt={3} ml={2}>
-                  <YBLabel dataTestId="YEDISField-Label">
+                  <YBLabel dataTestId="EncryptionInTransit-Label">
                     {t('universeForm.securityConfig.encryptionSettings.encryptionInTransit')}
                   </YBLabel>
                   <NodeToNodeTLSField disabled={!isCreatePrimary} />
@@ -184,7 +179,7 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                 <Box className={helperClasses.settingsContainerDivider}></Box>
 
                 <Box mt={3} ml={2} mb={2}>
-                  <YBLabel dataTestId="YEDISField-Label">
+                  <YBLabel dataTestId="EncryptionAtRest-Label">
                     {t('universeForm.securityConfig.encryptionSettings.encryptionAtRest')}
                   </YBLabel>
                   <EncryptionAtRestField disabled={!isCreatePrimary} />

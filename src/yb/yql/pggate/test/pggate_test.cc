@@ -39,6 +39,7 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 
@@ -82,12 +83,9 @@ bool yb_enable_ash = false;
 
 } // namespace
 
-PggateTest::PggateTest()
-    : tserver_shared_object_(CHECK_RESULT(tserver::TServerSharedObject::Create())) {
-}
+PggateTest::PggateTest() = default;
 
-PggateTest::~PggateTest() {
-}
+PggateTest::~PggateTest() = default;
 
 //--------------------------------------------------------------------------------------------------
 // Error handling routines.
@@ -156,17 +154,8 @@ Status PggateTest::Init(
 
   ash_config.yb_enable_ash = &yb_enable_ash;
 
-  {
-    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
-    tserver::GetSharedDataRequestPB req;
-    tserver::GetSharedDataResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(30s);
-    CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
-    CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
-    memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
-  }
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
+      cluster_->tablet_server(0)->instance_id().permanent_uuid();
 
   YBCInitPgGate(YBCTestGetTypeTable(), &callbacks, nullptr /* session_id */, &ash_config);
 
@@ -229,6 +218,16 @@ void PggateTest::ExecCreateTableTransaction(YbcPgStatement pg_stmt) {
   BeginDDLTransaction();
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CommitDDLTransaction();
+}
+
+Result<pgwrapper::PGConn> PggateTest::PgConnect(const std::string& database_name) {
+  auto* ts = cluster_->tablet_server(0);
+  return pgwrapper::PGConnBuilder({
+                                      .host = ts->bind_host(),
+                                      .port = ts->pgsql_rpc_port(),
+                                      .dbname = database_name,
+                                  })
+      .Connect();
 }
 
 // ------------------------------------------------------------------------------------------------

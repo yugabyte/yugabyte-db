@@ -63,18 +63,20 @@ message TransactionStatePB {
   // Status containing deadlock info if the transaction was aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 12;
 
-  // Make the coordinator track the current txn reuse version. When re-using transactions,
-  // coordinator can reply with the current txn reuse version for the transaction, and the
-  // receiver can drop all requests/locks corresponding to older versions.
-  optional uint64 txn_reuse_version = 13;
+  // Reserved for deprecated object-locks field txn_reuse_version.
+  reserved 13;
 
-  // Field 14 is used for session level transactions alone (when session advisory locks
+  // Fields 14, 15 are used for session level transactions alone (when session advisory locks
   // feature is enabled).
   // The current pg session request version is propagated on transaction heartbeats. If the
   // coordinator has a higher version than the one received in the request, it errors with the
   // status holding the active pg session request version, post which YBTransaction updates
   // its state.
   optional uint64 pg_session_req_version = 14;
+
+  // For detection deadlocks spanning session advisory locks and row-level locks, the status tablet
+  // needs to be made aware of the active regular docdb transaction of the ysql session, if any.
+  optional TransactionMetadataPB background_transaction_meta = 15;
 }
 
 message TruncatePB {

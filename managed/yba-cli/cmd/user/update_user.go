@@ -82,7 +82,9 @@ var updateUserCmd = &cobra.Command{
 			Timezone: util.GetStringPointer(timezone),
 		}
 
-		rUpdate, response, err := authAPI.UpdateUserProfile(updateUser.GetUuid()).Users(req).Execute()
+		rUpdate, response, err := authAPI.UpdateUserProfile(updateUser.GetUuid()).
+			Users(req).
+			Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response,

@@ -1157,17 +1157,27 @@ public class Universe extends Model {
   }
 
   public boolean nodeExists(String host, int port) {
-    return getUniverseDetails().nodeDetailsSet.parallelStream()
-        .anyMatch(
-            n ->
-                n.cloudInfo.private_ip != null
-                    && n.cloudInfo.private_ip.equals(host)
-                    && (port == n.masterHttpPort
-                        || port == n.tserverHttpPort
-                        || port == n.ysqlServerHttpPort
-                        || port == n.yqlServerHttpPort
-                        || port == n.redisServerHttpPort
-                        || port == n.nodeExporterPort));
+    if (host == null) {
+      return false;
+    }
+    Optional<NodeDetails> nodeDetailsOpt =
+        getUniverseDetails().nodeDetailsSet.parallelStream()
+            .filter(n -> n.cloudInfo.private_ip != null && n.cloudInfo.private_ip.equals(host))
+            .findFirst();
+    if (!nodeDetailsOpt.isPresent()) {
+      return false;
+    }
+    NodeDetails node = nodeDetailsOpt.get();
+    if (port == node.masterHttpPort
+        || port == node.tserverHttpPort
+        || port == node.ysqlServerHttpPort
+        || port == node.yqlServerHttpPort
+        || port == node.redisServerHttpPort
+        || port == node.nodeExporterPort) {
+      return true;
+    }
+    Optional<NodeAgent> nodeAgentOpt = NodeAgent.maybeGetByIp(host);
+    return nodeAgentOpt.isPresent() && nodeAgentOpt.get().getPort() == port;
   }
 
   public void incrementVersion() {

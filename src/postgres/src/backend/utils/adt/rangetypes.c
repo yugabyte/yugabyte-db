@@ -135,7 +135,7 @@ range_out(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 2)
 	{
-		decode_options = (YbDatumDecodeOptions *)PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
 		TypeCacheEntry elemtype;
 		TypeCacheEntry typcache;
 
@@ -164,10 +164,11 @@ range_out(PG_FUNCTION_ARGS)
 			if (decode_options->option == 't')
 			{
 				YbDatumDecodeOptions tz_datum_decodeOptions;
+
 				tz_datum_decodeOptions.timezone = decode_options->timezone;
 				tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 				lbound_str = DatumGetCString(FunctionCall2(decode_options->elem_finfo, lower.val,
-							PointerGetDatum(&tz_datum_decodeOptions)));
+														   PointerGetDatum(&tz_datum_decodeOptions)));
 			}
 			else
 			{
@@ -179,10 +180,11 @@ range_out(PG_FUNCTION_ARGS)
 			if (decode_options->option == 't')
 			{
 				YbDatumDecodeOptions tz_datum_decodeOptions;
+
 				tz_datum_decodeOptions.timezone = decode_options->timezone;
 				tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 				ubound_str = DatumGetCString(FunctionCall2(decode_options->elem_finfo, upper.val,
-							PointerGetDatum(&tz_datum_decodeOptions)));
+														   PointerGetDatum(&tz_datum_decodeOptions)));
 			}
 			else
 			{

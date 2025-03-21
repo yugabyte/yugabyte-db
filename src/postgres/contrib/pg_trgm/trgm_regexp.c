@@ -2203,8 +2203,9 @@ printSourceNFA(regex_t *regex, TrgmColorInfo *colors, int ncolors)
 
 	{
 		/* dot -Tpng -o /tmp/source.png < /tmp/source.gv */
-		FILE *fp = NULL;
-		char *yb_custom_path = palloc0(MAX_STRING_LEN);
+		FILE	   *fp = NULL;
+		char	   *yb_custom_path = palloc0(MAX_STRING_LEN);
+
 		if (yb_tmp_dir)
 		{
 			snprintf(yb_custom_path, MAX_STRING_LEN, "%s/source.gv", yb_tmp_dir);
@@ -2275,8 +2276,9 @@ printTrgmNFA(TrgmNFA *trgmNFA)
 
 	{
 		/* dot -Tpng -o /tmp/transformed.png < /tmp/transformed.gv */
-		char *yb_custom_path = palloc0(MAX_STRING_LEN);
-		FILE *fp = NULL;
+		char	   *yb_custom_path = palloc0(MAX_STRING_LEN);
+		FILE	   *fp = NULL;
+
 		if (yb_tmp_dir)
 		{
 			snprintf(yb_custom_path, MAX_STRING_LEN, "%s/transformed.gv",
@@ -2376,8 +2378,8 @@ printTrgmPackedGraph(TrgmPackedGraph *packedGraph, TRGM *trigrams)
 
 	{
 		/* dot -Tpng -o /tmp/packed.png < /tmp/packed.gv */
-		FILE *fp = NULL;
-		char *yb_custom_path = palloc0(MAX_STRING_LEN);
+		FILE	   *fp = NULL;
+		char	   *yb_custom_path = palloc0(MAX_STRING_LEN);
 		const char *yb_tmp_dir = YbGetTmpDir();
 
 		if (yb_tmp_dir)

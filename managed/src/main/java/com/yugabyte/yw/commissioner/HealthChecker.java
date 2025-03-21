@@ -817,6 +817,7 @@ public class HealthChecker {
                   params.universe, UniverseConfKeys.healthCheckClockSyncServiceRequired));
         } else {
           nodeInfo.setClockSyncServiceRequired(false);
+          nodeInfo.setCheckTimeDrift(false);
         }
         if (params.universe.isYbcEnabled()) {
           nodeInfo
@@ -929,7 +930,6 @@ public class HealthChecker {
           continue;
         }
         log.debug("Found ip with master/tserver running: {} node {}", ip, nodeDetails);
-        Optional<NodeInstance> nodeInstance = NodeInstance.maybeGet(nodeDetails.getNodeUuid());
         NodeData nodeData =
             new NodeData()
                 .setHasError(true)
@@ -998,6 +998,8 @@ public class HealthChecker {
     if (ddlAtomicityCheckEnabled) {
       int ddlAtomicityIntervalSec =
           confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
+      nodeCheckTimeoutSec =
+          confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutDdlSec);
 
       Instant lastDdlAtomicitySuccessfulCheckTimestamp =
           ddlAtomicitySuccessfulCheckTimestamp.get(universe.getUniverseUUID());

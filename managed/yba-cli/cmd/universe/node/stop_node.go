@@ -15,9 +15,10 @@ import (
 
 // stopNodeCmd represents the universe command
 var stopNodeCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "Stop a node instance in YugabyteDB Anywhere universe",
-	Long: "Stop a node instance in YugabyteDB Anywhere universe.\n" +
+	Use:     "stop-processes",
+	Aliases: []string{"stop"},
+	Short:   "Stop YugbayteDB processes on a node in YugabyteDB Anywhere universe",
+	Long: "Stop YugbayteDB processes on a node in YugabyteDB Anywhere universe.\n" +
 		"Stop the server processes running on the node.",
 	Example: `yba universe node stop --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
@@ -28,7 +29,7 @@ var stopNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to stop node instance"+
+				formatter.Colorize("No universe name found to stop node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")

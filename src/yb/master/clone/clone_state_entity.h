@@ -59,13 +59,13 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
   LeaderEpoch Epoch();
   void SetEpoch(const LeaderEpoch& epoch);
 
-  const TxnSnapshotId& SourceSnapshotId();
+  TxnSnapshotId SourceSnapshotId();
   void SetSourceSnapshotId(const TxnSnapshotId& source_snapshot_id);
 
-  const TxnSnapshotId& TargetSnapshotId();
+  TxnSnapshotId TargetSnapshotId();
   void SetTargetSnapshotId(const TxnSnapshotId& target_snapshot_id);
 
-  const TxnSnapshotRestorationId& RestorationId();
+  TxnSnapshotRestorationId RestorationId();
   void SetRestorationId(const TxnSnapshotRestorationId& restoration_id);
 
   std::shared_ptr<CountDownLatch> NumTserversWithStaleMetacache();

@@ -5,6 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 
 import { UniverseViewContainer } from '..';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
+import { TaskDetailDrawer } from '../../../redesign/features/tasks';
 
 import './UniverseConsole.scss';
 
@@ -26,6 +27,7 @@ export const UniverseConsole = (props) => {
           <h2 className="content-title">Universes</h2>
         </Col>
       </Row>
+      <TaskDetailDrawer />
       <UniverseViewContainer />
     </div>
   );

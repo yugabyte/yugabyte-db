@@ -179,7 +179,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -196,6 +196,12 @@ Ensure that `enable_ysql` values in yb-master configurations match the values in
 Enables the YSQL API when value is `true`.
 
 Default: `true`
+
+##### --enable_pg_cron
+
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+
+Default: `false`
 
 ## Logging flags
 
@@ -286,7 +292,7 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-Default: `false`
+Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
 If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
 
@@ -631,13 +637,13 @@ Default: `false`
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
-Default: `false`. No limits will be enforced if this is false.
+Default: `true`. No limits are enforced if this is false.
 
 ##### split_respects_tablet_replica_limits
 
 If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
 
-Default: `false`
+Default: `true`
 
 ##### tablet_replicas_per_core_limit
 
@@ -803,7 +809,7 @@ The unique identifier for the cluster.
 
 Default: `""`
 
-##### -- use_private_ip
+##### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
 
@@ -933,11 +939,25 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
+Default: `28800` (8 hours)
+
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `28800000` (8 hours)
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
 Default: `14400` (4 hours)
 
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
+
+Default: `true`
 
 ##### --enable_truncate_cdcsdk_table
 
@@ -947,7 +967,7 @@ Default: `false`
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
-Toggle automatic tablet splitting for tables under replication slot.
+Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../develop/change-data-capture/using-logical-replication/).
 
 Default: `false`
 

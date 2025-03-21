@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) PostgreSQL module provides a means to check user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
+The [passwordcheck](https://www.postgresql.org/docs/15/passwordcheck.html) PostgreSQL module provides a means to check user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
 
 ## Enable passwordcheck
 
@@ -78,4 +78,4 @@ yugabyte=# create role test_role password '12test_role12';
 ERROR:  password must not contain user name
 ```
 
-The passwordcheck extension only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+The passwordcheck extension only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/15/passwordcheck.html).

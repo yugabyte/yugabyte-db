@@ -50,6 +50,8 @@ typedef struct YbVectorScanOpaqueData
 
 typedef YbVectorScanOpaqueData *YbVectorScanOpaque;
 
+extern void YbHnswInit();
+
 /* ybvector.c */
 extern IndexBuildResult *ybvectorbuild(Relation heap, Relation index,
 									struct IndexInfo *indexInfo);
@@ -116,4 +118,5 @@ void
 bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbcPgVectorIdxType ybpg_idx_type);
+					   YbcPgVectorIdxType ybpg_idx_type,
+					   YbcPgVectorDistType dist_type);

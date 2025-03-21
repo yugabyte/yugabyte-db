@@ -35,11 +35,11 @@
 
 /* GUC variables */
 extern bool yb_enable_ash;
-extern int yb_ash_circular_buffer_size;
-extern int yb_ash_sampling_interval_ms;
-extern int yb_ash_sample_size;
+extern int	yb_ash_circular_buffer_size;
+extern int	yb_ash_sampling_interval_ms;
+extern int	yb_ash_sample_size;
 
-typedef bool (*YbAshTrackNestedQueries)(void);
+typedef bool (*YbAshTrackNestedQueries) (void);
 extern YbAshTrackNestedQueries yb_ash_track_nested_queries;
 
 extern Size YbAshShmemSize(void);

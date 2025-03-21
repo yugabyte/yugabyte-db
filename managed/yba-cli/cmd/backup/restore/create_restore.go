@@ -41,7 +41,11 @@ var createRestoreCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to restore backup to\n", formatter.RedColor))
+				formatter.Colorize(
+					"No universe name found to restore backup to\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -51,7 +55,11 @@ var createRestoreCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found for restore\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found for restore\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -68,7 +76,12 @@ var createRestoreCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Create - Get Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Restore",
+				"Create - Get Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -194,8 +207,17 @@ var createRestoreCmd = &cobra.Command{
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for restore task %s on universe %s (%s) to be completed\n",
-					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
+				logrus.Info(
+					fmt.Sprintf(
+						"\nWaiting for restore task %s on universe %s (%s) to be completed\n",
+						formatter.Colorize(
+							taskUUID,
+							formatter.GreenColor,
+						),
+						universeNameFlag,
+						universeUUID,
+					),
+				)
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -203,7 +225,7 @@ var createRestoreCmd = &cobra.Command{
 			}
 			var limit int32 = 10
 			var offset int32 = 0
-			restoreAPIDirection := "DESC"
+			restoreAPIDirection := util.DescSortDirection
 			restoreAPISort := "createTime"
 
 			universeUUIDList := make([]string, 0)
@@ -275,7 +297,8 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 					backupDetails["storage-location"] = val
 				}
 			case "backup-type":
-				if !strings.EqualFold(val, "ysql") && !strings.EqualFold(val, "ycql") && !strings.EqualFold(val, "yedis") {
+				if !strings.EqualFold(val, "ysql") && !strings.EqualFold(val, "ycql") &&
+					!strings.EqualFold(val, "yedis") {
 					logrus.Fatalf(fmt.Sprintf("Table type provided %s is not supported", val))
 				}
 
@@ -312,9 +335,27 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			}
 		}
 
-		isSelectiveTableRestore, _ := strconv.ParseBool(backupDetails["selective-restore"])
+		useTablespaces, err := strconv.ParseBool(backupDetails["use-tablespaces"])
+		if err != nil {
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'use-tablespaces'. Setting it to 'false'.\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			useTablespaces = false
+		}
+
+		isSelectiveTableRestore, err := strconv.ParseBool(backupDetails["selective-restore"])
+		if err != nil {
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'selective-restore'. Setting it to 'false'.\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			isSelectiveTableRestore = false
+		}
 		tableNameList := []string{}
-		if backupDetails["table-names"] != "" {
+		if backupDetails["table-name-list"] != "" {
 			tableNameList = strings.Split(backupDetails["table-name-list"], ",")
 		}
 
@@ -324,6 +365,7 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			StorageLocation:       util.GetStringPointer(backupDetails["storage-location"]),
 			Sse:                   util.GetBoolPointer(true),
 			SelectiveTableRestore: util.GetBoolPointer(isSelectiveTableRestore),
+			UseTablespaces:        util.GetBoolPointer(useTablespaces),
 			TableNameList:         &tableNameList,
 		}
 		res = append(res, r)
@@ -355,10 +397,10 @@ func init() {
 			"The attributes use-tablespaces, selective-restore and table-name-list are optional. "+
 			"Attributes selective-restore and table-name-list are needed only for YCQL. "+
 			"The attribute use-tablespaces is needed only for YSQL. "+
-			"Example: --keyspace-info keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
-			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2 "+
-			"--keyspace-info keyspace-name=postgres;storage-location=s3://bucket/location2"+
-			"backup-type=ysql;use-tablespaces=true")
+			"Example: --keyspace-info keyspace-name=cassandra1::storage-location=s3://bucket/location1::"+
+			"backup-type=ycql::selective-restore=true::table-name-list=table1,table2 "+
+			"--keyspace-info keyspace-name=postgres::storage-location=s3://bucket/location2"+
+			"backup-type=ysql::use-tablespaces=true")
 	createRestoreCmd.MarkFlagRequired("keyspace-info")
 	createRestoreCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")

@@ -81,6 +81,10 @@ import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
+import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.time.temporal.ChronoUnit;
@@ -221,6 +225,18 @@ public class ModelFactory {
         "Test Universe", UUID.randomUUID(), customerId, Common.CloudType.aws, null, rootCA);
   }
 
+  public static Universe createUniverse(String universeName, long customerId, boolean useSystemd) {
+    return createUniverse(
+        universeName,
+        UUID.randomUUID(),
+        customerId,
+        Common.CloudType.aws,
+        null,
+        UUID.randomUUID(),
+        true,
+        useSystemd);
+  }
+
   public static Universe createUniverse(String universeName, long customerId) {
     return createUniverse(universeName, UUID.randomUUID(), customerId, Common.CloudType.aws);
   }
@@ -266,6 +282,19 @@ public class ModelFactory {
       PlacementInfo pi,
       UUID rootCA,
       boolean enableYbc) {
+    return createUniverse(
+        universeName, universeUUID, customerId, cloudType, pi, rootCA, enableYbc, true);
+  }
+
+  public static Universe createUniverse(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      Common.CloudType cloudType,
+      PlacementInfo pi,
+      UUID rootCA,
+      boolean enableYbc,
+      boolean useSystemd) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
@@ -277,6 +306,7 @@ public class ModelFactory {
     userIntent.provider = p.getUuid().toString();
     userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
+    userIntent.useSystemd = useSystemd;
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -857,6 +887,7 @@ public class ModelFactory {
     userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
     userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.useSystemd = true;
 
     UniverseUpdater updater =
         u -> {
@@ -1106,5 +1137,45 @@ public class ModelFactory {
     CreateTablespaceParams params = new CreateTablespaceParams();
     params.tablespaceInfos = Collections.singletonList(tsi);
     return params;
+  }
+
+  // Operator resource objects
+
+  public static YBUniverse createYbUniverse(Provider provider) {
+    return createYbUniverse("test-universe", provider);
+  }
+
+  public static YBUniverse createYbUniverse(String univName, Provider provider) {
+    YBUniverse universe = new YBUniverse();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName(univName);
+    metadata.setNamespace("test-namespace");
+    metadata.setUid(UUID.randomUUID().toString());
+    metadata.setGeneration((long) 123);
+    YBUniverseStatus status = new YBUniverseStatus();
+    YBUniverseSpec spec = new YBUniverseSpec();
+    List<String> zones = new ArrayList<>();
+    zones.add("one");
+    zones.add("two");
+    spec.setYbSoftwareVersion("2.21.0.0-b1");
+    spec.setNumNodes(1L);
+    spec.setZoneFilter(zones);
+    spec.setReplicationFactor((long) 1);
+    spec.setEnableYSQL(true);
+    spec.setEnableYCQL(false);
+    spec.setEnableNodeToNodeEncrypt(false);
+    spec.setEnableClientToNodeEncrypt(false);
+    spec.setYsqlPassword(null);
+    spec.setYcqlPassword(null);
+    spec.setProviderName(provider.getName());
+    io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo deviceInfo =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo();
+    deviceInfo.setVolumeSize(10L);
+    spec.setDeviceInfo(deviceInfo);
+
+    universe.setMetadata(metadata);
+    universe.setStatus(status);
+    universe.setSpec(spec);
+    return universe;
   }
 }

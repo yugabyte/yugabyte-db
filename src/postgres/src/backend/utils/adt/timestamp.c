@@ -783,14 +783,14 @@ timestamptz_out(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 2)
 	{
-		decode_options = (YbDatumDecodeOptions *)PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
 	}
 
 	if (TIMESTAMP_NOT_FINITE(dt))
 		EncodeSpecialTimestamp(dt, buf);
 	else if (((decode_options != NULL && decode_options->from_YB) ?
-		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
-		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
+			  (timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
+			  (timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
 		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf);
 	else
 		ereport(ERROR,

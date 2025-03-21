@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference on this topic." >}}
-Make sure that you read the section [Query Language (SQL) Functions](https://www.postgresql.org/docs/11/xfunc-sql.html) in the PostgreSQL documentation.
+Make sure that you read the section [Query Language (SQL) Functions](https://www.postgresql.org/docs/15/xfunc-sql.html) in the PostgreSQL documentation.
 {{< /tip >}}
 
 You can define both functions and procedures using _language sql_. Each of these lets you encapsulate two or more SQL statements. Notice that a function, or a procedure with an _inout_ formal argument, returns the result of only the _last_ SQL statement. See the section [The result is delivered by the last "select" (or "values") statement](./#the-result-is-delivered-by-the-last-select-or-values-statement) below. The encapsulation lets you do no more than list independent SQL statements in the order that they are to be executed. This means that there's no way within the _language sql_ encapsulation to inform the next statement that's executed about the outcome of the previous statements. However, using two or more SQL statements in concert typically implies the need for a control structure—and this is what _language plpgsql_ subprograms provide.

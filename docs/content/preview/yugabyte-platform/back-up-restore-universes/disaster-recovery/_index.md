@@ -103,6 +103,8 @@ The exact sequence of these operations for each type of schema change (DDL) is d
 
 ## Upgrading universes in DR
 
+Use the same version of YugabyteDB on both the DR primary and DR replica.
+
 When [upgrading universes](../../manage-deployments/upgrade-software-install/) in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
 
 Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
@@ -141,7 +143,7 @@ For example, use xCluster Replication for the following deployments:
 
 Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster Replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
-(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).)
 
 {{<lead link="../../../architecture/docdb-replication/async-replication/">}}
 [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)

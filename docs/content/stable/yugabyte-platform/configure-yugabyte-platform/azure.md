@@ -1,5 +1,5 @@
 ---
-title: Configure the Microsoft Azure cloud provider
+title: Configure the Microsoft Azure provider configuration
 headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Microsoft Azure provider configuration
@@ -129,6 +129,8 @@ If you [added credentials](https://learn.microsoft.com/en-us/entra/identity-plat
 If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) of the Azure VM hosting YugabyteDB Anywhere to authenticate:
 
 - Select **Use Managed Identity from this YBA host's instance**.
+
+    This option is only available if YugabyteDB Anywhere is deployed on an Azure VM that has a managed identity assigned.
 
 #### Additional fields
 

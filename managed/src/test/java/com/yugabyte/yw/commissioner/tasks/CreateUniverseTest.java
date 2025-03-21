@@ -49,12 +49,15 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
+          TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks, // PreNodeProvision
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks, // PostNodeProvision
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -83,6 +86,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_CREATE_TASK_RETRY_SEQUENCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
+          TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
@@ -184,6 +188,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
               primaryCluster.userIntent.enableYSQLAuth = enableAuth;
               primaryCluster.userIntent.ysqlPassword = "Admin@123";
               primaryCluster.userIntent.enableYEDIS = false;
+              primaryCluster.userIntent.useSystemd = true;
               for (NodeDetails node : universeDetails.nodeDetailsSet) {
                 // Reset for creation.
                 node.state = NodeDetails.NodeState.ToBeAdded;
@@ -252,6 +257,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     primaryCluster.userIntent.enableYSQL = true;
     primaryCluster.userIntent.enableYSQLAuth = true;
     primaryCluster.userIntent.ysqlPassword = "Admin@123";
+    primaryCluster.userIntent.useSystemd = true;
     taskInfo = submitTask(taskParams);
     // Task is already successful, so the passwords must have been cleared.
     assertEquals(Failure, taskInfo.getTaskState());

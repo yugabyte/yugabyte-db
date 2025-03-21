@@ -39,4 +39,6 @@ struct ConnectionStats {
   uint64_t last_updated_timestamp;
   char database_name[DB_NAME_MAX_LEN];
   char user_name[USER_NAME_MAX_LEN];
+  int database_oid;
+  int user_oid;
 };

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <array>
 #include <vector>
 #include <tuple>
 
@@ -29,6 +30,48 @@ namespace yb::docdb {
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
 using dockv::KeyEntryTypeAsChar;
+
+// The following three arrays are indexed by the integer representation of the IntentTypeSet which
+// the value at that index corresponds to. For example, an IntentTypeSet with the 0th and 2nd
+// element present would be represented by the number = (2^0 + 2^2) = 5. The fifth index of an
+// IntentTypeSetMap stores some value which corresponds to this IntentTypeSet.
+// TODO -- clarify the semantics of IntentTypeSetMap by making it a class.
+using IntentTypeSetMap = std::array<LockState, dockv::kIntentTypeSetMapSize>;
+
+// We have 64 bits in LockState and 4 types of intents. So 16 bits is the max number of bits
+// that we could reserve for a block of single intent type.
+constexpr size_t kIntentTypeBits = 16;
+// kFirstIntentTypeMask represents the LockState which, when &'d with another LockState, would
+// result in the LockState tracking only the count for intent type represented by the region of bits
+// that is the "first" or "least significant", as in furthest to the right.
+constexpr LockState kFirstIntentTypeMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
+
+// Maps IntentTypeSet to a LockState mask which determines if another LockState will conflict with
+// any of the elements present in the IntentTypeSet.
+extern const IntentTypeSetMap kIntentTypeSetConflicts;
+
+// Maps IntentTypeSet to the LockState representing one count for each intent type in the set. Can
+// be used to "add one" occurence of an IntentTypeSet to an existing key's LockState.
+extern const IntentTypeSetMap kIntentTypeSetAdd;
+
+// Maps IntentTypeSet to the LockState representing max count for each intent type in the set. Can
+// be used to extract a LockState corresponding to having only that set's elements counts present.
+extern const IntentTypeSetMap kIntentTypeSetMask;
+
+LockState IntentTypeMask(
+    dockv::IntentType intent_type, LockState single_intent_mask = kFirstIntentTypeMask);
+
+inline LockState IntentTypeSetAdd(dockv::IntentTypeSet intent_types) {
+  return kIntentTypeSetAdd[intent_types.ToUIntPtr()];
+}
+
+inline LockState IntentTypeSetConflict(dockv::IntentTypeSet intent_types) {
+  return kIntentTypeSetConflicts[intent_types.ToUIntPtr()];
+}
+
+bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
+
+std::string LockStateDebugString(LockState state);
 
 template <typename LockManager>
 struct DetermineKeysToLockResult {

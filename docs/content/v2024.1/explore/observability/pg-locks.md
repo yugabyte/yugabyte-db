@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html) system view, which provides information about the locks held and requested by the current active transactions in a database. The `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states. YugabyteDB also provides two additional fields, `waitend` and `ybdetails`, which provide insights into lock information specific to YugabyteDB's distributed architecture.
+YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/11/view-pg-locks.html) system view, which provides information about the locks held and requested by the current active transactions in a database. The `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states. YugabyteDB also provides two additional fields, `waitend` and `ybdetails`, which provide insights into lock information specific to YugabyteDB's distributed architecture.
 
 ## Scenarios
 

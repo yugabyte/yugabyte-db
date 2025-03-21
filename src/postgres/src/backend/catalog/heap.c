@@ -234,7 +234,61 @@ static const FormData_pg_attribute a6 = {
 	.attislocal = true,
 };
 
-static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6};
+static const FormData_pg_attribute a7 = {
+	.attname = {"ybctid"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBTupleIdAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = true,
+	.attislocal = true,
+};
+
+static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7};
+
+static const FormData_pg_attribute yb_a1 = {
+	.attname = {"ybuniqueidxkeysuffix"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBUniqueIdxKeySuffixAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = false,
+	.attislocal = true,
+};
+
+static const FormData_pg_attribute yb_a2 = {
+	.attname = {"ybidxbasectid"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBIdxBaseTupleIdAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = true,
+	.attislocal = true,
+};
+
+
+static const FormData_pg_attribute *YbSysAtt[] = {&yb_a1, &yb_a2};
+
+const FormData_pg_attribute *
+YbSystemAttributeDefinition(AttrNumber attno)
+{
+	int index = attno - YBSystemFirstLowInvalidAttributeNumber - 1;
+	if (index < 0 || index >= lengthof(YbSysAtt))
+		elog(ERROR, "invalid YB system attribute number %d", attno);
+	return YbSysAtt[index];
+}
 
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
@@ -244,6 +298,8 @@ static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6};
 const FormData_pg_attribute *
 SystemAttributeDefinition(AttrNumber attno)
 {
+	if (attno <= YBFirstLowInvalidAttributeNumber)
+		return YbSystemAttributeDefinition(attno);
 	if (attno >= 0 || attno < -(int) lengthof(SysAtt))
 		elog(ERROR, "invalid system attribute number %d", attno);
 	return SysAtt[-attno - 1];
@@ -402,8 +458,8 @@ heap_create(const char *relname,
 	 * TODO Consider hooking the YB-Create logic here instead of above.
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
-		create_storage = create_storage &&
-						 relpersistence == RELPERSISTENCE_TEMP;
+		create_storage = (create_storage &&
+						  relpersistence == RELPERSISTENCE_TEMP);
 
 	/*
 	 * Have the storage manager create the relation's disk file, if needed.
@@ -435,7 +491,9 @@ heap_create(const char *relname,
 
 	if (IsYBRelation(rel) && reltablegroup != InvalidOid)
 	{
-		ObjectAddress myself, tablegroup;
+		ObjectAddress myself,
+					tablegroup;
+
 		myself.classId = RelationRelationId;
 		myself.objectId = relid;
 		myself.objectSubId = 0;
@@ -871,7 +929,8 @@ AddNewAttributeTuples(Oid new_rel_oid,
 	InsertPgAttributeTuples(rel, tupdesc, new_rel_oid, NULL, indstate, yb_relisshared);
 
 	/* Skip adding dependencies for shared relation attrs */
-	if (!IsYsqlUpgrade || !yb_relisshared || IsBootstrapProcessingMode()) {
+	if (!IsYsqlUpgrade || !yb_relisshared || IsBootstrapProcessingMode())
+	{
 		/* add dependencies on their datatypes and collations */
 		for (int i = 0; i < natts; i++)
 		{
@@ -947,8 +1006,9 @@ InsertPgClassTuple(Relation pg_class_desc,
 			elog(ERROR, "shared relation should be owned by superuser!");
 
 		if (IsCatalogRelation(new_rel_desc) && IsYsqlUpgrade)
-			elog(ERROR, "system relation created during YSQL upgrade "
-						"should be owned by superuser!");
+			elog(ERROR,
+				 "system relation created during YSQL upgrade "
+				 "should be owned by superuser!");
 	}
 
 	/* This is a tad tedious, but way cleaner than what we used to do... */
@@ -1114,7 +1174,7 @@ AddNewRelationType(const char *typeName,
 				   0,			/* array dimensions for typBaseType */
 				   false,		/* Type NOT NULL */
 				   InvalidOid,	/* rowtypes never have a collation */
-				   yb_new_rel_is_shared); /* whether new relation is shared */
+				   yb_new_rel_is_shared);	/* whether new relation is shared */
 }
 
 /*
@@ -1128,23 +1188,26 @@ AddNewRelationType(const char *typeName,
  *
  * See setup_privileges() in initdb.c.
  */
-static Acl*
+static Acl *
 YbSetInitdbPermissions(Oid relid, char relkind, bool relisshared)
 {
-	Acl* acl;
+	Acl		   *acl;
 
-	AclItem aclitem;
+	AclItem		aclitem;
+
 	aclitem.ai_grantee = ACL_ID_PUBLIC;
 	aclitem.ai_grantor = BOOTSTRAP_SUPERUSERID;
 	ACLITEM_SET_RIGHTS(aclitem, ACL_SELECT);
 
-	Acl *allow_read_to_everyone = aclupdate(make_empty_acl(), &aclitem,
-		ACL_MODECHG_EQL, BOOTSTRAP_SUPERUSERID, DROP_RESTRICT);
+	Acl		   *allow_read_to_everyone = aclupdate(make_empty_acl(), &aclitem,
+												   ACL_MODECHG_EQL,
+												   BOOTSTRAP_SUPERUSERID,
+												   DROP_RESTRICT);
 
-	Acl *superuser_default =
-		acldefault(relkind == RELKIND_SEQUENCE ? OBJECT_SEQUENCE
-											   : OBJECT_TABLE,
-				   BOOTSTRAP_SUPERUSERID);
+	Acl		   *superuser_default = acldefault((relkind == RELKIND_SEQUENCE ?
+												OBJECT_SEQUENCE :
+												OBJECT_TABLE),
+											   BOOTSTRAP_SUPERUSERID);
 
 	acl = aclconcat(allow_read_to_everyone, superuser_default);
 
@@ -1153,15 +1216,15 @@ YbSetInitdbPermissions(Oid relid, char relkind, bool relisshared)
 	 * (for shared rels - do the insert in all databases).
 	 */
 
-	Relation    pg_init_privs       = table_open(InitPrivsRelationId, RowExclusiveLock);
-	HeapTuple   pg_init_privs_tuple;
-	Datum       values[Natts_pg_init_privs];
-	bool        nulls[Natts_pg_init_privs];
+	Relation	pg_init_privs = table_open(InitPrivsRelationId, RowExclusiveLock);
+	HeapTuple	pg_init_privs_tuple;
+	Datum		values[Natts_pg_init_privs];
+	bool		nulls[Natts_pg_init_privs];
 
-	values[Anum_pg_init_privs_objoid - 1]    = ObjectIdGetDatum(relid);
-	values[Anum_pg_init_privs_classoid - 1]  = ObjectIdGetDatum(RelationRelationId);
-	values[Anum_pg_init_privs_objsubid - 1]  = (Datum) 0;
-	values[Anum_pg_init_privs_privtype - 1]  = CharGetDatum(INITPRIVS_INITDB);
+	values[Anum_pg_init_privs_objoid - 1] = ObjectIdGetDatum(relid);
+	values[Anum_pg_init_privs_classoid - 1] = ObjectIdGetDatum(RelationRelationId);
+	values[Anum_pg_init_privs_objsubid - 1] = (Datum) 0;
+	values[Anum_pg_init_privs_privtype - 1] = CharGetDatum(INITPRIVS_INITDB);
 	values[Anum_pg_init_privs_initprivs - 1] = PointerGetDatum(acl);
 
 	MemSet(nulls, false, sizeof(nulls));
@@ -1251,6 +1314,7 @@ heap_create_with_catalog(const char *relname,
 	Oid			relfilenode = InvalidOid;
 	TransactionId relfrozenxid;
 	MultiXactId relminmxid;
+
 	/* YB variables. */
 	bool		is_system = IsCatalogNamespace(relnamespace);
 
@@ -1326,7 +1390,9 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (!OidIsValid(relid))
 	{
-		bool heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+		bool		heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_extension_upgrade;
+
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
 			heap_pg_class_oids_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
@@ -1366,7 +1432,13 @@ heap_create_with_catalog(const char *relname,
 				relid = binary_upgrade_next_heap_pg_class_oid;
 				binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 
-				if (RELKIND_HAS_STORAGE(relkind) && !yb_binary_restore)
+				/*
+				 * YB: The parent partition has DocDB storage, so we preserve
+				 * its relfilenode when upgrading.
+				 */
+				if ((RELKIND_HAS_STORAGE(relkind) ||
+					 (IsYugaByteEnabled() && relkind == RELKIND_PARTITIONED_TABLE))
+					&& !yb_binary_restore)
 				{
 					if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
 						ereport(ERROR,
@@ -1548,7 +1620,7 @@ heap_create_with_catalog(const char *relname,
 				   0,			/* array dimensions for typBaseType */
 				   false,		/* Type NOT NULL */
 				   InvalidOid,	/* rowtypes never have a collation */
-				   shared_relation);		/* shared relation */
+				   shared_relation);	/* shared relation */
 
 		pfree(relarrayname);
 	}
@@ -1903,7 +1975,10 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 
 		if (IsYugaByteEnabled())
 		{
-			/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
+			/*
+			 * TODO: Should be changed to CatalogTupleUpdate() when we are
+			 * able to update a row's primary key
+			 */
 
 			CatalogTupleDelete(attr_rel, tuple);
 
@@ -1912,7 +1987,9 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 			namestrcpy(&(attStruct->attname), newattname);
 
 			CatalogTupleInsert(attr_rel, tuple);
-		} else {
+		}
+		else
+		{
 			snprintf(newattname, sizeof(newattname),
 					 "........pg.dropped.%d........", attnum);
 			namestrcpy(&(attStruct->attname), newattname);

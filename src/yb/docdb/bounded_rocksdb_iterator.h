@@ -23,8 +23,7 @@
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 class BoundedRocksDbIterator final : public rocksdb::Iterator {
  public:
@@ -72,6 +71,7 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
   }
 
   void UseFastNext(bool value) override;
+  void UpdateFilterKey(Slice user_key_for_filter) override;
 
  private:
   const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;
@@ -80,5 +80,4 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
   const KeyBounds* key_bounds_;
 };
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

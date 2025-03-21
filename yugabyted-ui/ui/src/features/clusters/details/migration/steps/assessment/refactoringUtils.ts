@@ -1,38 +1,36 @@
-import type { ErrorsAndSuggestionsDetails } from "@app/api/src";
+import type { AnalysisIssueDetails } from "@app/api/src";
 
-export const getMappedData = (data: ErrorsAndSuggestionsDetails[] | undefined, groupKey: "objectType" | "filePath" = "objectType") => {
-  // Create a map where the keys are groupKey and the values are objects containing arrays of sqlStatement, reason
-  const groupMap: {
-    [key: string]: {
+export const getMappedData = (data: AnalysisIssueDetails[] | undefined) => {
+  const groupMap: Record<
+    string,
+    {
       sqlStatements: string[];
       reasons: string[];
-      issueTypes: string[];
-    };
-  } = {};
-
-  data?.forEach((detail) => {
-    const groupKeyValue = detail[groupKey];
-    if (groupKeyValue) {
-      if (!groupMap[groupKeyValue]) {
-        groupMap[groupKeyValue] = { sqlStatements: [], reasons: [], issueTypes: [] };
-      }
-      groupMap[groupKeyValue].sqlStatements.push(detail.sqlStatement || "");
-      groupMap[groupKeyValue].reasons.push(detail.reason || "");
-      groupMap[groupKeyValue].issueTypes?.push(detail.issueType || "");
+      issueTypes: string[],
+      suggestions: string[], GHs: string[], docs_links: string[]
     }
+  > = {};
+
+  data?.forEach((issue) => {
+    const filePath = issue.filePath;
+
+    if (!filePath) return;
+
+    if (!groupMap[filePath]) {
+      groupMap[filePath] = {
+        sqlStatements: [], reasons: [], issueTypes: [], suggestions: [], GHs: [], docs_links: [] };
+    }
+
+    groupMap[filePath].sqlStatements.push(issue.sqlStatement || "");
+    groupMap[filePath].reasons.push(issue.reason || "");
+    groupMap[filePath].issueTypes.push(issue.issueType || "");
+    groupMap[filePath].GHs.push(issue.GH || "");
+    groupMap[filePath].docs_links.push(issue.docs_link || "");
+    groupMap[filePath].suggestions.push(issue.suggestion || "");
   });
 
-  // Convert the map to an array of { groupKey, sqlStatements, reasons }
-  const mappedData = Object.entries(groupMap).map(
-    ([groupKey, { sqlStatements, reasons, issueTypes }]) => {
-      return {
-        groupKey,
-        sqlStatements,
-        reasons,
-        issueTypes,
-      };
-    }
-  );
-
-  return mappedData
-}
+  return Object.entries(groupMap).map(([filePath, values]) => ({
+    groupKey: filePath,
+    ...values,
+  }));
+};

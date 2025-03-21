@@ -42,12 +42,19 @@ Status PgSelectIndex::PrepareSubquery(
 }
 
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
-  const auto* ybctids = VERIFY_RESULT(DoFetchYbctidBatch());
-  if (!ybctids) {
-    return std::nullopt;
+  // Keep reading until we get one batch of ybctids or EOF.
+  while (!VERIFY_RESULT(GetNextYbctidBatch())) {
+    if (!VERIFY_RESULT(FetchDataFromServer())) {
+      // Server returns no more rows.
+      return std::nullopt;
+    }
   }
+
+  // Got the next batch of ybctids.
+  DCHECK(!rowsets_.empty());
+
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
-  return YbctidBatch{*ybctids, read_req_->has_is_forward_scan()};
+  return YbctidBatch{rowsets_.front().ybctids(), read_req_->has_is_forward_scan()};
 }
 
 Result<bool> PgSelectIndex::GetNextYbctidBatch() {
@@ -62,20 +69,6 @@ Result<bool> PgSelectIndex::GetNextYbctidBatch() {
   }
 
   return false;
-}
-
-Result<const std::vector<Slice>*> PgSelectIndex::DoFetchYbctidBatch() {
-  // Keep reading until we get one batch of ybctids or EOF.
-  while (!VERIFY_RESULT(GetNextYbctidBatch())) {
-    if (!VERIFY_RESULT(FetchDataFromServer())) {
-      // Server returns no more rows.
-      return nullptr;
-    }
-  }
-
-  // Got the next batch of ybctids.
-  DCHECK(!rowsets_.empty());
-  return &rowsets_.front().ybctids();
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(

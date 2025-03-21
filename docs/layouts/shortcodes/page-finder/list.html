@@ -1,0 +1,22 @@
+{{- if .Params.text -}}
+  {{- $isActive := false -}}
+  {{- if isset .Params "current" -}}
+    {{- $isActive = true -}}
+  {{- end -}}
+
+  {{- if $isActive -}}
+    <a role="button" class="active" title="{{- .Params.text -}}">
+  {{- else -}}
+    <a href="{{- .Params.url -}}" title="{{- .Params.text -}}">
+  {{- end -}}
+    <span class="icon">
+      {{- if .Params.icon -}}
+        <img src="{{- .Params.icon -}}" alt="{{- .Params.text -}}" title="{{- .Params.text -}}" width="16" height="16">
+      {{- end -}}
+    </span>
+    <span class="title">{{- .Params.text -}}</span>
+    {{- if $isActive -}}
+      {{- readFile "static/icons/bookmark.svg" | safeHTML -}}
+    {{- end -}}
+  </a>
+{{- end -}}

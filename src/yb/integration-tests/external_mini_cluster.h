@@ -219,6 +219,8 @@ struct ExternalMiniClusterOptions {
 
 YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
 
+class LogWaiter;
+
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
 // black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
 // stop particular cluster participants, which isn't feasible in the normal MiniCluster.  On the
@@ -256,7 +258,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status AddTabletServer(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       const std::vector<std::string>& extra_flags = {},
-      int num_drives = -1);
+      int num_drives = -1, bool wait_for_registration = true);
 
   // Shuts down the tablet server(s) and removes it/them from the masters' ts registry.
   Status RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline);
@@ -459,6 +461,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // given timeout.
   Status WaitForTabletServerCount(size_t count, const MonoDelta& timeout);
 
+  // Waits until the tablet server with given uuid registers to the master leader.
+  Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
+
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
 
@@ -500,6 +505,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status SetFlag(ExternalDaemon* daemon,
                  const std::string& flag,
                  const std::string& value);
+
+  Result<std::string> GetFlag(ExternalDaemon* daemon, const std::string& flag);
 
   // Sets the given flag on all masters.
   Status SetFlagOnMasters(const std::string& flag, const std::string& value);
@@ -586,6 +593,9 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60),
       std::string* output = nullptr);
 
+  // Get a LogWaiter that waits for the given log message across all masters.
+  LogWaiter GetMasterLogWaiter(const std::string& log_message) const;
+
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
@@ -668,6 +678,7 @@ YB_STRONGLY_TYPED_BOOL(SafeShutdown);
 class LogWaiter : public ExternalDaemon::StringListener {
  public:
   LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait);
+  LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait);
 
   Status WaitFor(MonoDelta timeout);
   bool IsEventOccurred() { return event_occurred_; }
@@ -677,9 +688,9 @@ class LogWaiter : public ExternalDaemon::StringListener {
  private:
   void Handle(const GStringPiece& s) override;
 
-  ExternalDaemon* daemon_;
+  std::vector<ExternalDaemon*> daemons_;
   std::atomic<bool> event_occurred_{false};
-  std::string string_to_wait_;
+  const std::string string_to_wait_;
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon
@@ -873,7 +884,8 @@ Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout)
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,
   std::unique_ptr<rpc::SecureContext>* secure_context,
-  std::unique_ptr<rpc::Messenger>* messenger);
+  std::unique_ptr<rpc::Messenger>* messenger,
+  bool enable_ysql);
 
 Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,

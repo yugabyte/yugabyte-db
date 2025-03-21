@@ -27,12 +27,13 @@
 
 #include "access/xact.h"
 #include "catalog/yb_type.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/memutils.h"
+#include "utils/varlena.h"
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
@@ -54,10 +55,11 @@ static bool needs_publication_table_list_refresh = false;
 /* The time at which the list of tables in the publication needs to be provided to the VWAL. */
 static uint64_t publication_refresh_time = 0;
 
-typedef struct YbUnackedTransactionInfo {
+typedef struct YbUnackedTransactionInfo
+{
 	TransactionId xid;
-	XLogRecPtr begin_lsn;
-	XLogRecPtr commit_lsn;
+	XLogRecPtr	begin_lsn;
+	XLogRecPtr	commit_lsn;
 } YBUnackedTransactionInfo;
 
 /*
@@ -84,12 +86,20 @@ typedef struct YbUnackedTransactionInfo {
  */
 static List *unacked_transactions = NIL;
 
+/*
+ * These represent the hash range constraints of a repliction slot and only
+ * populated when hash range constraints are explicitly passed. These fields are
+ * only required till Virtual WAL is initialised.
+ */
+static YbcReplicationSlotHashRange *slot_hash_range = NULL;
+
 static List *YBCGetTables(List *publication_names);
-static void InitVirtualWal(List *publication_names);
+static void InitVirtualWal(List *publication_names,
+						   const YbcReplicationSlotHashRange *slot_hash_range);
 
 static void PreProcessBeforeFetchingNextBatch();
 
-static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
+static void TrackUnackedTransaction(YbVirtualWalRecord *record);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
@@ -99,7 +109,7 @@ static void YBCRefreshReplicaIdentities();
 void
 YBCInitVirtualWal(List *yb_publication_names)
 {
-	MemoryContext	caller_context;
+	MemoryContext caller_context;
 
 	elog(DEBUG1, "YBCInitVirtualWal");
 
@@ -112,9 +122,9 @@ YBCInitVirtualWal(List *yb_publication_names)
 	 * easier to free the batch before requesting another batch.
 	 */
 	cached_records_context = AllocSetContextCreate(virtual_wal_context,
-													 "YB cached record batch "
-													 "context",
-													 ALLOCSET_DEFAULT_SIZES);
+												   "YB cached record batch "
+												   "context",
+												   ALLOCSET_DEFAULT_SIZES);
 	/*
 	 * A separate memory context for the unacked txn list as a child of the
 	 * virtual wal context.
@@ -134,7 +144,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 	 */
 	MemoryContextSwitchTo(virtual_wal_context);
 
-	InitVirtualWal(yb_publication_names);
+	InitVirtualWal(yb_publication_names, slot_hash_range);
 
 	AbortCurrentTransaction();
 	MemoryContextSwitchTo(caller_context);
@@ -145,6 +155,9 @@ YBCInitVirtualWal(List *yb_publication_names)
 	last_txn_begin_lsn = InvalidXLogRecPtr;
 
 	needs_publication_table_list_refresh = false;
+	if (yb_enable_consistent_replication_from_hash_range &&
+		slot_hash_range != NULL)
+		pfree(slot_hash_range);
 }
 
 void
@@ -167,15 +180,15 @@ YBCDestroyVirtualWal()
 static List *
 YBCGetTables(List *publication_names)
 {
-	List	*yb_publications;
-	List	*tables;
+	List	   *yb_publications;
+	List	   *tables;
 
 	Assert(IsTransactionState());
 
 	if (publication_names != NIL)
 	{
 		yb_publications =
-			YBGetPublicationsByNames(publication_names, false /* missing_ok */);
+			YBGetPublicationsByNames(publication_names, false /* missing_ok */ );
 
 		tables = yb_pg_get_publications_tables(yb_publications);
 		list_free(yb_publications);
@@ -187,7 +200,7 @@ YBCGetTables(List *publication_names)
 		 * it targets all the tables present in the database and it uses
 		 * publish_via_partition_root = false (default).
 		 */
-		tables = GetAllTablesPublicationRelations(false /* pubviaroot */);
+		tables = GetAllTablesPublicationRelations(false /* pubviaroot */ );
 	}
 
 
@@ -195,10 +208,11 @@ YBCGetTables(List *publication_names)
 }
 
 static void
-InitVirtualWal(List *publication_names)
+InitVirtualWal(List *publication_names,
+			   const YbcReplicationSlotHashRange *slot_hash_range)
 {
-	List		*tables;
-	Oid			*table_oids;
+	List	   *tables;
+	Oid		   *table_oids;
 
 	elog(DEBUG2,
 		 "Setting yb_read_time to last_pub_refresh_time for "
@@ -207,6 +221,19 @@ InitVirtualWal(List *publication_names)
 	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
 
 	tables = YBCGetTables(publication_names);
+
+	if (yb_enable_consistent_replication_from_hash_range &&
+		slot_hash_range != NULL)
+	{
+		if (list_length(tables) != 1)
+			ereport(ERROR,
+					(errmsg("publication should only contain 1 table "
+								   "for using hash range constraints on slot."),
+					errhint("Consider using an existing publication "
+									"created before the slot that contains 1 "
+									"table. Else, alter/create new publication "
+									"and use a new slot.")));
+	}
 	table_oids = YBCGetTableOids(tables);
 
 	/*
@@ -217,9 +244,11 @@ InitVirtualWal(List *publication_names)
 	{
 		for (int i = 0; i < list_length(tables); i++)
 		{
-			YbcPgReplicaIdentityDescriptor *value =
-				hash_search(MyReplicationSlot->data.yb_replica_identities,
-							&table_oids[i], HASH_FIND, NULL);
+			YbcPgReplicaIdentityDescriptor *value = hash_search(MyReplicationSlot->data.yb_replica_identities,
+																&table_oids[i],
+																HASH_FIND,
+																NULL);
+
 			Assert(value);
 			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
 				ereport(ERROR,
@@ -230,7 +259,7 @@ InitVirtualWal(List *publication_names)
 	}
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
-							list_length(tables));
+							list_length(tables), slot_hash_range, MyProcPid);
 
 	elog(DEBUG2,
 		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
@@ -244,16 +273,19 @@ InitVirtualWal(List *publication_names)
 static const YbcPgTypeEntity *
 GetDynamicTypeEntity(int attr_num, Oid relid)
 {
-	bool is_in_txn = IsTransactionOrTransactionBlock();
+	bool		is_in_txn = IsTransactionOrTransactionBlock();
+
 	if (!is_in_txn)
 		StartTransactionCommand();
 
-	Relation rel = RelationIdGetRelation(relid);
+	Relation	rel = RelationIdGetRelation(relid);
+
 	if (!RelationIsValid(rel))
 		elog(ERROR, "Could not open relation with OID %u", relid);
-	Oid type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
+	Oid			type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
+
 	RelationClose(rel);
-	const YbcPgTypeEntity* type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
+	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
 
 	if (!is_in_txn)
 		AbortCurrentTransaction();
@@ -261,13 +293,13 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 	return type_entity;
 }
 
-YBCPgVirtualWalRecord *
+YbVirtualWalRecord *
 YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 {
-	MemoryContext			caller_context;
-	YBCPgVirtualWalRecord	*record = NULL;
-	List					*tables;
-	Oid						*table_oids;
+	MemoryContext caller_context;
+	YbVirtualWalRecord *record = NULL;
+	List	   *tables;
+	Oid		   *table_oids;
 
 	elog(DEBUG4, "YBCReadRecord");
 
@@ -306,7 +338,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 			list_free(tables);
 			AbortCurrentTransaction();
 
-			// Refresh the replica identities.
+			/* Refresh the replica identities. */
 			YBCRefreshReplicaIdentities();
 
 			needs_publication_table_list_refresh = false;
@@ -361,8 +393,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 static void
 PreProcessBeforeFetchingNextBatch()
 {
-	long secs;
-	int microsecs;
+	long		secs;
+	int			microsecs;
 
 	/* Log the summary of time spent in processing the previous batch. */
 	if (log_min_messages <= DEBUG1 &&
@@ -418,9 +450,9 @@ PreProcessBeforeFetchingNextBatch()
 }
 
 static void
-TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
+TrackUnackedTransaction(YbVirtualWalRecord *record)
 {
-	MemoryContext			 caller_context;
+	MemoryContext caller_context;
 
 	caller_context = GetCurrentMemoryContext();
 	MemoryContextSwitchTo(unacked_txn_list_context);
@@ -428,29 +460,34 @@ TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 	switch (record->action)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
-		{
-			last_txn_begin_lsn = record->lsn;
-			break;
-		}
+			{
+				last_txn_begin_lsn = record->lsn;
+				break;
+			}
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
-		{
-			YBUnackedTransactionInfo *transaction =
+			{
+				YBUnackedTransactionInfo *transaction =
 				palloc(sizeof(YBUnackedTransactionInfo));
-			transaction->xid = record->xid;
-			Assert(last_txn_begin_lsn != InvalidXLogRecPtr);
-			transaction->begin_lsn = last_txn_begin_lsn;
-			transaction->commit_lsn = record->lsn;
 
-			unacked_transactions = lappend(unacked_transactions, transaction);
-			break;
-		}
+				transaction->xid = record->xid;
+				Assert(last_txn_begin_lsn != InvalidXLogRecPtr);
+				transaction->begin_lsn = last_txn_begin_lsn;
+				transaction->commit_lsn = record->lsn;
 
-		/* Not of interest here. */
-		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_DDL: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
-		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
+				unacked_transactions = lappend(unacked_transactions, transaction);
+				break;
+			}
+
+			/* Not of interest here. */
+		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
+			switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_DDL:
+			switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
+			switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_UPDATE:
+			switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 			break;
 	}
@@ -480,14 +517,15 @@ YBCGetFlushRecPtr(void)
 XLogRecPtr
 YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 {
-	XLogRecPtr		restart_lsn_hint = CalculateRestartLSN(confirmed_flush);
-	YbcPgXLogRecPtr	restart_lsn = InvalidXLogRecPtr;
+	XLogRecPtr	restart_lsn_hint = CalculateRestartLSN(confirmed_flush);
+	YbcPgXLogRecPtr restart_lsn = InvalidXLogRecPtr;
 
 	/* There was nothing to ack, so we can return early. */
 	if (restart_lsn_hint == InvalidXLogRecPtr)
 	{
-		elog(DEBUG4, "No unacked transaction were found, skipping the "
-					 "persistence of confirmed_flush and restart_lsn_hint");
+		elog(DEBUG4,
+			 "No unacked transaction were found, skipping the "
+			 "persistence of confirmed_flush and restart_lsn_hint");
 		return restart_lsn_hint;
 	}
 
@@ -507,10 +545,10 @@ YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 static XLogRecPtr
 CalculateRestartLSN(XLogRecPtr confirmed_flush)
 {
-	XLogRecPtr					restart_lsn = InvalidXLogRecPtr;
-	ListCell					*lc;
-	YBUnackedTransactionInfo	*txn;
-	int							numunacked = list_length(unacked_transactions);
+	XLogRecPtr	restart_lsn = InvalidXLogRecPtr;
+	ListCell   *lc;
+	YBUnackedTransactionInfo *txn;
+	int			numunacked = list_length(unacked_transactions);
 
 	if (numunacked == 0)
 		return InvalidXLogRecPtr;
@@ -519,7 +557,7 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 		 "The number of unacked transactions in the virtual wal client is %d",
 		 numunacked);
 
-	foreach (lc, unacked_transactions)
+	foreach(lc, unacked_transactions)
 	{
 		txn = (YBUnackedTransactionInfo *) lfirst(lc);
 
@@ -566,8 +604,8 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 static void
 CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 {
-	ListCell					*cell;
-	YBUnackedTransactionInfo	*txn;
+	ListCell   *cell;
+	YBUnackedTransactionInfo *txn;
 
 	foreach(cell, unacked_transactions)
 	{
@@ -592,12 +630,13 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 static Oid *
 YBCGetTableOids(List *tables)
 {
-	Oid			*table_oids;
+	Oid		   *table_oids;
 
 	table_oids = palloc(sizeof(Oid) * list_length(tables));
-	ListCell *lc;
-	size_t table_idx = 0;
-	foreach (lc, tables)
+	ListCell   *lc;
+	size_t		table_idx = 0;
+
+	foreach(lc, tables)
 		table_oids[table_idx++] = lfirst_oid(lc);
 
 	return table_oids;
@@ -606,17 +645,20 @@ YBCGetTableOids(List *tables)
 static void
 YBCRefreshReplicaIdentities()
 {
-	YbcReplicationSlotDescriptor 	*yb_replication_slot;
-	int							 	replica_identity_idx = 0;
+	YbcReplicationSlotDescriptor *yb_replication_slot;
+	int			replica_identity_idx = 0;
 
 	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
 
 	for (replica_identity_idx = 0;
-	 replica_identity_idx <
-	 yb_replication_slot->replica_identities_count;
-	 replica_identity_idx++)
+		 replica_identity_idx <
+		 yb_replication_slot->replica_identities_count;
+		 replica_identity_idx++)
 	{
-		YbcPgReplicaIdentityDescriptor *desc =
+		YbcPgReplicaIdentityDescriptor *desc;
+		YbcPgReplicaIdentityDescriptor *value;
+
+		desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
 
 		/*
@@ -630,10 +672,113 @@ YBCRefreshReplicaIdentities()
 							"plugin pgoutput"),
 					 errhint("Consider using output plugin yboutput instead.")));
 
-		YbcPgReplicaIdentityDescriptor *value =
+		value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,
 						&desc->table_oid, HASH_ENTER, NULL);
 		value->table_oid = desc->table_oid;
 		value->identity_type = desc->identity_type;
 	}
+}
+
+void
+ValidateAndExtractHashRange(const char *hash_range_str, uint32_t *hash_range)
+{
+	 /* Check for non-numeric characters */
+	if (strspn(hash_range_str, "0123456789") != strlen(hash_range_str))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("invalid value for hash_range")));
+
+	unsigned long parsed_range;
+	char	   *endptr;
+	errno = 0;
+	parsed_range = strtoul(hash_range_str, &endptr, 10);
+	if (errno != 0 || *endptr != '\0')
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("invalid value for hash_range")));
+
+	if (parsed_range < 0 || parsed_range > (PG_UINT16_MAX + 1))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("hash_range out of bound")));
+
+	*hash_range = (uint32_t) parsed_range;
+}
+
+/*
+ * For slots with hash range constraints, extract the start & end hash range to
+ * poll on a subset of tablets for a table. The 'hash_range' option (if present)
+ * will be removed from the options list as the same list is used by output plugins
+ * for option validations.
+ */
+void
+YBCGetTableHashRange(List **options)
+{
+	bool		hash_range_option_given = false;
+	ListCell   *lc;
+	List       *option_values = NIL;
+	DefElem    *hash_range_option = NULL;
+	foreach (lc, *options)
+	{
+		DefElem *defel = (DefElem *) lfirst(lc);
+
+		Assert(defel->arg == NULL || IsA(defel->arg, String));
+
+		if (strcmp(defel->defname, "hash_range") == 0)
+		{
+			if (!yb_enable_consistent_replication_from_hash_range)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("hash_range option is unavailable"),
+						errdetail("hash_range option can be used after "
+								  "yb_enable_consistent_replication_"
+								  "from_hash_range is set to true on "
+								  "all nodes.")));
+
+			if (hash_range_option_given)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("conflicting or redundant options")));
+			hash_range_option_given = true;
+
+			elog(DEBUG2, "Value for hash_range option: %s", strVal(defel->arg));
+			if (!SplitIdentifierString(strVal(defel->arg), ',', &option_values))
+				ereport(ERROR,
+				(errcode(ERRCODE_INVALID_NAME),
+				errmsg("invalid syntax for hash ranges")));
+
+			if (list_length(option_values) != 2)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("hash_range option must only contain start range & end range")));
+
+			uint32_t extracted_start_range;
+			ValidateAndExtractHashRange((char *) linitial(option_values),
+										&extracted_start_range);
+			uint32_t extracted_end_range;
+			ValidateAndExtractHashRange((char *) llast(option_values),
+										&extracted_end_range);
+
+			if (extracted_start_range == extracted_end_range)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("start hash range & end hash range must be different")));
+
+			slot_hash_range = (YbcReplicationSlotHashRange *)
+			palloc(sizeof(YbcReplicationSlotHashRange));
+			slot_hash_range->start_range = extracted_start_range;
+			slot_hash_range->end_range = extracted_end_range;
+
+			elog(INFO, "start_range: %d, end_range: %d",
+				 slot_hash_range->start_range, slot_hash_range->end_range);
+			hash_range_option = defel;
+		}
+	}
+
+	if (hash_range_option != NULL)
+		*options = list_delete_ptr(*options, hash_range_option);
+
+	if (option_values != NIL)
+		list_free(option_values);
 }

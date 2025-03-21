@@ -42,6 +42,13 @@ const useStyles = makeStyles((theme) => ({
     width: '100%',
     height: '1px',
     background: '#E3E3E5'
+  },
+  ellipsis: {
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    maxWidth: '200px',
+    display: 'inline-block'
   }
 }));
 
@@ -80,11 +87,15 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const taskInfo: TaskInfo[] = [
     {
       label: t('type'),
-      value: `${startCase(currentTask.type)} ${currentTask.target}`
+      value: `${currentTask.typeName} ${currentTask.target}`
     },
     {
       label: t('target'),
-      value: currentTask.title.replace(/.*:\s*/, '')
+      value: (
+        <span title={currentTask.title.replace(/.*:\s*/, '')} className={classes.ellipsis}>
+          {currentTask.title.replace(/.*:\s*/, '')}
+        </span>
+      )
     },
     {
       label: t('status'),

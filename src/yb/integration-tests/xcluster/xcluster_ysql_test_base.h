@@ -21,6 +21,8 @@ constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 YB_STRONGLY_TYPED_BOOL(ExpectNoRecords);
 
+YB_DEFINE_ENUM(ReplicationDirection, (AToB)(BToA))
+
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
   struct SetupParams {
@@ -167,23 +169,34 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool delete_op = false, bool use_transaction = false);
 
   virtual Status CheckpointReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      bool require_no_bootstrap_needed = true);
+
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& source_namespace_id);
+
   Status AddNamespaceToXClusterReplication(
       const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id);
+
   // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status CreateReplicationFromCheckpoint(
       const std::string& target_master_addresses = {},
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
       std::vector<NamespaceName> namespace_names = {});
+
   // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status WaitForCreateReplicationToFinish(
-      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {});
+      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {},
+      xcluster::ReplicationGroupId replication_group_id = kReplicationGroupId);
+
+  Status DeleteOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
 
   Status VerifyDDLExtensionTablesCreation(const NamespaceName& db_name, bool only_source = false);
   Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
+
+  Status EnablePITROnClusters();
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

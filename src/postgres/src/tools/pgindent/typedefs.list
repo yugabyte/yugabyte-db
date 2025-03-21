@@ -813,7 +813,6 @@ FormData_pg_statistic_ext
 FormData_pg_statistic_ext_data
 FormData_pg_subscription
 FormData_pg_subscription_rel
-FormData_pg_tablegroup
 FormData_pg_tablespace
 FormData_pg_transform
 FormData_pg_trigger
@@ -824,9 +823,6 @@ FormData_pg_ts_parser
 FormData_pg_ts_template
 FormData_pg_type
 FormData_pg_user_mapping
-FormData_pg_yb_profile
-FormData_pg_yb_role_profile
-FormData_pg_yb_tablegroup
 Form_pg_aggregate
 Form_pg_am
 Form_pg_amop
@@ -875,7 +871,6 @@ Form_pg_statistic_ext
 Form_pg_statistic_ext_data
 Form_pg_subscription
 Form_pg_subscription_rel
-Form_pg_tablegroup
 Form_pg_tablespace
 Form_pg_transform
 Form_pg_trigger
@@ -886,9 +881,6 @@ Form_pg_ts_parser
 Form_pg_ts_template
 Form_pg_type
 Form_pg_user_mapping
-Form_pg_yb_profile
-Form_pg_yb_role_profile
-Form_pg_yb_tablegroup
 FormatNode
 FreeBlockNumberArray
 FreeListData
@@ -1344,7 +1336,6 @@ LLVMJitHandle
 LLVMMemoryBufferRef
 LLVMModuleRef
 LLVMOrcJITStackRef
-LLVMOrcLookupStateRef
 LLVMOrcModuleHandle
 LLVMOrcTargetAddress
 LLVMPassManagerBuilderRef
@@ -2261,6 +2252,7 @@ RelMapFile
 RelMapping
 RelOptInfo
 RelOptKind
+RelStatsInfo
 RelToCheck
 RelToCluster
 RelabelType
@@ -3062,12 +3054,6 @@ XmlTableBuilderData
 YYLTYPE
 YYSTYPE
 YY_BUFFER_STATE
-YbBackfillIndexStmt
-YbCreateProfileStmt
-YbCreateTableGroupStmt
-YbGucOidAssignHook
-YbGucOidCheckHook
-YbRowBounds
 ZSTD_CCtx
 ZSTD_DCtx
 ZSTD_inBuffer
@@ -3265,6 +3251,7 @@ fill_string_relopt
 finalize_primnode_context
 find_dependent_phvs_context
 find_expr_references_context
+fireRIRonSubLink_context
 fix_join_expr_context
 fix_scan_expr_context
 fix_upper_expr_context
@@ -3458,6 +3445,9 @@ parallel_worker_main_type
 parse_error_callback_arg
 parser_context
 partition_method_t
+pe_test_config
+pe_test_escape_func
+pe_test_vector
 pendingPosition
 pgParameterStatus
 pg_atomic_flag

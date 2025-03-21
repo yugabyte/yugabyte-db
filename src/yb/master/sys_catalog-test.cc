@@ -51,7 +51,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 using namespace std::literals;
 
@@ -62,11 +62,17 @@ using std::unique_ptr;
 using std::vector;
 
 DECLARE_string(cluster_uuid);
+DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
 
 namespace yb {
 namespace master {
 
 TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
+  // Multiple masters are created in one process, so there is a chance of the initially suggested
+  // address segment being unavailable (conflicting with another master's segment). Do not DFATAL in
+  // this case as it is expected.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_address_segment_negotiator_dfatal_map_failure) = false;
+
   // Verify that a cluster cannot be created with an invalid uuid.
   ExternalMiniClusterOptions opts;
   opts.num_masters = 1;

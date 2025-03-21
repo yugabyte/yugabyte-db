@@ -155,23 +155,24 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.3.9",
+  "org.postgresql" % "postgresql" % "42.5.6",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-lang3" % "3.14.0",
+  "org.apache.commons" % "commons-lang3" % "3.17.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
-  "org.apache.commons" % "commons-compress" % "1.26.0",
-  "org.apache.commons" % "commons-csv" % "1.10.0",
+  "org.apache.commons" % "commons-compress" % "1.27.1",
+  "org.apache.commons" % "commons-csv" % "1.13.0",
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
+  "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.8.11",
+  "org.springframework.security" % "spring-security-core" % "5.8.16",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
@@ -180,7 +181,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
-  "net.minidev" % "json-smart" % "2.5.0",
+  "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -189,6 +190,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
+  "com.azure" % "azure-storage-blob-batch" % "12.19.1",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
@@ -222,11 +224,12 @@ libraryDependencies ++= Seq(
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
-  "io.kamon" %% "kamon-bundle" % "2.5.9",
-  "io.kamon" %% "kamon-prometheus" % "2.5.9",
+  "com.google.protobuf" % "protobuf-java-util" % "3.20.3",
+  "io.kamon" %% "kamon-bundle" % "2.7.5",
+  "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
-  "org.apache.directory.api" % "api-all" % "2.1.6",
+  "org.apache.directory.api" % "api-all" % "2.1.7",
   "io.fabric8" % "crd-generator-apt" % "6.8.0",
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
@@ -686,7 +689,7 @@ lazy val pythonGenV2Client = project.in(file("client/python"))
 // Generate a Go API client.
 lazy val gogen = project.in(file("client/go"))
   .settings(
-    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiInputSpec := "src/main/resources/swagger-all.json",
     openApiGeneratorName := "go",
     openApiOutputDir := "client/go/v1",
     openApiGenerateModelTests := SettingDisabled,
@@ -928,9 +931,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.97-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b10"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.101-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -1146,6 +1149,7 @@ lazy val swagger = project
       // Consider generating this only in managedResources
       val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
       val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
+      val swaggerAllJson = (root / Compile / resourceDirectory).value / "swagger-all.json"
       Def.sequential(
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
@@ -1156,6 +1160,8 @@ lazy val swagger = project
         // or use '--exclude_deprecated all' to drop all deprecated APIs
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated all"),
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerAllJson --exclude_internal none")
       )
     }.value,
 

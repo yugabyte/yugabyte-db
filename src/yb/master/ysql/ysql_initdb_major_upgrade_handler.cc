@@ -26,12 +26,14 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+DECLARE_bool(enable_ysql);
 DECLARE_string(tmp_dir);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(ysql_enable_auth);
 
@@ -49,7 +51,12 @@ DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
     "This user should have superuser privileges and the password must be placed in the `.pgpass` "
     "file on all yb-master nodes.");
 
+DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
+    "Fail the cleanup of the previous version ysql catalog");
+
 using yb::pgwrapper::PgWrapper;
+
+#define SCHECK_YSQL_ENABLED SCHECK(FLAGS_enable_ysql, IllegalState, "YSQL is not enabled")
 
 namespace yb::master {
 
@@ -73,6 +80,10 @@ YsqlInitDBAndMajorUpgradeHandler::YsqlInitDBAndMajorUpgradeHandler(
       thread_pool_(thread_pool) {}
 
 void YsqlInitDBAndMajorUpgradeHandler::Load(scoped_refptr<SysConfigInfo> config) {
+  if (!FLAGS_enable_ysql) {
+    return;
+  }
+
   auto& ysql_catalog_config = config->mutable_metadata()->mutable_dirty()->pb.ysql_catalog_config();
   if (ysql_catalog_config.has_ysql_major_catalog_upgrade_info()) {
     const auto persisted_version =
@@ -120,6 +131,10 @@ void YsqlInitDBAndMajorUpgradeHandler::SysCatalogLoaded(const LeaderEpoch& epoch
         "Failed to set major version upgrade state to FAILED");
     restarted_during_major_upgrade_ = false;
   }
+
+  if (ysql_catalog_config_.IsPreviousVersionCatalogCleanupRequired()) {
+    ScheduleCleanupPreviousYsqlMajorCatalog(epoch);
+  }
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::StartNewClusterGlobalInitDB(const LeaderEpoch& epoch) {
@@ -132,6 +147,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::StartNewClusterGlobalInitDB(const Leade
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::StartYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  SCHECK_YSQL_ENABLED;
+
   RETURN_NOT_OK(
       TransitionMajorCatalogUpgradeState(YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB, epoch));
 
@@ -155,10 +172,24 @@ IsOperationDoneResult YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgrad
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::FinalizeYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  SCHECK_YSQL_ENABLED;
+
+  RETURN_NOT_OK_PREPEND(
+      master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
+      "Cannot finalize YSQL major catalog upgrade before all yb-tservers have been upgraded to the "
+      "current version");
+
   return TransitionMajorCatalogUpgradeState(YsqlMajorCatalogUpgradeInfoPB::DONE, epoch);
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch) {
+  SCHECK_YSQL_ENABLED;
+
+  RETURN_NOT_OK_PREPEND(
+      master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kYsqlMajorVersionLT),
+      "Cannot rollback YSQL major catalog while yb-tservers are running on a newer YSQL major "
+      "version");
+
   // Since Rollback is synchronous, we can perform the state transitions inside the async
   // function. It also ensures there are no inflight operations when the rollback state transition
   // occurs.
@@ -175,12 +206,12 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const L
   return sync.Wait();
 }
 
-bool YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgradeInProgress() const {
-  return !IsYsqlMajorCatalogUpgradeDone().done();
-}
-
 Result<YsqlMajorCatalogUpgradeState>
 YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
+  if (!FLAGS_enable_ysql) {
+    return YSQL_MAJOR_CATALOG_UPGRADE_DONE;
+  }
+
   const auto state = ysql_catalog_config_.GetMajorCatalogUpgradeState();
   switch (state) {
     case YsqlMajorCatalogUpgradeInfoPB::INVALID:
@@ -207,7 +238,7 @@ YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
 bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
     const TableId& table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
-  if (IsYsqlMajorUpgradeInProgress()) {
+  if (IsMajorUpgradeInProgress()) {
     return is_forced_update;
   }
 
@@ -251,13 +282,9 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
     snapshot_writer = &catalog_manager_.AllocateAndGetInitialSysCatalogSnapshotWriter();
   }
 
-  const auto& master_opts = master_.opts();
-  const auto master_addresses_str =
-      server::MasterAddressesToString(*master_opts.GetMasterAddresses());
-
   RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
-      master_addresses_str, FLAGS_tmp_dir, master_.GetSharedMemoryFd(), db_name_to_oid_list,
-      is_major_upgrade));
+      &master_, master_.options(), *master_.fs_manager(), FLAGS_tmp_dir,
+      db_name_to_oid_list, is_major_upgrade));
 
   if (!snapshot_writer) {
     return Status::OK();
@@ -290,6 +317,9 @@ void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch&
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch) {
+  LOG(INFO) << "Killing any in-flight transactions before starting the YSQL major catalog upgrade";
+  sys_catalog_.tablet_peer()->AbortActiveTransactions();
+
   RETURN_NOT_OK(RunMajorVersionCatalogUpgrade(epoch));
   RETURN_NOT_OK_PREPEND(UpdateCatalogVersions(epoch), "Failed to update catalog versions");
 
@@ -323,33 +353,36 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionCatalogUpgrade(const Lea
 Result<YsqlInitDBAndMajorUpgradeHandler::DbNameToOidList>
 YsqlInitDBAndMajorUpgradeHandler::GetDbNameToOidListForMajorUpgrade() {
   DbNameToOidList db_name_to_oid_list;
-  // Store DB name to OID mapping for all system databases except template1. This mapping will be
-  // passed to initdb so that the system database OIDs will match. The template1 database is
-  // special because it's created by the bootstrap phase of initdb (see file comment for initdb.c
-  // for more details). The template1 database always has OID 1.
-  {
-    std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
-    catalog_manager_.GetAllNamespaces(&all_namespaces);
-    for (const auto& ns_info : all_namespaces) {
-      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
-        continue;
-      }
-      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_info->id()));
-      if (oid < kPgFirstNormalObjectId && oid != kTemplate1Oid) {
-        db_name_to_oid_list.push_back({ns_info->name(), oid});
-      }
-    }
+  // Retrieve the OID for template0 and yugabyte databases. These two and the template1 are the only
+  // databases created by initdb in major upgrade mode. template1 is always hardcoded to use oid 1
+  // and we cannot asign a different oid for it, so it is skipped.
+  for (const auto& namespace_name : {"template0", "yugabyte"}) {
+    auto namespace_id =
+        VERIFY_RESULT(catalog_manager_.GetNamespaceId(YQL_DATABASE_PGSQL, namespace_name));
+    auto oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    db_name_to_oid_list.push_back({namespace_name, oid});
   }
+
   return db_name_to_oid_list;
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epoch) {
   const auto& master_opts = master_.opts();
 
+  const auto pg_upgrade_data_dir =
+      JoinPathSegments(master_opts.fs_opts.data_paths.front(), "pg_upgrade_data");
+
+  RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
+
+  auto bind_address = FLAGS_pgsql_proxy_bind_address.empty() ? FLAGS_rpc_bind_addresses
+                                                             : FLAGS_pgsql_proxy_bind_address;
+  SCHECK(
+      !bind_address.empty(), IllegalState,
+      "No bind address found. Either pgsql_proxy_bind_address or rpc_bind_addresses must be set.");
+
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-      FLAGS_rpc_bind_addresses, master_opts.fs_opts.data_paths.front() + "/pg_data",
-      master_.GetSharedMemoryFd()));
+      bind_address, pg_upgrade_data_dir));
 
   pg_conf.master_addresses = master_opts.master_addresses_flag;
   pg_conf.pg_port = FLAGS_ysql_upgrade_postgres_port;
@@ -359,7 +392,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_conf.listen_addresses << ", port "
             << pg_conf.pg_port;
 
-  pgwrapper::PgSupervisor pg_supervisor(pg_conf, nullptr);
+  pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 
@@ -377,6 +410,12 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
       narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
 
   if (local_ts) {
+    // When pgsql_proxy_bind_address is set, it is used as the socket dir. The tserver does not
+    // expose its pgsql_proxy_bind_address, but we expect master and tserver flags to be the same,
+    // so we can use our flag value to infer the tservers socket dir.
+    if (!FLAGS_pgsql_proxy_bind_address.empty()) {
+      closest_ts_hp.set_host(pg_conf.listen_addresses);
+    }
     pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
   } else {
     // Remote tserver.
@@ -393,6 +432,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
 
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
+
+  RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
   return Status::OK();
 }
@@ -419,7 +460,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunRollbackMajorVersionUpgrade(const Le
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const LeaderEpoch& epoch) {
-  std::vector<scoped_refptr<NamespaceInfo>> namespaces;
+  std::vector<scoped_refptr<NamespaceInfo>> ysql_namespaces;
   {
     std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
     catalog_manager_.GetAllNamespaces(&all_namespaces);
@@ -428,23 +469,19 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const L
       if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
-      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_info->id()));
-      if (oid < kPgFirstNormalObjectId) {
-        namespaces.push_back(ns_info);
-      }
+      ysql_namespaces.push_back(ns_info);
     }
   }
 
-  for (const auto& ns_info : namespaces) {
+  for (const auto& ns_info : ysql_namespaces) {
     LOG(INFO) << "Deleting ysql major catalog tables for namespace " << ns_info->name();
     RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
-        ns_info->id(),
-        /*is_for_ysql_major_rollback=*/true, epoch));
+        ns_info->id(), DeleteYsqlDBTablesType::kMajorUpgradeRollback, epoch));
   }
 
   // Reset state machines for all YSQL namespaces.
   {
-    for (const auto& ns_info : namespaces) {
+    for (const auto& ns_info : ysql_namespaces) {
       NamespaceInfo::WriteLock ns_l = ns_info->LockForWrite();
       if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
         continue;
@@ -522,6 +559,11 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
 
   auto* ysql_major_catalog_upgrade_info = pb.mutable_ysql_major_catalog_upgrade_info();
 
+  SCHECK(
+      !ysql_major_catalog_upgrade_info->previous_version_catalog_cleanup_required(), IllegalState,
+      "Previous version catalog cleanup has not completed yet. Cannot start a new major catalog "
+      "upgrade.");
+
   const auto current_state = ysql_major_catalog_upgrade_info->state();
   SCHECK_NE(
       current_state, new_state, IllegalState,
@@ -543,6 +585,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
   if (current_state == YsqlMajorCatalogUpgradeInfoPB::MONITORING &&
       new_state == YsqlMajorCatalogUpgradeInfoPB::DONE) {
     ysql_major_catalog_upgrade_info->set_catalog_version(VersionInfo::YsqlMajorVersion());
+    ysql_major_catalog_upgrade_info->set_previous_version_catalog_cleanup_required(true);
     ysql_major_upgrade_done = true;
   }
 
@@ -561,7 +604,121 @@ Status YsqlInitDBAndMajorUpgradeHandler::TransitionMajorCatalogUpgradeState(
 
   if (ysql_major_upgrade_done) {
     ysql_major_upgrade_in_progress_ = false;
+    ScheduleCleanupPreviousYsqlMajorCatalog(epoch);
   }
+
+  return Status::OK();
+}
+
+void YsqlInitDBAndMajorUpgradeHandler::ScheduleCleanupPreviousYsqlMajorCatalog(
+    const LeaderEpoch& epoch) {
+  // We do not expect the scheduling itself to fail. But in the rare case it does, the yb-master
+  // leader will have to ben bounced. This is most likely to happen anyway if scheduling is failing,
+  // so we do not need more complex code to handle it.
+  ERROR_NOT_OK(
+      RunOperationAsync([this, epoch]() mutable {
+        while (true) {
+          auto is_leader = catalog_manager_.CheckIsLeaderAndReady();
+          if (!is_leader.ok()) {
+            LOG(INFO) << "No longer the leader. New leader will retry the cleanup of the previous "
+                         "YSQL major version catalog: "
+                      << is_leader;
+            return;
+          }
+
+          auto status = CleanupPreviousYsqlMajorCatalog(epoch);
+          if (status.ok()) {
+            return;
+          }
+          LOG(WARNING) << "Failed to cleanup previous version ysql major catalog. Retrying: "
+                       << status;
+        }
+      }),
+      "Failed to schedule cleanup of previous version ysql major catalog");
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::CleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch) {
+  if (!ysql_catalog_config_.IsPreviousVersionCatalogCleanupRequired()) {
+    VLOG(1) << "Previous version catalog cleanup not required.";
+    return Status::OK();
+  }
+
+  SCHECK(
+      !FLAGS_TEST_ysql_fail_cleanup_previous_version_catalog, IllegalState,
+      "Failed due to FLAGS_TEST_ysql_fail_cleanup_previous_version_catalog");
+
+  std::vector<scoped_refptr<NamespaceInfo>> ysql_namespaces;
+  {
+    std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
+    catalog_manager_.GetAllNamespaces(&all_namespaces);
+    for (const auto& ns_info : all_namespaces) {
+      NamespaceInfo::ReadLock ns_l = ns_info->LockForRead();
+      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+      ysql_namespaces.push_back(ns_info);
+    }
+  }
+
+  for (const auto& ns_info : ysql_namespaces) {
+    LOG(INFO) << "Deleting previous ysql major catalog tables for namespace "
+              << ns_info->ToString();
+    RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
+        ns_info->id(), DeleteYsqlDBTablesType::kMajorUpgradeCleanup, epoch));
+  }
+
+  {
+    auto [l, pb] = ysql_catalog_config_.LockForWrite(epoch);
+    pb.mutable_ysql_major_catalog_upgrade_info()->set_previous_version_catalog_cleanup_required(
+        false);
+    RETURN_NOT_OK(l.UpsertAndCommit());
+  }
+
+  return Status::OK();
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::ValidateTServerVersion(
+    const VersionInfoPB& ts_version) const {
+  if (!FLAGS_enable_ysql) {
+    return Status::OK();
+  }
+
+  // Dev note: Returning a bad status will cause the yb-tserver to FATAL.
+  const auto current_major_version = VersionInfo::YsqlMajorVersion();
+
+  if (!ysql_major_upgrade_in_progress_) {
+    // When not in YSQL major upgrade only tservers of the current version are allowed.
+    SCHECK_FORMAT(
+        VersionInfo::ValidateVersion(ts_version, ValidateVersionInfoOp::kYsqlMajorVersionEQ),
+        IllegalState,
+        "yb-tserver YSQL major version $0 does not match the cluster version $1. Restart the "
+        "yb-tserver in the correct version.",
+        ts_version.ysql_major_version(), current_major_version);
+
+    return Status::OK();
+  }
+
+  if (ysql_catalog_config_.GetMajorCatalogUpgradeState() ==
+      YsqlMajorCatalogUpgradeInfoPB::MONITORING) {
+    // During monitoring phase we allow the tservers to be in both previous and current version.
+    SCHECK_FORMAT(
+        VersionInfo::ValidateVersion(ts_version, ValidateVersionInfoOp::kYsqlMajorVersionLE),
+        IllegalState,
+        "yb-tserver YSQL major version $0 is too high. Restart the yb-tserver in a version less "
+        "than or equal to YSQL major version $1.",
+        ts_version.ysql_major_version(), current_major_version);
+
+    return Status::OK();
+  }
+
+  // During all other phases of the major upgrade, the tserver must be in the previous version.
+  SCHECK_FORMAT(
+      VersionInfo::ValidateVersion(ts_version, ValidateVersionInfoOp::kYsqlMajorVersionLT),
+      IllegalState,
+      "yb-tserver YSQL major version $0 is too high. Cluster is not in a state to accept "
+      "yb-tservers on a higher version yet. Restart the yb-tserver in the previous YSQL major "
+      "version",
+      ts_version.ysql_major_version());
 
   return Status::OK();
 }

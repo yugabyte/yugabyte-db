@@ -29,10 +29,11 @@ import subprocess
 import sys
 import time
 
+from contextlib import contextmanager
 from overrides import overrides
 from sys_detection import local_sys_conf
 
-from typing import List, Dict, Optional, Any, Set, Callable
+from typing import List, Dict, Optional, Any, Set, Callable, Generator
 
 from yugabyte_pycommon import (  # type: ignore
     run_program,
@@ -209,6 +210,42 @@ def remove_repeated_arguments(removing_from: str, removing_what: str) -> str:
         if arg not in args_to_remove:
             result.append(arg)
     return shlex_join(result)
+
+
+@contextmanager
+def SavedEnviron(*remove_vars: str, **update_vars: str) -> Generator:
+    """
+    Temporarily remove/update environment variables, then restore them.
+    Usage:
+    with SavedEnviron('VAR1', 'VAR2', VAR3='new_value'):
+        # Code with modified environment
+    """
+    env = os.environ
+    original = {}
+
+    # Store original values and remove variables
+    for var in remove_vars:
+        original[var] = env.pop(var, None)
+
+    # Store original values and update variables
+    for var, value in update_vars.items():
+        original[var] = env.get(var)
+        env[var] = value
+
+    try:
+        yield
+    finally:
+        # Restore original environment
+        for var in remove_vars:
+            if original[var] is not None:
+                env[var] = str(original[var])
+            else:
+                env.pop(var, None)
+        for var in update_vars:
+            if original[var] is not None:
+                env[var] = str(original[var])
+            else:
+                env.pop(var, None)
 
 
 class PostgresBuilder(YbBuildToolBase):
@@ -761,10 +798,7 @@ class PostgresBuilder(YbBuildToolBase):
 
     def make_postgres(self) -> None:
         self.set_env_vars('make')
-
-        # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
-        # But in case YB project is built with make, MAKELEVEL is not 0 at this point.
-        make_cmd: List[str] = ['make', 'MAKELEVEL=0']
+        make_cmd: List[str] = ['make']
         if is_macos_arm64():
             make_cmd = ['arch', '-arm64'] + make_cmd
 
@@ -786,7 +820,11 @@ class PostgresBuilder(YbBuildToolBase):
         ] + external_extension_dirs
 
         for work_dir in work_dirs:
-            with WorkDirContext(work_dir):
+            # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
+            # But in the case where the YB project is built with make,
+            # MAKELEVEL is not 0 at this point. We temporarily unset MAKELEVEL to
+            # deal with this.
+            with WorkDirContext(work_dir), SavedEnviron('MAKELEVEL'):
                 self.write_debug_scripts(env_script_content)
 
                 make_cmd_suffix = []
@@ -812,11 +850,10 @@ class PostgresBuilder(YbBuildToolBase):
                     logging.info("Generating the compilation database in directory '%s'", work_dir)
 
                     compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
-                    self.set_env_var('YB_PG_SKIP_CONFIG_STATUS', '1')
-                    if not os.path.exists(compile_commands_path):
-                        run_program(
-                            ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
-                    del os.environ['YB_PG_SKIP_CONFIG_STATUS']
+                    with SavedEnviron(YB_PG_SKIP_CONFIG_STATUS='1'):
+                        if not os.path.exists(compile_commands_path):
+                            run_program(
+                                ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
 
                     if not os.path.exists(compile_commands_path):
                         raise RuntimeError("Failed to generate compilation database at: %s" %

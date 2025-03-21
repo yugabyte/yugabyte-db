@@ -25,15 +25,18 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -62,6 +65,7 @@ const auto kPhase = "phase"s;
 const auto kPhaseBackfilling = "backfilling"s;
 const auto kPhaseInitializing = "initializing"s;
 const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
+constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
 
 } // namespace
 
@@ -83,6 +87,8 @@ class PgIndexBackfillTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_sleep_before_vector_index_backfill_seconds=$0", kBackfillSleepSec));
   }
 
  protected:
@@ -156,6 +162,18 @@ class PgIndexBackfillTest : public LibPqTestBase {
 
   std::unique_ptr<PGConn> conn_;
   TestThreadHolder thread_holder_;
+
+  std::string GenerateSplitClause(int num_rows, int num_tablets) {
+    std::string split_clause = "SPLIT AT VALUES (";
+    for (int i = 1; i < num_tablets; ++i) {
+      if (i > 1) {
+        split_clause += ", ";
+      }
+      split_clause += Format("($0)", i * num_rows / num_tablets + 1);
+    }
+    split_clause += ")";
+    return split_clause;
+  }
 
  private:
   Result<IndexStateFlags> GetIndexStateFlags(const std::string& index_name) {
@@ -1309,48 +1327,75 @@ TEST_F_EX(PgIndexBackfillTest,
 //   - indisready
 //   - backfill
 //     - get safe time for read
-//                                                UPDATE a row of the indexed table
+//                                                UPDATE a few rows of the indexed table
 //     - do the actual backfill
 //   - indisvalid
-// The backfill should use the values before update when writing to the index.  The update should
+// The backfill should use the values before update when writing to the index.  The updates should
 // write and delete to the index because of permissions.  Since backfill writes with an ancient
-// timestamp, the update should appear to have happened after the backfill.
+// timestamp, the updates should appear to have happened after the backfill.
 TEST_F_EX(PgIndexBackfillTest,
           ReadTime,
           PgIndexBackfillBlockDoBackfill) {
+  constexpr auto kNumRows = 100;
+  constexpr auto kDeltaInCols = 10;
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
   ASSERT_OK(conn_->ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(0, 5), generate_series(10, 15))", kTableName));
+      "INSERT INTO $0 SELECT g, g + $1 FROM generate_series(1, $2) g",
+      kTableName, kDeltaInCols, kNumRows));
 
   // conn_ should be used by at most one thread for thread safety.
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+    constexpr auto kNumSplits = 10;
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 (j ASC) $2", kIndexName, kTableName,
+        GenerateSplitClause(kNumRows, kNumSplits)));
+    LOG(INFO) << "Done create thread";
   });
-  thread_holder_.AddThreadFunctor([this] {
+  std::set<int> updated_keys;
+  constexpr auto kNewDeltaInCols = 200;
+  thread_holder_.AddThreadFunctor([this, &updated_keys, kNewDeltaInCols] {
     LOG(INFO) << "Begin write thread";
     ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
 
-    LOG(INFO) << "Updating row";
-    ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = 3", kTableName));
-    LOG(INFO) << "Done updating row";
+    LOG(INFO) << "Updating rows";
+    while (updated_keys.size() < 10) {
+      unsigned int seed = SeedRandom();
+      updated_keys.insert((rand_r(&seed) % kNumRows) + 1);
+    }
+    for (auto key : updated_keys) {
+      ASSERT_OK(conn_->ExecuteFormat(
+        "UPDATE $0 SET j = i + $1 WHERE i = $2", kTableName, kNewDeltaInCols, key));
+    }
+    LOG(INFO) << "Updated rows: " << AsString(updated_keys);
 
     // It should still be in the backfill stage.
     ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
         kIndexName, IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady})));
 
+    LOG(INFO) << "resume backfill";
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   });
   thread_holder_.JoinAll();
 
   // Index scan to verify contents of index table.
-  const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
-  ASSERT_OK(WaitForIndexScan(query));
-  const auto row = ASSERT_RESULT((conn_->FetchRow<int32_t, int32_t>(query)));
-  // Make sure that the update is visible.
-  ASSERT_EQ(row, (decltype(row){3, 113}));
+  for (int key : updated_keys) {
+    std::string query = Format("SELECT * FROM $0 WHERE j = $1", kTableName, key + kNewDeltaInCols);
+    ASSERT_OK(WaitForIndexScan(query));
+    const auto row = ASSERT_RESULT((conn_->FetchRow<int32_t, int32_t>(query)));
+    // Make sure that the update is visible.
+    ASSERT_EQ(row, (decltype(row){key, key + kNewDeltaInCols}));
+  }
+
+  // Make sure that the updated index keys have indeed been deleted.
+  for (int key : updated_keys) {
+    std::string query = Format("SELECT * FROM $0 WHERE j = $1", kTableName, key + kDeltaInCols);
+    ASSERT_OK(WaitForIndexScan(query));
+    const auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, int32_t>(query)));
+    ASSERT_EQ(rows.size(), 0);
+  }
 }
 
 // Make sure that updates at each stage of multi-stage CREATE INDEX work.  Simulate the following:
@@ -2526,6 +2571,166 @@ TEST_F_EX(PgIndexBackfillTest, ConcurrentDelete, PgIndexBackfill1kRowsPerSec) {
   ASSERT_OK(WaitForIndexScan(query));
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
   thread_holder_.JoinAll();
+}
+
+struct VectorIndexWriter {
+  static constexpr int kBig = 100000000;
+
+  std::atomic<int> counter = 0;
+  std::atomic<int> extra_values_counter = kBig * 2;
+  std::atomic<CoarseTimePoint> last_write;
+  std::atomic<MonoDelta> max_time_without_inserts = MonoDelta::FromNanoseconds(0);
+  std::atomic<bool> failure = false;
+
+  void Perform(PGConn& conn) {
+    std::vector<int> values;
+    for (int i = RandomUniformInt(3, 6); i > 0; --i) {
+      values.push_back(++counter);
+    }
+    size_t keep_values = values.size();
+    for (int i = RandomUniformInt(0, 2); i > 0; --i) {
+      values.push_back(++extra_values_counter);
+    }
+    bool use_2_steps = RandomUniformBool();
+
+    int offset = use_2_steps ? kBig : 0;
+    ASSERT_NO_FATALS(Insert(conn, values, offset));
+    if (use_2_steps || keep_values != values.size()) {
+      ASSERT_NO_FATALS(UpdateAndDelete(conn, values, keep_values));
+    }
+  }
+
+  void Insert(PGConn& conn, const std::vector<int>& values, int offset) {
+    for (;;) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      bool failed = false;
+      for (auto value : values) {
+        auto res = conn.ExecuteFormat(
+            "INSERT INTO test VALUES ($0, '[$1.0]')", value, value + offset);
+        if (!res.ok()) {
+          ASSERT_OK(conn.RollbackTransaction());
+          LOG(INFO) << "Insert " << value << " failed: " << res;
+          ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
+          failed = true;
+          break;
+        }
+      }
+      if (!failed) {
+        ASSERT_OK(conn.CommitTransaction());
+        auto now = CoarseMonoClock::Now();
+        auto prev_last_write = last_write.exchange(now);
+        if (prev_last_write != CoarseTimePoint()) {
+          MonoDelta new_value(now - prev_last_write);
+          if (MakeAtLeast(max_time_without_inserts, new_value)) {
+            LOG(INFO) << "Update max time without inserts: " << new_value;
+          }
+        }
+        std::this_thread::sleep_for(100ms);
+        break;
+      }
+    }
+  }
+
+  void UpdateAndDelete(PGConn& conn, const std::vector<int>& values, size_t keep_values) {
+    for (;;) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      bool failed = false;
+      for (size_t i = 0; i != values.size(); ++i) {
+        auto value = values[i];
+        Status res;
+        if (i < keep_values) {
+          res = conn.ExecuteFormat(
+              "UPDATE test SET embedding = '[$0.0]' WHERE id = $0", value);
+        } else {
+          res = conn.ExecuteFormat("DELETE FROM test WHERE id = $0", value);
+        }
+        if (!res.ok()) {
+          ASSERT_OK(conn.RollbackTransaction());
+          LOG(INFO) <<
+              (i < keep_values ? "Update " : "Delete " ) << value << " failed: " << res;
+          ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
+          failed = true;
+          break;
+        }
+      }
+      if (!failed) {
+        ASSERT_OK(conn.CommitTransaction());
+        std::this_thread::sleep_for(100ms);
+        break;
+      }
+    }
+  }
+
+  void WaitWritten(int num_rows) {
+    auto limit = counter.load() + num_rows;
+    while (counter.load() < limit && !failure) {
+      std::this_thread::sleep_for(10ms);
+    }
+  }
+
+  void Verify(PGConn& conn) {
+    int num_bad_results = 0;
+    for (int i = 2; i < counter.load(); ++i) {
+      auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+          "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));
+      auto expected = Format("$0; $1; $2", i, i - 1, i + 1);
+      if (rows != expected) {
+        LOG(INFO) << "Bad result: " << rows << " vs " << expected;
+        ++num_bad_results;
+      }
+    }
+    // Expect recall 98% or better.
+    ASSERT_LE(num_bad_results, counter.load() / 50);
+  }
+};
+
+TEST_F(PgIndexBackfillTest, VectorIndex) {
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE test (id INT PRIMARY KEY, embedding vector(1))"));
+  TestThreadHolder thread_holder;
+  VectorIndexWriter writer;
+  for (int i = 0; i != 8; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop_flag = thread_holder.stop_flag(), &writer] {
+      bool done = false;
+      auto se = ScopeExit([&done, &writer] {
+        if (!done) {
+          writer.failure = true;
+        }
+      });
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load()) {
+        ASSERT_NO_FATALS(writer.Perform(conn));
+      }
+      done = true;
+    });
+  }
+  writer.WaitWritten(32);
+  LOG(INFO) << "Started to create index";
+  // TODO(vector_index) Switch to using CONCURRENT index creation when it will be ready.
+  ASSERT_OK(conn_->Execute(
+      "CREATE INDEX NONCONCURRENTLY ON test USING ybhnsw (embedding vector_l2_ops)"));
+  LOG(INFO) << "Finished to create index";
+  writer.WaitWritten(32);
+  thread_holder.Stop();
+  LOG(INFO) << "Max time without inserts: " << writer.max_time_without_inserts;
+  ASSERT_LT(writer.max_time_without_inserts, 1s * kBackfillSleepSec);
+  SCOPED_TRACE(Format("Total rows: $0", writer.counter.load()));
+
+  // VerifyVectorIndexes does not take intents into account, so could produce false failure.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    tserver::VerifyVectorIndexesRequestPB req;
+    tserver::VerifyVectorIndexesResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    auto proxy = cluster_->tablet_server(i)->Proxy<tserver::TabletServerServiceProxy>();
+    ASSERT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  }
+  writer.Verify(*conn_);
 }
 
 } // namespace yb::pgwrapper

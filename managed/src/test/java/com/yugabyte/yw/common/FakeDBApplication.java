@@ -99,6 +99,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
   public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
   public XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
+  public SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -177,6 +178,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
+        .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
         .build();
   }
 

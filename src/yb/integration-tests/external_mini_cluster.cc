@@ -171,6 +171,7 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
+DECLARE_string(ysql_hba_conf_csv);
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
@@ -399,7 +400,9 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
     for (size_t i = 1; i <= opts_.num_tablet_servers; i++) {
       RETURN_NOT_OK_PREPEND(
-          AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy),
+          AddTabletServer(
+              ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}, -1,
+              /* wait_for_registration */ false),
           Format("Failed starting tablet server $0", i));
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
@@ -1289,6 +1292,13 @@ Status ExternalMiniCluster::StartMasters() {
   if (opts_.enable_ysql) {
     RETURN_NOT_OK(WaitForInitDb());
   }
+
+  // Trigger an election to avoid an unnecessary 3s wait on every cluster startup.
+  if (!masters_.empty()) {
+    WARN_NOT_OK(WaitForMastersToCommitUpTo(0), "Masters did not commit opid 0 in time");
+    WARN_NOT_OK(StartElection(RandomElement(masters_).get()), "Could not start election");
+  }
+
   return Status::OK();
 }
 
@@ -1418,7 +1428,8 @@ string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {
 }
 
 Status ExternalMiniCluster::AddTabletServer(
-    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives) {
+    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives,
+    bool wait_for_registration) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -1499,6 +1510,10 @@ Status ExternalMiniCluster::AddTabletServer(
   // This is for the cases where we add new ts in middle of tests.
   if (!yb_controller_servers_.empty()) {
     RETURN_NOT_OK(AddYbControllerServer(ts));
+  }
+
+  if (wait_for_registration) {
+    RETURN_NOT_OK(WaitForTabletServerToRegister(ts->uuid(), kTabletServerRegistrationTimeout));
   }
 
   return Status::OK();
@@ -1659,7 +1674,8 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
       for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
         for (auto it = last_unmatched.begin(); it != last_unmatched.end(); ++it) {
           if ((**it).instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
-              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno()) {
+              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno() &&
+              (!e.has_lease_info() || e.lease_info().is_live())) {
             match_count++;
             last_unmatched.erase(it);
             break;
@@ -1673,6 +1689,33 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
     }
     SleepFor(MonoDelta::FromMilliseconds(100));
   }
+}
+
+Status ExternalMiniCluster::WaitForTabletServerToRegister(
+    const std::string& uuid, MonoDelta timeout) {
+  MonoTime deadline{MonoTime::Now()};
+  deadline.AddDelta(timeout);
+  while (true) {
+    if (deadline < MonoTime::Now()) {
+      return STATUS_FORMAT(
+          TimedOut, "New tablet server $0 failed to heartbeat within $1 seconds", uuid, timeout);
+    }
+    master::ListTabletServersRequestPB req;
+    master::ListTabletServersResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(deadline - MonoTime::Now());
+    RETURN_NOT_OK(
+        GetLeaderMasterProxy<master::MasterClusterProxy>().ListTabletServers(req, &resp, &rpc));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    auto tserver_it = std::find_if(
+        resp.servers().begin(), resp.servers().end(),
+        [&uuid](const auto& server) { return server.instance_id().permanent_uuid() == uuid; });
+    if (tserver_it != resp.servers().end()) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+  return Status::OK();
 }
 
 void ExternalMiniCluster::AssertNoCrashes() {
@@ -2070,6 +2113,21 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
   return Status::OK();
 }
 
+Result<std::string> ExternalMiniCluster::GetFlag(ExternalDaemon* daemon, const std::string& flag) {
+  server::GenericServiceProxy proxy(proxy_cache_.get(), daemon->bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::GetFlagRequestPB req;
+  server::GetFlagResponsePB resp;
+  req.set_flag(flag);
+  RETURN_NOT_OK_PREPEND(proxy.GetFlag(req, &resp, &controller), "rpc failed");
+  if (!resp.valid()) {
+    return STATUS_FORMAT(InvalidArgument, "Failed to get value for flag $0", flag);
+  }
+  return resp.value();
+}
+
 Status ExternalMiniCluster::SetFlagOnMasters(const string& flag, const string& value) {
   for (const auto& master : masters_) {
     RETURN_NOT_OK(SetFlag(master.get(), flag, value));
@@ -2233,11 +2291,6 @@ void ExternalMiniCluster::SetMaxGracefulShutdownWaitSec(int max_graceful_shutdow
   }
 }
 
-LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
-    daemon_(daemon), string_to_wait_(string_to_wait) {
-  daemon_->SetLogListener(this);
-}
-
 Status ExternalMiniCluster::CallYbAdmin(
     const std::vector<std::string>& args, MonoDelta timeout, std::string* output) {
   auto command = ToStringVector(
@@ -2258,6 +2311,28 @@ Status ExternalMiniCluster::CallYbAdmin(
   return status;
 }
 
+LogWaiter ExternalMiniCluster::GetMasterLogWaiter(const std::string& log_message) const {
+  std::vector<ExternalDaemon*> masters;
+  for (const scoped_refptr<ExternalMaster>& master : masters_) {
+    masters.push_back(master.get());
+  }
+  return LogWaiter(masters, log_message);
+}
+
+//------------------------------------------------------------
+// LogWaiter
+//------------------------------------------------------------
+
+LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait)
+    : LogWaiter(std::vector<ExternalDaemon*>({daemon}), string_to_wait) {}
+
+LogWaiter::LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait)
+    : daemons_(std::move(daemons)), string_to_wait_(string_to_wait) {
+  for (auto daemon : daemons_) {
+    daemon->SetLogListener(this);
+  }
+}
+
 void LogWaiter::Handle(const GStringPiece& s) {
   if (s.contains(string_to_wait_)) {
     event_occurred_ = true;
@@ -2266,14 +2341,22 @@ void LogWaiter::Handle(const GStringPiece& s) {
 
 Status LogWaiter::WaitFor(const MonoDelta timeout) {
   constexpr auto kInitialWaitPeriod = 100ms;
-  return ::yb::WaitFor(
-      [this]{ return event_occurred_.load(); }, timeout,
-      Format("Waiting for log record '$0' on $1...", string_to_wait_, daemon_->id()),
+
+  std::vector<std::string> daemons_ids;
+  std::transform(
+      daemons_.begin(), daemons_.end(), std::back_inserter(daemons_ids),
+      [](const auto* daemon) { return daemon->id(); });
+
+  return ::yb::LoggedWaitFor(
+      [this] { return event_occurred_.load(); }, timeout,
+      Format("Waiting for log record '$0' on $1...", string_to_wait_, ToString(daemons_ids)),
       kInitialWaitPeriod);
 }
 
 LogWaiter::~LogWaiter() {
-  daemon_->RemoveLogListener(this);
+  for (auto daemon : daemons_) {
+    daemon->RemoveLogListener(this);
+  }
 }
 
 //------------------------------------------------------------
@@ -2601,7 +2684,8 @@ const std::string& FlagToString(const std::string& flag) {
 void StartSecure(
     std::unique_ptr<ExternalMiniCluster>* cluster,
     std::unique_ptr<rpc::SecureContext>* secure_context,
-    std::unique_ptr<rpc::Messenger>* messenger) {
+    std::unique_ptr<rpc::Messenger>* messenger,
+    bool enable_ysql) {
   rpc::MessengerBuilder messenger_builder("test_client");
   *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
       /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
@@ -2615,10 +2699,13 @@ void StartSecure(
       YB_FORWARD_FLAG(node_to_node_encryption_use_client_certificates),
       YB_FORWARD_FLAG(use_client_to_server_encryption),
       YB_FORWARD_FLAG(use_node_to_node_encryption),
+      YB_FORWARD_FLAG(ysql_hba_conf_csv)
   };
   opts.extra_master_flags = opts.extra_tserver_flags;
   opts.num_tablet_servers = 3;
   opts.use_even_ips = true;
+  opts.enable_ysql = enable_ysql;
+  opts.enable_ysql_auth = enable_ysql;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }

@@ -67,30 +67,33 @@ typedef enum InstrumentOption
 /*
  * YugabyteDB RPC statistics
  */
-typedef struct YbPgRpcStats {
-	double  count;			/* # of RPCs */
-	double  rows_scanned;	/* # of rows scanned by RPCs */
-	double	wait_time;		/* RPC wait time (ns) */
+typedef struct YbPgRpcStats
+{
+	double		count;			/* # of RPCs */
+	double		rows_scanned;	/* # of rows scanned by RPCs */
+	double		wait_time;		/* RPC wait time (ns) */
 } YbPgRpcStats;
 
-typedef struct YbPgEventMetric {
-	double sum;
-	double count;
+typedef struct YbPgEventMetric
+{
+	double		sum;
+	double		count;
 } YbPgEventMetric;
 
-typedef struct YbInstrumentation {
-	YbPgRpcStats         tbl_reads;
-	YbPgRpcStats         index_reads;
-	YbPgRpcStats         catalog_reads;
-	YbPgRpcStats         write_flushes;
-	double               tbl_writes;
-	double               index_writes;
-	double               catalog_writes;
+typedef struct YbInstrumentation
+{
+	YbPgRpcStats tbl_reads;
+	YbPgRpcStats index_reads;
+	YbPgRpcStats catalog_reads;
+	YbPgRpcStats write_flushes;
+	double		tbl_writes;
+	double		index_writes;
+	double		catalog_writes;
 
-	uint64_t             storage_metrics_version;
-	double               storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
-	double               storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
-	YbPgEventMetric      storage_event_metrics[YB_STORAGE_EVENT_COUNT];
+	uint64_t	storage_metrics_version;
+	double		storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
+	double		storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
+	YbPgEventMetric storage_event_metrics[YB_STORAGE_EVENT_COUNT];
 } YbInstrumentation;
 
 typedef struct Instrumentation

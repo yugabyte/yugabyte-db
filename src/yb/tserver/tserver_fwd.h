@@ -14,12 +14,15 @@
 #pragma once
 
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 #include "yb/tserver/backup.fwd.h"
 #include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"
 
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
@@ -32,15 +35,20 @@ class YBPgsqlOp;
 
 namespace tserver {
 
+class DbServerBase;
 class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
+class PgClientServiceMockImpl;
+class PgMutationCounter;
 class PgTableCache;
 class PgResponseCache;
 class PgSequenceCache;
 class PgSharedMemoryPool;
 class SharedExchange;
 class SharedMemorySegmentHandle;
+class TSLocalLockManager;
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;
@@ -52,6 +60,8 @@ class TabletServerOptions;
 class TabletServerServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
+class TserverXClusterContextIf;
+class YsqlAdvisoryLocksTable;
 
 enum class TabletServerServiceRpcMethodIndexes;
 
@@ -74,5 +84,9 @@ template <typename T>
 struct HasRaftConfigOpidIndex<
     T, std::void_t<decltype(std::declval<T>().raft_config_opid_index())>>
     : std::true_type {};
+
+struct PgTxnSnapshot;
+YB_STRONGLY_TYPED_UUID_DECL(PgTxnSnapshotLocalId);
+
 } // namespace tserver
 } // namespace yb

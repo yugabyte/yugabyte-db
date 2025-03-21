@@ -91,7 +91,7 @@ func (p *PlacementBlockContext) startSubsection(format string) (*template.Templa
 }
 
 func (p *PlacementBlockContext) subSection(name string) {
-	p.Output.Write([]byte("\n\n"))
+	p.Output.Write([]byte("\n"))
 	p.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	p.Output.Write([]byte("\n"))
 }

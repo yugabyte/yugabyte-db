@@ -32,9 +32,9 @@ Usage: yb-voyager assess-migration [ <arguments> ... ]
 
 The valid *arguments* for assess migration are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| &#8209;&#8209;assessment&#8209;metadata&#8209;dir | Directory path where assessment metadata like source database metadata and statistics are stored. Optional flag, if not provided, it will be assumed to be present at default path inside the export directory. |
+| --assessment-metadata-dir | Directory path where assessment metadata like source database metadata and statistics are stored. Optional flag, if not provided, it will be assumed to be present at default path inside the export directory. |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
 | --iops-capture-interval | Interval (in seconds) at which Voyager will gather IOPS metadata from the source database for the given schema(s). <br> Default: 120 |
@@ -44,7 +44,7 @@ The valid *arguments* for assess migration are described in the following table:
 | --send-diagnostics | Enable or disable sending [diagnostics](../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. <br>Default: localhost |
 | --source-db-name | Source database name. |
-| &#8209;&#8209;source&#8209;db&#8209;password | Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --source-db-password | Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --source-db-port | Source database server port number. <br>Default: PostgreSQL (5432), Oracle (1521) |
 | --source-db-schema | Source schema name(s) to export. In case of PostgreSQL, it can be single or a comma-separated list of schemas: `schema1,schema2,schema3`. |
 | --source-db-type |  Source database type (postgresql, oracle). |
@@ -81,9 +81,9 @@ Usage: yb-voyager assess-migration-bulk [ <arguments> ... ]
 
 The valid *arguments* for assess migration bulk are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| &#8209;&#8209;bulk&#8209;assessment&#8209;dir | Directory path where assessment data is output. |
+| --bulk-assessment-dir | Directory path where assessment data is output. |
 | --continue-on-error | Print the error message to the console and continue to next schema assessment.<br>Default: true.<br>Accepted parameters: true, false, yes, no, 0, 1. |
 | --fleet-config-file | Path to the CSV file with connection parameters for schema(s) to be assessed. The first line must be a header row. <br>Fields (case-insensitive): 'source-db-type', 'source-db-host', 'source-db-port', 'source-db-name', 'oracle-db-sid', 'oracle-tns-alias', 'source-db-user', 'source-db-password', 'source-db-schema'.<br>Mandatory: 'source-db-type', 'source-db-user', 'source-db-schema', and one of ['source-db-name', 'oracle-db-sid', 'oracle-tns-alias']. |
 | -h, --help | Command line help. |

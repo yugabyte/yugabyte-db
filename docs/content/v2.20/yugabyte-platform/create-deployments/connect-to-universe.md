@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/11/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
@@ -190,7 +190,7 @@ Replace the following:
 
   <div id="psql" class="tab-pane fade" role="tabpanel" aria-labelledby="psql-tab">
 
-To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), use the following connection string:
+To connect using [psql](https://www.postgresql.org/docs/11/app-psql.html), use the following connection string:
 
 ```sh
 ./psql --host=<HOST_ADDRESS> --port=5433 \
@@ -220,7 +220,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 - **host** address of an endpoint on your universe.
 - **port** 5433 for YSQL, 9042 for YCQL.
 - **database** name; the default YSQL database is yugabyte.
-- **username** and **password** of a user with permissions for the database; the default user is admin.
+- **username** and **password** of a user with permissions for the database; the default admin user is `yugabyte` (YSQL) or `cassandra` (YCQL).
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 

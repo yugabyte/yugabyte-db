@@ -179,6 +179,7 @@ namespace yb::dockv {
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
     ((kVectorId, 'V')) /* ASCII code 86 */ \
+    ((kDeleteVectorIds, 'W')) /* ASCII code 87 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \
@@ -228,6 +229,10 @@ struct ValueEntryTypeAsChar {
 // primitive (e.g. object and tombstone are not).
 constexpr ValueEntryType kMinPrimitiveValueEntryType = ValueEntryType::kNullLow;
 constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kObject;
+
+// All regular db table row records can't start earlier than this. All non-table row regular db
+// records are guaranteed to be before than this.
+constexpr auto kMinRegularDbTableRowFirstByte = dockv::KeyEntryTypeAsChar::kNullLow;
 
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.

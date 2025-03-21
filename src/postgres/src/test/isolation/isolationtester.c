@@ -212,7 +212,8 @@ main(int argc, char **argv)
 			exit(1);
 		}
 
-		PQclear(res); /* YB: Clear res to avoid asan memory leak failure */
+		PQclear(res);			/* YB: Clear res to avoid asan memory leak
+								 * failure */
 
 		/* Save each connection's backend PID for subsequent use. */
 		conns[i].backend_pid = PQbackendPID(conns[i].conn);
@@ -945,20 +946,23 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 			td *= USECS_PER_SEC;
 			td += (int64) current_time.tv_usec - (int64) start_time.tv_usec;
 
-			/* Yugabyte specific logic:
-			 *   Since we don't use pg_locks, we can't determine if a session is blocked on another
-			 *   session using the PREP_WAITING function above. So, we instead assume that waiting for
-			 *   for >= 2 second means the session is blocked on another session.
+			/*
+			 * Yugabyte specific logic: Since we don't use pg_locks, we can't
+			 * determine if a session is blocked on another session using the
+			 * PREP_WAITING function above. So, we instead assume that waiting
+			 * for for >= 2 second means the session is blocked on another
+			 * session.
 			 *
-			 *   This is not a perfect check but good enough for now.
+			 * This is not a perfect check but good enough for now.
 			 *
-			 *   TODO(Piyush): Replace this by a deterministic check when blocking information is exposed
-			 *   via Pg locks (#12168).
+			 * TODO(Piyush): Replace this by a deterministic check when
+			 * blocking information is exposed via Pg locks (#12168).
 			 */
-			if (td > YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED * USECS_PER_SEC && !canceled) {
-					if (!(flags & STEP_RETRY))
-						printf("step %s: %s <waiting ...>\n", step->name, step->sql);
-					return true;
+			if (td > YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED * USECS_PER_SEC && !canceled)
+			{
+				if (!(flags & STEP_RETRY))
+					printf("step %s: %s <waiting ...>\n", step->name, step->sql);
+				return true;
 			}
 
 			/*

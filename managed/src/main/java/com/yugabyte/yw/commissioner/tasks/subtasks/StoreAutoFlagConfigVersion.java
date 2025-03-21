@@ -23,7 +23,9 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends ServerSubTaskParams {}
+  public static class Params extends ServerSubTaskParams {
+    public String targetUpgradeSoftwareVersion;
+  }
 
   @Override
   protected Params taskParams() {
@@ -77,6 +79,8 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
               ybSoftwareConfig.setSoftwareVersion(
                   universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion);
               ybSoftwareConfig.setAutoFlagConfigVersion(autoFlagConfigVersion);
+              ybSoftwareConfig.setTargetUpgradeSoftwareVersion(
+                  taskParams().targetUpgradeSoftwareVersion);
               universeDetails.prevYBSoftwareConfig = ybSoftwareConfig;
 
               universe.setUniverseDetails(universeDetails);

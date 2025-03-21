@@ -1,9 +1,9 @@
 # src/test/regress/yb_pg_types_datetime_schedule
 # PORTED TESTS ONLY
-test: yb_pg_date
-test: yb_pg_time
-test: yb_pg_timetz
-test: yb_pg_timestamp
-test: yb_pg_timestamptz
-test: yb_pg_interval
-test: yb_pg_horology
+test: yb.port.date
+test: yb.port.time
+test: yb.port.timetz
+test: yb.port.timestamp
+test: yb.port.timestamptz
+test: yb.port.interval
+test: yb.port.horology

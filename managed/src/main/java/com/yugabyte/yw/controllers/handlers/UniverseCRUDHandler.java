@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -59,6 +60,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -652,6 +654,9 @@ public class UniverseCRUDHandler {
         if (installNodeExporter) {
           taskParams.nodeExporterUser = nodeExporterUser;
         }
+      } else {
+        // Setting dedicatedNodes to true for k8s universes.
+        c.userIntent.dedicatedNodes = true;
       }
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
@@ -995,16 +1000,18 @@ public class UniverseCRUDHandler {
         // TODO: (Daniel) - Move this out to an async task
         if (primaryCluster.userIntent.enableVolumeEncryption
             && primaryCluster.userIntent.providerType.equals(Common.CloudType.aws)) {
-          byte[] cmkArnBytes =
+          EncryptionKey cmkArnBytes =
               keyManager.generateUniverseKey(
                   taskParams.encryptionAtRestConfig.kmsConfigUUID,
                   universe.getUniverseUUID(),
                   taskParams.encryptionAtRestConfig);
-          if (cmkArnBytes == null || cmkArnBytes.length == 0) {
+          if (cmkArnBytes == null
+              || cmkArnBytes.getKeyBytes() == null
+              || cmkArnBytes.getKeyBytes().length == 0) {
             primaryCluster.userIntent.enableVolumeEncryption = false;
           } else {
             // TODO: (Daniel) - Update this to be inside of encryptionAtRestConfig
-            taskParams.setCmkArn(new String(cmkArnBytes));
+            taskParams.setCmkArn(new String(cmkArnBytes.getKeyBytes()));
           }
         }
 
@@ -1234,7 +1241,8 @@ public class UniverseCRUDHandler {
         taskUUID,
         targetType,
         CustomerTask.TaskType.Update,
-        u.getName());
+        u.getName(),
+        CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, taskParams, null));
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
@@ -1632,6 +1640,11 @@ public class UniverseCRUDHandler {
   public static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
     checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
     checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
+    checkEquals(
+        c -> c.userIntent.enableConnectionPooling,
+        primaryCluster,
+        cluster,
+        "Connection Pooling setting");
     checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
     checkEquals(c -> c.userIntent.enableYCQLAuth, primaryCluster, cluster, "Ycql auth setting");
     checkEquals(c -> c.userIntent.enableYEDIS, primaryCluster, cluster, "Yedis setting");

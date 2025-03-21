@@ -77,9 +77,10 @@ func (h *HelperContainer) GetMastersFuture(future chan MastersFuture) {
     }
     urlList := []string{}
     for _, host := range masterAddresses {
-        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), "api/v1/masters")
+        url, err := url.JoinPath(fmt.Sprintf("http://%s", net.JoinHostPort(host, MasterUIPort)),
+            "api/v1/masters")
         if err != nil {
-            h.logger.Warnf("failed to construct url for %s:%s with path %s",
+            h.logger.Warnf("failed to construct url for host: %s port: %s with path %s",
                 host, MasterUIPort, "api/v1/masters")
             continue
         }
@@ -127,7 +128,7 @@ func (h *HelperContainer) GetMastersFromTserverFuture(
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/masters", nodeHost, TserverUIPort)
+    url := fmt.Sprintf("http://%s/api/v1/masters", net.JoinHostPort(nodeHost, TserverUIPort))
     resp, err := httpClient.Get(url)
     if err != nil {
         masters.Error = err

@@ -23,14 +23,11 @@
 
 #pragma once
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {
-
-struct ReadOptions;
-class InternalKeyComparator;
-class Arena;
 
 struct TwoLevelIteratorState {
   explicit TwoLevelIteratorState(bool _check_prefix_may_match)
@@ -39,6 +36,10 @@ struct TwoLevelIteratorState {
   virtual ~TwoLevelIteratorState() {}
   virtual InternalIterator* NewSecondaryIterator(const Slice& handle) = 0;
   virtual bool PrefixMayMatch(const Slice& internal_key) = 0;
+
+  virtual bool MatchFilter(
+      const IteratorFilter* filter, const QueryOptions& options, Slice key,
+      FilterKeyCache* cache) = 0;
 
   // If call PrefixMayMatch()
   bool check_prefix_may_match;

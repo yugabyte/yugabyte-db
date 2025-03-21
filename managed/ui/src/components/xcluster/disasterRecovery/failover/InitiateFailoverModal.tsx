@@ -11,7 +11,6 @@ import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/he
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
 import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
 import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
@@ -113,17 +112,13 @@ export const InitiateFailoverModal = ({
 
   const initiateFailoverrMutation = useMutation(
     ({
-      drConfig,
-      namespaceIdSafetimeEpochUsMap
+      drConfig
     }: {
       drConfig: DrConfig;
-      namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
     }) =>
       api.initiateFailover(drConfig.uuid, {
         primaryUniverseUuid: drConfig.drReplicaUniverseUuid ?? '',
-        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? '',
-        namespaceIdSafetimeEpochUsMap
-      }),
+        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? ''}),
     {
       onSuccess: (response, { drConfig }) => {
         const invalidateQueries = () => {
@@ -240,13 +235,10 @@ export const InitiateFailoverModal = ({
     );
   }
 
-  const namespaceIdSafetimeEpochUsMap = getNamespaceIdSafetimeEpochUsMap(
-    currentSafetimesQuery.data
-  );
   const onSubmit = () => {
     setIsSubmitting(true);
     initiateFailoverrMutation.mutate(
-      { drConfig, namespaceIdSafetimeEpochUsMap },
+      { drConfig },
       { onSettled: () => resetModal() }
     );
   };

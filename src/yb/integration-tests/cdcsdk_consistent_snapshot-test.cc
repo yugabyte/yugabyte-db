@@ -149,15 +149,20 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   }
   LOG(INFO) << "Asserted the stream creation failures";
 
+  auto condition = [this, tablet_peer]() -> Result<bool> {
+    auto list_streams_resp = VERIFY_RESULT(ListDBStreams());
+    if(list_streams_resp.streams_size() != 0) {
+      LOG(INFO) << "Non empty streams: " << list_streams_resp.ShortDebugString();
+      return false;
+    }
+
+    return tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid;
+  };
+
   // Allow the background UpdatePeersAndMetrics to clean up the stream.
-  SleepFor(
-      MonoDelta::FromSeconds(4 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
-
-  LOG(INFO) << "Checking the list of DB streams.";
-  auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
-  ASSERT_EQ(list_streams_resp.streams_size(), 0) << list_streams_resp.DebugString();
-
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  auto timeout = MonoDelta::FromSeconds(
+      10 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier);
+  ASSERT_OK(WaitFor(condition, timeout, "Wait streams cleaned"));
 
   // Future stream creations must succeed. Disable running UpdatePeersAndMetrics now so that it
   // doesn't interfere with the safe time.
@@ -181,7 +186,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
             tablet_peer->get_cdc_min_replicated_index());
 
-  list_streams_resp = ASSERT_RESULT(ListDBStreams());
+  auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
   ASSERT_EQ(list_streams_resp.streams_size(), 1);
 
   yb::SyncPoint::GetInstance()->DisableProcessing();
@@ -1528,6 +1533,63 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 5;
   VerifyTransactionParticipant(tablets[0].tablet_id(), OpId::Max());
 
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pg_export_snapshot) = true;
+  auto slot_name = "logical_repl_slot_export_snapshot";
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // 10K records inserted using a thread.
+  std::thread bg_writer([cluster = &test_cluster_]() {
+    ASSERT_OK(WriteRows(1 /* start */, 10001 /* end */, cluster));
+  });
+  auto result = ASSERT_RESULT(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput EXPORT_SNAPSHOT", slot_name));
+  auto snapshot_name =
+      ASSERT_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
+  LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");
+
+  // Fetch the stream_id of the replication slot.
+  auto stream_id = ASSERT_RESULT(conn.FetchRow<std::string>(
+      Format("SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '$0'", slot_name)));
+  auto xrepl_stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_id));
+
+  auto cp_resp =
+      ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(xrepl_stream_id, tablets[0].tablet_id()));
+
+  // Count the number of snapshot READs.
+  GetChangesResponsePB change_resp;
+  uint32_t reads_snapshot = ASSERT_RESULT(
+      ConsumeSnapshotAndVerifyCounts(xrepl_stream_id, tablets, cp_resp, &change_resp));
+
+  bg_writer.join();
+
+  LOG(INFO) << "Insertion of records using threads has completed.";
+
+  // Count the number of INSERTS.
+  uint32_t inserts_snapshot =
+      ASSERT_RESULT(ConsumeInsertsAndVerifyCounts(xrepl_stream_id, tablets, change_resp));
+
+  auto conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Import snapshot in a transaction.
+  ASSERT_OK(conn2.ExecuteFormat("SET TRANSACTION SNAPSHOT '$0'", snapshot_name));
+  auto rows_in_import_transaction = ASSERT_RESULT(
+      conn2.FetchRow<pgwrapper::PGUint64>(Format("SELECT count(*) FROM $0", kTableName)));
+
+  LOG(INFO) << "Got " << reads_snapshot << " snapshot (read) records";
+  LOG(INFO) << "Got " << inserts_snapshot << " insert records";
+  LOG(INFO) << "Got " << reads_snapshot + inserts_snapshot << " total (read + insert) record";
+  ASSERT_EQ(reads_snapshot + inserts_snapshot, 10000);
+
+  LOG(INFO) << "Got " << rows_in_import_transaction << " rows after setting snapshot";
+  // After setting snapshot, we should see exactly the same number of rows as reads_snapshot.
+  ASSERT_EQ(rows_in_import_transaction, reads_snapshot);
 }
 
 }  // namespace cdc

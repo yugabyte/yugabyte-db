@@ -637,8 +637,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
-      BloomFilterMode::USE_BLOOM_FILTER,
-      pk_doc_key_->Encode().AsSlice(),
+      BloomFilterOptions::Fixed(pk_doc_key_->Encode().AsSlice()),
       request_.query_id(),
       txn_op_context_,
       data.read_operation_data);
@@ -1870,8 +1869,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                   const ReadHybridTime& read_time) {
   if ((resultset->rsrow_count() >= row_count_limit || request_.has_offset()) &&
       !request_.is_aggregate()) {
-    dockv::SubDocKey next_row_key;
-    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
+    dockv::SubDocKey next_row_key = VERIFY_RESULT(iter->GetSubDocKey());
     // When the "limit" number of rows are returned and we are asked to return the paging state,
     // return the partition key and row key of the next row to read in the paging state if there are
     // still more rows to read. Otherwise, leave the paging state empty which means we are done

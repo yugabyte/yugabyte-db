@@ -13,8 +13,8 @@ yba universe security [flags]
 ### Options
 
 ```
-  -f, --force              [Optional] Bypass the prompt for non-interactive usage.
   -n, --name string        [Required] The name of the universe for the operation.
+  -f, --force              [Optional] Bypass the prompt for non-interactive usage.
   -s, --skip-validations   [Optional] Skip validations before running the CLI command.
   -h, --help               help for security
 ```
@@ -37,4 +37,5 @@ yba universe security [flags]
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
 * [yba universe security ear](yba_universe_security_ear.md)	 - Encryption-at-rest settings for a universe
+* [yba universe security eit](yba_universe_security_eit.md)	 - Encryption-in-transit settings for a universe
 

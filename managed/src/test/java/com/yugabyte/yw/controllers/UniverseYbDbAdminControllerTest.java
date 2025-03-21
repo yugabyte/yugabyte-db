@@ -304,6 +304,15 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
+    result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", url, authToken, Json.newObject().put("enableYSQL", false)));
+    assertBadRequest(
+        result,
+        "Disabling YSQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
+            + " disable DB API");
   }
 
   @Test
@@ -321,7 +330,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot enable YCQL auth when API is disabled.");
-    updateUniverseAPIDetails(universe, false, false, true, false);
+    updateUniverseAPIDetails(universe, true, false, true, false);
     bodyJson.put("enableYCQL", true).put("enableYCQLAuth", false).put("ycqlPassword", "Admin@123");
     result =
         assertPlatformException(
@@ -338,6 +347,15 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
+    result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", url, authToken, Json.newObject().put("enableYCQL", false)));
+    assertBadRequest(
+        result,
+        "Disabling YCQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
+            + " disable DB API");
   }
 
   @Test

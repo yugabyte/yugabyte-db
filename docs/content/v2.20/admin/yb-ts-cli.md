@@ -106,7 +106,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
 
 ##### count_intents
 
-Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records)). Useful for debugging transactional workloads.
+Print the count of uncommitted intents (or [provisional records](../../architecture/transactions/distributed-txns/#provisional-records)). Useful for debugging transactional workloads.
 
 **Syntax**
 
@@ -118,7 +118,7 @@ yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 
 ##### current_hybrid_time
 
-Prints the value of the current [hybrid time](../../../architecture/transactions/single-row-transactions/#hybrid-time-as-an-mvcc-timestamp).
+Prints the value of the current [hybrid time](../../architecture/transactions/single-row-transactions/#hybrid-time-as-an-mvcc-timestamp).
 
 **Syntax**
 

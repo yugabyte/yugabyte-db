@@ -10,6 +10,7 @@ import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
 import com.yugabyte.yw.common.ModelFactory;
@@ -228,6 +230,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   protected RuntimeConfService runtimeConfService;
   protected JobScheduler jobScheduler;
   protected AutoMasterFailoverScheduler autoMasterFailoverScheduler;
+  protected LocalNodeManager.LocalDNSManager localDnsManager =
+      new LocalNodeManager.LocalDNSManager();
 
   @BeforeClass
   public static void setUpEnv() {
@@ -553,10 +557,18 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
         @Override
         protected void starting(Description description) {
+          // Remove the special characters from the test name as it will be part of the directory
+          // names.
           testName =
               description.getClassName().replaceAll(".*\\.", "")
                   + "_"
-                  + description.getMethodName();
+                  + description
+                      .getMethodName()
+                      .replace("(", "_")
+                      .replace(")", "_")
+                      .replace(" ", "_")
+                      .replace("[", "_")
+                      .replace("]", "");
         }
 
         @Override
@@ -588,6 +600,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   protected Application provideApplication() {
     return configureApplication(
             new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
+        .overrides(bind(DnsManager.class).toInstance(localDnsManager))
         .build();
   }
 
@@ -905,6 +918,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   protected void verifyUniverseState(Universe universe) {
     log.info("universe definition json {}", universe.getUniverseDetailsJson());
     String certificate = universe.getCertificateNodetoNode();
+    verifyDNS(universe);
     try (YBClient client = ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
       GetMasterClusterConfigResponse masterClusterConfig = client.getMasterClusterConfig();
       CatalogEntityInfo.SysClusterConfigEntryPB config = masterClusterConfig.getConfig();
@@ -1280,6 +1294,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
     assertEquals(resp.isEnabled, isEnabled);
     assertEquals(resp.isIdle, isLoadBalancerIdle);
+  }
+
+  private void verifyDNS(Universe universe) {
+    UUID providerUUID =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider curProvider = Provider.getOrBadRequest(providerUUID);
+    if (curProvider.getDetails().getCloudInfo().local.getHostedZoneId() != null) {
+      Set<String> dns = localDnsManager.ipsList.getOrDefault(providerUUID, Collections.emptySet());
+      Set<NodeDetails> nodes = universe.getUniverseDetails().getTServers();
+      if (dns.size() != nodes.size()) {
+        throw new IllegalStateException(
+            "Dns doesn't match nodes: "
+                + dns
+                + " vs "
+                + nodes.stream().map(n -> n.cloudInfo.private_ip).collect(Collectors.toSet()));
+      }
+      for (NodeDetails node : nodes) {
+        if (!dns.contains(node.cloudInfo.private_ip)) {
+          throw new RuntimeException(
+              "Node " + node.cloudInfo.private_ip + " is not in accessible the dns list " + dns);
+        }
+      }
+    }
   }
 
   public void doWithRetry(

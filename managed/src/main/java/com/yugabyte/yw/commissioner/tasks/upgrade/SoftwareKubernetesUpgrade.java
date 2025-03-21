@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -58,7 +59,8 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+    createSoftwareUpgradePrecheckTasks(
+        taskParams().ybSoftwareVersion, false /* ysqlMajorVersionUpgrade */);
     addBasicPrecheckTasks();
   }
 
@@ -66,6 +68,7 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
+          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
 
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
@@ -74,7 +77,7 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               true,
               true,
               taskParams().isEnableYbc(),
-              taskParams().getYbcSoftwareVersion());
+              stableYbcVersion);
           if (!confGetter.getConfForScope(getUniverse(), UniverseConfKeys.skipUpgradeFinalize)) {
             // Promote Auto flags on compatible versions.
             if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)

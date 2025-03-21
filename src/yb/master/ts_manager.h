@@ -39,6 +39,7 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/common/version_info.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
@@ -62,12 +63,6 @@ namespace yb {
 
 class NodeInstancePB;
 
-namespace server {
-
-class Clock;
-
-}
-
 namespace master {
 
 struct LeaderEpoch;
@@ -79,15 +74,6 @@ using TSCountCallback = std::function<void()>;
 using TSDescriptorMap = std::map<std::string, TSDescriptorPtr>;
 
 using LeaseExpiredCallback = std::function<void(const std::string&, uint64_t, LeaderEpoch)>;
-
-struct HeartbeatResult {
-  TSDescriptorPtr desc;
-  std::optional<ClientOperationLeaseUpdate> lease_update;
-
-  HeartbeatResult();
-  HeartbeatResult(
-      TSDescriptorPtr&& desc_param, std::optional<ClientOperationLeaseUpdate>&& lease_update_param);
-};
 
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
@@ -109,7 +95,7 @@ struct HeartbeatResult {
 //   It may be safe to violate but think carefully when doing so.
 class TSManager {
  public:
-  explicit TSManager(SysCatalogTable& sys_catalog, server::Clock& clock) noexcept;
+  explicit TSManager(SysCatalogTable& sys_catalog) noexcept;
   virtual ~TSManager() noexcept {}
 
   // Lookup the tablet server descriptor for the given instance identifier.
@@ -132,12 +118,15 @@ class TSManager {
 
   // Lookup an existing TS descriptor from a heartbeat request. If found, update the TSDescriptor
   // using the metadata in the heartbeat request.
-  Result<HeartbeatResult> LookupAndUpdateTSFromHeartbeat(
+  Result<TSDescriptorPtr> LookupAndUpdateTSFromHeartbeat(
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const;
 
-  Result<HeartbeatResult> RegisterFromHeartbeat(
+  Result<TSDescriptorPtr> RegisterFromHeartbeat(
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
       CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache);
+
+  Result<YsqlLeaseUpdate> RefreshYsqlLease(
+      const LeaderEpoch& epoch, const NodeInstancePB& instance);
 
   // Return all of the currently registered TS descriptors into the provided list.
   void GetAllDescriptors(TSDescriptorVector* descs) const;
@@ -190,11 +179,14 @@ class TSManager {
       const std::string& permanent_uuid, const BlacklistSet& blacklist,
       const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch);
 
+  // Make sure all live tservers are on the expected version.
+  Status ValidateAllTserverVersions(ValidateVersionInfoOp op) const;
+
  private:
   // Performs all mutations necessary to register a new tserver or update the registration of an
   // existing tserver. There are two registration pathways, one through heartbeats and the other
   // through membership in a tablet group that is heartbeating to the master.
-  Result<HeartbeatResult> RegisterInternal(
+  Result<TSDescriptorPtr> RegisterInternal(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
       std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
       CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache);
@@ -245,7 +237,6 @@ class TSManager {
   size_t NumDescriptorsUnlocked() const REQUIRES_SHARED(map_lock_);
 
   SysCatalogTable& sys_catalog_;
-  server::Clock& clock_;
 
   // These two locks are used as in an ad-hoc implementation of a ternary read-write-commit pattern
   // to protect servers_by_id_. We use this model because we may have to do a lot of IO when

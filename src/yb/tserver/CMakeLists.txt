@@ -145,7 +145,7 @@ set(TSERVER_YRPC_LIBS
   remote_bootstrap_proto
   rpc_header_proto
   tserver_proto
-  tserver_util)
+  tserver_shared)
 ADD_YB_LIBRARY(tserver_service_proto
   SRCS ${TSERVER_YRPC_SRCS}
   DEPS ${TSERVER_YRPC_LIBS}
@@ -206,20 +206,21 @@ ADD_YB_LIBRARY(pg_cron_leader_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
-# tserver_util
+# tserver_shared
 #########################################
 
-set(TSERVER_UTIL_SRCS
+set(TSERVER_SHARED_SRCS
   tserver_flags.cc
   tserver_error.cc
   tserver_shared_mem.cc)
 set(TSERVER_UTIL_LIBS
   yb_util
+  yb_util_shmem
   consensus_error)
-ADD_YB_LIBRARY(tserver_util
-  SRCS ${TSERVER_UTIL_SRCS}
-  DEPS ${TSERVER_UTIL_LIBS})
-add_dependencies(tserver_util gen_proto)
+ADD_YB_LIBRARY(tserver_shared
+  SRCS ${TSERVER_SHARED_SRCS}
+  DEPS ${TSERVER_SHARED_LIBS})
+add_dependencies(tserver_shared gen_proto)
 
 #########################################
 # tserver
@@ -233,6 +234,7 @@ set(TSERVER_SRCS
   full_compaction_manager.cc
   heartbeater.cc
   heartbeater_factory.cc
+  master_leader_poller.cc
   metrics_snapshotter.cc
   pg_client_service.cc
   pg_client_session.cc
@@ -243,6 +245,7 @@ set(TSERVER_SRCS
   pg_shared_mem_pool.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
+  pg_txn_snapshot_manager.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
@@ -282,7 +285,8 @@ set(TSERVER_SRCS
   xcluster_poller_stats.cc
   xcluster_output_client.cc
   xcluster_write_implementations.cc
-  ysql_advisory_lock_table.cc)
+  ysql_advisory_lock_table.cc
+  ysql_lease_poller.cc)
 
 set(TSERVER_DEPS
   protobuf

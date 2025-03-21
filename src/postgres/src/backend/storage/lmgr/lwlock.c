@@ -191,6 +191,8 @@ static const char *const BuiltinTrancheNames[] = {
 	"YbQueryDiagnostics",
 	/* LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER: */
 	"YbQueryDiagnosticsCircularBuffer",
+	/* LWTRANCHE_YB_TERMINATED_QUERIES: */
+	"YbTerminatedQueries",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
@@ -1070,7 +1072,7 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	 * should never occur, since MyProc should only be null during shared
 	 * memory initialization.
 	 */
-	PGPROC *proc = MyProc;
+	PGPROC	   *proc = MyProc;
 
 	if (!IsUnderPostmaster && proc == NULL)
 	{
@@ -1119,7 +1121,7 @@ LWLockDequeueSelf(LWLock *lock)
 {
 	bool		found = false;
 	proclist_mutable_iter iter;
-	PGPROC *proc = MyProc;
+	PGPROC	   *proc = MyProc;
 
 	if (proc == NULL)
 	{

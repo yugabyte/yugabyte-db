@@ -232,21 +232,21 @@ The example below expects the following servers to be added to the cluster:
 ```sh
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP8>/yugabyte-data \
-  --listen=<IP8>                                \
+  --advertise_address=<IP8>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1b"
+  --cloud_location=aws.us-east-1.us-east-1b     \
 
 ./bin/yugabyted start                           \
   --base_dir=/home/yugabyte/<IP9>/yugabyte-data \
-  --listen=<IP9>                                \
+  --advertise_address=<IP9>                     \
   --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2a"
+  --cloud_location=aws.us-east-2.us-east-2a     \
 
-  ./bin/yugabyted start                           \
+  ./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP10>/yugabyte-data \
-  --listen=<IP10>                                \
-  --join=<IP1>                                  \
-  --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1a"
+  --advertise_address=<IP10>                     \
+  --join=<IP1>                                   \
+  --cloud_location=aws.us-west-1.us-west-1a      \
 ```
 
 {{< /note >}}
@@ -254,7 +254,7 @@ The example below expects the following servers to be added to the cluster:
 
 Leader preference helps optimize workloads that require distribution of data over multiple zones for zone-level fault tolerance, but which have clients only in a subset of those zones. It overrides the default behavior of spreading the tablet leaders across all placement zones of the tablespace, and instead places them closer to the clients.
 
-The leaders handle all [reads](../../../explore/linear-scalability/scaling-reads/) and [writes](../../../explore/linear-scalability/scaling-writes/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
+The leaders handle all [reads](../../linear-scalability/scaling-reads/) and [writes](../../linear-scalability/scaling-writes/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
 
 In the following example, the tablespace is set up to have replicas in us-east-1, us-east-2, and us-west-1. This enables it to survive the loss of an entire region. The clients are located in us-east-1. By default, a third of the leaders would reside in us-west-1, which has a latency of 62ms from the clients.
 

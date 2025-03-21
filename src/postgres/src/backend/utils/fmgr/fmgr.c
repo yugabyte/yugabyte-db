@@ -33,8 +33,11 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-#include "pg_yb_utils.h"
 #include <pthread.h>
+
+/* Yugabyte includes */
+#include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
 
 /*
  * Hooks for function calls
@@ -53,7 +56,7 @@ typedef struct
 	ItemPointerData fn_tid;
 	PGFunction	user_fn;		/* the function's address */
 	const Pg_finfo_record *inforec; /* address of its info record */
-	uint64 yb_catalog_version; /* catalog version at function load time */
+	uint64		yb_catalog_version; /* catalog version at function load time */
 } CFuncHashTabEntry;
 
 static HTAB *CFuncHash = NULL;
@@ -74,7 +77,7 @@ extern void int2send_direct(StringInfo buf, Datum value);
 extern void int4send_direct(StringInfo buf, Datum value);
 extern void int8send_direct(StringInfo buf, Datum value);
 
-typedef void (*YbSendDirectFn)(StringInfo, Datum);
+typedef void (*YbSendDirectFn) (StringInfo, Datum);
 
 /*
  * Initialize direct send function with specified oid with specified func.
@@ -88,15 +91,12 @@ fmgr_init_direct_send_func(Oid oid, YbSendDirectFn func)
 /*
  * Initialize all direct send functions.
  */
-#define PG_PROC_INT2SEND_OID 2405
-#define PG_PROC_INT4SEND_OID 2407
-#define PG_PROC_INT8SEND_OID 2409
 static void
 fmgr_init_direct_send()
 {
-	fmgr_init_direct_send_func(PG_PROC_INT2SEND_OID, int2send_direct);
-	fmgr_init_direct_send_func(PG_PROC_INT4SEND_OID, int4send_direct);
-	fmgr_init_direct_send_func(PG_PROC_INT8SEND_OID, int8send_direct);
+	fmgr_init_direct_send_func(F_INT2SEND, int2send_direct);
+	fmgr_init_direct_send_func(F_INT4SEND, int4send_direct);
+	fmgr_init_direct_send_func(F_INT8SEND, int8send_direct);
 }
 
 /*
@@ -114,6 +114,7 @@ fmgr_isbuiltin(Oid id)
 		return NULL;
 
 	static pthread_once_t initialized = PTHREAD_ONCE_INIT;
+
 	pthread_once(&initialized, &fmgr_init_direct_send);
 
 	/*
@@ -1677,16 +1678,21 @@ SendFunctionCall(FmgrInfo *flinfo, Datum val)
 void
 StringInfoSendFunctionCall(StringInfo buf, FmgrInfo *flinfo, Datum val)
 {
-	void (*alt)(StringInfo, Datum) = flinfo->fn_alt;
-	if (alt) {
-		// There is function to send value directly to buf, w/o intermediate
-		// conversion to bytea.
+	void		(*alt) (StringInfo, Datum) = flinfo->fn_alt;
+
+	if (alt)
+	{
+		/*
+		 * There is function to send value directly to buf, w/o intermediate
+		 * conversion to bytea.
+		 */
 		alt(buf, val);
 		return;
 	}
 
-	bytea *outputbytes = SendFunctionCall(flinfo, val);
-	uint32 size = VARSIZE(outputbytes) - VARHDRSZ;
+	bytea	   *outputbytes = SendFunctionCall(flinfo, val);
+	uint32		size = VARSIZE(outputbytes) - VARHDRSZ;
+
 	pq_sendint32(buf, size);
 	pq_sendbytes(buf, VARDATA(outputbytes), size);
 	pfree(outputbytes);

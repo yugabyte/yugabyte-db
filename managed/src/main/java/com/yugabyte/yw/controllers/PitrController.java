@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
@@ -13,7 +14,6 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CloneNamespaceParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -60,11 +61,16 @@ public class PitrController extends AuthenticatedController {
 
   Commissioner commissioner;
   YBClientService ybClientService;
+  private SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
-  public PitrController(Commissioner commissioner, YBClientService ybClientService) {
+  public PitrController(
+      Commissioner commissioner,
+      YBClientService ybClientService,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.ybClientService = ybClientService;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @ApiOperation(
@@ -109,6 +115,11 @@ public class PitrController extends AuthenticatedController {
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     CreatePitrConfigParams taskParams = parseJsonAndValidate(request, CreatePitrConfigParams.class);
 
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot enable PITR when the universe is in the middle of a major upgrade");
+    }
+
     if (taskParams.retentionPeriodInSeconds <= 0L) {
       throw new PlatformServiceException(
           BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
@@ -152,6 +163,7 @@ public class PitrController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
       value = "Update pitr config for a keyspace in a universe",
       nickname = "updatePitrConfig",
       response = YBPTask.class)
@@ -170,6 +182,7 @@ public class PitrController extends AuthenticatedController {
                 action = Action.BACKUP_RESTORE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.1.0")
   public Result updatePitrConfig(
       UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID, Http.Request request) {
     // Validate customer UUID
@@ -182,6 +195,11 @@ public class PitrController extends AuthenticatedController {
     } else if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot update PITR when the universe is in locked state");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot update PITR when the universe is in the middle of a major upgrade");
     }
 
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
@@ -225,7 +243,7 @@ public class PitrController extends AuthenticatedController {
             Audit.ActionType.UpdatePitrConfig,
             Json.toJson(taskParams),
             taskUUID);
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
   }
 
   @ApiOperation(
@@ -281,7 +299,7 @@ public class PitrController extends AuthenticatedController {
           long currentTimeMillis = System.currentTimeMillis();
           long minTimeInMillis =
               BackupUtil.getMinRecoveryTimeForSchedule(
-                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig.getRetentionPeriod());
+                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig);
           pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
           pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
           pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
@@ -325,6 +343,11 @@ public class PitrController extends AuthenticatedController {
     } else if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot perform PITR when the universe is in locked state");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is in the middle of a major upgrade");
     }
 
     RestoreSnapshotScheduleParams taskParams =
@@ -372,13 +395,13 @@ public class PitrController extends AuthenticatedController {
             Audit.ActionType.RestoreSnapshotSchedule,
             Json.toJson(taskParams),
             taskUUID);
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
   }
 
   @ApiOperation(
       value = "Delete pitr config on a universe",
       nickname = "deletePitrConfig",
-      response = YBPSuccess.class)
+      response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -430,7 +453,7 @@ public class PitrController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.DeletePitrConfig,
             Json.toJson(pitrConfigUUID));
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
   }
 
   private void checkCompatibleYbVersion(String ybVersion) {
@@ -474,16 +497,18 @@ public class PitrController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create clone of a namespace in a universe",
+      notes = "YbaApi Internal.",
+      value = "Clone namespace via PITR on a universe",
       nickname = "cloneNamespace",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "namespaceClone",
-          value = "post namespace clone",
+          value = "perform clone via PITR",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CloneNamespaceParams",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -492,12 +517,8 @@ public class PitrController extends AuthenticatedController {
                 action = Action.BACKUP_RESTORE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public Result cloneNamespace(
-      UUID customerUUID,
-      UUID universeUUID,
-      String tableType,
-      String keyspaceName,
-      Http.Request request) {
+  public Result cloneNamespace(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    log.info("Received clone via PITR config request");
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -511,18 +532,18 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "Cannot clone a namespace when the universe is in locked state");
     }
 
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot clone namespace when the universe is in the middle of a major upgrade");
+    }
+
     checkCloneCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     CloneNamespaceParams taskParams = parseJsonAndValidate(request, CloneNamespaceParams.class);
 
     // Validate that a snapshot schedule exists for the database that needs to be cloned.
-    TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));
-    Optional<PitrConfig> pitrConfigOptional = PitrConfig.maybeGet(universeUUID, type, keyspaceName);
-    if (!pitrConfigOptional.isPresent()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config must be present for the database to be cloned.");
-    }
-    PitrConfig pitrConfig = pitrConfigOptional.get();
+    PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     ListSnapshotSchedulesResponse scheduleResp;
@@ -545,23 +566,21 @@ public class PitrController extends AuthenticatedController {
 
     long currentTimeMillis = System.currentTimeMillis();
     long minTimeInMillis =
-        Math.max(
-            currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-            pitrConfig.getCreateTime().getTime());
+        BackupUtil.getMinRecoveryTimeForSchedule(
+            scheduleInfoList.get(0).getSnapshotInfoList(), pitrConfig);
     if (taskParams.cloneTimeInMillis != null
-        && (taskParams.cloneTimeInMillis <= 0L
-            || taskParams.cloneTimeInMillis > currentTimeMillis
-            || taskParams.cloneTimeInMillis < minTimeInMillis)) {
+        && (taskParams.cloneTimeInMillis < minTimeInMillis
+            || taskParams.cloneTimeInMillis > currentTimeMillis)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Time to clone that has been specified is incorrect");
     }
 
-    BackupUtil.checkApiEnabled(type, universe.getUniverseDetails().getPrimaryCluster().userIntent);
+    BackupUtil.checkApiEnabled(
+        pitrConfig.getTableType(), universe.getUniverseDetails().getPrimaryCluster().userIntent);
 
     taskParams.setUniverseUUID(universeUUID);
-    taskParams.customerUUID = customerUUID;
-    taskParams.tableType = type;
-    taskParams.keyspaceName = keyspaceName;
+    taskParams.setKeyspaceName(pitrConfig.getDbName());
+    taskParams.setTableType(pitrConfig.getTableType());
     if (taskParams.cloneTimeInMillis == null) {
       taskParams.cloneTimeInMillis = currentTimeMillis;
     }
