@@ -303,6 +303,13 @@ SELECT * FROM bson_dollar_project('{ "_id": 16, "group": 2, "obj": { "a": 1, "b"
 (1 row)
 
 -- $getField operator
+SELECT insert_one('db','test_get_field',' { "_id": 0, "a": 1, "b": "test" }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
 -- positive cases
 -- entire expression
 -- field parsed from $literal
@@ -310,6 +317,20 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField"
                         bson_dollar_project                         
 ---------------------------------------------------------------------
  { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- field parsed from expression
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- field is a path
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "test_get_field", "pipeline":  [{"$project": {"result": {"fieldValue": {"$getField": {"field": "$b", "input": {"test": { "b": 3 }}}}}}}]}');
+                                              document                                              
+----------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
 (1 row)
 
 -- input be a system variable
@@ -439,17 +460,11 @@ ERROR:  $getField requires 'field' to evaluate to type String, but got null
 SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": 1, "input": {}}}}}');
 ERROR:  $getField requires 'field' to evaluate to type String, but got int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": [], "input": {}}}}}');
-ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
--- field is a path
-SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "$a", "input": {"a": { "b": 3 }}}}}}');
-ERROR:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
+ERROR:  $getField requires 'field' to evaluate to type String, but got array
 -- shorthand expression
 -- field must be a string
 SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
-ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
--- field is an operator
-SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": { "$add": [2, 3 ]}}}}');
-ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
+ERROR:  $getField requires 'field' to evaluate to type String, but got array
 -- $unsetField
 -- postive cases
 -- null input

@@ -22,6 +22,7 @@
 * Enable Backend Command support for Statement Timeout *[Feature]*
 * Support type aggregation operator `$toUUID`. *[Feature]* 
 * Support the $dateFromString operator with full functionality *[Feature]*
+* Support extended syntax for `$getField` aggregation operator. Now the value of 'field' could be an expression that resolves to a string. *[Feature]*
 
 ### documentdb v0.101-0 (February 12, 2025) ###
 * Push $graphlookup recursive CTE JOIN filters to index *[Perf]*

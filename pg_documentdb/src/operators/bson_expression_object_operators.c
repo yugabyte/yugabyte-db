@@ -363,28 +363,13 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 		ParseFieldExpressionForDollarGetFieldAndSetFieldAndUnsetField(&field,
 																	  &arguments->field,
 																	  context);
-	if (validationCode == PATH_IS_NOT_ALLOWED)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5654600),
-						errmsg(
-							"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
-							arguments->field.value.value.v_utf8.str)));
-	}
-	else if (validationCode == NON_CONSTANT_ARGUMENT)
+
+	/* throw error early if field is not a string to avoid unnecessary processing */
+	if (validationCode == NON_STRING_CONSTANT || field.value_type == BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(
-							ERRCODE_DOCUMENTDB_LOCATION5654601),
+							ERRCODE_DOCUMENTDB_LOCATION3041704),
 						errmsg(
-							"$getField requires 'field' to evaluate to a constant, but got a non-constant argument")));
-	}
-	else if (validationCode == NON_STRING_CONSTANT)
-	{
-		ereport(ERROR, (errcode(
-							ERRCODE_DOCUMENTDB_LOCATION5654602),
-						errmsg(
-							"$getField requires 'field' to evaluate to type String, but got %s",
-							BsonTypeName(arguments->field.value.value_type)),
-						errdetail_log(
 							"$getField requires 'field' to evaluate to type String, but got %s",
 							BsonTypeName(arguments->field.value.value_type))));
 	}
@@ -396,7 +381,8 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 	if ((IsAggregationExpressionConstant(&arguments->input) && input.value_type ==
 		 BSON_TYPE_DOCUMENT) || IsAggregationExpressionEvaluatesToNull(&arguments->input))
 	{
-		bson_value_t result = ProcessResultForDollarGetField(field, input);
+		bson_value_t result = ProcessResultForDollarGetField(arguments->field.value,
+															 arguments->input.value);
 		if (result.value_type != BSON_TYPE_EOD)
 		{
 			data->value = result;
@@ -755,6 +741,16 @@ ProcessResultForDollarGetField(bson_value_t field, bson_value_t input)
 			.value_type = BSON_TYPE_NULL
 		};
 		return result;
+	}
+
+	if (field.value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(
+							ERRCODE_DOCUMENTDB_LOCATION3041704),
+						errmsg(
+							"$getField requires 'field' to evaluate to type String, but got %s",
+							field.value_type == BSON_TYPE_EOD ? "missing" : BsonTypeName(
+								field.value_type))));
 	}
 
 	bson_iter_t inputIter;

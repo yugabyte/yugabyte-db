@@ -4,10 +4,15 @@ SET documentdb.next_collection_id TO 3600;
 SET documentdb.next_collection_index_id TO 3600;
 
 -- $getField operator
+SELECT documentdb_api.insert_one('db','test_get_field',' { "_id": 0, "a": 1, "b": "test" }');
 -- positive cases
 -- entire expression
 -- field parsed from $literal
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
+-- field parsed from expression
+SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
+-- field is a path
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test_get_field", "pipeline":  [{"$project": {"result": {"fieldValue": {"$getField": {"field": "$b", "input": {"test": { "b": 3 }}}}}}}]}');
 -- input be a system variable
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "a", "input": "$$ROOT"}}}}');
 -- input be null
@@ -49,13 +54,9 @@ SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fi
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": null, "input": {}}}}}');
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": 1, "input": {}}}}}');
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": [], "input": {}}}}}');
--- field is a path
-SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "$a", "input": {"a": { "b": 3 }}}}}}');
 -- shorthand expression
 -- field must be a string
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
--- field is an operator
-SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": { "$add": [2, 3 ]}}}}');
 
 
 -- $unsetField

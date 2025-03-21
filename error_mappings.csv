@@ -400,6 +400,7 @@ ErrorMapping,ErrorName
 3041701,Location3041701
 3041702,Location3041702
 3041703,Location3041703
+3041704,Location3041704
 4031700,IntermediateResultTooLarge
 4161100,DollarSetFieldRequiresObject
 4161101,DollarSetFieldUnknownArgument
