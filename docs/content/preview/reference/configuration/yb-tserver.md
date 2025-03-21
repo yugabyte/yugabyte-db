@@ -1652,7 +1652,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ## Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp>}}.
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
 
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 

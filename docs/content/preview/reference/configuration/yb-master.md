@@ -1043,7 +1043,7 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp>}}.
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
 
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
