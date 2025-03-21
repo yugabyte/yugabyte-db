@@ -1099,6 +1099,28 @@ std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
   });
 }
 
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
+    MiniCluster* cluster, const std::string& table_name) {
+  return ListTableTabletPeers(cluster, VERIFY_RESULT(FindTableId(cluster, table_name)));
+}
+
+Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
+    MiniCluster* cluster, const std::string& table_name) {
+  return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name)));
+}
+
+std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers) {
+  std::vector<tablet::TabletPtr> result;
+  result.reserve(peers.size());
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      result.push_back(tablet);
+    }
+  }
+  return result;
+}
+
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
     MiniCluster* cluster, const TableId& table_id) {
   return ListTabletPeers(cluster, [&table_id](const tablet::TabletPeerPtr& peer) {
@@ -1336,12 +1358,26 @@ int NumRunningFlushes(MiniCluster* cluster) {
   return flushes;
 }
 
-Result<scoped_refptr<master::TableInfo>> FindTable(
+Result<master::TableInfoPtr> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
   auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
   master::TableIdentifierPB identifier;
   table_name.SetIntoTableIdentifierPB(&identifier);
   return catalog_manager.FindTable(identifier);
+}
+
+Result<TableId> FindTableId(
+    MiniCluster* cluster, const std::string& table_name) {
+  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+  master::ListTablesRequestPB req;
+  master::ListTablesResponsePB resp;
+  RETURN_NOT_OK(catalog_manager.ListTables(&req, &resp));
+  for (const auto & table : resp.tables()) {
+    if (table.name() == table_name) {
+      return table.id();
+    }
+  }
+  return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
 }
 
 Status WaitForInitDb(MiniCluster* cluster) {

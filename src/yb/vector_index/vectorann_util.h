@@ -18,6 +18,8 @@
 #include <thread>
 
 #include "yb/common/vector_types.h"
+
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/status.h"
 
 #include "yb/util/result.h"
@@ -120,24 +122,44 @@ std::vector<VectorWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
     VectorIndexFactory<Vector, DistanceResult> index_factory,
-    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes) {
+    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes,
+    size_t min_capacity = 0) {
   VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
 
-  size_t total_max_vectors = 0;
+  size_t total_capacity = 0;
   for (const auto& index : indexes) {
-    total_max_vectors += index->Capacity();
+    total_capacity += index->Capacity();
   }
 
   RETURN_NOT_OK(merged_index->Reserve(
-      total_max_vectors, std::thread::hardware_concurrency(), std::thread::hardware_concurrency()));
+      std::max(min_capacity, total_capacity),
+      std::thread::hardware_concurrency(),
+      std::thread::hardware_concurrency()));
 
-  for (const auto& index : indexes) {
+  RETURN_NOT_OK(Merge(merged_index, indexes, [](auto&&){ return rocksdb::FilterDecision::kKeep; }));
+  return std::move(merged_index);
+}
+
+template <typename Filter>
+concept MergeFilterType =
+    std::is_invocable_r_v<rocksdb::FilterDecision, Filter, VectorId> ||
+    std::is_invocable_r_v<rocksdb::FilterDecision, Filter, const VectorId&>;
+
+template <IndexableVectorType Vector,
+          ValidDistanceResultType DistanceResult,
+          MergeFilterType MergeFilter>
+Status Merge(
+    VectorIndexIfPtr<Vector, DistanceResult>& target,
+    const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& source,
+    MergeFilter&& merge_filter) {
+  for (const auto& index : source) {
     for (const auto& [vector_id, vector] : *index) {
-      RETURN_NOT_OK(merged_index->Insert(vector_id, vector));
+      if (merge_filter(vector_id) == rocksdb::FilterDecision::kKeep) {
+        RETURN_NOT_OK(target->Insert(vector_id, vector));
+      }
     }
   }
-
-  return merged_index;
+  return Status::OK();
 }
 
 }  // namespace yb::vector_index

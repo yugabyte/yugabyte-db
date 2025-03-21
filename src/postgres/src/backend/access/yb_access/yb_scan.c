@@ -36,7 +36,7 @@
 #include "access/yb_pg_inherits_scan.h"
 #include "catalog/heap.h"
 #include "commands/dbcommands.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/catalog.h"

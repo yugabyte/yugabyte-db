@@ -30,7 +30,7 @@
 #include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
 #include "utils/palloc.h"
 #include "utils/memutils.h"

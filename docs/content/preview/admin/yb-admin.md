@@ -2786,3 +2786,36 @@ Running the above command is an online operation and doesn't require stopping a 
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
 {{< /note >}}
+
+#### finalize_upgrade
+
+Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). You can run this command from any node in the cluster.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    finalize_upgrade
+```
+
+**Example**
+
+```sh
+./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 finalize_upgrade
+```
+
+```output
+Finalizing YSQL major catalog upgrade
+Finalize successful
+
+Promoting auto flags
+PromoteAutoFlags completed successfully
+New AutoFlags were promoted
+New config version: 2
+
+Upgrading YSQL
+YSQL successfully upgraded to the latest version
+
+Upgrade successfully finalized
+```

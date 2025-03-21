@@ -18,7 +18,6 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/thread_pool.h"
@@ -60,6 +59,24 @@ DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
     "Max number of concurrent reads on vector index chunk. 0 - use number of CPUs for it");
 
+
+#define SHUTDOWN_MESSAGE "Shutdown is in progress"
+
+#define RETURN_ON_SHUTTING_DOWN do { \
+  if (IsShuttingDown()) { \
+    LOG_WITH_PREFIX(INFO) << SHUTDOWN_MESSAGE; \
+    return; \
+  }} while (false)
+
+
+#define RETURN_STATUS_ON_SHUTTING_DOWN do { \
+  if (IsShuttingDown()) { \
+    auto status = STATUS(ShutdownInProgress, SHUTDOWN_MESSAGE); \
+    LOG_WITH_PREFIX(INFO) << status; \
+    return status; \
+  }} while (false)
+
+
 namespace yb::vector_index {
 
 namespace bi = boost::intrusive;
@@ -83,6 +100,8 @@ size_t MaxConcurrentReads() {
 }
 
 } // namespace
+
+MonoDelta TEST_sleep_during_flush;
 
 class VectorLSMFileMetaData final {
  public:
@@ -118,11 +137,11 @@ class VectorLSMInsertTask :
   using InsertRegistry = typename LSM::InsertRegistry;
   using VectorWithDistance = typename LSM::VectorWithDistance;
   using SearchHeap = std::priority_queue<VectorWithDistance>;
-  using MutableChunk = typename LSM::MutableChunk;
+  using MutableChunkPtr = typename LSM::MutableChunkPtr;
 
   explicit VectorLSMInsertTask(LSM& lsm) : lsm_(lsm) {}
 
-  void Bind(const std::shared_ptr<MutableChunk>& chunk) {
+  void Bind(const MutableChunkPtr& chunk) {
     DCHECK(!chunk_);
     DCHECK_ONLY_NOTNULL(chunk->index);
     chunk_ = chunk;
@@ -133,11 +152,14 @@ class VectorLSMInsertTask :
   }
 
   void Run() override {
+    DCHECK(chunk_.get());
+    DCHECK(chunk_->index.get());
     for (const auto& [vector_id, vector] : vectors_) {
       lsm_.CheckFailure(chunk_->index->Insert(vector_id, vector));
     }
     auto new_tasks = --chunk_->num_tasks;
     if (new_tasks == 0) {
+      DCHECK(chunk_->save_callback);
       chunk_->save_callback();
       chunk_->save_callback = {};
     }
@@ -166,7 +188,7 @@ class VectorLSMInsertTask :
  private:
   mutable rw_spinlock mutex_;
   LSM& lsm_;
-  std::shared_ptr<MutableChunk> chunk_;
+  MutableChunkPtr chunk_;
   std::vector<std::pair<VectorId, Vector>> vectors_;
 };
 
@@ -180,8 +202,7 @@ class VectorLSMInsertRegistry {
   using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
   using InsertTaskList = boost::intrusive::list<InsertTask>;
   using InsertTaskPtr = std::unique_ptr<InsertTask>;
-
-  using MutableChunk = typename VectorLSM<Vector, DistanceResult>::MutableChunk;
+  using MutableChunkPtr = typename VectorLSM<Vector, DistanceResult>::MutableChunkPtr;
 
   VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
       : log_prefix_(log_prefix), thread_pool_(thread_pool) {}
@@ -200,7 +221,7 @@ class VectorLSMInsertRegistry {
   }
 
   InsertTaskList AllocateTasks(
-      LSM& lsm, const std::shared_ptr<MutableChunk>& chunk, size_t num_tasks) EXCLUDES(mutex_) {
+      LSM& lsm, const MutableChunkPtr& chunk, size_t num_tasks) EXCLUDES(mutex_) {
     InsertTaskList result;
     {
       UniqueLock lock(mutex_);
@@ -374,12 +395,22 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
                        std::move(user_frontiers_), ImmutableChunkState::kInMemory)
   {}
 
+  size_t serial_no() const {
+    return file ? file->serial_no() : 0;
+  }
+
   void AddToUpdate(VectorLSMUpdatePB& update) {
     auto& added_chunk = *update.mutable_add_chunks()->Add();
-    added_chunk.set_serial_no(file ? file->serial_no() : 0);
+    added_chunk.set_serial_no(serial_no());
     added_chunk.set_order_no(order_no);
     user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
     user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+  }
+
+  void MarkObsolete() {
+    if (file) {
+      file->MarkObsolete();
+    }
   }
 
   std::string ToString() const {
@@ -436,6 +467,11 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
       last_warning_time = now;
       report_interval = std::min<MonoDelta>(report_interval * 2, 30s);
     }
+    std::this_thread::sleep_for(10ms);
+  }
+
+  // Wait for compactions in progress.
+  while (full_compaction_in_progress_) {
     std::this_thread::sleep_for(10ms);
   }
 
@@ -531,13 +567,16 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->order_no < rhs->order_no;
   });
-  VLOG_WITH_PREFIX(1) << "Loaded " << immutable_chunks_.size() << " chunks";
+  LOG_WITH_PREFIX(INFO) << "Loaded " << immutable_chunks_.size() << " chunks, "
+                        << "last serial no: " << last_serial_no_ << ", "
+                        << "next manifest no: " << next_manifest_file_no_;
 
   return Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Destroy() {
+  LOG_WITH_PREFIX(INFO) << __func__;
   StartShutdown();
   CompleteShutdown();
   return env_->DeleteRecursively(options_.storage_dir);
@@ -578,7 +617,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   VLOG_WITH_PREFIX_AND_FUNC(5)
       << "entries: " << entries.size() << ", frontier: " << AsString(context.frontiers);
 
-  std::shared_ptr<MutableChunk> chunk;
+  MutableChunkPtr chunk;
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
   {
     std::lock_guard lock(mutex_);
@@ -846,11 +885,20 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     if (writing_manifest_) {
       return Status::OK();
     }
+
     auto it = updates_queue_.find(chunk->order_no);
     RSTATUS_DCHECK(
         it != updates_queue_.end(), RuntimeError,
         "Missing chunk in updates queue: $0", chunk->order_no);
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Updated queue: " << AsString(updates_queue_);
+
+    // It is required to preserve the order of chunks on disk. For that purpose we are iterating
+    // back in the ordered flushing queue to make sure all the chunks, starting from the given
+    // to the very first chunk, are on disk. The subsequent UpdateManifest() not necessary stop on
+    // the given chunk, it takes all the on-disk chunks into account starting from the first one.
+    // TODO(vector_index): probably the cycle could be replaced with `updates_queue_.begin() == it`
+    // or `updates_queue_.begin()->second->state == ImmutableChunkState::kOnDisk`.
+    // to identify if we need to capture writing_manifest_.
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Updates queue: " << AsString(updates_queue_);
     for (;;) {
       if (it->second->state != ImmutableChunkState::kOnDisk) {
         return Status::OK();
@@ -863,7 +911,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     writing_manifest_ = true;
     if (!manifest_file_) {
       manifest_file_ = VERIFY_RESULT(VectorLSMMetadataOpenFile(
-         env_, options_.storage_dir, next_manifest_file_no_));
+         env_, options_.storage_dir, next_manifest_file_no_++));
     }
     manifest_file = manifest_file_.get();
     writing_chunk = updates_queue_.begin()->second;
@@ -875,6 +923,9 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
     WritableFile* manifest_file, ImmutableChunkPtr chunk) {
+  DCHECK_ONLY_NOTNULL(chunk.get());
+  DCHECK_EQ(chunk->state, ImmutableChunkState::kOnDisk);
+
   for (;;) {
     VectorLSMUpdatePB update;
     chunk->AddToUpdate(update);
@@ -892,6 +943,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
     if (updates_queue_.empty() ||
         updates_queue_.begin()->second->state != ImmutableChunkState::kOnDisk) {
       writing_manifest_ = false;
+      writing_manifest_done_.notify_all();
       break;
     }
     chunk = updates_queue_.begin()->second;
@@ -902,19 +954,25 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk) {
+  if (TEST_sleep_during_flush && chunk->order_no) {
+    std::this_thread::sleep_for(TEST_sleep_during_flush.ToSteadyDuration());
+  }
   auto status = DoSaveChunk(chunk);
-  if (!status.ok()) {
-    if (chunk->flush_promise) {
-      chunk->flush_promise->set_value(status);
-      chunk->flush_promise = nullptr;
-    }
-    LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
-    std::lock_guard lock(mutex_);
-    auto remove_status = RemoveUpdateQueueEntry(chunk->order_no);
-    LOG_IF_WITH_PREFIX(DFATAL, !remove_status.ok()) << remove_status;
-    if (failed_status_.ok()) {
-      failed_status_ = status;
-    }
+  if (status.ok()) {
+    return;
+  }
+
+  if (chunk->flush_promise) {
+    chunk->flush_promise->set_value(status);
+    chunk->flush_promise = nullptr;
+  }
+  LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
+
+  std::lock_guard lock(mutex_);
+  auto remove_status = RemoveUpdateQueueEntry(chunk->order_no);
+  LOG_IF_WITH_PREFIX(DFATAL, !remove_status.ok()) << remove_status;
+  if (failed_status_.ok()) {
+    failed_status_ = status;
   }
 }
 
@@ -941,24 +999,36 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
+Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_vectors) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "min_vectors: " << min_vectors;
   RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
-  return CreateNewMutableChunk(min_points);
+  return CreateNewMutableChunk(min_vectors);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr>
+VectorLSM<Vector, DistanceResult>::CreateVectorIndex(size_t min_vectors) const {
+  auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
+
+  auto index = options_.vector_index_factory();
+  RETURN_NOT_OK(index->Reserve(
+      capacity, options_.thread_pool->options().max_workers, MaxConcurrentReads()));
+
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "created index with capacity: " << index->Capacity();
+  return index;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vectors) {
-  VLOG_WITH_PREFIX_AND_FUNC(4) << min_vectors;
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "min_vectors: " << min_vectors;
   VectorIndexPtr index;
   if (mutable_chunk_ && mutable_chunk_->num_entries == 0 &&
       mutable_chunk_->index->Capacity() >= min_vectors) {
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Reuse index of " << AsString(*mutable_chunk_);
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "reusing index of " << AsString(*mutable_chunk_);
     index = std::move(mutable_chunk_->index);
   } else {
-    index = options_.vector_index_factory();
-    RETURN_NOT_OK(index->Reserve(
-        std::max(min_vectors, options_.vectors_per_chunk),
-        options_.thread_pool->options().max_workers, MaxConcurrentReads()));
+    index = VERIFY_RESULT(CreateVectorIndex(min_vectors));
   }
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
@@ -969,10 +1039,17 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vecto
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "wait: " << wait;
+  if (TEST_sleep_during_flush) {
+    std::this_thread::sleep_for(TEST_sleep_during_flush.ToSteadyDuration());
+  }
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
+    if (stopping_) {
+      return STATUS(ShutdownInProgress, "Vector LSM is shutting down");
+    }
     if (!mutable_chunk_) {
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << "Noting to flush";
       return Status::OK();
     }
     RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
@@ -986,7 +1063,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
   rocksdb::UserFrontierPtr result;
   std::lock_guard lock(mutex_);
-  VLOG_WITH_PREFIX_AND_FUNC(4) << "immutable_chunks: " << AsString(immutable_chunks_);
+  VLOG_WITH_PREFIX_AND_FUNC(5) << "immutable_chunks: " << AsString(immutable_chunks_);
 
   for (const auto& chunk : immutable_chunks_) {
     if (chunk->state != ImmutableChunkState::kInManifest) {
@@ -1019,14 +1096,30 @@ auto VectorLSM<Vector, DistanceResult>::options() const ->
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-size_t VectorLSM<Vector, DistanceResult>::TEST_num_immutable_chunks() const {
+size_t VectorLSM<Vector, DistanceResult>::num_immutable_chunks() const {
   SharedLock lock(mutex_);
   return immutable_chunks_.size();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Env* VectorLSM<Vector, DistanceResult>::TEST_GetEnv() const {
+  return env_;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 bool VectorLSM<Vector, DistanceResult>::TEST_HasBackgroundInserts() const {
   return insert_registry_->HasRunningTasks();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::TEST_ObsoleteFilesCleanupInProgress() const {
+  return obsolete_files_cleanup_in_progress_;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+size_t VectorLSM<Vector, DistanceResult>::TEST_NextManifestFileNo() const {
+  SharedLock lock(mutex_);
+  return next_manifest_file_no_;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1055,10 +1148,12 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
+
   // TODO(vector_index) Don't wait flushes that started after this call.
   updates_queue_empty_.wait(
       lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return updates_queue_.empty(); });
+
   return Status::OK();
 }
 
@@ -1075,12 +1170,14 @@ Status VectorLSM<Vector, DistanceResult>::RemoveUpdateQueueEntry(size_t order_no
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ScheduleObsoleteChunksCleanup() {
-  VLOG_WITH_PREFIX_AND_FUNC(1);
+  LOG_WITH_PREFIX(INFO) << __func__;
+
+  RETURN_ON_SHUTTING_DOWN;
 
   // The variable obsolete_files_cleanup_in_progress_ is unset in DeleteObsoleteChunks().
   bool in_progress = false;
   if (!obsolete_files_cleanup_in_progress_.compare_exchange_strong(in_progress, true)) {
-    VLOG_WITH_PREFIX(1) << "Obsolete chunks cleanup already in progress";
+    LOG_WITH_PREFIX(INFO) << "Obsolete chunks cleanup already in progress";
     return;
   }
 
@@ -1094,13 +1191,15 @@ void VectorLSM<Vector, DistanceResult>::ScheduleObsoleteChunksCleanup() {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::DeleteObsoleteChunks() {
   CHECK(obsolete_files_cleanup_in_progress_);
-  VLOG_WITH_PREFIX_AND_FUNC(1);
+  LOG_WITH_PREFIX(INFO) << __func__;
 
   // TODO(vector-index): move this paradigm into a separate utility class (already have the same
   // approach somewhere, it is good to combine them).
   for (;;) {
     DoDeleteObsoleteChunks();
     obsolete_files_cleanup_in_progress_ = false;
+
+    RETURN_ON_SHUTTING_DOWN;
 
     // Check if new obsolete files got added.
     {
@@ -1158,9 +1257,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ObsoleteFile(
     std::unique_ptr<VectorLSMFileMetaData>&& file) {
   // Let's not queue a file for deletion if vector index is being shutdown.
-  if (IsShuttingDown()) {
-    return;
-  }
+  RETURN_ON_SHUTTING_DOWN;
 
   // Sanity check, only obsolete files should be passed.
   DCHECK(file->IsObsolete());
@@ -1169,6 +1266,200 @@ void VectorLSM<Vector, DistanceResult>::ObsoleteFile(
   obsolete_files_.push_back(std::move(file));
 
   // TODO(vector_index): maybe trigger ScheduleObsoleteFilesDeletion by some condition.
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorLSM<Vector, DistanceResult>::ImmutableChunkPtrs
+VectorLSM<Vector, DistanceResult>::PickChunksForFullCompaction() const {
+  ImmutableChunkPtrs chunks;
+  chunks.reserve(num_immutable_chunks());
+
+  // It is expected the collection of immutable chunks is sorted by order_no, so it is safe
+  // to start from the very first item and grab a continuous interaval of manifested chunks.
+  {
+    SharedLock lock(mutex_);
+    for (const auto& chunk : immutable_chunks_) {
+      if (chunk->state != ImmutableChunkState::kInManifest) {
+        break;
+      }
+      chunks.emplace_back(chunk);
+    }
+  }
+
+  return chunks;
+}
+
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtr>
+VectorLSM<Vector, DistanceResult>::DoCompaction(const ImmutableChunkPtrs& input_chunks) {
+  // Input chunks collection must be sorted by order_no and each chunk's state must be set
+  // to ImmutableChunkState::kInManifes.
+  VLOG_WITH_PREFIX(1) << __func__;
+  DCHECK(!input_chunks.empty());
+
+  std::vector<VectorIndexPtr> indexes;
+  indexes.reserve(input_chunks.size());
+
+  // Collect indexes and frontiers.
+  size_t input_size = 0;
+  rocksdb::UserFrontiersPtr merged_frontiers;
+  for (const auto& chunk : input_chunks) {
+    if (chunk->index) {
+      indexes.push_back(chunk->index);
+      input_size += indexes.back()->Size();
+    }
+    if (chunk->user_frontiers) {
+      rocksdb::UpdateFrontiers(merged_frontiers, *(chunk->user_frontiers));
+    }
+  }
+
+  LOG_WITH_PREFIX(INFO)
+      << "Compaction input [chunks: " << input_chunks.size()
+      << ", indexes: " << indexes.size() << ", vectors: " << input_size << "]";
+
+  // Skip index merge section if no existing indexes are found across all input chunks. But
+  // even in this case the chunks should be merged.
+  VectorLSMFileMetaDataPtr merged_index_file;
+  VectorIndexPtr merged_index;
+  if (!indexes.empty()) {
+    merged_index = VERIFY_RESULT(CreateVectorIndex(input_size));
+    RETURN_NOT_OK(options_.vector_index_merger(merged_index, indexes));
+    LOG_WITH_PREFIX(INFO) << "Compaction done [vectors: " << merged_index->Size() << "]";
+
+    // Save new index to disk.
+    merged_index_file = CreateVectorLSMFileMetaData(*merged_index, NextSerialNo());
+    const auto chunk_path = GetChunkPath(options_.storage_dir, merged_index_file->serial_no());
+    RETURN_NOT_OK(merged_index->SaveToFile(chunk_path));
+    LOG_WITH_PREFIX(INFO) << "New chunk " << merged_index_file->ToString() << " saved to disk";
+  }
+
+  // Create new immutable chunk for further processing.
+  return std::make_shared<ImmutableChunk>(
+    input_chunks.front()->order_no, std::move(merged_index_file), std::move(merged_index),
+    std::move(merged_frontiers), ImmutableChunkState::kOnDisk);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::DoFullCompaction() {
+  LOG_WITH_PREFIX(INFO) << "Vector index full compaction requested";
+
+  RETURN_STATUS_ON_SHUTTING_DOWN;
+
+  RSTATUS_DCHECK(options_.vector_index_merger,
+                 IllegalState, "Vector index merger is not specified");
+
+  auto input_chunks = PickChunksForFullCompaction();
+  if (input_chunks.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Nothing to compact";
+    return Status::OK();
+  } else {
+    // Log picked chunks info.
+    LOG_WITH_PREFIX(INFO) << "Picked chunks: " << AsString(input_chunks, [](const auto& chunk) {
+      return Format("{order_no: $0, serial_no: $1}", chunk->order_no, chunk->serial_no());
+    });
+  }
+
+  auto merged_chunk = VERIFY_RESULT(DoCompaction(input_chunks));
+
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  merged_chunk->AddToUpdate(update);
+  merged_chunk->state = ImmutableChunkState::kInManifest;
+
+  // Manifest and in-memory structure should be updated under the same lock.
+  size_t manifest_no;
+  {
+    UniqueLock lock(mutex_);
+
+    // Wait for all current writes are done (and take the ownership of the writing state).
+    writing_manifest_done_.wait(
+        lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return !writing_manifest_; });
+
+    // TODO(vector_index): think of what is the better strategy for creating manifest files,
+    // and check how this is handled in RocksDB.
+    // TODO(vector_index): Delete manifest file (currently it is handled during startup).
+    // Create new metadata file.
+    manifest_no = next_manifest_file_no_++;
+    manifest_file_ = VERIFY_RESULT(VectorLSMMetadataOpenFile(
+        env_, options_.storage_dir, manifest_no));
+
+    // Replace the very first element in the range by the first chunk.
+    auto merged_range_start = immutable_chunks_.begin();
+    auto current_pos = merged_range_start;
+    *current_pos = std::move(merged_chunk);
+    ++current_pos;
+
+    // Shift the remaining elements (if any), adding them to the update if necessary.
+    auto rest_begin = merged_range_start + input_chunks.size();
+    std::transform(
+        rest_begin, immutable_chunks_.end(), current_pos,
+        [&update](auto& chunk){
+          if (chunk->state == ImmutableChunkState::kInManifest) {
+            chunk->AddToUpdate(update);
+          }
+          return std::move(chunk);
+        });
+    std::advance(current_pos, std::distance(rest_begin, immutable_chunks_.end()));
+
+    // Drop merged and/or moved elements.
+    immutable_chunks_.erase(current_pos, immutable_chunks_.end());
+
+    RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file_, update));
+  }
+
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "new manifest #" << manifest_no
+                               << ": " << update.ShortDebugString();
+
+  // Mark input chunks as obsolete and maybe delete corresponding files.
+  for (auto& chunk : input_chunks) {
+    chunk->MarkObsolete();
+  }
+  input_chunks.clear(); // Required to unreference immutable chunks and their members.
+  ScheduleObsoleteChunksCleanup();
+
+  LOG_WITH_PREFIX(INFO) << "Vector index compaction done";
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::ScheduleFullCompaction(StdStatusCallback callback) {
+  RETURN_STATUS_ON_SHUTTING_DOWN;
+
+  bool in_progress = false;
+  if (!full_compaction_in_progress_.compare_exchange_strong(in_progress, true)) {
+    return STATUS(IllegalState, "Vector index full compaction already in progress");
+  }
+
+  auto added = options_.thread_pool->EnqueueFunctor([this, callback = std::move(callback)]() {
+    auto status = DoFullCompaction();
+    full_compaction_in_progress_ = false;
+    if (callback) {
+      callback(status);
+    }
+  });
+
+  if (!added) {
+    full_compaction_in_progress_ = false;
+    auto status = STATUS(ShutdownInProgress,
+                         "Failed to schedule full compaction, probably shutting down");
+    LOG_WITH_PREFIX(INFO) << status;
+    return status;
+  }
+
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::Compact(bool wait) {
+  if (!wait) {
+    return ScheduleFullCompaction();
+  }
+
+  std::promise<Status> compaction_done;
+  auto status = ScheduleFullCompaction([&compaction_done](const Status& status){
+    compaction_done.set_value(status);
+  });
+  return compaction_done.get_future().get();
 }
 
 YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(VectorLSM);

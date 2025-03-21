@@ -45,7 +45,7 @@ class MasterLeaderPollScheduler::Impl {
   std::unique_ptr<MasterLeaderPollerInterface> poller_;
   scoped_refptr<yb::Thread> thread_;
   bool should_run_ GUARDED_BY(mutex_);
-  int consecutive_failures_;
+  int consecutive_failures_ = 0;
   Mutex mutex_;
   ConditionVariable cond_;
   bool poll_asap_ GUARDED_BY(mutex_);

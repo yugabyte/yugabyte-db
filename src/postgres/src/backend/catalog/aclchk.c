@@ -79,7 +79,7 @@
 #include "utils/syscache.h"
 
 /* Yugabyte includes */
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "pg_yb_utils.h"

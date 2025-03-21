@@ -75,7 +75,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"

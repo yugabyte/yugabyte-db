@@ -27,7 +27,7 @@
 #include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/view.h"
 #include "miscadmin.h"

@@ -13,9 +13,15 @@ type: docs
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
-Note that YugabyteDB support for pgvector does not currently include [indexing](https://github.com/pgvector/pgvector#indexing).
+Vector distance functions measure similarity or difference between high-dimensional data points. Choosing the right function depends on the use case, such as search, ranking, or clustering. YugabyteDB supports the following distance functions:
 
-To enable the extension:
+- Cosine Distance - Measures the angle between two vectors. Used for comparing direction rather than magnitude. Best for text similarity and recommendation systems.
+- L2 (Euclidean) Distance - Measures the straight-line distance between two points in space. Best when absolute differences in values matter, like in image recognition.
+- Inner Product - Measures similarity by multiplying corresponding elements and summing them. Often used in ranking and recommendation models, where larger values indicate higher similarity.
+
+## Enable the extension
+
+To enable the pgvector extension:
 
 ```sql
 CREATE EXTENSION vector;
@@ -152,6 +158,62 @@ Average groups of vectors belonging to the same category:
 SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 ```
 
+## Vector indexing
+
+{{<tags/feature/tp idea="1111">}} By default, vector search performs exact nearest neighbor search, ensuring perfect recall.
+
+To improve query performance, you can use approximate nearest neighbor (ANN) search, which trades some recall for speed. Unlike traditional indexes, approximate indexes may return different results for queries.
+
+YugabyteDB currently supports the [HNSW (Hierarchical Navigable Small World)](https://github.com/pgvector/pgvector?tab=readme-ov-file#hnsw) index type.
+
+### HNSW
+
+HNSW indexing creates a multilayer graph to enable efficient high-dimensional vector search. HNSW offers faster query performance but requires more memory and has longer build times. You can create an index before inserting any data into the table.
+
+Add an index for each distance function you want to use.
+
+To use the L2 distance function:
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops);
+```
+
+To use the inner product function:
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_ip_ops);
+```
+
+To use the Cosine distance function:
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_cosine_ops);
+```
+
+YugabyteDB currently supports the `vector` type.
+
+#### HNSW index options
+
+You can fine-tune HNSW indexing using the following parameters:
+
+- `m` - specifies the maximum number of connections per layer.
+- `ef_construction` - Specifies the size of the dynamic candidate list for constructing the graph.
+
+For example:
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops) WITH (m = 16, ef_construction = 128);
+```
+
+A higher `ef_construction` value provides faster recall at the cost of index build time / insert speed.
+
+### Limitations
+
+- Concurrent index creation is not supported yet.
+- Partial indexes on vector columns are not supported yet.
+
 ## Read more
 
 - [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](/preview/tutorials/azure/azure-openai/)
+- [PostgreSQL pgvector: Getting Started and Scaling](https://www.yugabyte.com/blog/postgresql-pgvector-getting-started/)
+- [Multimodal Search with PostgreSQL pgvector](https://www.yugabyte.com/blog/postgresql-pgvector-multimodal-search/)

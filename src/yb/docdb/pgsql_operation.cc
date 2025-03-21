@@ -863,6 +863,7 @@ class VectorIndexKeyProvider {
                    vector_index_.column_id(), projection);
     // TODO(vector_index) Use limit during prefetch.
     dockv::PgTableRow table_row(projection);
+    size_t old_size = search_result_.size();
     while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
@@ -875,6 +876,9 @@ class VectorIndexKeyProvider {
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats && search_result_.size() != old_size)
+        << "VI_STATS: VectorIndexKeyProvider, found in intents: "
+        << (search_result_.size() - old_size);
 
     // Remove duplicates, so sort by key
     std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
@@ -919,8 +923,9 @@ class PgsqlVectorFilter {
 
   ~PgsqlVectorFilter() {
     LOG_IF(INFO, FLAGS_vector_index_dump_stats && row_)
-        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", found: "
-        << num_found_entries_ << ", accepted: " << num_accepted_entries_;
+        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
+        << num_accepted_entries_ << ", num removed: " << num_removed_
+        << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
   }
 
   Status Init(const PgsqlReadOperationData& data) {
@@ -954,9 +959,11 @@ class PgsqlVectorFilter {
     // TODO(vector_index) handle failure
     auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key));
     if (ybctid.empty() || ybctid[0] == dockv::ValueEntryTypeAsChar::kTombstone) {
+      ++num_removed_;
       return false;
     }
     if (!iter_.has_filter()) {
+      ++num_accepted_entries_;
       return true;
     }
     if (need_refresh_) {
@@ -978,6 +985,9 @@ class PgsqlVectorFilter {
     }
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
     if (vector_id.AsSlice() != encoded_value.id) {
+      LOG(DFATAL)
+          << "Referenced row with wrong vector id: " << encoded_value.DecodeId()
+          << ", expected: " << vector_id;
       return false;
     }
     ++num_accepted_entries_;
@@ -992,6 +1002,7 @@ class PgsqlVectorFilter {
   size_t num_checked_entries_ = 0;
   size_t num_found_entries_ = 0;
   size_t num_accepted_entries_ = 0;
+  size_t num_removed_ = 0;
 };
 
 std::string DebugKeySliceToString(Slice key) {

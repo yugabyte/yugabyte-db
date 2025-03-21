@@ -91,7 +91,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 

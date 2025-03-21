@@ -48,7 +48,7 @@
 #include "commands/comment.h"
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"

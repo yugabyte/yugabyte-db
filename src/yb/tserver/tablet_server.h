@@ -207,6 +207,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
+  bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;

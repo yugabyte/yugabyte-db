@@ -19,6 +19,8 @@
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tablet/tablet.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -1080,6 +1082,33 @@ TEST_F(PgTxnTest, MultiInsertUpdate) {
     ASSERT_EQ(i, key);
     ASSERT_EQ(i, value);
   }
+}
+
+TEST_F(PgTxnTest, CleanupIntentsDuringShutdown) {
+  constexpr int kNumRows = 256;
+  constexpr int64_t kExpectedSum = (kNumRows + 1) * kNumRows / 2;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test SELECT generate_series(1, $0), 0", kNumRows));
+
+  auto tablets = ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test"));
+  for (const auto& tablet : tablets) {
+    tablet->TEST_SleepBeforeApplyIntents(1s * kTimeMultiplier);
+    tablet->TEST_SleepBeforeDeleteIntentsFile(1s * kTimeMultiplier);
+  }
+
+  ASSERT_OK(conn.CommitTransaction());
+  auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
+  ASSERT_EQ(sum, kExpectedSum);
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
+  ASSERT_EQ(sum, kExpectedSum);
 }
 
 } // namespace yb::pgwrapper
