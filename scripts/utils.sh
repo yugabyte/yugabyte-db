@@ -125,3 +125,13 @@ function SetupPostgresConfigurations()
   echo cron.database_name = \'postgres\' | tee -a $installdir/postgresql.conf
   echo ssl = off | tee -a $installdir/postgresql.conf
 }
+
+
+function AddNodeToCluster()
+{
+  local _coordinatorPort=$1
+  local _nodePort=$2
+
+  psql -d postgres -p $_coordinatorPort -c "SELECT citus_add_node('localhost', $_nodePort);"
+  psql -d postgres -p $_coordinatorPort -c "SELECT citus_set_node_property('localhost', $_nodePort, 'shouldhaveshards', true);"
+}

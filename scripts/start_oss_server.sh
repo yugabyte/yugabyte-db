@@ -11,7 +11,8 @@ postgresDirectory=""
 initSetup="false"
 help="false"
 stop="false"
-while getopts "d:hcs" opt; do
+distributed="false"
+while getopts "d:hcsx" opt; do
   case $opt in
     d) postgresDirectory="$OPTARG"
     ;;
@@ -20,6 +21,8 @@ while getopts "d:hcs" opt; do
     h) help="true"
     ;;
     s) stop="true"
+    ;;
+    x) distributed="true"
     ;;
   esac
 
@@ -38,16 +41,26 @@ reset=`tput sgr0`
 
 if [ "$help" == "true" ]; then
     echo "${green}sets up and launches a postgres server with extension installed on port $coordinatorPort."
-    echo "${green}start_oss_server -d <postgresDir> [-c] [-s]"
+    echo "${green}start_oss_server -d <postgresDir> [-c] [-s] [-x]"
     echo "${green}<postgresDir> is the data directory for your postgres instance with extension"
     echo "${green}[-c] - optional argument. removes all existing data if it exists"
     echo "${green}[-s] - optional argument. Stops all servers and exits"
+    echo "${green}[-x] - start oss server with documentdb_distributed extension"
     echo "${green}if postgresDir not specified assumed to be ~/documentdb_test"
     exit 1;
 fi
 
-extensionName="documentdb"
+if [ "$distributed" == "true" ]; then
+  extensionName="documentdb_distributed"
+else
+  extensionName="documentdb"
+fi
+
 preloadLibraries="pg_documentdb_core, pg_documentdb"
+
+if [ "$distributed" == "true" ]; then
+  preloadLibraries="$preloadLibraries, pg_documentdb_distributed"
+fi
 
 source="${BASH_SOURCE[0]}"
 while [[ -h $source ]]; do
@@ -95,4 +108,8 @@ if [ "$initSetup" == "true" ]; then
   SetupPostgresServerExtensions "$userName" $coordinatorPort $extensionName
 fi
 
+if [ "$distributed" == "true" ]; then
+  psql -p $coordinatorPort -d postgres -c "SELECT citus_set_coordinator_host('localhost', $coordinatorPort);"
+  AddNodeToCluster $coordinatorPort $coordinatorPort
+fi
 . $scriptDir/setup_psqlrc.sh
