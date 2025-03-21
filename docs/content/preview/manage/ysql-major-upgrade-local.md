@@ -14,6 +14,8 @@ type: docs
 
 Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
 
+The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../ysql-major-upgrade-yugabyted/" class="nav-link">
@@ -25,7 +27,7 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
   <li>
     <a href="../ysql-major-upgrade-local/" class="nav-link active">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 
@@ -37,13 +39,13 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
 v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
 {{< /warning >}}
 
-- All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs.
+- All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
 - Your cluster must be running v2024.2.2.0 or later.
 
-    Deploy a new YugabyteDB cluster on version v2024.2.2.0 or later. If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
+    If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
 ### Precheck
 
@@ -79,6 +81,15 @@ Checking for invalid "sql_identifier" user columns          ok
 *Clusters are compatible*
 ```
 
+{{<tip title="Backup">}}
+Back up your cluster at this time. Refer to [Distributed snapshots for YSQL](../backup-restore/snapshot-ysql/).
+{{</tip>}}
+
+In addition, refer to the following:
+
+- [Prepare your cluster for upgrade](../upgrade-deployment/#1-prepare-the-cluster-for-the-upgrade)
+- [Download and install the new version](../upgrade-deployment/#2-download-and-install-the-new-version)
+
 ## Upgrade phase
 
 ### Enable mixed mode
@@ -97,7 +108,9 @@ $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version
 $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 11
 ```
 
+{{<tip title="Backup">}}
 It is recommended to back up the cluster at this time. Refer to [Distributed snapshots for YSQL](../backup-restore/snapshot-ysql/).
+{{</tip>}}
 
 ### Upgrade YB-Masters
 

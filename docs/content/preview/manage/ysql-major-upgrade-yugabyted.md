@@ -14,6 +14,8 @@ type: docs
 
 Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
 
+The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../ysql-major-upgrade-yugabyted/" class="nav-link active">
@@ -25,7 +27,7 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
   <li>
     <a href="../ysql-major-upgrade-local/" class="nav-link">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 
@@ -37,7 +39,7 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
 v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
 {{< /warning >}}
 
-- All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs.
+- All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
@@ -60,17 +62,19 @@ Use the `upgrade check_version_compatibility` command to make sure your cluster 
 output: ✅ Clusters are compatible for upgrade.
 ```
 
+{{<tip title="Backup">}}
+Back up your cluster at this time. Refer to [Backup](../../reference/configuration/yugabyted/#backup).
+{{</tip>}}
+
 ## Upgrade phase
 
-### Upgrade nodes
+### Restart for catalog upgrade
 
 Restart the nodes one at a time as follows:
 
 ```sh
 ./path_to_new_version/bin/yugabyted stop --upgrade=true \
-    --base_dir=~/yugabyte-data/node1 \
-    --tserver_flags="ysql_yb_major_version_upgrade_compatibility=11" \
-    --master_flags="ysql_yb_major_version_upgrade_compatibility=11"
+    --base_dir=~/yugabyte-data/node1
 ```
 
 ```output
@@ -79,7 +83,9 @@ Stopped yugabyted using config /net/dev-server-hsunder/share/yugabyte-data/node1
 
 ```sh
 ./path_to_new_version/bin/yugabyted start \
-    --base_dir=~/yugabyte-data/node1
+    --base_dir=~/yugabyte-data/node1 \
+    --tserver_flags="ysql_yb_major_version_upgrade_compatibility=11" \
+    --master_flags="ysql_yb_major_version_upgrade_compatibility=11"
 ```
 
 ```output
@@ -108,11 +114,11 @@ Starting yugabyted...
 
 ### Upgrade YSQL catalog to the new version
 
-Upgrade the YSQL catalog. This command can be run from any node.
+Upgrade the YSQL catalog. You can run this command from any node.
 
 ```sh
 ./path_to_new_version/bin/yugabyted upgrade ysql_catalog \
-    --base_dir=~/yugabyte-data1/node3
+    --base_dir=~/yugabyte-data/node1
 ```
 
 ```output
@@ -125,15 +131,13 @@ Upgrade the YSQL catalog. This command can be run from any node.
 +----------------------------------------------------+
 ```
 
-### Restart nodes
+### Restart for PostgreSQL upgrade
 
 Restart the nodes again one at a time as follows:
 
 ```sh
 ./path_to_new_version/bin/yugabyted stop --upgrade=true \
-    --base_dir=~/yugabyte-data/node1 \
-    --tserver_flags="ysql_yb_major_version_upgrade_compatibility=0" \
-    --master_flags="ysql_yb_major_version_upgrade_compatibility=0"
+    --base_dir=~/yugabyte-data/node1
 ```
 
 ```output
@@ -142,8 +146,14 @@ Stopped yugabyted using config /net/dev-server-hsunder/share/yugabyte-data/node1
 
 ```sh
 ./path_to_new_version/bin/yugabyted start \
-    --base_dir=~/yugabyte-data/node1
+    --base_dir=~/yugabyte-data/node1 \
+    --tserver_flags="ysql_yb_major_version_upgrade_compatibility=11" \
+    --master_flags="ysql_yb_major_version_upgrade_compatibility=11"
 ```
+
+{{< warning title="Enable Mixed Mode" >}}
+Restart nodes with the flag `ysql_yb_major_version_upgrade_compatibility=11` so that the universe can function in mixed mode, with both PostgreSQL 15 and (yet to be upgraded) PostgreSQL 11 nodes.
+{{< /warning >}}
 
 ```output
 Starting yugabyted...
@@ -169,21 +179,31 @@ Starting yugabyted...
 +---------------------------------------------------------------------------------------------------+
 ```
 
-Closely monitor your applications at this time. If any issues arise, you can [roll back](#rollback-phase) to the previous version. You can then address the issue and then retry the upgrade.
-
 ## Monitor phase
 
 After all the YB-Master and YB-TServer processes are upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
 
-You can remain in this phase for as long as you need, but you should finalize the upgrade sooner rather than later to avoid operator errors that can arise from having to maintain two versions.
+You can remain in this phase for as long as you need, but you should [finalize the upgrade](#finalize-phase) sooner rather than later to avoid operator errors that can arise from having to maintain two versions.
 
 DDLs are not allowed even in this phase. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
-If you are satisfied with the new version, proceed to [finalize the upgrade](#finalize-phase).
+### Disable mixed mode
+
+After all the yugabyted nodes are on the same version, you can disable mixed mode by setting the `ysql_yb_major_version_upgrade_compatibility` flag to `0`. This allows you to re-enable the pushdown optimizations.
+
+```sh
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
+
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0
+```
 
 ## Finalize phase
 
-After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
+After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. You can run this command from any node.
 
 ```sh
 ./path_to_new_version/bin/yugabyted upgrade finalize_new_version \
