@@ -2193,7 +2193,7 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
     ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
     ```
 
-### Upgrade a cluster from single to multi zone
+## Scale a cluster from single to multi zone
 
 The following steps assume that you have a running YugabyteDB cluster deployed using yugabyted, and have downloaded the update:
 
