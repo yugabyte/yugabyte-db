@@ -164,7 +164,7 @@ SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 
 To improve query performance, you can use approximate nearest neighbor (ANN) search, which trades some recall for speed. Unlike traditional indexes, approximate indexes may return different results for queries.
 
-YugabyteDB currently supports the HNSW (Hierarchical Navigable Small World) index type.
+YugabyteDB currently supports the [HNSW (Hierarchical Navigable Small World)](https://github.com/pgvector/pgvector?tab=readme-ov-file#hnsw) index type.
 
 ### HNSW
 
