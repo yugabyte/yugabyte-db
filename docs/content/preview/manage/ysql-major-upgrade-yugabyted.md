@@ -83,9 +83,7 @@ Stopped yugabyted using config /net/dev-server-hsunder/share/yugabyte-data/node1
 
 ```sh
 ./path_to_new_version/bin/yugabyted start \
-    --base_dir=~/yugabyte-data/node1 \
-    --tserver_flags="ysql_yb_major_version_upgrade_compatibility=11" \
-    --master_flags="ysql_yb_major_version_upgrade_compatibility=11"
+    --base_dir=~/yugabyte-data/node1
 ```
 
 ```output
@@ -189,17 +187,15 @@ DDLs are not allowed even in this phase. New features that require format change
 
 ### Disable mixed mode
 
-After all the yugabyted nodes are on the same version, you can disable mixed mode by setting the `ysql_yb_major_version_upgrade_compatibility` flag to `0`. This allows you to re-enable the pushdown optimizations.
+After all the yugabyted nodes are on the same version, you can disable mixed mode by setting the `ysql_yb_major_version_upgrade_compatibility` flag to `0`. This allows you to re-enable the pushdown optimizations. Run the following on each node.
 
 ```sh
-./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
-./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
-./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address <current-yugabyted-node-advertise-address>:7100 ysql_yb_major_version_upgrade_compatibility 0
 
-./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
-./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
-./path_to_new_version/bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0
+./path_to_new_version/bin/yb-ts-cli set_flag --server_address <current-yugabyted-node-advertise-address>:9100 ysql_yb_major_version_upgrade_compatibility 0
 ```
+
+This does not require a restart.
 
 ## Finalize phase
 
