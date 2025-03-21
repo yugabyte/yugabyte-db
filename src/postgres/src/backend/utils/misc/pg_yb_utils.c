@@ -1080,7 +1080,7 @@ YBOnPostgresBackendShutdown()
 void
 YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 {
-	if (!yb_enable_invalidation_messages)
+	if (!YbIsInvalidationMessageEnabled())
 		return;
 
 	/*
@@ -2418,6 +2418,85 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 	return YB_DDL_MODE_BREAKING_CHANGE;
 }
 
+bool
+YbIsInvalidationMessageEnabled()
+{
+	/*
+	 * If one or more PG transactions have already been committed, then
+	 * we may have missed some invalidation messages associated with them.
+	 * For now we only support invalidation messages for per-database
+	 * catalog version mode for simplicity because that mode is the default
+	 * and there is no reported case where per-database catalog version
+	 * mode is disabled to convert the cluster to global catalog version
+	 * mode. If there is a demand arise in the future to also support
+	 * invalidation messages in global catalog version mode, we can come
+	 * back and reconsider that.
+	 */
+	return yb_enable_invalidation_messages &&
+		   ddl_transaction_state.num_committed_pg_txns == 0 &&
+		   YBIsDBCatalogVersionMode();
+}
+
+/*
+ * If local version is x and this DDL incremented catalog version to x + 1,
+ * then we can do this optimization because the invalidation messages
+ * of x + 1 have been applied by this DDL and incrementing local version to
+ * x + 1 will not miss any messages that should be applied. However, if this
+ * DDL incremented catalog version to x + 2, it means there is one concurrent
+ * DDL that has incremented catalog version to x + 1. In this case if we do
+ * this optimization we will miss the messages of x + 1 and then reapply the
+ * messages of x + 2. Missing messages of x + 1 will affect correctness. We
+ * will leave local version as x which will allow us to apply messages of
+ * x + 1, and then reapply messages of x + 2. We assume reapplying messages
+ * of x + 2 is fine because it only causes some redundant on-demand loading
+ * of cache entries that are removed again by reapplying messages of x + 2.
+ */
+static void
+YbCheckNewLocalCatalogVersionOptimization()
+{
+	Assert(OidIsValid(MyDatabaseId));
+
+	const uint64_t new_version = YbGetNewCatalogVersion();
+
+	if (new_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		/*
+		 * If we do not get a new_version as expected, fall back to the old way
+		 * where we bump up the local catalog version.
+		 * There are two known cases where this can happen:
+		 * (1) if we upgrade from an old release that pg_yb_invalidation_messages
+		 * does not exist, we could not do incremental catalog cache refresh,
+		 * in this case we fall back to old behavior.
+		 * (2) if pg_yb_catalog_version is out of sync with pg_database due to
+		 * corruption, MyDatabaseId is missing from pg_yb_catalog_version, we will
+		 * not be able to return current_version + 1 for MyDatabaseId. In this
+		 * case yb_increment_db_catalog_version_with_inval_messages or
+		 * yb_increment_all_db_catalog_versions_with_inval_messages returns a PG
+		 * null and we detect that and return 0 for new_version. MyDatabaseId
+		 * missing from pg_yb_catalog_version is a more critical problem, the system
+		 * cannot function properly and needs to be manually fixed. We don't
+		 * consider how to properly deal with that case here so also fall back to
+		 * old behavior.
+		 */
+		YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+	else if (YbGetCatalogCacheVersion() + 1 == new_version)
+		YbUpdateCatalogCacheVersion(new_version);
+	else
+	{
+		elog(LOG,
+			 "skipped optimization, "
+			 "local catalog version of db %u "
+			 "kept at %" PRIu64 ", new catalog version %" PRIu64,
+			 MyDatabaseId, YbGetCatalogCacheVersion(), new_version);
+		/*
+		 * If we remain at x when the new_version of this DDL is x + 2, we need
+		 * to wait for x + 1's invalidation messages, since we already know the
+		 * latest version is >= x + 2, let's wait for shared memory to catch up
+		 * to x + 2.
+		 */
+		YbWaitForSharedCatalogVersionToCatchup(new_version);
+	}
+}
+
 void
 YBCommitTransactionContainingDDL()
 {
@@ -2451,6 +2530,7 @@ YBCommitTransactionContainingDDL()
 	int			nmsgs = 0;
 	int			numCatCacheMsgs = 0;
 	int			numRelCacheMsgs = 0;
+	bool		enable_inval_msgs = YbIsInvalidationMessageEnabled();
 	if (has_write)
 	{
 		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
@@ -2462,12 +2542,6 @@ YBCommitTransactionContainingDDL()
 		SharedInvalidationMessage *currentInvalMessages = NULL;
 		SharedInvalidationMessage *currentCatCacheInvalMessages = NULL;
 		SharedInvalidationMessage *currentRelCacheInvalMessages = NULL;
-		/*
-		 * If one or more PG transactions have already been committed, then
-		 * we may have missed some invalidation messages associated with them.
-		 */
-		bool enable_inval_msgs =
-			yb_enable_invalidation_messages && ddl_transaction_state.num_committed_pg_txns == 0;
 		if (enable_inval_msgs)
 		{
 			/*
@@ -2601,41 +2675,8 @@ YBCommitTransactionContainingDDL()
 	 */
 	if (increment_done)
 	{
-		if (yb_enable_invalidation_messages &&
-			database_oid == MyDatabaseId && YBIsDBCatalogVersionMode())
-		{
-			const uint64_t new_version = YbGetNewCatalogVersion();
-			/*
-			 * If local version is x and this DDL incremented catalog version to x + 1,
-			 * then we can do this optimization because the invalidation messages
-			 * of x + 1 have been applied by this DDL and incrementing local version to
-			 * x + 1 will not miss any messages that should be applied. However, if this
-			 * DDL incremented catalog version to x + 2, it means there is one concurrent
-			 * DDL that has incremented catalog version to x + 1. In this case if we do
-			 * this optimization we will miss the messages of x + 1 and then reapply the
-			 * messages of x + 2. Missing messages of x + 1 will affect correctness. We
-			 * will leave local version as x which will allow us to apply messages of
-			 * x + 1, and then reapply messages of x + 2. We assume reapplying messages
-			 * of x + 2 is fine because it only causes some redundant on-demand loading
-			 * of cache entries that are removed again by reapplying messages of x + 2.
-			 */
-			if (YbGetCatalogCacheVersion() + 1 == new_version)
-				YbUpdateCatalogCacheVersion(YbGetNewCatalogVersion());
-			else
-			{
-				elog(LOG,
-					 "skipped optimization, "
-					 "local catalog version of db %u "
-					 "kept at %" PRIu64, MyDatabaseId, YbGetCatalogCacheVersion());
-				/*
-				 * If we remain at x when the new_version of this DDL is x + 2, we need
-				 * to wait for x + 1's invalidation messages, since we already know the
-				 * latest version is >= x + 2, let's wait for shared memory to catch up
-				 * to x + 2.
-				 */
-				YbWaitForSharedCatalogVersionToCatchup(new_version);
-			}
-		}
+		if (enable_inval_msgs && database_oid == MyDatabaseId)
+			YbCheckNewLocalCatalogVersionOptimization();
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 		else

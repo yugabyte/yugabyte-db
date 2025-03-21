@@ -1332,4 +1332,6 @@ extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
 extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
 
+extern bool YbIsInvalidationMessageEnabled();
+
 #endif							/* PG_YB_UTILS_H */

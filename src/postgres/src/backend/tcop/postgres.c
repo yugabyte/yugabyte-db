@@ -4666,8 +4666,7 @@ YBCheckSharedCatalogCacheVersion()
 		uint32_t num_catalog_versions =
 			shared_catalog_version - local_catalog_version;
 		YbcCatalogMessageLists message_lists = {0};
-		const bool enable_inval_messages =
-			YBIsDBCatalogVersionMode() && yb_enable_invalidation_messages;
+		const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
 		if (enable_inval_messages)
 		{
 			const uint64_t catalog_master_version = YbGetMasterCatalogVersion();

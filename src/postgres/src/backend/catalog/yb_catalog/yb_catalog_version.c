@@ -255,7 +255,16 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
 			PopActiveSnapshot();
-		new_version = DatumGetUInt64(retval);
+		if (fcinfo->isnull)
+		{
+			elog(WARNING, "function %u returned NULL", functionId);
+			new_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+		}
+		else
+		{
+			new_version = DatumGetUInt64(retval);
+			Assert(new_version != YB_CATCACHE_VERSION_UNINITIALIZED);
+		}
 		MaybeLogNewSQLIncrementCatalogVersion(true /* success */ ,
 											  db_oid,
 											  is_breaking_change,
@@ -365,13 +374,12 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
-	if (yb_enable_invalidation_messages && YBIsDBCatalogVersionMode())
+	if (YbIsInvalidationMessageEnabled())
 	{
 		Oid func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
 									 : YbGetNewIncrementCatalogVersionFunctionOid();
 		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
 		{
-			YbResetNewCatalogVersion();
 			bool is_null = false;
 			Datum messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
 			int expiration_secs = yb_invalidation_message_expiration_secs;
@@ -576,6 +584,7 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 										  const SharedInvalidationMessage *invalMessages,
 										  int nmsgs)
 {
+	YbResetNewCatalogVersion();
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
 

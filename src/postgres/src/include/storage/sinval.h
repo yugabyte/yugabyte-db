@@ -95,7 +95,7 @@ typedef struct
 	int8		id;				/* type field --- must be first */
 	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
-	pid_t		yb_sender_pid;		/* ID of a process which sent the message ---
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
 								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared catalog */
 	Oid			catId;			/* ID of catalog whose contents are invalid */
@@ -109,7 +109,7 @@ typedef struct
 	int8		id;				/* type field --- must be first */
 	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
-	pid_t		yb_sender_pid;		/* ID of a process which sent the message ---
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
 								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID, or 0 if whole relcache */
@@ -124,7 +124,7 @@ typedef struct
 	int8		id;				/* type field --- must be first */
 	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
-	pid_t		yb_sender_pid;		/* ID of a process which sent the message ---
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
 								 * must be third */
 	int8		backend_hi;		/* high bits of backend ID, if temprel */
 	uint16		backend_lo;		/* low bits of backend ID, if temprel */
@@ -139,7 +139,7 @@ typedef struct
 	int8		id;				/* type field --- must be first */
 	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
-	pid_t		yb_sender_pid;		/* ID of a process which sent the message ---
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
 								 * must be third */
 	Oid			dbId;			/* database ID, or 0 for shared catalogs */
 } SharedInvalRelmapMsg;
@@ -152,7 +152,7 @@ typedef struct
 	int8		id;				/* type field --- must be first */
 	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
-	pid_t		yb_sender_pid;		/* ID of a process which sent the message ---
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
 								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID */
@@ -164,7 +164,7 @@ typedef struct
 	int8		id;				/* type field --- must be first */
 	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
-	pid_t		yb_sender_pid;		/* ID of a process which sent the message ---
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
 								 * must be third */
 } YBSharedInvalMessageHeader;
 
