@@ -1656,6 +1656,73 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+## Auto Analyze Service flags
+
+Auto Analyze service flags are {{<tags/feature/tp>}}.
+
+{{< note title="Note" >}}
+
+To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
+
+{{< /note >}}
+
+See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-flags).
+
+##### ysql_enable_auto_analyze_service
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+Default: false
+
+##### ysql_enable_table_mutation_counter
+Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds 
+the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
+
+Default: false
+
+##### ysql_auto_analyze_threshold
+
+The minimum number of mutations needed to run ANALYZE on a table.
+
+Default: 50
+
+##### ysql_auto_analyze_scale_factor
+
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
+ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
+
+Default: 0.1
+
+##### ysql_auto_analyze_batch_size
+
+The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
+
+Default: 10
+
+##### ysql_cluster_level_mutation_persist_interval_ms
+
+Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
+
+Default: 10000
+
+##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+
+Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
+
+Default: 10000
+
+##### ysql_node_level_mutation_reporting_interval_ms
+
+Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
+
+Default: 5000
+
+##### ysql_node_level_mutation_reporting_timeout_ms
+
+Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
+
+Default: 5000
+
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv
