@@ -20,9 +20,15 @@ Planned switchover is the process of switching write access from the Primary uni
 
 Assuming universe A is the Primary and universe B is the Standby, use the following steps to perform a planned switchover to change the replication direction from A->B to B->A.
 
-### Check existing replication group health
+### Precheck
 
-To minimize disruptions and the duration of the switchover, ensure that the existing replication is healthy and the lag is under 5 seconds. For information on monitoring xCluster replication, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
+- Check existing replication group health
+
+  To minimize disruptions and the duration of the switchover, ensure that the existing replication is healthy and the lag is under 5 seconds. For information, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
+
+- Check prerequisites
+
+  Ensure that all prerequisites for setting up xCluster are satisfied for the new replication direction. For more information, refer to the [xCluster prerequisites](../#prerequisites).
 
 ### Setup replication in the reverse direction
 

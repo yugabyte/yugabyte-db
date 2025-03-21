@@ -248,6 +248,10 @@ The following deployment scenarios are not yet supported:
 
     Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed. This applies to even transactional modes. So, it is recommended to take backups on the source universe only.
 
+- Change Data Capture
+
+    CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
+
 ### Active-active multi-master limitations
 - Triggers
 
@@ -271,7 +275,6 @@ Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-tra
 
 - No writes are allowed in the target universe
 - YCQL is not yet supported
-
 - In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 
 ### Transactional Automatic mode limitations
