@@ -278,6 +278,7 @@ Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-tra
 - All connections to the source universe must be reset after setting up the replication. [#25853](https://github.com/yugabyte/yugabyte-db/issues/25853)
 - The GRANT statement is currently not replicated. [#26461](https://github.com/yugabyte/yugabyte-db/issues/26461)
 - Adding unique constraints is currently not supported. [#26167](https://github.com/yugabyte/yugabyte-db/issues/26167)
+- Table rewrites (ALTER TABLE commands that require structural changes to the table) operations on partitioned tables are currently not supported. [#26453](https://github.com/yugabyte/yugabyte-db/issues/26453)
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
 - DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes be setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
 - CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
