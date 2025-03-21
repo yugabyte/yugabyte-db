@@ -20,9 +20,15 @@ Planned switchover is the process of switching write access from the Primary uni
 
 Assuming universe A is the Primary and universe B is the Standby, use the following steps to perform a planned switchover to change the replication direction from A->B to B->A.
 
-### Check existing replication group health
+### Precheck
 
-To minimize disruptions and the duration of the switchover, ensure that the existing replication is healthy and the lag is under 5 seconds. For information on monitoring xCluster replication, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
+- Check existing replication group health
+
+  To minimize disruptions and the duration of the switchover, ensure that the existing replication is healthy and the lag is under 5 seconds. For information, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
+
+- Check prerequisites
+
+  Ensure that all prerequisites for setting up xCluster are satisfied for the new replication direction. For more information, refer to the [xCluster prerequisites](../#prerequisites).
 
 ### Setup replication in the reverse direction
 
@@ -44,6 +50,15 @@ Wait for any pending updates to propagate to B:
 The lag and skew values might be non-zero as they are estimates based on the last time the tablets were polled. Since no new writes can occur during this period, you can be certain that no data is lost within this timeframe.
 {{< /note >}}
 
+### Fix up sequences and serial columns
+
+{{< note >}}
+_Not applicable for Automatic mode_
+{{< /note >}}
+
+Since xCluster does not replicate sequence data, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+
+Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence next values appropriately.
 
 ### Delete the old replication group
 

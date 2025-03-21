@@ -11,6 +11,10 @@ Since this feature is in [technical preview](/preview/releases/versioning/#tech-
 Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
 {{< /tip >}}
 
+{{< note >}}
+DDLs must be paused on the Primary universe during the entire set up process. [#26053](https://github.com/yugabyte/yugabyte-db/issues/26053)
+{{< /note >}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
     <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab"
@@ -23,7 +27,7 @@ Before setting up xCluster replication, ensure you have reviewed the [Prerequisi
     <a href="#local" class="nav-link" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="false">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 </ul>
@@ -33,7 +37,6 @@ Before setting up xCluster replication, ensure you have reviewed the [Prerequisi
 <!-- YugabyteD Setup -->
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up yugabyted universes](../../../../reference/configuration/yugabyted/#start). The yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
-
 
 1. Create a checkpoint on the Primary universe for all the databases that you want to be part of the replication.
 
@@ -98,7 +101,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
   <div id="local" class="tab-pane fade " role="tabpanel" aria-labelledby="local-tab">
 
-<!-- Local Setup -->
+<!-- Manual Setup -->
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 

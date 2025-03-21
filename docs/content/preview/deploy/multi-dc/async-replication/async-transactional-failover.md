@@ -102,7 +102,7 @@ If there are multiple databases, perform PITR on each database sequentially, one
     <a href="#local-pitr" class="nav-link" id="local-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="local-pitr" aria-selected="false">
     <i class="icon-shell"></i>
-    Local
+    Manual
     </a>
 </li>
 </ul>
@@ -202,6 +202,18 @@ Expect output similar to the following:
     delete_universe_replication <replication_group_id>
 ```
 
+### Fix up sequences and serial columns
+
+{{< note >}}
+_Not applicable for Automatic mode_
+{{< /note >}}
+Since xCluster does not replicate sequence data, you need to manually adjust the sequence next values on universe B after failover to ensure consistency with the tables using them.
+
+For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
+
+Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence next values appropriately.
+
+
 ### Switch applications to B
 Update the application connection strings to point to the new Primary universe (B).
 
@@ -229,7 +241,7 @@ Once you are ready to drop the databases on A, follow the steps:
     <a href="#local-drop-pitr" class="nav-link" id="local-drop-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="local-drop-pitr" aria-selected="false">
     <i class="icon-shell"></i>
-    Local
+    Manual
     </a>
 </li>
 </ul>

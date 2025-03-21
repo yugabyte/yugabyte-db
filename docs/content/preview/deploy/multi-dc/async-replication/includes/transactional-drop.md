@@ -16,7 +16,7 @@ private = true
     <a href="#local-drop" class="nav-link" id="local-drop-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local-drop" aria-selected="false">
       <i class="icon-shell"></i>
-      Local
+      Manual
     </a>
   </li>
 </ul>
