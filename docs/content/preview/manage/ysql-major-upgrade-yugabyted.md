@@ -45,7 +45,7 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
 - Your cluster must be running v2024.2.2.0 or later.
 
-    Deploy a new YugabyteDB cluster on version v2024.2.2.0 or later. If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
+    If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
 ### Precheck
 
@@ -65,6 +65,12 @@ output: ✅ Clusters are compatible for upgrade.
 {{<tip title="Backup">}}
 Back up your cluster at this time. Refer to [Backup](../../reference/configuration/yugabyted/#backup).
 {{</tip>}}
+
+In addition, refer to the following:
+
+- [Prepare your cluster for upgrade](../upgrade-deployment/#1-prepare-the-cluster-for-the-upgrade)
+- [Download and install the new version](../upgrade-deployment/#2-download-and-install-the-new-version)
+
 
 ## Upgrade phase
 

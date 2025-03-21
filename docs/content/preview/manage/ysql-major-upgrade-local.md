@@ -175,7 +175,7 @@ If you encounter any issues, you can [roll back](#rollback-phase) the upgrade.
 
 Use yb-admin to finalize the upgrade.
 
-You need to run the `finalize_upgrade` command as follows:
+You need to run the [finalize_upgrade](../../admin/yb-admin/#finalize-upgrade) command as follows:
 
 ```sh
 yb-admin --master_addresses <master_addresses> finalize_upgrade
