@@ -56,6 +56,12 @@ extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 }
 
+namespace yb::vector_index {
+
+extern MonoDelta TEST_sleep_during_flush;
+
+}
+
 namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(AddFilter);
@@ -294,6 +300,18 @@ TEST_P(PgVectorIndexTest, Drop) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
   TestSimple(true);
+}
+
+TEST_P(PgVectorIndexTest, DropWithFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(vector_index::TEST_sleep_during_flush) = 250ms * kTimeMultiplier;
+  TestSimple();
+  auto conn = ASSERT_RESULT(Connect());
+  ThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    ASSERT_OK(cluster_->FlushTablets(
+        tablet::FlushMode::kAsync, tablet::FlushFlags::kVectorIndexes));
+  });
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 }
 
 std::string VectorAsString(int64_t id) {

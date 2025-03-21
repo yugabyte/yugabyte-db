@@ -101,6 +101,8 @@ size_t MaxConcurrentReads() {
 
 } // namespace
 
+MonoDelta TEST_sleep_during_flush;
+
 class VectorLSMFileMetaData final {
  public:
   explicit VectorLSMFileMetaData(size_t serial_no) : serial_no_(serial_no) {}
@@ -574,6 +576,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Destroy() {
+  LOG_WITH_PREFIX(INFO) << __func__;
   StartShutdown();
   CompleteShutdown();
   return env_->DeleteRecursively(options_.storage_dir);
@@ -951,6 +954,9 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk) {
+  if (TEST_sleep_during_flush && chunk->order_no) {
+    std::this_thread::sleep_for(TEST_sleep_during_flush.ToSteadyDuration());
+  }
   auto status = DoSaveChunk(chunk);
   if (status.ok()) {
     return;
@@ -1033,9 +1039,15 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vecto
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "wait: " << wait;
+  if (TEST_sleep_during_flush) {
+    std::this_thread::sleep_for(TEST_sleep_during_flush.ToSteadyDuration());
+  }
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
+    if (stopping_) {
+      return STATUS(ShutdownInProgress, "Vector LSM is shutting down");
+    }
     if (!mutable_chunk_) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Noting to flush";
       return Status::OK();

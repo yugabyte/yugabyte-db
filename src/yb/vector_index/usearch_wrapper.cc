@@ -181,8 +181,12 @@ class UsearchIndex :
   Status DoSaveToFile(const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
-    if (!index_.save(output_file_t(path.c_str()))) {
-      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+    try {
+      if (!index_.save(output_file_t(path.c_str()))) {
+        return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+      }
+    } catch(std::exception& exc) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file $0: $1", path, exc.what());
     }
     return Status::OK();
   }
