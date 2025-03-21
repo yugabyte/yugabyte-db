@@ -975,6 +975,23 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithS
   ASSERT_EQ(row, kRows[3]);
 }
 
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithSequencesAndDdl)) {
+  auto seq_table_name = "table_with_sequence";
+  ASSERT_OK(
+      source_conn_->ExecuteFormat("CREATE TABLE $0 (id INT, i2 SERIAL, c1 INT)", seq_table_name));
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO $0 (id,c1) VALUES (11,22)", seq_table_name));
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  // Run a DDL that increments the last_breaking_version of pg_yb_catalog.
+  ASSERT_OK(source_conn_->ExecuteFormat("ALTER TABLE $0 RENAME COLUMN c1 TO c2", seq_table_name));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT(
+      (target_conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", seq_table_name))));
+  ASSERT_EQ(row, 1);
+}
+
 // Test yb_database_clones (ysql function to list clones)
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(YsqlListClonesAPI)) {
   std::string list_clones_query =
