@@ -183,14 +183,6 @@ Starting yugabyted...
 +---------------------------------------------------------------------------------------------------+
 ```
 
-## Monitor phase
-
-After all the YB-Master and YB-TServer processes are upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
-
-You can remain in this phase for as long as you need, but you should [finalize the upgrade](#finalize-phase) sooner rather than later to avoid operator errors that can arise from having to maintain two versions.
-
-DDLs are not allowed even in this phase. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
-
 ### Disable mixed mode
 
 After all the yugabyted nodes are on the same version, you can disable mixed mode by setting the `ysql_yb_major_version_upgrade_compatibility` flag to `0`. This allows you to re-enable the pushdown optimizations. Run the following on each node.
@@ -202,6 +194,14 @@ After all the yugabyted nodes are on the same version, you can disable mixed mod
 ```
 
 This does not require a restart.
+
+## Monitor phase
+
+After all the YB-Master and YB-TServer processes are upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
+
+You can remain in this phase for as long as you need, but you should [finalize the upgrade](#finalize-phase) sooner rather than later to avoid operator errors that can arise from having to maintain two versions.
+
+DDLs are not allowed even in this phase. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
 ## Finalize phase
 
