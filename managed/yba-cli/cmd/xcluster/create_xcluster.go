@@ -244,6 +244,7 @@ var createXClusterCmd = &cobra.Command{
 			tableNeedBootstrapUUIDs = strings.Split(tableNeedBootstrapUUIDsString, ",")
 		} else {
 			allowBootstrap = true
+			tableNeedBootstrapUUIDs = tableUUIDs
 		}
 
 		req := ybaclient.XClusterConfigCreateFormData{
