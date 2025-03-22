@@ -38,17 +38,16 @@ class MasterLeaderPollScheduler::Impl {
   void TriggerASAP();
 
  private:
-  bool IsCurrentThread() const;
   const std::string& LogPrefix() const;
 
   MasterLeaderFinder& finder_;
   std::unique_ptr<MasterLeaderPollerInterface> poller_;
-  scoped_refptr<yb::Thread> thread_;
-  bool should_run_ GUARDED_BY(mutex_);
+  scoped_refptr<Thread> thread_;
+  bool should_run_ GUARDED_BY(mutex_) = false;
   int consecutive_failures_ = 0;
   Mutex mutex_;
   ConditionVariable cond_;
-  bool poll_asap_ GUARDED_BY(mutex_);
+  bool poll_asap_ GUARDED_BY(mutex_) = false;
 };
 
 MasterLeaderPollScheduler::MasterLeaderPollScheduler(
@@ -75,19 +74,15 @@ MasterLeaderPollScheduler::Impl::Impl(
     MasterLeaderFinder& finder, std::unique_ptr<MasterLeaderPollerInterface> poller)
     : finder_(finder),
       poller_(std::move(poller)),
-      should_run_(false),
-      cond_(&mutex_),
-      poll_asap_(false) {}
+      cond_(&mutex_) {}
 
 Status MasterLeaderPollScheduler::Impl::Start() {
-  {
-    MutexLock l(mutex_);
-    CHECK(thread_ == nullptr);
-    should_run_ = true;
-    return yb::Thread::Create(
-        poller_->category(), poller_->name(), &MasterLeaderPollScheduler::Impl::Run, this,
-        &thread_);
-  }
+  MutexLock l(mutex_);
+  CHECK(thread_ == nullptr);
+  should_run_ = true;
+  return Thread::Create(
+      poller_->category(), poller_->name(), &MasterLeaderPollScheduler::Impl::Run, this,
+      &thread_);
 }
 
 Status MasterLeaderPollScheduler::Impl::Stop() {
@@ -96,6 +91,7 @@ Status MasterLeaderPollScheduler::Impl::Stop() {
     if (!thread_) {
       return Status::OK();
     }
+    poll_asap_ = true;
     should_run_ = false;
     YB_PROFILE(cond_.Signal());
   }
@@ -107,21 +103,14 @@ Status MasterLeaderPollScheduler::Impl::Stop() {
 }
 
 void MasterLeaderPollScheduler::Impl::Run() {
-  CHECK(IsCurrentThread());
-
   poller_->Init();
 
-  while (true) {
-    MonoTime next_poll = MonoTime::Now();
-    next_poll.AddDelta(poller_->IntervalToNextPoll(consecutive_failures_));
+  for (;;) {
+    auto next_poll = MonoTime::Now() + poller_->IntervalToNextPoll(consecutive_failures_);
+
     {
       MutexLock l(mutex_);
-      while (true) {
-        MonoDelta remaining = next_poll.GetDeltaSince(MonoTime::Now());
-        if (remaining <= MonoDelta::kZero || poll_asap_ || !should_run_) {
-          break;
-        }
-        cond_.TimedWait(remaining);
+      while (!poll_asap_ && cond_.WaitUntil(next_poll)) {
       }
       poll_asap_ = false;
       if (!should_run_) {
@@ -129,7 +118,7 @@ void MasterLeaderPollScheduler::Impl::Run() {
         return;
       }
     }
-    CHECK(IsCurrentThread());
+
     Status s = poller_->Poll();
     if (!s.ok()) {
       const auto master_addresses = finder_.get_master_addresses();
@@ -137,7 +126,7 @@ void MasterLeaderPollScheduler::Impl::Run() {
                                << finder_.get_master_leader_hostport() << ": " << s
                                << " tries=" << consecutive_failures_
                                << ", num=" << master_addresses->size()
-                               << ", masters=" << yb::ToString(master_addresses)
+                               << ", masters=" << AsString(master_addresses)
                                << ", code=" << s.CodeAsString();
       consecutive_failures_++;
       // If there's multiple masters...
@@ -160,10 +149,6 @@ void MasterLeaderPollScheduler::Impl::TriggerASAP() {
   MutexLock l(mutex_);
   poll_asap_ = true;
   YB_PROFILE(cond_.Signal());
-}
-
-bool MasterLeaderPollScheduler::Impl::IsCurrentThread() const {
-  return thread_.get() == yb::Thread::current_thread();
 }
 
 const std::string& MasterLeaderPollScheduler::Impl::LogPrefix() const {

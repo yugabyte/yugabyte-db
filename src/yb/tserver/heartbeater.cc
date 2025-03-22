@@ -178,7 +178,7 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
 Heartbeater::Heartbeater(
     const TabletServerOptions& opts, TabletServer* server,
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
-  : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
+    : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
 }
 
 Heartbeater::~Heartbeater() {
@@ -213,7 +213,7 @@ Heartbeater::Impl::Impl(
   auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
   CHECK(!master_addresses->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
-                      << yb::ToString(master_addresses);
+                      << AsString(master_addresses);
 }
 
 Status Heartbeater::Impl::Start() {
