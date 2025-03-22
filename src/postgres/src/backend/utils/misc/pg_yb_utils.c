@@ -2351,18 +2351,15 @@ YbSetIsGlobalDDL()
 	ddl_transaction_state.is_global_ddl = true;
 }
 
-void
-YbIncrementPgTxnsCommitted()
+static bool
+CheckIsAnalyzeDDL()
 {
-	/*
-	 * In some cases, PG can commit when the outer DDL statement isn't complete yet.
-	 * PG commits implies the invalidation messages are disposed of and at the end
-	 * of the DDL statement when YB tries to fetch the invalidation messages that
-	 * are regarded as associated with this DDL statement, we will not get the full
-	 * list of messages because those that are already disposed off due to embedded
-	 * PG commits.
-	 */
-	++ddl_transaction_state.num_committed_pg_txns;
+	if (ddl_transaction_state.original_node_tag == T_VacuumStmt)
+	{
+		Assert(ddl_transaction_state.original_ddl_command_tag);
+		return !strcmp(ddl_transaction_state.original_ddl_command_tag, "ANALYZE");
+	}
+	return false;
 }
 
 void
@@ -2481,6 +2478,92 @@ YbIsInvalidationMessageEnabled()
 		   YBIsDBCatalogVersionMode();
 }
 
+bool
+YbCheckPgTxnCommitForAnalyze(bool *increment_done)
+{
+	/*
+	 * In some cases, PG can commit when the outer DDL statement isn't complete yet.
+	 * PG commits implies the invalidation messages are disposed of and at the end
+	 * of the DDL statement when YB tries to fetch the invalidation messages that
+	 * are regarded as associated with this DDL statement, we will not get the full
+	 * list of messages because those that are already disposed off due to embedded
+	 * PG commits.
+	 */
+
+	/* We only need to count PG commits within DDL statement. */
+	if (ddl_transaction_state.nesting_level == 0)
+		return false;
+
+	/* For any other case except for ANALYZE, we need to count PG commits. */
+	if (!CheckIsAnalyzeDDL())
+		return true;
+
+	/* We only need to count PG commits when using inval messages. */
+	if (!YbIsInvalidationMessageEnabled())
+		return false;
+
+	/*
+	 * If there is no write, then there are no inval messages so this commit is
+	 * equivalent to a no-op.
+	 */
+	if (!YBCPgHasWriteOperationsInDdlTxnMode())
+		return false;
+
+	int			numCatCacheMsgs = 0;
+	int			numRelCacheMsgs = 0;
+	numCatCacheMsgs = YbGetSubGroupInvalMessages(NULL, YB_CATCACHE_MSGS);
+	numRelCacheMsgs = YbGetSubGroupInvalMessages(NULL, YB_RELCACHE_MSGS);
+	int nmsgs = numCatCacheMsgs + numRelCacheMsgs;
+	/*
+	 * If this PG commit does not involve any invalidation messages, we do not
+	 * need to count this commit.
+	 */
+	if (nmsgs == 0)
+		return false;
+
+	SharedInvalidationMessage *catCacheInvalMessages = NULL;
+	SharedInvalidationMessage *relCacheInvalMessages = NULL;
+	SharedInvalidationMessage *currentInvalMessages = NULL;
+
+	numCatCacheMsgs = YbGetSubGroupInvalMessages(&catCacheInvalMessages,
+												 YB_CATCACHE_MSGS);
+	numRelCacheMsgs = YbGetSubGroupInvalMessages(&relCacheInvalMessages,
+												 YB_RELCACHE_MSGS);
+	currentInvalMessages = (SharedInvalidationMessage *)
+		MemoryContextAlloc(CurTransactionContext,
+						   nmsgs * sizeof(SharedInvalidationMessage));
+	if (numCatCacheMsgs > 0)
+		memcpy(currentInvalMessages,
+			   catCacheInvalMessages,
+			   numCatCacheMsgs * sizeof(SharedInvalidationMessage));
+	if (numRelCacheMsgs > 0)
+		memcpy(currentInvalMessages + numCatCacheMsgs,
+			   relCacheInvalMessages,
+			   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
+	if (log_min_messages <= DEBUG1)
+		YbLogInvalidationMessages(currentInvalMessages, nmsgs);
+	elog(DEBUG1, "incrementing catalog version in nested PG commit");
+	*increment_done =
+		YbIncrementMasterCatalogVersionTableEntry(false /* is_breaking_change */ ,
+												  ddl_transaction_state.is_global_ddl,
+												  ddl_transaction_state.original_ddl_command_tag,
+												  currentInvalMessages, nmsgs);
+	pfree(currentInvalMessages);
+	/*
+	 * If we have failed to incremented the catalog version and inserted
+	 * the inval messages, we need to count this PG commit so that when
+	 * this ANALYZE DDL finishes we skip the incremental cache refresh
+	 * because we have lost the inval messages for this PG commit here.
+	 */
+	return !(*increment_done);
+}
+
+void
+YbIncrementPgTxnsCommitted()
+{
+	++ddl_transaction_state.num_committed_pg_txns;
+}
+
 /*
  * If local version is x and this DDL incremented catalog version to x + 1,
  * then we can do this optimization because the invalidation messages
@@ -2495,7 +2578,7 @@ YbIsInvalidationMessageEnabled()
  * of x + 2 is fine because it only causes some redundant on-demand loading
  * of cache entries that are removed again by reapplying messages of x + 2.
  */
-static void
+void
 YbCheckNewLocalCatalogVersionOptimization()
 {
 	Assert(OidIsValid(MyDatabaseId));

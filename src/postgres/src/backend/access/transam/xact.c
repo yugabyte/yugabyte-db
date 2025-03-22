@@ -2346,8 +2346,6 @@ YBCRestartWriteTransaction()
 static void
 CommitTransaction(void)
 {
-	if (IsYugaByteEnabled())
-		YbIncrementPgTxnsCommitted();
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;
@@ -2394,14 +2392,28 @@ CommitTransaction(void)
 			break;
 	}
 
-	/*
-	 * Firing the triggers may abort current transaction.
-	 * At this point all the them has been fired already.
-	 * It is time to commit YB transaction.
-	 * Postgres transaction can be aborted at this point without an issue
-	 * in case of YBCCommitTransaction failure.
-	 */
-	YBCCommitTransaction();
+	if (IsYugaByteEnabled())
+	{
+		bool increment_done = false;
+		bool increment_pg_txns = YbCheckPgTxnCommitForAnalyze(&increment_done);
+		/*
+		 * Firing the triggers may abort current transaction.
+		 * At this point all the them has been fired already.
+		 * It is time to commit YB transaction.
+		 * Postgres transaction can be aborted at this point without an issue
+		 * in case of YBCCommitTransaction failure.
+		 */
+		YBCCommitTransaction();
+		if (increment_pg_txns)
+		{
+			Assert(!increment_done);
+			YbIncrementPgTxnsCommitted();
+		}
+		else if (increment_done)
+			YbCheckNewLocalCatalogVersionOptimization();
+	}
+
+
 
 	/*
 	 * The remaining actions cannot call any user-defined code, so it's safe
