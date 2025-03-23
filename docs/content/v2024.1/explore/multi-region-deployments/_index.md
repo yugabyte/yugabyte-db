@@ -32,67 +32,30 @@ The following table summarizes these different multi-region deployments in Yugab
 
 The deployment types are explained in the following sections.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="synchronous-replication-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Synchronous multi region</div>
-      </div>
-      <div class="body">
-          Achieve synchronous replication across three or more regions in YugabyteDB.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Synchronous multi region"
+    body="Distribute data synchronously across regions."
+    href="synchronous-replication-ysql/"
+    icon="fa-light fa-circle-nodes">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../going-beyond-sql/asynchronous-replication-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">xCluster</div>
-      </div>
-      <div class="body">
-          Achieve asynchronous replication across two or more regions in YugabyteDB.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="xCluster"
+    body="Asynchronous replication across regions."
+    href="../going-beyond-sql/asynchronous-replication-ysql/"
+    icon="fa-light fa-clone">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="row-level-geo-partitioning/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Row-level geo-partitioning</div>
-      </div>
-      <div class="body">
-          Use row-level geo-partitioning in YugabyteDB.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Row-level geo-partitioning"
+    body="Pin data to regions for compliance and lower latencies."
+    href="row-level-geo-partitioning/"
+    icon="fa-light fa-earth-europe">}}
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="read-replicas-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Read replicas</div>
-      </div>
-      <div class="body">
-          Use read replicas to lower latency and improve performance.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Read replicas"
+    body="Improve read latencies using read-only replicas."
+    href="read-replicas-ysql/"
+    icon="fa-light fa-book-open">}}
 
- <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Follower Reads</div>
-      </div>
-      <div class="body">
-          Use Follower Reads to reduce read latencies in YugabyteDB.
-      </div>
-    </a>
-  </div>
-</div> -->
-
-</div>
+{{</index/block>}}

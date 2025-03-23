@@ -20,16 +20,15 @@ type: docs
 
 xCluster replication is YugabyteDB's implementation of high throughput asynchronous physical replication between two YugabyteDB universes. It allows you to set up one or more unidirectional replication _flows_ between universes. For each flow, data is replicated from a _source_ (also called a producer) universe to a _target_ (also called a consumer) universe. Replication is done at the DocDB layer, by efficiently replicating WAL records asynchronously to the target universe. Both YSQL and YCQL are supported.
 
-Multiple flows can be configured; for instance, setting up two unidirectional flows between two universes, one in each direction, enables bidirectional replication. This ensures that data written in one universe is replicated to the other without causing infinite loops. Refer to [supported deployment scenarios](#supported-deployment-scenarios) for details on the supported flow combinations.
+Multiple flows can be configured; for instance, setting up two unidirectional flows between two universes, one in each direction, enables bidirectional replication. This ensures that data written in one universe is replicated to the other without causing infinite loops. Refer to [supported deployment scenarios](#deployment-scenarios) for details on the supported flow combinations.
 
-Although for simplicity we describe flows between entire universes, flows are actually composed of streams between pairs of YCQL tables or YSQL databases, one in each universe, allowing replication of only certain tables or databases.
+For simplicity, flows are described as being between entire universes. However, flows are actually composed of streams between pairs of YCQL tables or YSQL databases, one in each universe, allowing replication of only certain tables or databases.
 
 Note that xCluster can only be used to replicate between primary clusters in two different universes; it cannot be used to replicate between clusters in the same universe. (See [universe versus cluster](../../key-concepts/#universe) for more on the distinction between universes and clusters.)
 
 {{< tip >}}
 To understand the difference between xCluster, Geo-Partitioning, and Read Replicas, refer to [Multi-Region Deployments](../../../explore/multi-region-deployments/).
 {{< /tip >}}
-
 
 ## Synchronous versus asynchronous replication
 
@@ -41,7 +40,7 @@ However, asynchronous replication can be beneficial in certain scenarios:
 - **Only two data centers needed**: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With xCluster, you can achieve multi-region deployments with only two data centers.
 - **Disaster recovery**: xCluster utilizes independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
 
-The drawbacks of asynchronous xCluster replication are:
+Asynchronous xCluster replication has the following drawbacks:
 
 - **Potential data loss**: In the event of a data center failure, any data that has not yet been replicated to the secondary data center will be lost. The extent of data loss is determined by the replication lag, which is typically subsecond but can vary depending on the network conditions between the data centers.
 - **Stale reads**: When reading from the secondary data center, there may be a delay in data availability due to the asynchronous nature of the replication. This can result in stale reads, which may not reflect the most recent writes. Non-transactional modes can serve torn reads of recently written data.
@@ -54,20 +53,21 @@ To better understand how xCluster replication works in practice, check out [xClu
 
 Because there is a useful trade-off between how much consistency is lost and what transactions are allowed, YugabyteDB provides two different modes of asynchronous replication:
 
-- __Non-transactional replication__: Writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
-- __Transactional replication__: Consistency of reads is preserved on the target universe, but writes are not allowed.
-
+- Non-transactional replication: Writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
+- Transactional replication: Consistency of reads is preserved on the target universe, but writes are not allowed.
 
 ### Non-transactional replication
+
 All writes to the source universe are independently replicated to the target universe, where they are applied with the same timestamp they committed on the source universe. No locks are taken or honored on the target side.
 
 Due to replication lag, a read performed in the target universe immediately after a write in the source universe may not reflect the recent write. In other words, reads in the target universe do not wait for the latest data from the source universe to become available.
 
-Note that the writes are usually being written in the past as far as the target universe is concerned. This violates the preconditions for YugabyteDB serving consistent reads (see the discussion on [safe timestamps](../../transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request)). Accordingly, reads on the target universe are no longer strongly consistent but rather eventually consistent even within a single table.
+Note that the writes are usually being written in the past as far as the target universe is concerned. This violates the preconditions for YugabyteDB serving consistent reads (see the discussion on [safe timestamps](../../transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request)). Accordingly, reads on the target universe are no longer strongly consistent but rather eventually consistent even in a single table.
 
 If both target and source universes write to the same key, then the last writer wins. The deciding factor is the underlying hybrid time of the updates from each universe.
 
 #### Inconsistencies affecting transactions
+
 Due to the independent replication of writes, transactions from the source universe become visible over time. This results in transactions on the target universe experiencing non-repeatable reads and phantom reads, regardless of their declared isolation level. Consequently, all transactions on the target universe effectively operate at the SQL-92 isolation level READ COMMITTED, which only ensures that transactions do not read uncommitted data. Unlike the standard YugabyteDB READ COMMITTED level, this does not guarantee that a statement will see a consistent snapshot or all data committed before the statement is issued.
 
 If the source universe fails, the target universe may be left in an inconsistent state where some source universe transactions have only some of their writes applied in the target universe (these are called _torn transactions_). This inconsistency will not automatically heal over time and may need to be manually resolved.
@@ -100,10 +100,10 @@ Transactional replication comes in three modes:
 
 #### Automatic mode
 
-
 {{<tags/feature/tp idea="153">}}In this mode all aspects of replication are handled automatically, including schema changes.
 
 #### Semi-automatic mode
+
 Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
 
 {{<lead link="https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p">}}
@@ -111,8 +111,8 @@ To learn more, watch [Simplified schema management with xCluster DB Scoped](http
 {{</lead>}}
 
 #### Manual mode
-This mode is deprecated and not recommended for new deployments. It requires manual intervention for schema changes and is more complex to set up and manage.
 
+This mode is deprecated and not recommended for new deployments. It requires manual intervention for schema changes and is more complex to set up and manage.
 
 ## High-level implementation details
 
@@ -158,8 +158,8 @@ Because pollers operate independently and the writes to multiple tablets are not
 
 When a source transaction commits, it is applied to the relevant tablets lazily. This means that even though transaction _X_ commits before transaction _Y_, _X_'s apply WAL record may occur after _Y_'s apply WAL record on some tablets. If this happens, the writes from _X_ can become visible in the target universe after _Y_'s. This is why non-transactional mode reads are only eventually consistent and not timeline consistent.
 
-
 ### Transactional mode
+
 Transactional mode addresses these issues by selecting an appropriate xCluster safe time.
 
 The xCluster safe time for each database on the target universe is calculated as the minimum _xCluster apply safe time_ reached by any tablet in that database. Pollers use information from the source tablet leaders to determine their _xCluster apply safe time_. This time ensures that all transactions committed before it have been applied on the target tablets.
@@ -171,8 +171,9 @@ To learn more, watch [Transactional xCluster](https://youtu.be/lI6gw7ncBs8?si=gA
 {{</lead>}}
 
 ## Schema differences
+
 {{< tip >}}
-This section does not apply to Automatic mode since it automatically replicates schema changes.
+This section does not apply to Automatic mode, as Automatic mode automatically replicates schema changes.
 {{< /tip >}}
 
 xCluster replication requires that the source and target tables have identical schemas. This means that you cannot replicate data between tables if there are differences in their schemas, such as missing columns or columns with different data types. Ensuring schema consistency is crucial for the replication process to function correctly.
@@ -248,7 +249,7 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
 - Change Data Capture
 
-  CDC's [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
+  CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
 
 - Modifications of Types
 
@@ -266,7 +267,7 @@ Limitations specific to each scenario and mode are listed below:
 
   When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
-#### Multi-master async replication
+#### Multi-master asynchronous replication
 
 - Triggers
 
@@ -289,6 +290,7 @@ Limitations specific to each scenario and mode are listed below:
 - In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 
 #### Transactional Automatic mode
+
 - All connections to the source universe must be reset after setting up the replication. [#25853](https://github.com/yugabyte/yugabyte-db/issues/25853)
 - The GRANT statement is currently not replicated. [#26461](https://github.com/yugabyte/yugabyte-db/issues/26461)
 - Adding unique constraints is currently not supported. [#26167](https://github.com/yugabyte/yugabyte-db/issues/26167)
@@ -301,9 +303,11 @@ Limitations specific to each scenario and mode are listed below:
 - While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
 
 #### Transactional Semi-Automatic and Manual mode
+
 - All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
 - When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Consider setting up these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 ### Kubernetes
+
 - xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
 - Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.

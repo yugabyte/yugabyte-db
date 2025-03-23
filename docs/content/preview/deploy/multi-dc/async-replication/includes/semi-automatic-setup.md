@@ -1,6 +1,7 @@
 <!--
 +++
 private = true
+block_indexing: true
 +++
 -->
 
@@ -9,7 +10,7 @@ Before setting up xCluster replication, ensure you have reviewed the [Prerequisi
 {{< /tip >}}
 
 {{< note >}}
-DDLs must be paused on the Primary universe during the entire set up process. [#26053](https://github.com/yugabyte/yugabyte-db/issues/26053)
+DDLs must be paused on the Primary universe during the entire set up process. {{<issue 26053>}}
 {{< /note >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
@@ -93,6 +94,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     +-----------------------------------------------+
 
     ```
+
   </div>
 
   <div id="local-setup" class="tab-pane fade " role="tabpanel" aria-labelledby="local-setup-tab">

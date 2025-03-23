@@ -1,18 +1,18 @@
 <!--
 +++
 private = true
+block_indexing: true
 +++
 -->
 
-Since this feature is in [technical preview](/preview/releases/versioning/#tech-preview-tp), you must enable it by adding the `xcluster_enable_ddl_replication` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list and setting it to true on yb-master in both universes.
-
+Because this feature is {{<tags/feature/tp idea="153">}}, you must enable it by adding the `xcluster_enable_ddl_replication` flag to the [allowed_preview_flags_csv](../../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list and setting it to true on yb-master in both universes.
 
 {{< tip >}}
 Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
 {{< /tip >}}
 
 {{< note >}}
-DDLs must be paused on the Primary universe during the entire set up process. [#26053](https://github.com/yugabyte/yugabyte-db/issues/26053)
+DDLs must be paused on the Primary universe during the entire set up process. {{<issue 26053>}}
 {{< /note >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
@@ -97,6 +97,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     +-----------------------------------------------+
 
     ```
+
   </div>
 
   <div id="local" class="tab-pane fade " role="tabpanel" aria-labelledby="local-tab">
