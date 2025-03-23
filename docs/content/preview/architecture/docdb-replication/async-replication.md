@@ -20,7 +20,7 @@ type: docs
 
 xCluster replication is YugabyteDB's implementation of high throughput asynchronous physical replication between two YugabyteDB universes. It allows you to set up one or more unidirectional replication _flows_ between universes. For each flow, data is replicated from a _source_ (also called a producer) universe to a _target_ (also called a consumer) universe. Replication is done at the DocDB layer, by efficiently replicating WAL records asynchronously to the target universe. Both YSQL and YCQL are supported.
 
-Multiple flows can be configured; for instance, setting up two unidirectional flows between two universes, one in each direction, enables bidirectional replication. This ensures that data written in one universe is replicated to the other without causing infinite loops. Refer to [supported deployment scenarios](#supported-deployment-scenarios) for details on the supported flow combinations.
+Multiple flows can be configured; for instance, setting up two unidirectional flows between two universes, one in each direction, enables bidirectional replication. This ensures that data written in one universe is replicated to the other without causing infinite loops. Refer to [supported deployment scenarios](#deployment-scenarios) for details on the supported flow combinations.
 
 For simplicity, flows are described as being between entire universes. However, flows are actually composed of streams between pairs of YCQL tables or YSQL databases, one in each universe, allowing replication of only certain tables or databases.
 
