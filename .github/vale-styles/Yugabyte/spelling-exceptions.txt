@@ -480,6 +480,7 @@ Pipfiles
 Piwik
 plaintext
 Poedit
+pollers
 polyfill
 polyfills
 pooler
