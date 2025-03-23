@@ -60,7 +60,7 @@ if is_yb_file "$1"; then
     # shellcheck disable=SC2001 # parameter expansion doesn't support char set
     lineno=$(sed 's/[:-].*//' <<<"$line")
     # shellcheck disable=SC2001 # parameter expansion doesn't support char set
-    line=$(sed 's/[0-9]\+[:-]//' <<<"$line")
+    line=$(sed -E 's/[0-9]+[:-]//' <<<"$line")
 
     # Empty lines indicate the boundary between blocks.
     if [ -z "$line" ]; then
@@ -168,7 +168,7 @@ else
             lineno=$(sed 's/[:-].*//' <<<"$line")
             # shellcheck disable=SC2001 # parameter expansion doesn't support
             # char set
-            line=$(sed 's/[0-9]\+[:-]//' <<<"$line")
+            line=$(sed -E 's/[0-9]+[:-]//' <<<"$line")
 
             if "$hit_last_line"; then
               if [[ "$line" == '#include '* ]]; then
