@@ -4916,7 +4916,8 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 	Oid			ownerId;
 
 	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid) || (IsYbExtensionUser(roleid) && creating_extension))
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid) ||
+		(IsYbExtensionUser(roleid) && creating_extension))
 		return mask;
 
 	/*
