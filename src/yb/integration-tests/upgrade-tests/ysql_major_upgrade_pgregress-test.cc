@@ -11,14 +11,11 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 namespace yb {
 
-class Pg15UpgradePgRegressTest : public Pg15UpgradeTestBase {
- public:
-  Pg15UpgradePgRegressTest() = default;
-};
+using Pg15UpgradePgRegressTest = YsqlMajorUpgradeTestBase;
 
 // Test yb_profile_schedule
 // TODO(fizaa): programatically read the schedule instead of manually copy-pasting lines from it.
@@ -30,7 +27,6 @@ TEST_F(Pg15UpgradePgRegressTest, YbProfileSchedule) {
     "yb.orig.profile_permissions.sql",
   };
   ASSERT_OK(ExecuteStatementsInFiles(files));
-  ASSERT_OK(UpgradeClusterToMixedMode());
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 } // namespace yb

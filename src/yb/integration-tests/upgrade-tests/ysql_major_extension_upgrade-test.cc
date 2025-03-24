@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/util/env_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 
-class YsqlMajorExtensionUpgradeTest : public Pg15UpgradeTestBase {
+class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
  public:
   YsqlMajorExtensionUpgradeTest() = default;
 
@@ -27,7 +27,7 @@ class YsqlMajorExtensionUpgradeTest : public Pg15UpgradeTestBase {
         Format("--ysql_pg_conf_csv=\"shared_preload_libraries=passwordcheck,pg_stat_monitor\""));
     opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
     opts.extra_master_flags.push_back("--enable_pg_cron=true");
-    Pg15UpgradeTestBase::SetUpOptions(opts);
+    YsqlMajorUpgradeTestBase::SetUpOptions(opts);
   }
 };
 

@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include <chrono>
 
@@ -27,7 +27,7 @@ using namespace std::chrono_literals;
 
 namespace yb {
 
-void Pg15UpgradeTestBase::SetUp() {
+void YsqlMajorUpgradeTestBase::SetUp() {
   TEST_SETUP_SUPER(UpgradeTestBase);
 
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");
@@ -40,7 +40,7 @@ void Pg15UpgradeTestBase::SetUp() {
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
-Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
+Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
   const auto tserver = cluster_->tablet_server(0);
   const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
 
@@ -58,7 +58,7 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user
   return Subprocess::Call(args, /*log_stdout_and_stderr=*/true);
 }
 
-Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibilityFailure(
     const std::vector<std::string>& expected_errors, const std::string& user_name) {
   std::vector<std::unique_ptr<StringWaiterLogSink>> log_waiters;
   for (const auto& expected_error : expected_errors) {
@@ -81,12 +81,12 @@ Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::ValidateUpgradeCompatibilityFailure(
+Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibilityFailure(
     const std::string& expected_error, const std::string& user_name) {
   return ValidateUpgradeCompatibilityFailure(std::vector<std::string>{expected_error}, user_name);
 }
 
-Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
+Status YsqlMajorUpgradeTestBase::UpgradeClusterToMixedMode() {
   RETURN_NOT_OK(ValidateUpgradeCompatibility());
 
   LOG(INFO) << "Upgrading cluster to mixed mode";
@@ -105,7 +105,7 @@ Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::UpgradeAllTserversFromMixedMode() {
+Status YsqlMajorUpgradeTestBase::UpgradeAllTserversFromMixedMode() {
   LOG(INFO) << "Restarting all other yb-tservers in current version";
 
   auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
@@ -124,7 +124,7 @@ Status Pg15UpgradeTestBase::UpgradeAllTserversFromMixedMode() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
+Status YsqlMajorUpgradeTestBase::FinalizeUpgradeFromMixedMode() {
   RETURN_NOT_OK(UpgradeAllTserversFromMixedMode());
 
   RETURN_NOT_OK(UpgradeTestBase::FinalizeUpgrade());
@@ -132,7 +132,7 @@ Status Pg15UpgradeTestBase::FinalizeUpgradeFromMixedMode() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::RollbackUpgradeFromMixedMode() {
+Status YsqlMajorUpgradeTestBase::RollbackUpgradeFromMixedMode() {
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in old version";
@@ -150,7 +150,7 @@ Status Pg15UpgradeTestBase::RollbackUpgradeFromMixedMode() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::ExecuteStatements(const std::vector<std::string>& sql_statements) {
+Status YsqlMajorUpgradeTestBase::ExecuteStatements(const std::vector<std::string>& sql_statements) {
   auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
   for (const auto& statement : sql_statements) {
     RETURN_NOT_OK(conn.Execute(statement));
@@ -158,7 +158,7 @@ Status Pg15UpgradeTestBase::ExecuteStatements(const std::vector<std::string>& sq
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::ExecuteStatementsInFile(const std::string& file_name) {
+Status YsqlMajorUpgradeTestBase::ExecuteStatementsInFile(const std::string& file_name) {
   const auto sub_dir = "postgres_build/src/test/regress/sql";
   const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
   const auto file_path = JoinPathSegments(test_sql_dir, file_name);
@@ -187,7 +187,7 @@ Status Pg15UpgradeTestBase::ExecuteStatementsInFile(const std::string& file_name
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::ExecuteStatementsInFiles(
+Status YsqlMajorUpgradeTestBase::ExecuteStatementsInFiles(
     const std::vector<std::string>& file_names) {
   for (const auto& file_name : file_names) {
     RETURN_NOT_OK(ExecuteStatementsInFile(file_name));
@@ -195,16 +195,16 @@ Status Pg15UpgradeTestBase::ExecuteStatementsInFiles(
   return Status::OK();
 }
 
-Result<pgwrapper::PGConn> Pg15UpgradeTestBase::CreateConnToTs(std::optional<size_t> ts_id) {
+Result<pgwrapper::PGConn> YsqlMajorUpgradeTestBase::CreateConnToTs(std::optional<size_t> ts_id) {
   return cluster_->ConnectToDB("yugabyte", ts_id);
 }
 
-Status Pg15UpgradeTestBase::ExecuteStatement(const std::string& sql_statement) {
+Status YsqlMajorUpgradeTestBase::ExecuteStatement(const std::string& sql_statement) {
   return ExecuteStatements({sql_statement});
 }
 
-Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(
-    const std::string& sql_statement, std::optional<size_t> ts_id, const std::string &db_name) {
+Result<std::string> YsqlMajorUpgradeTestBase::ExecuteViaYsqlsh(
+    const std::string& sql_statement, std::optional<size_t> ts_id, const std::string& db_name) {
   // tserver could have restarted recently. Create a connection which will wait till the pg process
   // is up.
 
@@ -234,7 +234,7 @@ Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(
   return output;
 }
 
-Status Pg15UpgradeTestBase::CreateSimpleTable() {
+Status YsqlMajorUpgradeTestBase::CreateSimpleTable() {
   simple_tbl_row_count_ = 100;
   return ExecuteStatements(
       {Format("CREATE TABLE $0 (a INT) SPLIT INTO 3 TABLETS", kSimpleTableName),
@@ -243,7 +243,8 @@ Status Pg15UpgradeTestBase::CreateSimpleTable() {
            simple_tbl_row_count_)});
 }
 
-Status Pg15UpgradeTestBase::InsertRowInSimpleTableAndValidate(const std::optional<size_t> tserver) {
+Status YsqlMajorUpgradeTestBase::InsertRowInSimpleTableAndValidate(
+    const std::optional<size_t> tserver) {
   auto conn = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", tserver));
   RETURN_NOT_OK(conn.Execute(
       Format("INSERT INTO $0 VALUES ($1)", kSimpleTableName, ++simple_tbl_row_count_)));
@@ -261,7 +262,7 @@ Status Pg15UpgradeTestBase::InsertRowInSimpleTableAndValidate(const std::optiona
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::TestUpgradeWithSimpleTable() {
+Status YsqlMajorUpgradeTestBase::TestUpgradeWithSimpleTable() {
   // Create a table with 3 tablets and kRowCount rows so that each tablet has at least a few rows.
   RETURN_NOT_OK(CreateSimpleTable());
 
@@ -278,7 +279,7 @@ Status Pg15UpgradeTestBase::TestUpgradeWithSimpleTable() {
   return Status::OK();
 }
 
-Status Pg15UpgradeTestBase::TestRollbackWithSimpleTable() {
+Status YsqlMajorUpgradeTestBase::TestRollbackWithSimpleTable() {
   // Create an extra DB with a table to make sure the rollback with multiple DBs work.
   {
     RETURN_NOT_OK(ExecuteStatement("CREATE DATABASE db1"));
@@ -301,7 +302,7 @@ Status Pg15UpgradeTestBase::TestRollbackWithSimpleTable() {
   return Status::OK();
 }
 
-Result<std::string> Pg15UpgradeTestBase::DumpYsqlCatalogConfig() {
+Result<std::string> YsqlMajorUpgradeTestBase::DumpYsqlCatalogConfig() {
   master::DumpSysCatalogEntriesRequestPB req;
   master::DumpSysCatalogEntriesResponsePB resp;
   req.set_entry_type(master::SysRowEntryType::SYS_CONFIG);
@@ -325,7 +326,7 @@ Result<std::string> Pg15UpgradeTestBase::DumpYsqlCatalogConfig() {
   return resp.entries(0).pb_debug_string();
 }
 
-Status Pg15UpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state) {
+Status YsqlMajorUpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state) {
   auto state_str = master::YsqlMajorCatalogUpgradeInfoPB::State_Name(state);
   return LoggedWaitFor(
       [&]() -> Result<bool> {
@@ -335,7 +336,7 @@ Status Pg15UpgradeTestBase::WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::
       5min, "Waiting for upgrade to reach state " + state_str);
 }
 
-Result<std::string> Pg15UpgradeTestBase::ReadUpgradeCompatibilityGuc() {
+Result<std::string> YsqlMajorUpgradeTestBase::ReadUpgradeCompatibilityGuc() {
   auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
   return conn.FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility");
 }

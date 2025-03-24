@@ -17,10 +17,10 @@
 
 namespace yb {
 
-class Pg15UpgradeTestBase : public UpgradeTestBase {
+class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
  public:
-  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_2_0) {}
-  virtual ~Pg15UpgradeTestBase() override = default;
+  YsqlMajorUpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_2_0) {}
+  virtual ~YsqlMajorUpgradeTestBase() override = default;
 
   void SetUp() override;
 

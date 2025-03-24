@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -28,12 +28,12 @@ namespace yb {
 constexpr auto kExpectedDdlError =
     "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade";
 
-class YsqlMajorUpgradeDdlBlockingTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
  public:
   YsqlMajorUpgradeDdlBlockingTest() = default;
 
   void SetUp() override {
-    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
+    TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
 
     auto conn = ASSERT_RESULT(CreateConnToTs(std::nullopt));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int)", kCommentTable));

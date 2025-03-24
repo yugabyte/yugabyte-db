@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -21,9 +21,9 @@ using namespace std::chrono_literals;
 DECLARE_string(ysql_major_upgrade_user);
 namespace yb {
 
-class Pg15UpgradeTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeTest : public YsqlMajorUpgradeTestBase {
  public:
-  Pg15UpgradeTest() = default;
+  YsqlMajorUpgradeTest() = default;
 
   constexpr static auto kTemplate0 = "template0";
   constexpr static auto kTemplate1 = "template1";
@@ -60,7 +60,7 @@ class Pg15UpgradeTest : public Pg15UpgradeTestBase {
   }
 };
 
-TEST_F(Pg15UpgradeTest, CheckVersion) {
+TEST_F(YsqlMajorUpgradeTest, CheckVersion) {
   const auto kSelectVersion = "SELECT version()";
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
@@ -113,9 +113,9 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
   ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
 }
 
-TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
+TEST_F(YsqlMajorUpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
 
-TEST_F(Pg15UpgradeTest, SimpleTableRollback) {
+TEST_F(YsqlMajorUpgradeTest, SimpleTableRollback) {
   ASSERT_OK(TestRollbackWithSimpleTable());
 
 // Disabled the re-upgrade step on debug builds because it times out.
@@ -126,7 +126,7 @@ TEST_F(Pg15UpgradeTest, SimpleTableRollback) {
 #endif
 }
 
-TEST_F(Pg15UpgradeTest, BackslashD) {
+TEST_F(YsqlMajorUpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
   static const auto kBackslashD = "\\d";
   static const auto kExpectedResult =
@@ -153,7 +153,7 @@ TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_EQ(result, kExpectedResult);
 }
 
-TEST_F(Pg15UpgradeTest, CreateTableOf) {
+TEST_F(YsqlMajorUpgradeTest, CreateTableOf) {
   static const auto t1 = "t1_pg11";
   static const auto t2 = "t2_pg11";
   static const auto t3 = "t3_pg15";
@@ -209,7 +209,7 @@ TEST_F(Pg15UpgradeTest, CreateTableOf) {
   ASSERT_NO_FATALS(check_tables(kAnyTserver));
 }
 
-TEST_F(Pg15UpgradeTest, Comments) {
+TEST_F(YsqlMajorUpgradeTest, Comments) {
   const auto kPg11DatabaseComment = "PG11: [db] I came first!";
   const auto kPg11TableComment = "PG11: [table] I came first!";
   ASSERT_OK(ExecuteStatements(
@@ -267,7 +267,7 @@ TEST_F(Pg15UpgradeTest, Comments) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, Schemas) {
+TEST_F(YsqlMajorUpgradeTest, Schemas) {
   const auto kSchemaA = "schema_a";
   const auto kSchemaB = "schema_b";
   const auto kPublic = "public";
@@ -360,7 +360,7 @@ TEST_F(Pg15UpgradeTest, Schemas) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MultipleDatabases)) {
+TEST_F(YsqlMajorUpgradeTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MultipleDatabases)) {
   /* Cases:
    * - We support creating / altering databases to disallow connections - but neither YB nor PG
    *   support upgrading those databases. That is tested by DatabaseWithDisallowedConnections below.
@@ -543,7 +543,7 @@ TEST_F(Pg15UpgradeTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MultipleDatabases)) {
   ASSERT_NO_FATALS(add_row_check_rows(db_map, kAnyTserver, ++inserted_row_count));
 }
 
-TEST_F(Pg15UpgradeTest, DatabaseWithDisallowedConnections) {
+TEST_F(YsqlMajorUpgradeTest, DatabaseWithDisallowedConnections) {
   static const auto kDatabaseDisallowedConnections = "db_with_disallowed_connections";
 
   ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0 WITH ALLOW_CONNECTIONS = FALSE",
@@ -562,7 +562,7 @@ TEST_F(Pg15UpgradeTest, DatabaseWithDisallowedConnections) {
                           "pg_upgrade' terminated with non-zero exit status");
 }
 
-TEST_F(Pg15UpgradeTest, Template1) {
+TEST_F(YsqlMajorUpgradeTest, Template1) {
   /*
    * The following statements are extracted from gram.y as CREATE statements that are allowed to run
    * in template1. They are broken into multiple lists:
@@ -751,7 +751,7 @@ TEST_F(Pg15UpgradeTest, Template1) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, FunctionWithSemicolons) {
+TEST_F(YsqlMajorUpgradeTest, FunctionWithSemicolons) {
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
     ASSERT_OK(conn.Execute(R"(CREATE FUNCTION pg11_function() RETURNS text AS $$
@@ -779,7 +779,7 @@ TEST_F(Pg15UpgradeTest, FunctionWithSemicolons) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, Matviews) {
+TEST_F(YsqlMajorUpgradeTest, Matviews) {
   ASSERT_OK(ExecuteStatements(
     {"CREATE TABLE t (v INT)",
       "INSERT INTO t VALUES (1),(2),(3)",
@@ -806,7 +806,7 @@ TEST_F(Pg15UpgradeTest, Matviews) {
   ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3, 4, 5, 6, 7}));
 }
 
-TEST_F(Pg15UpgradeTest, PartitionedTables) {
+TEST_F(YsqlMajorUpgradeTest, PartitionedTables) {
   // Set up partitioned tables
   ASSERT_OK(ExecuteStatements({
     "CREATE TABLE t_r (v INT, z TEXT, PRIMARY KEY(v ASC)) PARTITION BY RANGE (v)",
@@ -983,7 +983,7 @@ TEST_F(Pg15UpgradeTest, PartitionedTables) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, ColocatedTables) {
+TEST_F(YsqlMajorUpgradeTest, ColocatedTables) {
   ASSERT_OK(ExecuteStatement("CREATE DATABASE colo WITH COLOCATION = true"));
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
@@ -1016,7 +1016,7 @@ TEST_F(Pg15UpgradeTest, ColocatedTables) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, Tablegroup) {
+TEST_F(YsqlMajorUpgradeTest, Tablegroup) {
   ASSERT_OK(ExecuteStatements({
     "CREATE USER user_1",
     "GRANT CREATE ON SCHEMA public TO user_1",
@@ -1042,23 +1042,23 @@ TEST_F(Pg15UpgradeTest, Tablegroup) {
   }
 }
 
-class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
+class YsqlMajorUpgradeTestWithAuth : public YsqlMajorUpgradeTest {
  public:
-  Pg15UpgradeTestWithAuth() = default;
+  YsqlMajorUpgradeTestWithAuth() = default;
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
     opts.enable_ysql_auth = true;
-    Pg15UpgradeTest::SetUpOptions(opts);
+    YsqlMajorUpgradeTest::SetUpOptions(opts);
   }
 
   Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte") override {
     setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
-    return Pg15UpgradeTest::ValidateUpgradeCompatibility(user_name);
+    return YsqlMajorUpgradeTest::ValidateUpgradeCompatibility(user_name);
   }
 };
 
 // Make sure upgrade succeeds in non auth universes even if there is no tserver on the master node.
-TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
+TEST_F(YsqlMajorUpgradeTest, NoTserverOnMasterNode) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
@@ -1073,7 +1073,7 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
 
 // If there is no tserver on the master node make sure the upgrade fails unless the yugabyte_upgrade
 // user is created.
-TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
+TEST_F(YsqlMajorUpgradeTestWithAuth, NoTserverOnMasterNode) {
 // Disabled the rollback step on debug builds because it times out.
 #if defined(NDEBUG)
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
@@ -1110,11 +1110,11 @@ TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
   ASSERT_OK(FinalizeUpgrade());
 }
 
-TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
+TEST_F(YsqlMajorUpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
   ASSERT_OK(TestUpgradeWithSimpleTable());
 }
 
-TEST_F(Pg15UpgradeTestWithAuth, NoYugabyteUserPassword) {
+TEST_F(YsqlMajorUpgradeTestWithAuth, NoYugabyteUserPassword) {
   ASSERT_OK(ExecuteStatement("ALTER USER yugabyte WITH PASSWORD NULL"));
   ASSERT_NOK_STR_CONTAINS(cluster_->ConnectToDB(), "password authentication failed");
 
@@ -1122,15 +1122,14 @@ TEST_F(Pg15UpgradeTestWithAuth, NoYugabyteUserPassword) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
-TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {
+TEST_F(YsqlMajorUpgradeTest, GlobalBreakingDDL) {
   ASSERT_OK(ExecuteStatements(
     {"CREATE USER test",
      "DROP USER test"}));
-  ASSERT_OK(UpgradeClusterToMixedMode());
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
-TEST_F(Pg15UpgradeTest, Indexes) {
+TEST_F(YsqlMajorUpgradeTest, Indexes) {
   ASSERT_OK(ExecuteStatements(
     {"CREATE TABLE t1 (a int)",
      "INSERT INTO t1 VALUES (1),(2),(3),(4),(5)",
@@ -1201,7 +1200,7 @@ TEST_F(Pg15UpgradeTest, Indexes) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, ForeignKeyTest) {
+TEST_F(YsqlMajorUpgradeTest, ForeignKeyTest) {
   int a = 0;
   int b = 100;
   int c = 10000;
@@ -1284,12 +1283,12 @@ TEST_F(Pg15UpgradeTest, ForeignKeyTest) {
   ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
 }
 
-class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
+class Pg15UpgradeSequenceTest : public YsqlMajorUpgradeTest {
  public:
   Pg15UpgradeSequenceTest() = default;
 
   void SetUp() override {
-    TEST_SETUP_SUPER(Pg15UpgradeTest);
+    TEST_SETUP_SUPER(YsqlMajorUpgradeTest);
 
     ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
     // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
@@ -1323,7 +1322,7 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
   int seq_val_pg15_ = 1;
 };
 
-TEST_F(Pg15UpgradeTest, YbGinIndex) {
+TEST_F(YsqlMajorUpgradeTest, YbGinIndex) {
   const auto kGinTableName = "expression";
   const auto kGinIndex1 = "gin_idx_1";
   const auto kGinIndex2 = "gin_idx_2";
@@ -1496,7 +1495,7 @@ TEST_F(Pg15UpgradeSequenceTest, IdentityColumn) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, Tablespaces) {
+TEST_F(YsqlMajorUpgradeTest, Tablespaces) {
   const auto simple_spc = "ts_invalid";
   const auto pg11_spc = "ts11";
   const auto pg15_spc = "ts15";
@@ -1574,7 +1573,7 @@ TEST_F(Pg15UpgradeTest, Tablespaces) {
   ASSERT_OK(check_tablespace());
 }
 
-TEST_F(Pg15UpgradeTest, DroppedColumnTest) {
+TEST_F(YsqlMajorUpgradeTest, DroppedColumnTest) {
   const auto insert_stmt = "INSERT INTO t VALUES ($0)";
   const auto kT1SelectStmt = "SELECT * FROM t ORDER BY a";
   const auto kT2SelectStmt = "SELECT * FROM t2 ORDER BY a2";
@@ -1645,7 +1644,7 @@ TEST_F(Pg15UpgradeTest, DroppedColumnTest) {
   ASSERT_OK(run_validations());
 }
 
-TEST_F(Pg15UpgradeTest, YbSuperuserRole) {
+TEST_F(YsqlMajorUpgradeTest, YbSuperuserRole) {
   ASSERT_OK(ExecuteStatements(
       {"CREATE ROLE \"yb_superuser\" INHERIT CREATEROLE CREATEDB BYPASSRLS",
        "GRANT \"pg_read_all_stats\" TO \"yb_superuser\""}));

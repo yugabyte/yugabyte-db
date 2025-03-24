@@ -12,7 +12,7 @@
 //
 
 #include <regex>
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/gutil/strings/split.h"
 #include "yb/util/status_format.h"
@@ -66,10 +66,10 @@ static constexpr auto kExplainArgs = "(ANALYZE, COSTS OFF, TIMING OFF)";
  */
 YB_DEFINE_ENUM(Behaviour, (kNotPushable)(kPushable)(kMMPushable)
                           (kOperatorError)(kFunctionError)(kBadCastError));
-class YsqlMajorUpgradeExpressionPushdownTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
  public:
   void SetUp() override {
-    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
+    TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
 
     auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
     const auto create_table_stmt = Format(
