@@ -3,7 +3,6 @@
 --
 CREATE TABLE t_simple (k INT PRIMARY KEY);
 INSERT INTO t_simple (SELECT i FROM generate_series(1, 10) AS i);
-
 -- GH-26205: Test that PostgreSQL XID increases by 1 for a concurrent refresh
 -- and remains the same for a non-concurrent refresh. Placing this at the top
 -- of the file to ensure that this is close to being the first set of commands
@@ -12,30 +11,63 @@ INSERT INTO t_simple (SELECT i FROM generate_series(1, 10) AS i);
 CREATE MATERIALIZED VIEW mv_xid_test AS (SELECT * FROM t_simple);
 CREATE UNIQUE INDEX ON mv_xid_test (k);
 SELECT age('3'::xid);
+ age
+-----
+   5
+(1 row)
+
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT age('3'::xid);
+ age
+-----
+   6
+(1 row)
+
 REFRESH MATERIALIZED VIEW mv_xid_test;
 SELECT age('3'::xid);
+ age
+-----
+   6
+(1 row)
+
 -- A few variations of the above test.
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 REFRESH MATERIALIZED VIEW mv_xid_test;
 INSERT INTO t_simple VALUES (11), (12);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT COUNT(*) FROM mv_xid_test;
+ count
+-------
+    10
+(1 row)
+
 COMMIT;
 SELECT age('3'::xid);
+ age
+-----
+   7
+(1 row)
 
 BEGIN ISOLATION LEVEL READ COMMITTED;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 REFRESH MATERIALIZED VIEW mv_xid_test;
 INSERT INTO t_simple VALUES (13), (14);
 SELECT COUNT(*) FROM mv_xid_test;
+ count
+-------
+    12
+(1 row)
+
 COMMIT;
 -- The XID should jump by 2 in Read Committed mode as the concurrent refresh of
 -- the matview is run as a sub-transaction. So, an additional XID is assigned to
 -- its parent. In release builds where Read Committed isolation is disabled, the
 -- XID should increase by 1.
 SELECT age('3'::xid);
+ age
+-----
+   8
+(1 row)
 
 CREATE TABLE test_yb (col int);
 INSERT INTO test_yb VALUES (null);
@@ -43,14 +75,26 @@ CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
 REFRESH MATERIALIZED VIEW NONCONCURRENTLY mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- should fail
+ERROR:  new data for materialized view "mtest_yb" contains rows with all null values
+DETAIL:  Row: (null)
 CREATE TABLE pg_temp_foo (col int);
 INSERT INTO pg_temp_foo values (1);
 SELECT * FROM pg_temp_foo;
+ col
+-----
+   1
+(1 row)
+
 CREATE TABLE pg_temp__123 (col int);
 INSERT INTO pg_temp__123 values (1);
 SELECT * from pg_temp__123;
-DROP TABLE test_yb CASCADE;
+ col
+-----
+   1
+(1 row)
 
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb
 -- Alter materialized view - rename matview and rename columns
 CREATE TABLE test_yb (id int NOT NULL PRIMARY KEY, type text NOT NULL, val numeric NOT NULL);
 INSERT INTO test_yb VALUES (1, 'xyz', 2);
@@ -58,17 +102,35 @@ CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX unique_IDX ON mtest_YB(id);
 ALTER MATERIALIZED VIEW mtest_yb RENAME TO mtest_yb1;
 SELECT * FROM mtest_yb; -- error
+ERROR:  relation "mtest_yb" does not exist
+LINE 1: SELECT * FROM mtest_yb;
+                      ^
 SELECT * from mtest_yb1; -- ok
+ id | type | val
+----+------+-----
+  1 | xyz  |   2
+(1 row)
+
 REFRESH MATERIALIZED VIEW mtest_yb1;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb1;
 ALTER MATERIALIZED VIEW mtest_yb1 RENAME TO mtest_yb2;
 SELECT * from mtest_yb2;
+ id | type | val
+----+------+-----
+  1 | xyz  |   2
+(1 row)
+
 REFRESH MATERIALIZED VIEW mtest_yb2;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb2;
 ALTER MATERIALIZED VIEW mtest_yb2 RENAME val TO total; -- test Alter Rename Column
 SELECT * FROM mtest_yb2;
-DROP TABLE test_yb CASCADE;
+ id | type | total
+----+------+-------
+  1 | xyz  |     2
+(1 row)
 
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb2
 -- Alter materialized view - change owner
 CREATE TABLE test_yb (id int NOT NULL PRIMARY KEY, type text NOT NULL, val numeric NOT NULL);
 INSERT INTO test_yb VALUES (1, 'xyz', 2);
@@ -77,11 +139,15 @@ CREATE UNIQUE INDEX unique_IDX ON mtest_yb(id);
 CREATE ROLE test_mv_user;
 SET ROLE test_mv_user;
 REFRESH MATERIALIZED VIEW mtest_yb; -- error
+ERROR:  must be owner of materialized view mtest_yb
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- error
+ERROR:  must be owner of materialized view mtest_yb
 SET ROLE yugabyte;
 ALTER MATERIALIZED VIEW mtest_yb OWNER TO test_mv_user;
 REFRESH MATERIALIZED VIEW mtest_yb; -- error
+ERROR:  permission denied for table test_yb
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- error
+ERROR:  permission denied for table test_yb
 ALTER TABLE test_yb OWNER TO test_mv_user;
 REFRESH MATERIALIZED VIEW mtest_yb; -- ok
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- ok
@@ -99,7 +165,7 @@ ALTER MATERIALIZED VIEW mtest_yb1 OWNER TO CURRENT_USER;
 DROP ROLE test_mv_user;
 DROP ROLE test_mv_superuser;
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to materialized view mtest_yb1
 -- Test special characters in an attribute's name
 CREATE TABLE test_yb ("xyzID''\\b" int NOT NULL, "y" int);
 INSERT INTO test_yb VALUES (1);
@@ -108,7 +174,7 @@ CREATE UNIQUE INDEX ON mtest_yb("xyzID''\\b");
 REFRESH MATERIALIZED VIEW mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to materialized view mtest_yb
 -- Test with special characters in the base relation's name
 CREATE TABLE "test_YB''\\b" ("xyzid" int NOT NULL);
 INSERT INTO "test_YB''\\b" VALUES (1);
@@ -117,16 +183,19 @@ CREATE UNIQUE INDEX ON mtest_yb("xyzid");
 REFRESH MATERIALIZED VIEW mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
 DROP TABLE "test_YB''\\b" CASCADE;
-
+NOTICE:  drop cascades to materialized view mtest_yb
 -- Test with special characters in the matview's name
 CREATE TABLE test_yb ("xyzid" int NOT NULL);
 INSERT INTO test_yb VALUES (1);
 CREATE MATERIALIZED VIEW "mtest_YB''\\b" AS SELECT * FROM test_yb WITH NO DATA;
 CREATE UNIQUE INDEX ON mtest_YB("xyzid");
+ERROR:  relation "mtest_yb" does not exist
 REFRESH MATERIALIZED VIEW mtest_YB;
+ERROR:  relation "mtest_yb" does not exist
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_YB;
+ERROR:  relation "mtest_yb" does not exist
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to materialized view "mtest_YB''\\b"
 -- Test with special characters in the unique index's name
 CREATE TABLE test_yb ("xyzid" int NOT NULL);
 INSERT INTO test_yb VALUES (1);
@@ -135,7 +204,7 @@ CREATE UNIQUE INDEX "unique_IDX''\\b" ON mtest_YB("xyzid");
 REFRESH MATERIALIZED VIEW mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to materialized view mtest_yb
 -- Test with unicode characters
 CREATE TABLE test_yb ("U&'\0022hi\0022'" int NOT NULL);
 INSERT INTO test_yb VALUES (1);
@@ -144,7 +213,7 @@ CREATE UNIQUE INDEX unique_IDX ON mtest_YB("U&'\0022hi\0022'");
 REFRESH MATERIALIZED VIEW mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to materialized view mtest_yb
 -- Test with unicode characters from table
 CREATE TABLE test_yb ("xyzid" int NOT NULL);
 INSERT INTO test_yb VALUES (1);
@@ -153,7 +222,7 @@ CREATE UNIQUE INDEX ON "mtest_YB''\\b"("xyzid");
 REFRESH MATERIALIZED VIEW "mtest_YB''\\b";
 REFRESH MATERIALIZED VIEW CONCURRENTLY "mtest_YB''\\b";
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to materialized view "mtest_YB''\\b"
 -- Materialized view of a materialized view
 CREATE TABLE test_yb ("xyzid" int NOT NULL);
 INSERT INTO test_yb VALUES (1);
@@ -164,20 +233,27 @@ REFRESH MATERIALIZED VIEW "mtest_YB''\\b";
 REFRESH MATERIALIZED VIEW "mtest_YB''\\b\\b";
 REFRESH MATERIALIZED VIEW CONCURRENTLY "mtest_YB''\\b\\b";
 DROP TABLE test_yb CASCADE;
-
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to materialized view "mtest_YB''\\b"
+drop cascades to materialized view "mtest_YB''\\b\\b"
 -- Materialized view of a regular view
 CREATE TABLE mvtest_t (id int NOT NULL PRIMARY KEY, type text NOT NULL, amt numeric NOT NULL);
 CREATE VIEW mvtest_tv AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
 CREATE MATERIALIZED VIEW mvtest_tm2 AS SELECT * FROM mvtest_tv;
 SELECT * FROM mvtest_tm2;
-DROP VIEW mvtest_tv CASCADE;
+ type | totamt
+------+--------
+(0 rows)
 
+DROP VIEW mvtest_tv CASCADE;
+NOTICE:  drop cascades to materialized view mvtest_tm2
 -- SELECT FOR SHARE on Materialized view
 CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
 REFRESH MATERIALIZED VIEW mvtest_tm WITH NO DATA;
 SELECT * FROM mvtest_tm FOR SHARE;
+ERROR:  cannot lock rows in materialized view "mvtest_tm"
 DROP TABLE mvtest_t CASCADE;
-
+NOTICE:  drop cascades to materialized view mvtest_tm
 -- Materialized view with GIN Indexes
 create table mvtest_t3 (id int NOT NULL PRIMARY KEY, a integer[] not null);
 INSERT INTO mvtest_t3 VALUES
@@ -188,9 +264,21 @@ INSERT INTO mvtest_t3 VALUES
 create index on mvtest_t3 using ybgin (a);
 CREATE MATERIALIZED VIEW mvtest_tv5 AS SELECT a[1], sum(id) FROM mvtest_t3 GROUP BY a[1];
 select * from mvtest_tv5;
+ a | sum
+---+-----
+ 1 |  10
+(1 row)
+
 CREATE MATERIALIZED VIEW mvtest_tv6 AS SELECT * FROM mvtest_t3;
 create index on mvtest_tv6 using ybgin (a);
 select a[1] from mvtest_tv6;
+ a
+---
+ 1
+ 1
+ 1
+ 1
+(4 rows)
 
 CREATE TABLE arrays (a int[], k serial PRIMARY KEY);
 CREATE INDEX NONCONCURRENTLY ON arrays USING ybgin (a);
@@ -205,15 +293,42 @@ INSERT INTO arrays VALUES
 INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
 CREATE MATERIALIZED VIEW mvtest_tv7 AS SELECT * FROM arrays;
 explain select * from mvtest_tv7 where a @> '{6}';
+                           QUERY PLAN
+----------------------------------------------------------------
+ Seq Scan on mvtest_tv7  (cost=0.00..102.50 rows=1000 width=36)
+   Filter: (a @> '{6}'::integer[])
+(2 rows)
+
 CREATE INDEX NONCONCURRENTLY ON mvtest_tv7 using ybgin (a);
 explain select * from mvtest_tv7 where a @> '{6}';
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Scan using mvtest_tv7_a_idx on mvtest_tv7  (cost=4.00..12.05 rows=1000 width=36)
+   Index Cond: (a @> '{6}'::integer[])
+(2 rows)
+
 select * from mvtest_tv7 where a @> '{6}' order by k;
+    a    | k
+---------+---
+ {1,1,6} | 1
+ {1,6,1} | 2
+ {2,3,6} | 3
+(3 rows)
+
 INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
 INSERT INTO arrays VALUES
 ('{6,6,6}'),
 ('{7,6,7}');
 refresh materialized view mvtest_tv7;
 select * from mvtest_tv7 where a @> '{6}' order by k;
+    a    |  k
+---------+------
+ {1,1,6} |    1
+ {1,6,1} |    2
+ {2,3,6} |    3
+ {6,6,6} | 2008
+ {7,6,7} | 2009
+(5 rows)
 
 -- Materialized view with Collation
 CREATE TABLE collate_test_POSIX (
@@ -224,9 +339,38 @@ CREATE MATERIALIZED VIEW mv_collate_test_POSIX AS SELECT * FROM collate_test_POS
 INSERT INTO collate_test_POSIX VALUES (1, 'abc'), (2, 'Abc'), (3, 'bbc'), (4, 'ABD'), (5, 'zzz'), (6, 'ZZZ');
 REFRESH MATERIALIZED VIEW mv_collate_test_POSIX;
 SELECT * FROM mv_collate_test_POSIX ORDER BY b;
+ a |  b
+---+-----
+ 4 | ABD
+ 2 | Abc
+ 6 | ZZZ
+ 1 | abc
+ 3 | bbc
+ 5 | zzz
+(6 rows)
+
 SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en-US-x-icu";
+ a |  b
+---+-----
+ 1 | abc
+ 2 | Abc
+ 4 | ABD
+ 3 | bbc
+ 5 | zzz
+ 6 | ZZZ
+(6 rows)
+
 CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en-US-x-icu" FROM collate_test_POSIX;
 SELECT * FROM mv_collate_test_explicit_collation ORDER BY b;
+  b
+-----
+ abc
+ Abc
+ ABD
+ bbc
+ zzz
+ ZZZ
+(6 rows)
 
 -- Test EXPLAIN ANALYZE + CREATE MATERIALIZED VIEW AS.
 -- Use EXECUTE to hide the output since it won't be stable.
@@ -234,8 +378,11 @@ DO $$
 BEGIN
   EXECUTE 'EXPLAIN ANALYZE CREATE MATERIALIZED VIEW view_as_1 AS SELECT 1';
 END$$;
-
 SELECT * FROM view_as_1;
+ ?column?
+----------
+        1
+(1 row)
 
 -- Colocated materialized view
 CREATE DATABASE mydb WITH colocation = true;
@@ -244,34 +391,95 @@ CREATE TABLE base (col int);
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
 CREATE UNIQUE INDEX mv_idx ON mv(col);
 SELECT * FROM mv;
+ col
+-----
+(0 rows)
+
 INSERT INTO base VALUES (1);
 REFRESH MATERIALIZED VIEW mv;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated
+-------------+----------------------+--------------
+           1 |                    0 | t
+(1 row)
+
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv_idx'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated
+-------------+----------------------+--------------
+           1 |                    0 | t
+(1 row)
+
 SELECT * FROM mv;
+ col
+-----
+   1
+(1 row)
+
 INSERT INTO base VALUES (2);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
+ col
+-----
+   1
+   2
+(2 rows)
+
 DROP MATERIALIZED VIEW mv;
 SELECT * FROM mv; -- should fail.
+ERROR:  relation "mv" does not exist
+LINE 1: SELECT * FROM mv;
+                      ^
 CREATE MATERIALIZED VIEW mv WITH (COLOCATION=false) AS SELECT * FROM base;
 CREATE UNIQUE INDEX mv_idx ON mv(col);
 SELECT * FROM mv ORDER BY col;
+ col
+-----
+   1
+   2
+(2 rows)
+
 INSERT INTO base VALUES (3);
 REFRESH MATERIALIZED VIEW mv;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated
+-------------+----------------------+--------------
+           3 |                    1 | f
+(1 row)
+
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('mv_idx'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated
+-------------+----------------------+--------------
+           3 |                    1 | f
+(1 row)
+
 SELECT * FROM mv ORDER BY col;
+ col
+-----
+   1
+   2
+   3
+(3 rows)
+
 INSERT INTO base VALUES (4);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
+ col
+-----
+   1
+   2
+   3
+   4
+(4 rows)
+
 DROP MATERIALIZED VIEW mv;
 SELECT * FROM mv; -- should fail.
-
+ERROR:  relation "mv" does not exist
+LINE 1: SELECT * FROM mv;
+                      ^
 -- Tablegroup materialized view
 CREATE DATABASE testdb;
 \c testdb;
@@ -279,16 +487,33 @@ CREATE TABLEGROUP test_tg;
 CREATE TABLE test_t (col int) TABLEGROUP test_tg;
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM test_t;
 SELECT * FROM mv;
+ col
+-----
+(0 rows)
+
 INSERT INTO test_t VALUES (1);
 REFRESH MATERIALIZED VIEW mv;
 SELECT * FROM mv;
+ col
+-----
+   1
+(1 row)
+
 INSERT INTO test_t VALUES (2);
 CREATE UNIQUE INDEX ON mv(col);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
+ col
+-----
+   1
+   2
+(2 rows)
+
 DROP MATERIALIZED VIEW mv;
 SELECT * FROM mv;
-
+ERROR:  relation "mv" does not exist
+LINE 1: SELECT * FROM mv;
+                      ^
 -- Split options on indexes should not be copied after a non-concurrent refresh
 -- on a matview.
 \c yugabyte;
@@ -297,15 +522,42 @@ CREATE MATERIALIZED VIEW mv AS SELECT * FROM test_yb;
 CREATE INDEX idx ON mv(t) SPLIT INTO 5 TABLETS;
 REFRESH MATERIALIZED VIEW mv;
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx'::regclass);
+ num_tablets | num_hash_key_columns
+-------------+----------------------
+           3 |                    1
+(1 row)
 
 -- Matview with tablespace
 DROP MATERIALIZED VIEW mv;
 CREATE TABLESPACE mv_tblspace1 LOCATION '/data';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE mv_tblspace1 LOCATION '/data';
+                                       ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
 CREATE TABLESPACE mv_tblspace2 LOCATION '/data';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE mv_tblspace2 LOCATION '/data';
+                                       ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
 CREATE MATERIALIZED VIEW mv TABLESPACE mv_tblspace1 AS SELECT * FROM test_yb;
 \d mv;
+           Materialized view "public.mv"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ t      | integer |           |          |
+ j      | integer |           |          |
+Tablespace: "mv_tblspace1"
+
 ALTER MATERIALIZED VIEW mv SET TABLESPACE mv_tblspace2;
+NOTICE:  Data movement for table mv is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 \d mv;
+           Materialized view "public.mv"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ t      | integer |           |          |
+ j      | integer |           |          |
+Tablespace: "mv_tblspace2"
 
 -- Matview with temp tables + transactions
 CREATE TEMPORARY TABLE t_temp (a INT, b INT);
@@ -313,8 +565,17 @@ BEGIN;
 INSERT INTO t_temp VALUES (1, 1), (2, 2);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT COUNT(*) FROM t_temp;
+ count
+-------
+     2
+(1 row)
+
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
+ count
+-------
+     2
+(1 row)
 
 -- Rolling back operations on temp tables should also roll back any
 -- transactional side effects of the corresponding postgres transaction.
@@ -326,6 +587,10 @@ ROLLBACK TO sp1;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
+ count
+-------
+     2
+(1 row)
 
 BEGIN;
 SAVEPOINT sp1;
@@ -335,6 +600,10 @@ INSERT INTO t_temp VALUES (3, 3), (4, 4);
 ROLLBACK TO sp2;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
+ count
+-------
+     2
+(1 row)
 
 -- Matview with prepared statements + temp tables
 PREPARE temp_stmt AS INSERT INTO t_temp VALUES (5, 5), (6, 6);
@@ -346,3 +615,7 @@ ROLLBACK TO sp1;
 EXECUTE temp_stmt;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
+ count
+-------
+     4
+(1 row)

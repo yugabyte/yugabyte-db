@@ -2119,7 +2119,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 		 * flag for the execution txn.
 		 */
 		if (plansource->usesPostgresRel) {
-			SetTxnWithPGRel();
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 		}
 
 		spierrcontext.arg = (void *) plansource->query_string;

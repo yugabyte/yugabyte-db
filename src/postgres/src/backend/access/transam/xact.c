@@ -196,8 +196,8 @@ typedef struct TransactionStateData
 				             * frontend as part of this execution */
   bool		ybDataSentForCurrQuery; /* Whether any data has been sent to frontend
 																	 * as part of current query's execution */
-	bool		isYBTxnWithPostgresRel; /* does the current transaction
-				                         * operate on a postgres table? */
+	uint8		ybPostgresOpsInTxn; /* An OR'ed list of operations performed on
+									 * postgres (temp) tables by current txn. */
 	List		*YBPostponedDdlOps; /* We postpone execution of non-revertable
 				                     * DocDB operations (e.g. drop table/index)
 				                     * until the rest of the txn succeeds */
@@ -237,7 +237,7 @@ static TransactionStateData TopTransactionStateData = {
 	NULL,						/* link to parent state block */
 	false,						/* ybDataSent */
 	false,						/* ybDataSentForCurrQuery */
-	false,						/* isYBTxnWithPostgresRel */
+	0,							/* ybPostgresOpsInTxn */
 	NULL,						/* YBPostponedDdlOps */
 };
 
@@ -1225,9 +1225,18 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled() && !IsCurrentTxnWithPGRel())
+	if (IsYugaByteEnabled() && !YbGetPgOpsInCurrentTxn())
+		return InvalidTransactionId;
+	/* TODO(kramanathan): The bitwise flags returned by YbGetPgOpsInCurrentTxn()
+	 * are not independent of each other. The flag YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY
+	 * only requires a subset of YB_TXN_USES_TEMPORARY_RELATIONS's operations at
+	 * commit. Logical equality is used intentionally here to exit early.
+	 */
+	else if (IsYugaByteEnabled() &&
+			 YbGetPgOpsInCurrentTxn() == YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY)
 	{
-		return latestXid;
+		nchildren = xactGetCommittedChildren(&children);
+		return TransactionIdLatest(xid, nchildren, children);
 	}
 	/* Get data needed for commit record */
 	nrels = smgrGetPendingDeletes(true, &rels);
@@ -1901,7 +1910,7 @@ YBUpdateActiveSubTransaction(TransactionState s) {
 static void
 YBStartTransaction(TransactionState s)
 {
-	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
+	s->ybPostgresOpsInTxn = 0;
 	s->ybDataSent             = false;
 	s->ybDataSentForCurrQuery = false;
 	s->YBPostponedDdlOps      = NULL;
@@ -3040,24 +3049,26 @@ StartTransactionCommand(void)
 }
 
 void
-SetTxnWithPGRel(void)
+YbSetTxnWithPgOps(uint8 pg_op_type)
 {
 	TransactionState s = CurrentTransactionState;
 	/*
-	 * YB doesn't support subtransactions for now and only top level transaction is committed.
-	 * So the isYBTxnWithPostgresRel flag must be set on current and all top level transactions.
+	 * TODO(kramanathan): This flag needs to be rolled back appropriately when
+	 * rolling back a sub-transaction. Currently, the flag(s) being set is
+	 * persisted until commit/abort, even if the transaction at commit does not
+	 * end up performing the operation whose flag is being set.
 	 */
-	while (s != NULL && !s->isYBTxnWithPostgresRel)
+	while (s != NULL)
 	{
-		s->isYBTxnWithPostgresRel = true;
+		s->ybPostgresOpsInTxn |= pg_op_type;
 		s = s->parent;
 	}
 }
 
-bool
-IsCurrentTxnWithPGRel(void)
+uint8
+YbGetPgOpsInCurrentTxn(void)
 {
-	return CurrentTransactionState->isYBTxnWithPostgresRel;
+	return CurrentTransactionState->ybPostgresOpsInTxn;
 }
 
 /*
@@ -6280,12 +6291,6 @@ List* YBGetDdlHandles()
 void YBClearDdlHandles()
 {
 	CurrentTransactionState->YBPostponedDdlOps = NULL;
-}
-
-void YbClearCurrentTransactionId()
-{
-	CurrentTransactionState->transactionId = InvalidTransactionId;
-	MyPgXact->xid = InvalidTransactionId;
 }
 
 /*
