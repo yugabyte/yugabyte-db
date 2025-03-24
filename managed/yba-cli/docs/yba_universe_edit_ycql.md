@@ -1,32 +1,30 @@
-## yba universe edit ysql
+## yba universe edit ycql
 
-Edit YSQL settings for a YugabyteDB Anywhere Universe
+Edit YCQL settings for a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-Edit YSQL settings for a YugabyteDB Anywhere Universe
+Edit YCQL settings for a YugabyteDB Anywhere Universe
 
 ```
-yba universe edit ysql [flags]
+yba universe edit ycql [flags]
 ```
 
 ### Examples
 
 ```
-yba universe edit ysql --name <universe-name> --ysql-password <ysql-password>
+yba universe edit ycql --name <universe-name> --ycql-password <ycql-password>
 ```
 
 ### Options
 
 ```
-      --ysql string                         [Optional] YSQL endpoint. Allowed values: enable, disable.
-      --ysql-auth string                    [Optional] YSQL authentication. Allowed values: enable, disable.
-      --ysql-password string                [Optional] YSQL authentication password. Use single quotes ('') to provide values with special characters. Required when YSQL authentication is enabled
-      --connection-pooling string           [Optional] Connection Pooling settings. Allowed values: enable, disable.
-      --ysql-server-http-port int           [Optional] YSQL Server HTTP Port. (default 13000)
-      --ysql-server-rpc-port int            [Optional] YSQL Server RPC Port. (default 5433)
-      --internal-ysql-server-rpc-port int   [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
-  -h, --help                                help for ysql
+      --ycql string                 [Optional] YCQL endpoint. Allowed values: enable, disable.
+      --ycql-auth string            [Optional] YCQL authentication. Allowed values: enable, disable.
+      --ycql-password string        [Optional] YCQL authentication password. Use single quotes ('') to provide values with special characters. Required when YCQL authentication is enabled
+      --ycql-server-http-port int   [Optional] YCQL Server HTTP Port. (default 13000)
+      --ycql-server-rpc-port int    [Optional] YCQL Server RPC Port. (default 5433)
+  -h, --help                        help for ycql
 ```
 
 ### Options inherited from parent commands

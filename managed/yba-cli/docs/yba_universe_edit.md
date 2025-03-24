@@ -37,5 +37,6 @@ yba universe edit [flags]
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
 * [yba universe edit cluster](yba_universe_edit_cluster.md)	 - Edit clusters in a YugabyteDB Anywhere universe
+* [yba universe edit ycql](yba_universe_edit_ycql.md)	 - Edit YCQL settings for a YugabyteDB Anywhere Universe
 * [yba universe edit ysql](yba_universe_edit_ysql.md)	 - Edit YSQL settings for a YugabyteDB Anywhere Universe
 

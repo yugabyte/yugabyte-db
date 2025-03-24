@@ -27,6 +27,7 @@ func init() {
 
 	util.PreviewCommand(EditUniverseCmd, []*cobra.Command{
 		editYSQLUniverseCmd,
+		editYCQLUniverseCmd,
 		cluster.EditClusterCmd,
 	})
 
