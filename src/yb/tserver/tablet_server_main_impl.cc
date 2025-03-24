@@ -245,6 +245,11 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
+  // Set the locale to match the YB PG defaults. This should be kept in line with
+  // the locale set in the initdb process (setlocales)
+  setlocale(LC_ALL, "en_US.UTF-8");
+  setlocale(LC_COLLATE, "C");
+
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();

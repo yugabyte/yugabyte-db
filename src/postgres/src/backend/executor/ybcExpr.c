@@ -286,6 +286,35 @@ bool yb_can_pushdown_func(Oid funcid)
 }
 
 /*
+ * yb_check_collation
+ *
+ *	  returns true if the collation is valid to pushdown to DocDB.
+ */
+bool
+yb_check_collation(Oid collation)
+{
+	/*
+	 * Unsafe to pushdown function if collation is not C, there may be needed
+	 * metadata lookup for collation details.
+	 */
+	if (YBIsCollationValidNonC(collation))
+		return false;
+	/*
+	 * Don't push down any expressions where DocDB would need to reference the
+	 * collation catalog cache.
+	 */
+	if (YBRequiresCacheToCheckLocale(collation))
+		return false;
+	/*
+	 * Don't push down any expressions where the locale of the database does not
+	 * match the locale of DocDB.
+	 */
+	if (!YBIsDbLocaleDefault())
+		return false;
+	return true;
+}
+
+/*
  * yb_pushdown_walker
  *
  *	  Expression walker used internally by YbCanPushdownExpr
@@ -348,11 +377,7 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			{
 				return true;
 			}
-			/*
-			 * Unsafe to pushdown function if collation is not C, there may be
-			 * needed metadata lookup for collation details.
-			 */
-			if (YBIsCollationValidNonC(func_expr->inputcollid)) {
+			if (!yb_check_collation(func_expr->inputcollid)) {
 				return true;
 			}
 			/* Check if the function is pushable */
@@ -365,11 +390,7 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 		case T_OpExpr:
 		{
 			OpExpr *op_expr = castNode(OpExpr, node);
-			/*
-			 * Unsafe to pushdown function if collation is not C, there may be
-			 * needed metadata lookup for collation details.
-			 */
-			if (YBIsCollationValidNonC(op_expr->inputcollid)) {
+			if (!yb_check_collation(op_expr->inputcollid)) {
 				return true;
 			}
 			if (!yb_can_pushdown_func(op_expr->opfuncid))

@@ -232,6 +232,118 @@ SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" orde
 ERROR:  collation mismatch between explicit collations "C" and "en-x-icu"
 LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
                                                              ^
+-- Test remote filters with collations - if DocDB uses a different collation, the filter will return
+-- unexpected results.
+set yb_enable_expression_pushdown to on;
+CREATE TABLE collate_test_default (
+    a int,
+    b text
+);
+INSERT INTO collate_test_default SELECT * FROM collate_test1;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on collate_test1
+   Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on collate_test2
+   Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on collate_test3
+   Remote Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on collate_test_default
+   Remote Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+ a |  b
+---+-----
+ 2 | äbc
+(1 row)
+
+SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+ a |  b
+---+-----
+ 2 | äbc
+(1 row)
+
+SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+ a | b
+---+---
+(0 rows)
+
+SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+ a |  b
+---+-----
+ 2 | äbc
+(1 row)
+
+-- repeat the tests with expression pushdown disabled
+set yb_enable_expression_pushdown to off;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on collate_test1
+   Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on collate_test2
+   Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on collate_test3
+   Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+EXPLAIN (costs off) SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+             QUERY PLAN
+------------------------------------
+ Seq Scan on collate_test_default
+   Filter: (upper(b) = 'ÄBC'::text)
+(2 rows)
+
+SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+ a |  b
+---+-----
+ 2 | äbc
+(1 row)
+
+SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+ a |  b
+---+-----
+ 2 | äbc
+(1 row)
+
+SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+ a | b
+---+---
+(0 rows)
+
+SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+ a |  b
+---+-----
+ 2 | äbc
+(1 row)
+
 set yb_enable_expression_pushdown to on;
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv-x-icu";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv-x-icu"; -- fails
