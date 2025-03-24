@@ -133,6 +133,10 @@ public class CertificateInfo extends Model {
     return expiryDate;
   }
 
+  public void setExpiryDateIso(Date expiryDate) {
+    this.setExpiryDate(expiryDate);
+  }
+
   @ApiModelProperty(
       value = "Private key path",
       example = "/opt/yugaware/.../example.key.pem",
