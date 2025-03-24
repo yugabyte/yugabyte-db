@@ -356,7 +356,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5607" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -490,7 +490,7 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -510,7 +510,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5610" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -732,7 +732,7 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -752,7 +752,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5611" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -844,7 +844,7 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -864,7 +864,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5612" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -938,7 +938,7 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -958,7 +958,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5613" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -1033,7 +1033,7 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -1053,7 +1053,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5614" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)
@@ -1122,7 +1122,7 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -1142,7 +1142,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5615" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)

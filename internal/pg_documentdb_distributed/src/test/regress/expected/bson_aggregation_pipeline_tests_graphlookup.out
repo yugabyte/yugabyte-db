@@ -343,7 +343,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
  shard_key_value | bigint                   |           | not null |         | plain    |              | 
  object_id       | bson                     |           | not null |         | extended |              | 
  document        | bson                     |           | not null |         | extended |              | 
- creation_time   | timestamp with time zone |           | not null | now()   | plain    |              | 
+ creation_time   | timestamp with time zone |           |          |         | plain    |              | 
 Indexes:
     "collection_pk_9123" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_9127" documentdb_rum (document bson_rum_single_path_ops (path=name, tl='2691'), document bson_rum_single_path_ops (path=hobbies, tl='2691'))

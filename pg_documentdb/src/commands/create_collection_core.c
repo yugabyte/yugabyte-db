@@ -229,7 +229,7 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 					 "document %s.bson not null,"
 
 	                 /* creation time (for TTL) */
-					 "creation_time timestamptz not null default now()"
+					 "creation_time timestamptz"
 					 ")", dataTableNameInfo->data,
 					 CoreSchemaName, CoreSchemaName);
 

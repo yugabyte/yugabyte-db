@@ -18,7 +18,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_11500" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11501" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='20'))
@@ -1292,7 +1292,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_11501" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11503" documentdb_rum (document bson_rum_single_path_ops (path=ikey2, tl='100'))

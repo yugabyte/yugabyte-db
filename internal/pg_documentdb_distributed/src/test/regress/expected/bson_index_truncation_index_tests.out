@@ -20,7 +20,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_6400" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6401" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='100'))
@@ -831,7 +831,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_6401" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6403" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='60'))
@@ -2579,7 +2579,7 @@ SELECT documentdb_api.shard_collection('db', 'index_truncation_tests', '{ "_id":
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_6401" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6404" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='60'))
@@ -2604,7 +2604,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_6402" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6407" documentdb_rum (document bson_rum_single_path_ops (path='', iswildcard='true', tl='100', wkl='50'))
@@ -2696,7 +2696,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_6403" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6409" documentdb_rum (document bson_rum_single_path_ops (path='a.b', iswildcard='true', tl='60'))
@@ -2984,7 +2984,7 @@ NOTICE:  creating collection
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_6404" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6411" documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='60', wkl='50', pathspec='[ "a", "b" ]', isexclusion='false'))

@@ -48,7 +48,7 @@ RESET client_min_messages;
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_91000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_91001" ivfflat ((bson_extract_vector(document, 'a'::text)::vector(3)) vector_cosine_ops) WITH (lists='100') WHERE bson_extract_vector(document, 'a'::text) IS NOT NULL
@@ -132,7 +132,7 @@ SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'create_indexe
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "documents_rum_index_91001" ivfflat ((bson_extract_vector(document, 'a'::text)::vector(3)) vector_cosine_ops) WITH (lists='100') WHERE bson_extract_vector(document, 'a'::text) IS NOT NULL
     "documents_rum_index_91002" ivfflat ((bson_extract_vector(document, 'b'::text)::vector(3)) vector_ip_ops) WITH (lists='200') WHERE bson_extract_vector(document, 'b'::text) IS NOT NULL
@@ -420,7 +420,7 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
  shard_key_value | bigint                   |           | not null | 
  object_id       | documentdb_core.bson     |           | not null | 
  document        | documentdb_core.bson     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "documents_rum_index_91008" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector'::text)::vector(3)) vector_cosine_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector'::text) IS NOT NULL
     "documents_rum_index_91009" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text)::vector(4)) vector_cosine_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text) IS NOT NULL

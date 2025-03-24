@@ -180,7 +180,7 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
  shard_key_value | bigint                   |           | not null | 
  object_id       | documentdb_core.bson     |           | not null | 
  document        | documentdb_core.bson     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "documents_rum_index_4981" gist (bson_validate_geometry(document, 'a.b'::text) bson_gist_geometry_ops_2d (path='a.b', minbound='-180', maxbound='180')) WHERE bson_validate_geometry(document, 'a.b'::text) IS NOT NULL
     "documents_rum_index_4982" gist (bson_validate_geography(document, 'a.b'::text) bson_gist_geography_ops_2d (path='a.b')) WHERE bson_validate_geography(document, 'a.b'::text) IS NOT NULL

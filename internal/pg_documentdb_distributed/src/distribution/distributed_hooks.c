@@ -596,6 +596,7 @@ InitializeDocumentDBDistributedHooks(void)
 	get_distributed_application_name_hook = GetDistributedApplicationNameCore;
 	ensure_metadata_table_replicated_hook = EnsureMetadataTableReplicatedCore;
 	DefaultInlineWriteOperations = false;
+	ShouldUpgradeDataTables = false;
 	UpdateColocationHooks();
 
 	try_get_extended_version_refresh_query_hook = TryGetExtendedVersionRefreshQueryCore;

@@ -98,7 +98,7 @@ WHERE collection_name = 'bsonquery' AND database_name = 'db' \gset
  shard_key_value | bigint                   |           | not null | 
  object_id       | documentdb_core.bson     |           | not null | 
  document        | documentdb_core.bson     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_10980" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_10981" documentdb_rum (document bson_rum_single_path_ops (path='a.b', tl='2699')) WHERE document #>= '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery

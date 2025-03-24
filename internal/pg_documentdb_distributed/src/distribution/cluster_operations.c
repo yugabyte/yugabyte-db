@@ -26,6 +26,7 @@
 #include "utils/version_utils.h"
 #include "utils/error_utils.h"
 #include "utils/version_utils_private.h"
+#include "utils/data_table_utils.h"
 #include "api_hooks.h"
 
 extern int MaxNumActiveUsersIndexBuilds;
@@ -72,7 +73,7 @@ static void ParseVersionString(ExtensionVersion *extensionVersion, char *version
 static bool SetupCluster(bool isInitialize);
 static void SetPermissionsForReadOnlyRole(void);
 static void CheckAndReplicateReferenceTable(const char *schema, const char *tableName);
-static ArrayType * GetCollectionIds(void);
+
 
 PG_FUNCTION_INFO_V1(command_initialize_cluster);
 PG_FUNCTION_INFO_V1(command_complete_upgrade);
@@ -319,6 +320,11 @@ SetupCluster(bool isInitialize)
 		StringInfo relationName = makeStringInfo();
 		appendStringInfo(relationName, "%s_cluster_data", ExtensionObjectPrefix);
 		CheckAndReplicateReferenceTable(ApiDistributedSchemaName, relationName->data);
+	}
+
+	if (ShouldRunSetupForVersion(&versions, DocDB_V0, 101, 0))
+	{
+		AlterCreationTime();
 	}
 
 	/* we call the post setup cluster hook to allow the extension to do any additional setup */
@@ -814,23 +820,23 @@ DropLegacyChangeStream()
 	Datum *elements = NULL;
 	int numElements = 0;
 	bool *val_is_null_marker;
-	deconstruct_array(arrayValue, INT4OID, sizeof(int), true, TYPALIGN_INT,
+	deconstruct_array(arrayValue, INT8OID, sizeof(int64), true, TYPALIGN_INT,
 					  &elements, &val_is_null_marker, &numElements);
 
 	for (int i = 0; i < numElements; i++)
 	{
-		int collection_id = DatumGetInt32(elements[i]);
+		int64_t collection_id = DatumGetInt64(elements[i]);
 
 		resetStringInfo(cmdStr);
 		appendStringInfo(cmdStr,
-						 "ALTER TABLE IF EXISTS %s.documents_%d DROP COLUMN IF EXISTS change_description;",
+						 "ALTER TABLE IF EXISTS %s.documents_%ld DROP COLUMN IF EXISTS change_description;",
 						 ApiDataSchemaName, collection_id);
 		ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 									&isNull);
 
 		resetStringInfo(cmdStr);
 		appendStringInfo(cmdStr,
-						 "DROP TRIGGER IF EXISTS record_changes_trigger ON %s.documents_%d;",
+						 "DROP TRIGGER IF EXISTS record_changes_trigger ON %s.documents_%ld;",
 						 ApiDataSchemaName, collection_id);
 		ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 									&isNull);
@@ -988,15 +994,15 @@ SetPermissionsForReadOnlyRole()
 	Datum *elements = NULL;
 	int numElements = 0;
 	bool *val_is_null_marker;
-	deconstruct_array(arrayValue, INT4OID, sizeof(int), true, TYPALIGN_INT,
+	deconstruct_array(arrayValue, INT8OID, sizeof(int64), true, TYPALIGN_INT,
 					  &elements, &val_is_null_marker, &numElements);
 
 	for (int i = 0; i < numElements; i++)
 	{
-		int collection_id = DatumGetInt32(elements[i]);
+		int64_t collection_id = DatumGetInt64(elements[i]);
 		resetStringInfo(cmdStr);
 		appendStringInfo(cmdStr,
-						 "GRANT SELECT ON %s.documents_%d TO %s;",
+						 "GRANT SELECT ON %s.documents_%ld TO %s;",
 						 ApiDataSchemaName, collection_id, ApiReadOnlyRole);
 		ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY,
 									&isNull);
@@ -1034,30 +1040,6 @@ CheckAndReplicateReferenceTable(const char *schema, const char *tableName)
 		appendStringInfo(relationName, "%s.%s", schema, tableName);
 		CreateReferenceTable(relationName->data);
 	}
-}
-
-
-/*
- * Gets the collection Ids where view_definition is NULL
- */
-static ArrayType *
-GetCollectionIds()
-{
-	bool isNull = false;
-	bool readOnly = true;
-	StringInfo cmdStr = makeStringInfo();
-	appendStringInfo(cmdStr,
-					 "SELECT array_agg(DISTINCT collection_id)::int4[] FROM %s.collections where view_definition IS NULL;",
-					 ApiCatalogSchemaName);
-	Datum versionDatum = ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly,
-													 SPI_OK_SELECT, &isNull);
-
-	if (isNull)
-	{
-		return NULL;
-	}
-
-	return DatumGetArrayTypeP(versionDatum);
 }
 
 

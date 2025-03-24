@@ -189,6 +189,7 @@ typedef Path *(*TryOptimizePathForBitmapAndHookType)(PlannerInfo *root, RelOptIn
 extern TryOptimizePathForBitmapAndHookType try_optimize_path_for_bitmap_and_hook;
 
 extern bool DefaultInlineWriteOperations;
+extern bool ShouldUpgradeDataTables;
 
 
 typedef char *(*TryGetExtendedVersionRefreshQuery_HookType)(void);

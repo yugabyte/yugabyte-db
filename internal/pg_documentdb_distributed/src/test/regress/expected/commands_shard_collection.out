@@ -65,7 +65,7 @@ WHERE collection_name = 'reshard' AND database_name = 'db' \gset
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_24000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_24001" documentdb_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true', tl='2699'))
@@ -90,7 +90,7 @@ SELECT documentdb_api.shard_collection('db','reshard', '{"value":"hashed"}', fal
  shard_key_value | bigint                   |           | not null | 
  object_id       | bson                     |           | not null | 
  document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
+ creation_time   | timestamp with time zone |           |          | 
 Indexes:
     "collection_pk_24000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_24003" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))

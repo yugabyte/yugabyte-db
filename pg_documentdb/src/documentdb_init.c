@@ -34,6 +34,7 @@ static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
 /* In single node mode, we always inline write operations */
 bool DefaultInlineWriteOperations = true;
+bool ShouldUpgradeDataTables = true;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
