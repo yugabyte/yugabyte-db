@@ -100,7 +100,20 @@ You must run this every time a masked security label is created for a user or ro
 
 The boolean parameter indicates whether fake data should be loaded or not. It is recommended to use `anon.init()` to load fake data. This creates masked views on the `anon.maskschema` for all the tables present in `anon.sourceschema`, and alters the privileges of all users with a masked security label so that a masked user will only be able to read masked data and not the original data.
 
-During a backup, if the users were not backed up, the users/roles and their security labels will need to be recreated and dynamic masking should be enabled after restoring the backup.
+To check if a role with masked security label will see masked values:
+
+```sql
+SELECT rolname, rolconfig FROM pg_roles WHERE rolname = '<role_name>'
+```
+
+If `rolconfig` contains `search_path=<anon.maskschema>, anon.sourceschema`, then the masked user will see masked values. Example with the the default values of the GUC `anon.maskschema` and `anon.sourceschema`:
+
+```output
+ rolname |          rolconfig
+---------+------------------------------
+ skynet  | {"search_path=mask, public"}
+```
+Note that [Backup and restore](../../../manage/backup-restore/) features which don't restore roles will also not restore masked security label for roles. The security label for roles will need to be recreated manually and dynamic masking should be enabled after that.
 
 To disable dynamic masking:
 
@@ -138,7 +151,7 @@ SELECT * FROM people; -- non masked user can read original values
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
@@ -157,7 +170,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
@@ -175,7 +188,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 12******90
 ```
@@ -217,7 +230,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 12******90
 ```
@@ -256,7 +269,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Bryant   | 12******90
 ```
@@ -289,7 +302,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id |  firstname   |   lastname   |   phone    
+ id |  firstname   |   lastname   |   phone
 ----+--------------+--------------+------------
  1  | CONFIDENTIAL | CONFIDENTIAL | 12******90
 ```
