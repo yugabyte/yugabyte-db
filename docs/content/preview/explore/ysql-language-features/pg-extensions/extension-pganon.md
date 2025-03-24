@@ -113,7 +113,7 @@ If `rolconfig` contains `search_path=<anon.maskschema>, anon.sourceschema`, then
 ---------+------------------------------
  skynet  | {"search_path=mask, public"}
 ```
-Note that [Backup and restore](../../../manage/backup-restore/) features which don't restore roles will also not restore masked security label for roles. The security label for roles will need to be recreated manually and dynamic masking should be enabled after that.
+Note that [Backup and restore](../../../../manage/backup-restore/) features which don't restore roles will also not restore masked security label for roles. The security label for roles will need to be recreated manually and dynamic masking should be enabled after that.
 
 To disable dynamic masking:
 
