@@ -259,12 +259,6 @@ YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
 YB_PROCESS_OPEN_FILES = MetricDefinition(
     "yb_process_open_files",
     "Check number of open files per process and its subprocesses")
-YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
-    "yb_node_unexpected_tserver_running",
-    "Tserver is running on node (but should not)")
-YB_NODE_UNEXPECTED_MASTER_RUNNING = MetricDefinition(
-    "yb_node_unexpected_master_running",
-    "Master is running on node (but should not)")
 YB_NODE_CLOCKBOUND_STATUS = MetricDefinition(
     "yb_node_clockbound_status",
     "Check whether clockbound is synchronized")
@@ -2115,20 +2109,6 @@ class NodeChecker():
         self.verbose_log("stats for {} pid are {}".format(pid, res))
         return res
 
-    def check_unexpected_process(self, process):
-        e = self._new_entry("Check unexpected masters/tservers", process)
-        if process == MASTER:
-            metric = Metric.from_definition(YB_NODE_UNEXPECTED_MASTER_RUNNING)
-        else:
-            metric = Metric.from_definition(YB_NODE_UNEXPECTED_TSERVER_RUNNING)
-        pid = self.get_process_pid_by_name(process)
-        value = 1 if pid is not None and pid.isdigit() else 0
-        metric.add_value(value)
-        details = []
-        if value == 1:
-            details.append("Found {} with pid {}".format(process, pid))
-        return e.fill_and_return_entry(details, has_error=(value == 1), metrics=[metric])
-
     def check_clockbound_sync_status(self):
         e = self._new_entry("Clockbound status check")
         check_cmd = "clockbound-check"
@@ -2516,8 +2496,6 @@ def main():
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
         coordinator.add_check(checker, "check_process_stats", MASTER)
-    else:
-        coordinator.add_check(checker, "check_unexpected_process", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -2565,8 +2543,6 @@ def main():
             coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
         coordinator.add_check(checker, "check_process_stats", POSTMASTER)
         coordinator.add_check(checker, "check_process_stats", TSERVER)
-    else:
-        coordinator.add_check(checker, "check_unexpected_process", TSERVER)
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
