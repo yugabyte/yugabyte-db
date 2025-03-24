@@ -10,6 +10,7 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../../../config';
 import { AuditLogProps, DiffApiResp } from './dtos';
+import { SubTaskDetailsResp } from '../../dtos';
 
 /**
  * Retrieves the diff details for a specific task.
@@ -27,3 +28,29 @@ export const getAuditLog = (taskUUID: string) => {
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}/audit_info`;
   return axios.get<AuditLogProps>(requestUrl);
 };
+
+// fetch the details for the parent task by nvaigating through the previousTASKUUID chain
+export function fetchRootSubTaskDetails(
+  taskUUID: string,
+  taskTargetUUID: string
+): Promise<SubTaskDetailsResp> {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}/details`;
+  return new Promise((resolve, reject) => {
+    axios
+      .get(requestUrl)
+      .then((response) => {
+        const subTaskDetails = response.data[taskTargetUUID]?.[0]?.taskInfo.taskParams;
+        // A task is considered a parent task if it doesn't have a previousTaskUUID
+        if (!subTaskDetails.previousTaskUUID) {
+          resolve(response.data);
+        } else {
+          resolve(fetchRootSubTaskDetails(subTaskDetails.previousTaskUUID, taskTargetUUID)); // Recursive call
+        }
+      })
+      .catch((error) => {
+        console.error('Error fetching sub-task details:', error);
+        reject(error);
+      });
+  });
+}

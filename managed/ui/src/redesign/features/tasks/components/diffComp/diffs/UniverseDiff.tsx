@@ -30,7 +30,8 @@ import {
   PlacementAZ,
   PlacementRegion,
   UniverseDetails,
-  DeviceInfo
+  DeviceInfo,
+  UserIntent
 } from '../../../../universe/universe-form/utils/dto';
 
 const DeviceInfoFields: Record<keyof Omit<DeviceInfo, 'mountPoints'>, string> = {
@@ -55,6 +56,9 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
   // Refs for the diff cards. used to expand all cards.
   cardRefs: MutableRefObject<DiffCardRef>[];
 
+  // keep track of changes made by the edit operation
+  changesCount: number;
+
   constructor(props: DiffComponentProps) {
     super(props);
     this.diffProps = props;
@@ -64,6 +68,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       [ClusterType.ASYNC]: []
     };
     this.cardRefs = [];
+    this.changesCount = 0;
   }
 
   getModalTitle() {
@@ -307,6 +312,16 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     const fieldOperations = getFieldOpertions(beforePlacementAZ, afterPlacementAZ!);
     const afterFieldOperations = getFieldOpertions(beforePlacementAZ, afterPlacementAZ!, true);
 
+    // Count the number of changes made by the edit operation.
+    keys(fieldOperations).forEach((key) => {
+      if (
+        fieldOperations[key] !== DiffOperation.UNCHANGED ||
+        afterFieldOperations[key] !== DiffOperation.UNCHANGED
+      ) {
+        this.changesCount++;
+      }
+    });
+
     return [
       <PlacementAzComponent
         key={beforePlacementAZ?.uuid}
@@ -392,6 +407,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           }}
         />
       );
+      this.changesCount++;
     }
 
     const { attributes: attr2, beforeComp: before2, afterComp: after2 } = this.getDeviceInfoFields(
@@ -483,6 +499,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
             operation={DiffOperation.ADDED}
           />
         );
+        this.changesCount++;
       }
     });
 
@@ -551,6 +568,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
               operation={DiffOperation.ADDED}
             />
           );
+          this.changesCount++;
         }
       }
     );
@@ -585,7 +603,71 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     );
   }
 
+  getInstanceTagsDiffComponent(
+    beforeInstanceTags: UserIntent['instanceTags'],
+    afterInstanceTags: UserIntent['instanceTags']
+  ) {
+    if (!beforeInstanceTags && !afterInstanceTags) {
+      return;
+    }
+    const attributes: JSX.Element[] = [];
+    const beforeComp: JSX.Element[] = [];
+    const afterComp: JSX.Element[] = [];
+
+    // Check for the added instance tags.
+    beforeInstanceTags &&
+      Object.keys(beforeInstanceTags).forEach((key) => {
+        if (!afterInstanceTags || !afterInstanceTags[key]) {
+          attributes.push(<InstanceTagsField value={key} />);
+          beforeComp.push(
+            <InstanceTagsField operation={DiffOperation.ADDED} value={beforeInstanceTags[key]} />
+          );
+          afterComp.push(<InstanceTagsField operation={DiffOperation.REMOVED} value={'---'} />);
+          this.changesCount++;
+        } else if (afterInstanceTags && beforeInstanceTags[key] !== afterInstanceTags[key]) {
+          attributes.push(<InstanceTagsField value={key} />);
+          beforeComp.push(
+            <InstanceTagsField operation={DiffOperation.REMOVED} value={beforeInstanceTags[key]} />
+          );
+          afterComp.push(
+            <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
+          );
+          this.changesCount++;
+        }
+      });
+    afterInstanceTags &&
+      Object.keys(afterInstanceTags).forEach((key) => {
+        if (!beforeInstanceTags || !beforeInstanceTags[key]) {
+          attributes.push(<InstanceTagsField value={key} />);
+          beforeComp.push(<InstanceTagsField operation={DiffOperation.REMOVED} value={'---'} />);
+          afterComp.push(
+            <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
+          );
+          this.changesCount++;
+        }
+      });
+    this.cards[ClusterType.PRIMARY].push(
+      <DiffCard
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          title: 'Instance Tags',
+          element: <>{attributes}</>
+        }}
+        afterValue={{
+          title: '',
+          element: <>{afterComp}</>
+        }}
+        beforeValue={{
+          title: '',
+          element: <>{beforeComp}</>
+        }}
+        operation={DiffOperation.CHANGED}
+      />
+    );
+  }
+
   getDiffComponent(): React.ReactElement {
+    this.changesCount = 0;
     // Get the primary cluster before and after the edit operation.
     const beforePrimaryCluster = getPrimaryCluster(this.diffProps.beforeData as UniverseDetails);
     const afterPrimaryCluster = getPrimaryCluster(this.diffProps.afterData as UniverseDetails);
@@ -624,6 +706,11 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       ClusterType.PRIMARY
     );
 
+    this.getInstanceTagsDiffComponent(
+      beforePrimaryCluster.userIntent.instanceTags,
+      afterPrimaryCluster.userIntent.instanceTags
+    );
+
     return (
       <DiffCardWrapper>
         <DiffActions
@@ -632,14 +719,9 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
               ref?.current?.onExpand(flag);
             });
           }}
-          changesCount={
-            this.cards[ClusterType.PRIMARY].length + this.cards[ClusterType.ASYNC].length
-          }
+          changesCount={this.changesCount}
         />
-        <TaskDiffBanner
-          task={this.task}
-          diffCount={this.cards[ClusterType.PRIMARY].length + this.cards[ClusterType.ASYNC].length}
-        />
+        <TaskDiffBanner task={this.task} diffCount={this.changesCount} />
         <DiffTitleBanner title="Primary Cluster" />
         {this.cards[ClusterType.PRIMARY]}
       </DiffCardWrapper>
@@ -738,6 +820,23 @@ const PlacementAzComponent = ({
         {displayEmpty ? '---' : placementAz.isAffinitized + ''}
       </span>
       <br />
+    </div>
+  );
+};
+
+const InstanceTagsField = ({
+  value,
+  operation
+}: {
+  value?: string;
+  operation?: DiffOperation;
+}): JSX.Element => {
+  const classes = useStylePlacementAzComponent();
+  return (
+    <div className={classes.root} title={value}>
+      <span className={operation}>
+        {(value ?? '').length > 20 ? `${value?.substring(0, 20)}...` : value}
+      </span>
     </div>
   );
 };

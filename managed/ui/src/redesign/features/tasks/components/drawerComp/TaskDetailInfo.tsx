@@ -8,9 +8,9 @@
  */
 
 import { FC, Fragment } from 'react';
-import { startCase } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
+import { isTaskRunning } from '../../TaskUtils';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { Badge_Types, StatusBadge } from '../../../../../components/common/badge/StatusBadge';
 import { TaskDrawerCompProps } from './dtos';
@@ -87,7 +87,11 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const taskInfo: TaskInfo[] = [
     {
       label: t('type'),
-      value: `${currentTask.typeName} ${currentTask.target}`
+      value: (
+        <span title={`${currentTask.typeName} ${currentTask.target}`} className={classes.ellipsis}>
+          {`${currentTask.typeName} ${currentTask.target}`}
+        </span>
+      )
     },
     {
       label: t('target'),
@@ -112,7 +116,7 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     },
     {
       label: t('endTime'),
-      value: ybFormatDate(currentTask.completionTime)
+      value: isTaskRunning(currentTask) ? '-' : ybFormatDate(currentTask.completionTime)
     }
   ];
 
