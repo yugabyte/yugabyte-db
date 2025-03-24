@@ -265,6 +265,9 @@ YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
 YB_NODE_UNEXPECTED_MASTER_RUNNING = MetricDefinition(
     "yb_node_unexpected_master_running",
     "Master is running on node (but should not)")
+YB_NODE_CLOCKBOUND_STATUS = MetricDefinition(
+    "yb_node_clockbound_status",
+    "Check whether clockbound is synchronized")
 
 ###################################################################################################
 # Reporting
@@ -2126,6 +2129,18 @@ class NodeChecker():
             details.append("Found {} with pid {}".format(process, pid))
         return e.fill_and_return_entry(details, has_error=(value == 1), metrics=[metric])
 
+    def check_clockbound_sync_status(self):
+        e = self._new_entry("Clockbound status check")
+        check_cmd = "clockbound-check"
+        output = self._check_output(check_cmd).strip()
+        metric = Metric.from_definition(YB_NODE_CLOCKBOUND_STATUS)
+        has_errors = False
+        if "Synchronized" not in output:
+            has_errors = True
+        errors = [output]
+        metric.add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
+
     def verbose_log(self, message):
         if self.verbose:
             logging.info(message)
@@ -2414,6 +2429,7 @@ class NodeInfo:
         self.ybc_port = data["ybcPort"]
         self.otel_enabled = data["otelCollectorEnabled"]
         self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
+        self.clockbound_enabled = data["clockboundEnabled"]
 
 
 def main():
@@ -2565,6 +2581,9 @@ def main():
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")
+
+    if n.clockbound_enabled:
+        coordinator.add_check(checker, "check_clockbound_sync_status")
 
     coordinator.add_check(checker, "check_process_stats", TOTAL)
 

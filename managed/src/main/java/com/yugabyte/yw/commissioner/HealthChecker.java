@@ -832,6 +832,8 @@ public class HealthChecker {
                       : nodeInfo.getYbHomeDir());
         }
         nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
+        nodeInfo.setClockboundEnabled(
+            params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
         nodeMetadata.add(nodeInfo);
       }
     }
@@ -1298,6 +1300,7 @@ public class HealthChecker {
     private UUID universeUuid;
     private boolean otelCollectorEnabled;
     private boolean clockSyncServiceRequired = true;
+    private boolean clockboundEnabled = false;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }
 
