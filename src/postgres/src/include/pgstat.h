@@ -27,9 +27,6 @@
 #define PGSTAT_STAT_PERMANENT_FILENAME		"pg_stat/pgstat.stat"
 #define PGSTAT_STAT_PERMANENT_TMPFILE		"pg_stat/pgstat.tmp"
 
-#define PGSTAT_YBSTAT_PERMANENT_FILENAME    "pg_stat/yb_global.stat"
-#define PGSTAT_YBSTAT_PERMANENT_TMPFILE     "pg_stat/yb_global.tmp"
-
 /* Default directory to store temporary statistics data in */
 #define PG_STAT_TMP_DIR		"pg_stat_tmp"
 

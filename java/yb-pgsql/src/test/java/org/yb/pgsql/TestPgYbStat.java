@@ -366,4 +366,48 @@ public class TestPgYbStat extends BasePgSQLTest {
         return true;
     }));
   }
+
+  @Test
+  public void testYbTerminatedQueriesPersistence() throws Exception {
+    // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
+    // that can potentially be leftover from another test in this class. This would let us start
+    // with a clean slate.
+    restartCluster();
+    setupMinTempFileConfigs(connection);
+
+    final int num_queries = 100;
+
+    try (Statement statement = connection.createStatement()) {
+      for (int i = 0; i < num_queries; i++) {
+        final String query = String.format("SELECT * FROM generate_series(0, 1000000 + %d)", i);
+        executeQueryAndExpectTempFileLimitExceeded(query, connection);
+
+        if (i == num_queries / 2)
+        {
+          miniCluster.restart();
+          connection = getConnectionBuilder().connect();
+          setupMinTempFileConfigs(connection);
+        }
+      }
+
+      // Restarting the cluster without wiping previously reported terminated queries.
+      miniCluster.restart();
+
+      // Re-establishing a connection to the cluster.
+      connection = getConnectionBuilder().connect();
+
+      // Terminated queries reported before cluster restart should be persistent after the restart.
+      assertTrue(waitUntilConditionSatisfiedOrTimeout(
+        "SELECT query_text FROM yb_terminated_queries", connection,
+        (ResultSet resultSet) -> {
+          for (int i = 0; i < num_queries; i++) {
+            String expected_query = String.format("SELECT * FROM generate_series(0, 1000000 + %d)",
+                                                  i);
+            if (!resultSet.next() || !expected_query.equals(resultSet.getString("query_text")))
+              return false;
+          }
+          return true;
+        }));
+    }
+  }
 }

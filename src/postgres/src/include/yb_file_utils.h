@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------
  *
- * yb_terminated_queries.h
- * 	  Declarations for YB Terminated Queries.
+ * yb_file_utils.h
+ * 	  Declarations for functions used for reading and writing Yugabyte temporary files.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -18,18 +18,21 @@
  * permissions and limitations under the License.
  *
  * IDENTIFICATION
- * 	  src/include/yb_terminated_queries.h
+ * 	  src/include/yb_file_utils.h
  * -------------------------------------------------------------------------
  */
 
-#ifndef YB_TERMINATED_QUERIES_H
-#define YB_TERMINATED_QUERIES_H
+#ifndef YB_FILE_UTILS_H
+#define YB_FILE_UTILS_H
 
 #include "c.h"
 
-/* Functions defined for yb_terminated_queries */
-extern void yb_report_query_termination(char *message, int pid);
-extern Size YbTerminatedQueriesShmemSize(void);
-extern void YbTerminatedQueriesShmemInit(void);
+extern void
+yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
+						void *struct_ptr, size_t struct_size, int32 format_id);
 
-#endif							/* YB_TERMINATED_QUERIES_H */
+extern void
+yb_read_struct_from_file(const char *file_name, void *struct_ptr,
+						 size_t struct_size, int32 expected_format_id);
+
+#endif							/* YB_FILE_UTILS_H */
