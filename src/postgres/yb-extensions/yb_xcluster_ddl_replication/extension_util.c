@@ -21,15 +21,16 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
-#include "catalog/indexing.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_extension_d.h"
+#include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
+#include "utils/syscache.h"
 
 const char *kManualReplicationErrorMsg =
 "To manually replicate, run DDL on the source followed by the target with "
@@ -206,4 +207,23 @@ GetColocationIdFromRelation(Relation *rel)
 		return InvalidOid;
 
 	return table_props->colocation_id;
+}
+
+char *
+get_typname(Oid pg_type_oid)
+{
+	HeapTuple type_tuple = SearchSysCache1(TYPEOID,
+										   ObjectIdGetDatum(pg_type_oid));
+	if (!HeapTupleIsValid(type_tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type OID %u not found", pg_type_oid)));
+	}
+
+	Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
+	char *type_name = pstrdup(NameStr(type_form->typname));
+
+	ReleaseSysCache(type_tuple);
+	return type_name;
 }

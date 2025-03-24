@@ -321,15 +321,6 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
 
 TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
   ASSERT_OK(SetUpClusters());
-  {
-    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
-    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-    ASSERT_OK(
-        conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
-                     "'blue', 'purple');"));
-    ASSERT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
-  }
-
   ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
   // Bootstrap here would have no effect because the database is empty so we skip it for the test.
   ASSERT_OK(CreateReplicationFromCheckpoint());

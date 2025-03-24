@@ -22,7 +22,6 @@
 #include "postgres.h"
 
 #include "tcop/deparse_utility.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
 
 #define EXTENSION_NAME			   "yb_xcluster_ddl_replication"
@@ -90,5 +89,7 @@ extern bool IsTempSchema(const char *schema_name);
 
 /* Returns the relation's colocation id or 0 if not colocated. */
 extern Oid GetColocationIdFromRelation(Relation *rel);
+
+extern char *get_typname(Oid pg_type_oid);
 
 #endif
