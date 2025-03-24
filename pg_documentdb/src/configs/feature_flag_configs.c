@@ -111,6 +111,9 @@ bool EnableMatchWithLetInLookup =
 bool EnableLetAndCollationForQueryMatch =
 	DEFAULT_ENABLE_LET_AND_COLLATION_FOR_QUERY_MATCH;
 
+#define DEFAULT_ENABLE_INDEX_OPERATOR_BOUNDS true
+bool EnableIndexOperatorBounds = DEFAULT_ENABLE_INDEX_OPERATOR_BOUNDS;
+
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
 {
@@ -329,5 +332,13 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 			"Whether or not to enable collation and let for query match and write commands."),
 		NULL, &EnableLetAndCollationForQueryMatch,
 		DEFAULT_ENABLE_LET_AND_COLLATION_FOR_QUERY_MATCH,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableindexboundsoperators", newGucPrefix),
+		gettext_noop(
+			"Whether or not to enable in indexbounds tracking for partial filter expressions."),
+		NULL, &EnableIndexOperatorBounds,
+		DEFAULT_ENABLE_INDEX_OPERATOR_BOUNDS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

@@ -90,6 +90,28 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonqu
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$lt": null } }';
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$gte": null } }';
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$lte": null } }';
+
+-- test PFE pushdown for $in 
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$in" : [ 1, 2, 3 ] } }';
+
+-- cannot push down (fails PFE)
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "aa1" ] } }';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "bbb" ] } }';
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "ccc", "bbb" ] } }';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "abc", "bbb" ] } }';
+
+-- cannot push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] } }';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.f": { "$in": [ 3, 4 ]} }';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.g": { "$in": [ 3, 4 ]} }';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.f": { "$in": [ 3, 1 ]} }';
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 1, 1 ] }, "a.f": { "$in": [ 1, 1 ]} }';
 ROLLBACK;
 
 -- shard the collection

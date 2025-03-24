@@ -9,6 +9,11 @@
 #include "udfs/aggregation/group_aggregates_support--0.102-0.sql"
 #include "udfs/aggregation/group_aggregates--0.102-0.sql"
 
+#include "types/bsonindexbounds--0.102-0.sql"
+#include "udfs/index_mgmt/bson_indexbounds_functions--0.102-0.sql"
+#include "operators/bson_btree_pfe_operators--0.102-0.sql"
+#include "operators/bsonindexbounds_btree_pfe_family--0.102-0.sql"
+
 -- Schedule TTL Cron job to prune TTL indexes on every documentdb instance.
 DO LANGUAGE plpgsql $cmd$
 BEGIN

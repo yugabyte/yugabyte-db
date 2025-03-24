@@ -110,6 +110,7 @@ typedef struct IdFilterWalkerContext
 
 extern bool EnableCollation;
 extern bool EnableLetAndCollationForQueryMatch;
+extern bool EnableIndexOperatorBounds;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -1801,12 +1802,14 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			bson_iter_t arrayIterator;
 			int32_t numValues = 0;
 			bson_value_t currentValue = { 0 };
+			bool hasRegex = false;
 			if (bson_iter_recurse(operatorDocIterator, &arrayIterator))
 			{
 				while (bson_iter_next(&arrayIterator))
 				{
 					numValues++;
 					currentValue = *bson_iter_value(&arrayIterator);
+					hasRegex = hasRegex || BSON_ITER_HOLDS_REGEX(&arrayIterator);
 					if (!IsValidBsonDocumentForDollarInOrNinOp(
 							&currentValue))
 					{
@@ -1825,7 +1828,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			}
 
 			if (numValues == 1 && context->simplifyOperators &&
-				currentValue.value_type != BSON_TYPE_REGEX)
+				!hasRegex)
 			{
 				/* Special case, $in with a single value is converted to $eq except in the case of Regexes */
 				MongoQueryOperatorType operatorType = operator->operatorType ==
@@ -1840,9 +1843,61 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			}
 			else
 			{
-				return CreateFuncExprForSimpleQueryOperator(operatorDocIterator,
-															context, operator,
-															path);
+				Expr *inExpr = CreateFuncExprForSimpleQueryOperator(operatorDocIterator,
+																	context, operator,
+																	path);
+
+				/*
+				 * For $in queries to match indexes that have partial filter expressions
+				 * on them, we need a ScalarArrayOpExpr - do this with a custom bson type
+				 * that we can then remove in the relpathlist to avoid runtime evaluation
+				 */
+				if (EnableIndexOperatorBounds && context->simplifyOperators &&
+					context->coerceOperatorExprIfApplicable &&
+					context->inputType == MongoQueryOperatorInputType_Bson &&
+					IsClusterVersionAtleast(DocDB_V0, 102, 0) &&
+					operator->operatorType == QUERY_OPERATOR_IN &&
+					!hasRegex)
+				{
+					List *inArgsList = NIL;
+					if (bson_iter_recurse(operatorDocIterator, &arrayIterator))
+					{
+						while (bson_iter_next(&arrayIterator))
+						{
+							currentValue = *bson_iter_value(&arrayIterator);
+							Const *bsonConst = CreateConstFromBsonValue(
+								path, &currentValue,
+								context->collationString);
+							bsonConst->consttype = BsonIndexBoundsTypeId();
+							inArgsList = lappend(inArgsList, bsonConst);
+						}
+					}
+
+					/*
+					 * In the case where we're operating with a $in and indexes with
+					 * PFE we need to coerce the expression to the type of the index
+					 */
+					if (inArgsList != NIL)
+					{
+						ScalarArrayOpExpr *inOperator = makeNode(ScalarArrayOpExpr);
+						inOperator->useOr = true;
+						inOperator->opno = BsonIndexBoundsEqualOperatorId();
+						inOperator->opfuncid = BsonIndexBoundsEqualOperatorFuncId();
+
+						/* Second arg is an ArrayExpr containing the documents */
+						ArrayExpr *arrayExpr = makeNode(ArrayExpr);
+						arrayExpr->array_typeid = GetBsonIndexBoundsArrayTypeOid();
+						arrayExpr->element_typeid = BsonIndexBoundsTypeId();
+						arrayExpr->multidims = false;
+						arrayExpr->elements = inArgsList;
+						inOperator->args = list_make2(context->documentExpr, arrayExpr);
+
+						inExpr = (Expr *) make_and_qual((Node *) inExpr,
+														(Node *) inOperator);
+					}
+				}
+
+				return inExpr;
 			}
 		}
 

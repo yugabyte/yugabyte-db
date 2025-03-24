@@ -117,6 +117,8 @@ Oid BsonNotLessThanEqualFunctionId(void);
 Oid BsonNotLessThanFunctionId(void);
 Oid BsonNotGreaterThanFunctionId(void);
 Oid BsonNotGreaterThanEqualFunctionId(void);
+Oid BsonIndexBoundsEqualOperatorId(void);
+Oid BsonIndexBoundsEqualOperatorFuncId(void);
 
 /* operators */
 Oid BigintEqualOperatorId(void);
@@ -148,6 +150,8 @@ Oid IndexSpecTypeId(void);
 Oid MongoCatalogCollectionsTypeOid(void);
 Oid GetClusterBsonQueryTypeId(void);
 Oid GetBsonArrayTypeOid(void);
+Oid BsonIndexBoundsTypeId(void);
+Oid GetBsonIndexBoundsArrayTypeOid(void);
 
 /* sequences */
 Oid ApiCatalogCollectionIdSequenceId(void);

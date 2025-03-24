@@ -553,7 +553,7 @@ END;
 BEGIN;
 SET LOCAL documentdb_core.enablecollation TO on;
 EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : [[{ "b" : "caT"}], [{ "c" : "caT"}]] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 100, "collation": { "locale": "en", "strength" : 1} }');
-                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Limit
    Output: remote_scan.document, remote_scan."?sort?"
@@ -565,7 +565,7 @@ EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '
                Task Count: 8
                Tasks Shown: One of 8
                ->  Task
-                     Query: SELECT document, documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS "?sort?" FROM documentdb_data.documents_7990_7990016 collection WHERE documentdb_api_catalog.bson_dollar_in(document, '{ "a" : [ [ { "b" : "caT" } ], [ { "c" : "caT" } ] ], "collation" : "en-u-ks-level1" }'::documentdb_core.bson) ORDER BY (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST LIMIT '100'::bigint
+                     Query: SELECT document, documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS "?sort?" FROM documentdb_data.documents_7990_7990016 collection WHERE (documentdb_api_catalog.bson_dollar_in(document, '{ "a" : [ [ { "b" : "caT" } ], [ { "c" : "caT" } ] ], "collation" : "en-u-ks-level1" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_internal.##=) ANY ('{"{ \"a\" : [ { \"b\" : \"caT\" } ], \"collation\" : \"en-u-ks-level1\" }","{ \"a\" : [ { \"c\" : \"caT\" } ], \"collation\" : \"en-u-ks-level1\" }"}'::documentdb_api_internal.bsonindexbounds[]))) ORDER BY (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST LIMIT '100'::bigint
                      Node: host=localhost port=58070 dbname=regression
                      ->  Limit
                            Output: document, (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson))

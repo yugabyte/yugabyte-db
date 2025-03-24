@@ -109,7 +109,7 @@ static Path * ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *
 												 ReplaceExtensionFunctionContext *context);
 static Expr * ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 													   ReplaceExtensionFunctionContext *
-													   context);
+													   context, bool trimClauses);
 static OpExpr * GetOpExprClauseFromIndexOperator(const MongoIndexOperatorInfo *operator,
 												 List *args, bytea *indexOptions);
 
@@ -182,6 +182,7 @@ static const int ForceIndexOperatorsCount = sizeof(ForceIndexOperatorSupport) /
 											sizeof(ForceIndexSupportFuncs);
 
 extern bool EnableVectorForceIndexPushdown;
+extern bool EnableIndexOperatorBounds;
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -441,8 +442,16 @@ ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 		}
 
 		/* These paths don't have an index associated with it */
-		rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(rinfo->clause,
-																 context);
+		bool trimClauses = true;
+		Expr *expr = ProcessRestrictionInfoAndRewriteFuncExpr(rinfo->clause,
+															  context, trimClauses);
+		if (expr == NULL)
+		{
+			restrictInfo = foreach_delete_current(restrictInfo, cell);
+			continue;
+		}
+
+		rinfo->clause = expr;
 	}
 
 	return restrictInfo;
@@ -1044,9 +1053,10 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 							  NULL }
 					};
 					childContext.forceIndexQueryOpData = context->forceIndexQueryOpData;
+					bool trimClauses = false;
 					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
 						rinfo->clause,
-						&childContext);
+						&childContext, trimClauses);
 				}
 				else
 				{
@@ -1055,9 +1065,10 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 						{ .path = NULL, .type = ForceIndexOpType_None, .opExtraState =
 							  NULL }
 					};
+					bool trimClauses = false;
 					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
 						rinfo->clause,
-						&childContext);
+						&childContext, trimClauses);
 				}
 			}
 
@@ -1094,8 +1105,12 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
  */
 Expr *
 ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
-										 ReplaceExtensionFunctionContext *context)
+										 ReplaceExtensionFunctionContext *context,
+										 bool trimClauses)
 {
+	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
+
 	/* These are unresolved functions from the index planning */
 	if (IsA(clause, FuncExpr) || IsA(clause, OpExpr))
 	{
@@ -1162,6 +1177,20 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 			}
 		}
 	}
+	else if (IsA(clause, ScalarArrayOpExpr))
+	{
+		if (EnableIndexOperatorBounds &&
+			IsClusterVersionAtleast(DocDB_V0, 102, 0) &&
+			context->inputData.isShardQuery && trimClauses)
+		{
+			ScalarArrayOpExpr *arrayOpExpr = (ScalarArrayOpExpr *) clause;
+			if (arrayOpExpr->opno == BsonIndexBoundsEqualOperatorId())
+			{
+				/* These are only used for index selectivity - trim it here */
+				return NULL;
+			}
+		}
+	}
 	else if (IsA(clause, BoolExpr))
 	{
 		BoolExpr *boolExpr = (BoolExpr *) clause;
@@ -1172,9 +1201,24 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 		foreach(boolArgsCell, boolExpr->args)
 		{
 			Expr *innerExpr = (Expr *) lfirst(boolArgsCell);
-			processedBoolArgs = lappend(processedBoolArgs,
-										ProcessRestrictionInfoAndRewriteFuncExpr(
-											innerExpr, context));
+			Expr *processedExpr = ProcessRestrictionInfoAndRewriteFuncExpr(
+				innerExpr, context, trimClauses);
+			if (processedExpr != NULL)
+			{
+				processedBoolArgs = lappend(processedBoolArgs,
+											processedExpr);
+			}
+		}
+
+		if (list_length(processedBoolArgs) == 0)
+		{
+			return NULL;
+		}
+		else if (list_length(processedBoolArgs) == 1 &&
+				 boolExpr->boolop != NOT_EXPR)
+		{
+			/* If there's only one argument for $and/$or, return it */
+			return (Expr *) linitial(processedBoolArgs);
 		}
 
 		boolExpr->args = processedBoolArgs;

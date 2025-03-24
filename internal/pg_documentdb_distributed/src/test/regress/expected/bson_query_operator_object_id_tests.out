@@ -10,7 +10,7 @@ NOTICE:  creating collection
 (1 row)
 
 EXPLAIN (COSTS ON) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": 15 }';
-                                                                        QUERY PLAN                                                                         
+                                                                             QUERY PLAN                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
    Task Count: 1
@@ -22,7 +22,7 @@ EXPLAIN (COSTS ON) SELECT document FROM documentdb_api.collection('db', 'test_ob
 (7 rows)
 
 EXPLAIN (COSTS ON) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$in": [ 15, 55, 90 ] } }';
-                                                                                                                          QUERY PLAN                                                                                                                           
+                                                                                                                               QUERY PLAN                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
    Task Count: 1
@@ -34,7 +34,7 @@ EXPLAIN (COSTS ON) SELECT document FROM documentdb_api.collection('db', 'test_ob
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$gt": 50 } }';
-                                                                        QUERY PLAN                                                                         
+                                                                             QUERY PLAN                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -47,7 +47,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$gt": 50, "$lt": 60 } }';
-                                                                                                                      QUERY PLAN                                                                                                                      
+                                                                                                                                QUERY PLAN                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -60,7 +60,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$gte": 50, "$lte": 60 } }';
-                                                                                                                       QUERY PLAN                                                                                                                       
+                                                                                                                                 QUERY PLAN                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -73,7 +73,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "$and": [ {"_id": 15 }, { "_id": 16 } ] }';
-                                                                                                                      QUERY PLAN                                                                                                                      
+                                                                                                                                QUERY PLAN                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -86,7 +86,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "$and": [ {"_id": { "$in": [ 15, 16, 17] }}, { "_id": { "$in": [ 16, 17, 18 ] } } ] }';
-                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                    
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -99,7 +99,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "$and": [ {"_id": { "$gt": 50 } }, { "_id": { "$lt": 60 } } ] }';
-                                                                                                                      QUERY PLAN                                                                                                                      
+                                                                                                                                QUERY PLAN                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -119,7 +119,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$in": [ 15, 20 ] }, "otherField": "aaaa" }';
-                                                                                                      QUERY PLAN                                                                                                      
+                                                                                                           QUERY PLAN                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -132,7 +132,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$in": [ 15 ] }, "otherField": "aaaa" }';
-                                                                        QUERY PLAN                                                                         
+                                                                             QUERY PLAN                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -153,7 +153,7 @@ SELECT documentdb_api.shard_collection('db', 'test_object_id_index', '{ "a": "ha
 
 -- we shouldn't have object_id filters unless we also have shard key filters
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": 15 }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -169,20 +169,22 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 BEGIN;
 SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$in": [ 15, 55, 90 ] } }';
-                                                                                  QUERY PLAN                                                                                   
+                                                                                            QUERY PLAN                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Seq Scan on documents_2510_251016 documents_2510
-               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "15" }, { "$numberInt" : "55" }, { "$numberInt" : "90" } ] }'::documentdb_core.bson)
-(7 rows)
+         ->  Bitmap Heap Scan on documents_2510_251016 documents_2510
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "15" }, { "$numberInt" : "55" }, { "$numberInt" : "90" } ] }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "15" }, { "$numberInt" : "55" }, { "$numberInt" : "90" } ] }'::documentdb_core.bson)
+(9 rows)
 
 ROLLBACK;
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": 15, "a": 15 }';
-                                                                                QUERY PLAN                                                                                
+                                                                                     QUERY PLAN                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -195,7 +197,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": 15, "a": { "$gt": 15 } }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -210,7 +212,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$in": [ 15, 20 ] }, "otherField": "aaaa" }';
-                                                                                                                       QUERY PLAN                                                                                                                        
+                                                                                                                                 QUERY PLAN                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8

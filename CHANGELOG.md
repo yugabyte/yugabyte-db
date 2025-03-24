@@ -7,20 +7,14 @@
 * Support current_op command *[Feature]* (#59)
 * Support for list_databases command *[Feature]* (#45)
 * Disable analyze statistics for unique index uuid columns which improves resource usage *[Perf]*
-* Support collation with $expr *[Feature]*
-* Support collation with aggregation $project *[Feature]*
-* Support collation with `$cmp`, `$eq`, `$ne`, `$lt`, `$lte`, `$gt`, `$gte` comparison operators *[Feature]*
-* Support collation with `$in` array operator *[Feature]*
+* Support collation with `$expr`, `$in`, `$cmp`, `$eq`, `$ne`, `$lt`, `$lte`, `$gt`, `$gte` comparison operators (Opt-in) *[Feature]*
+* Support collation in `find`, aggregation `$project`, `$redact`, `$set`, `$addFields`, `$replaceRoot` stages (Opt-in) *[Feature]*
+* Support collation with `$setEquals`, `$setUnion`, `$setIntersection`, `$setDifference`, `$setIsSubet` in the aggregation pipeline (Opt-in) *[Feature]*
 * Support unique index truncation by default with new operator class *[Feature]*
-* Support collation in aggregation `$redact` stage *[Feature]*
-* Support collation in aggregation `find` *[Feature]*
-* Support collation in aggregation `$set` stage *[Feature]*
-* Support collation in aggregation `$addFields` stage *[Feature]*
-* Support collation with `$setEquals`, `$setUnion`, `$setIntersection`, `$setDifference`, `$setIsSubet` in the aggregation pipeline *[Feature]*
-* Support collation in aggregation `$replaceRoot` stage *[Feature]*
 * Top level aggregate command `let` variables support for `$geoNear` stage *[Feature]*
 * Enable Backend Command support for Statement Timeout *[Feature]*
 * Support type aggregation operator `$toUUID`. *[Feature]* 
+* Support Partial filter pushdown for `$in` predicates *[Perf]*
 * Support the $dateFromString operator with full functionality *[Feature]*
 * Support extended syntax for `$getField` aggregation operator. Now the value of 'field' could be an expression that resolves to a string. *[Feature]*
 

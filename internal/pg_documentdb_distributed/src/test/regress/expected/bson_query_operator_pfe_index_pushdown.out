@@ -316,6 +316,140 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonqu
                Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : null }'::documentdb_core.bson))
 (7 rows)
 
+-- test PFE pushdown for $in 
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$in" : [ 1, 2, 3 ] } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
+(9 rows)
+
+-- cannot push down (fails PFE)
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "aa1" ] } }';
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "aaa", "aa1" ] }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "bbb" ] } }';
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "aaa", "bbb" ] }'::documentdb_core.bson)
+(7 rows)
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "ccc", "bbb" ] } }';
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "abc", "bbb" ] } }';
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson)
+(9 rows)
+
+-- cannot push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] } }';
+                                                                          QUERY PLAN                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.f": { "$in": [ 3, 4 ]} }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.g": { "$in": [ 3, 4 ]} }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.g" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.f": { "$in": [ 3, 1 ]} }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "3" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(7 rows)
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 1, 1 ] }, "a.f": { "$in": [ 1, 1 ]} }';
+                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_3
+                     Index Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(9 rows)
+
 ROLLBACK;
 -- shard the collection
 SELECT documentdb_api.shard_collection('db', 'bsonquery', '{ "_id": "hashed" }', false);
