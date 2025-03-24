@@ -35,210 +35,210 @@ INSERT INTO INT4_TBL(f1) VALUES ('');
 ERROR:  invalid input syntax for type integer: ""
 LINE 1: INSERT INTO INT4_TBL(f1) VALUES ('');
                                          ^
-SELECT '' AS five, * FROM INT4_TBL ORDER BY f1;
- five |     f1      
-------+-------------
-      | -2147483647
-      |     -123456
-      |           0
-      |      123456
-      |  2147483647
+SELECT * FROM INT4_TBL ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+           0
+      123456
+     -123456
+  2147483647
+ -2147483647
 (5 rows)
 
-SELECT '' AS four, i.* FROM INT4_TBL i WHERE i.f1 <> int2 '0' ORDER BY i.f1;
- four |     f1      
-------+-------------
-      | -2147483647
-      |     -123456
-      |      123456
-      |  2147483647
+SELECT i.* FROM INT4_TBL i WHERE i.f1 <> int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+      123456
+     -123456
+  2147483647
+ -2147483647
 (4 rows)
 
-SELECT '' AS four, i.* FROM INT4_TBL i WHERE i.f1 <> int4 '0' ORDER BY i.f1;
- four |     f1      
-------+-------------
-      | -2147483647
-      |     -123456
-      |      123456
-      |  2147483647
+SELECT i.* FROM INT4_TBL i WHERE i.f1 <> int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+      123456
+     -123456
+  2147483647
+ -2147483647
 (4 rows)
 
-SELECT '' AS one, i.* FROM INT4_TBL i WHERE i.f1 = int2 '0' ORDER BY i.f1;
- one | f1 
------+----
-     |  0
+SELECT i.* FROM INT4_TBL i WHERE i.f1 = int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+ f1 
+----
+  0
 (1 row)
 
-SELECT '' AS one, i.* FROM INT4_TBL i WHERE i.f1 = int4 '0' ORDER BY i.f1;
- one | f1 
------+----
-     |  0
+SELECT i.* FROM INT4_TBL i WHERE i.f1 = int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+ f1 
+----
+  0
 (1 row)
 
-SELECT '' AS two, i.* FROM INT4_TBL i WHERE i.f1 < int2 '0' ORDER BY i.f1;
- two |     f1      
------+-------------
-     | -2147483647
-     |     -123456
+SELECT i.* FROM INT4_TBL i WHERE i.f1 < int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+     -123456
+ -2147483647
 (2 rows)
 
-SELECT '' AS two, i.* FROM INT4_TBL i WHERE i.f1 < int4 '0' ORDER BY i.f1;
- two |     f1      
------+-------------
-     | -2147483647
-     |     -123456
+SELECT i.* FROM INT4_TBL i WHERE i.f1 < int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+     -123456
+ -2147483647
 (2 rows)
 
-SELECT '' AS three, i.* FROM INT4_TBL i WHERE i.f1 <= int2 '0' ORDER BY i.f1;
- three |     f1      
--------+-------------
-       | -2147483647
-       |     -123456
-       |           0
+SELECT i.* FROM INT4_TBL i WHERE i.f1 <= int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+           0
+     -123456
+ -2147483647
 (3 rows)
 
-SELECT '' AS three, i.* FROM INT4_TBL i WHERE i.f1 <= int4 '0' ORDER BY i.f1;
- three |     f1      
--------+-------------
-       | -2147483647
-       |     -123456
-       |           0
+SELECT i.* FROM INT4_TBL i WHERE i.f1 <= int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      
+-------------
+           0
+     -123456
+ -2147483647
 (3 rows)
 
-SELECT '' AS two, i.* FROM INT4_TBL i WHERE i.f1 > int2 '0' ORDER BY i.f1;
- two |     f1     
------+------------
-     |     123456
-     | 2147483647
+SELECT i.* FROM INT4_TBL i WHERE i.f1 > int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     
+------------
+     123456
+ 2147483647
 (2 rows)
 
-SELECT '' AS two, i.* FROM INT4_TBL i WHERE i.f1 > int4 '0' ORDER BY i.f1;
- two |     f1     
------+------------
-     |     123456
-     | 2147483647
+SELECT i.* FROM INT4_TBL i WHERE i.f1 > int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     
+------------
+     123456
+ 2147483647
 (2 rows)
 
-SELECT '' AS three, i.* FROM INT4_TBL i WHERE i.f1 >= int2 '0' ORDER BY i.f1;
- three |     f1     
--------+------------
-       |          0
-       |     123456
-       | 2147483647
+SELECT i.* FROM INT4_TBL i WHERE i.f1 >= int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     
+------------
+          0
+     123456
+ 2147483647
 (3 rows)
 
-SELECT '' AS three, i.* FROM INT4_TBL i WHERE i.f1 >= int4 '0' ORDER BY i.f1;
- three |     f1     
--------+------------
-       |          0
-       |     123456
-       | 2147483647
+SELECT i.* FROM INT4_TBL i WHERE i.f1 >= int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     
+------------
+          0
+     123456
+ 2147483647
 (3 rows)
 
 -- positive odds
-SELECT '' AS one, i.* FROM INT4_TBL i WHERE (i.f1 % int2 '2') = int2 '1' ORDER BY i.f1;
- one |     f1     
------+------------
-     | 2147483647
+SELECT i.* FROM INT4_TBL i WHERE (i.f1 % int2 '2') = int2 '1' ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     
+------------
+ 2147483647
 (1 row)
 
 -- any evens
-SELECT '' AS three, i.* FROM INT4_TBL i WHERE (i.f1 % int4 '2') = int2 '0' ORDER BY i.f1;
- three |   f1    
--------+---------
-       | -123456
-       |       0
-       |  123456
+SELECT i.* FROM INT4_TBL i WHERE (i.f1 % int4 '2') = int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1    
+---------
+       0
+  123456
+ -123456
 (3 rows)
 
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  integer out of range
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT4_TBL i
-WHERE abs(f1) < 1073741824 ORDER BY i.f1;
- five |   f1    |    x    
-------+---------+---------
-      | -123456 | -246912
-      |       0 |       0
-      |  123456 |  246912
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT4_TBL i
+WHERE abs(f1) < 1073741824 ORDER BY ABS(f1), -f1; -- YB ordering
+   f1    |    x    
+---------+---------
+       0 |       0
+  123456 |  246912
+ -123456 | -246912
 (3 rows)
 
-SELECT '' AS five, i.f1, i.f1 * int4 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 * int4 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  integer out of range
-SELECT '' AS five, i.f1, i.f1 * int4 '2' AS x FROM INT4_TBL i
-WHERE abs(f1) < 1073741824 ORDER BY i.f1;
- five |   f1    |    x    
-------+---------+---------
-      | -123456 | -246912
-      |       0 |       0
-      |  123456 |  246912
+SELECT i.f1, i.f1 * int4 '2' AS x FROM INT4_TBL i
+WHERE abs(f1) < 1073741824 ORDER BY ABS(f1), -f1; -- YB ordering
+   f1    |    x    
+---------+---------
+       0 |       0
+  123456 |  246912
+ -123456 | -246912
 (3 rows)
 
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  integer out of range
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT4_TBL i
-WHERE f1 < 2147483646 ORDER BY i.f1;
- five |     f1      |      x      
-------+-------------+-------------
-      | -2147483647 | -2147483645
-      |     -123456 |     -123454
-      |           0 |           2
-      |      123456 |      123458
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT4_TBL i
+WHERE f1 < 2147483646 ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      |      x      
+-------------+-------------
+           0 |           2
+      123456 |      123458
+     -123456 |     -123454
+ -2147483647 | -2147483645
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 + int4 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 + int4 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  integer out of range
-SELECT '' AS five, i.f1, i.f1 + int4 '2' AS x FROM INT4_TBL i
-WHERE f1 < 2147483646 ORDER BY i.f1;
- five |     f1      |      x      
-------+-------------+-------------
-      | -2147483647 | -2147483645
-      |     -123456 |     -123454
-      |           0 |           2
-      |      123456 |      123458
+SELECT i.f1, i.f1 + int4 '2' AS x FROM INT4_TBL i
+WHERE f1 < 2147483646 ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      |      x      
+-------------+-------------
+           0 |           2
+      123456 |      123458
+     -123456 |     -123454
+ -2147483647 | -2147483645
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  integer out of range
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT4_TBL i
-WHERE f1 > -2147483647 ORDER BY i.f1;
- five |     f1     |     x      
-------+------------+------------
-      |    -123456 |    -123458
-      |          0 |         -2
-      |     123456 |     123454
-      | 2147483647 | 2147483645
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT4_TBL i
+WHERE f1 > -2147483647 ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     |     x      
+------------+------------
+          0 |         -2
+     123456 |     123454
+    -123456 |    -123458
+ 2147483647 | 2147483645
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 - int4 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 - int4 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  integer out of range
-SELECT '' AS five, i.f1, i.f1 - int4 '2' AS x FROM INT4_TBL i
-WHERE f1 > -2147483647 ORDER BY i.f1;
- five |     f1     |     x      
-------+------------+------------
-      |    -123456 |    -123458
-      |          0 |         -2
-      |     123456 |     123454
-      | 2147483647 | 2147483645
+SELECT i.f1, i.f1 - int4 '2' AS x FROM INT4_TBL i
+WHERE f1 > -2147483647 ORDER BY ABS(f1), -f1; -- YB ordering
+     f1     |     x      
+------------+------------
+          0 |         -2
+     123456 |     123454
+    -123456 |    -123458
+ 2147483647 | 2147483645
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 / int2 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
- five |     f1      |      x      
-------+-------------+-------------
-      | -2147483647 | -1073741823
-      |     -123456 |      -61728
-      |           0 |           0
-      |      123456 |       61728
-      |  2147483647 |  1073741823
+SELECT i.f1, i.f1 / int2 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      |      x      
+-------------+-------------
+           0 |           0
+      123456 |       61728
+     -123456 |      -61728
+  2147483647 |  1073741823
+ -2147483647 | -1073741823
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 / int4 '2' AS x FROM INT4_TBL i ORDER BY i.f1;
- five |     f1      |      x      
-------+-------------+-------------
-      | -2147483647 | -1073741823
-      |     -123456 |      -61728
-      |           0 |           0
-      |      123456 |       61728
-      |  2147483647 |  1073741823
+SELECT i.f1, i.f1 / int4 '2' AS x FROM INT4_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+     f1      |      x      
+-------------+-------------
+           0 |           0
+      123456 |       61728
+     -123456 |      -61728
+  2147483647 |  1073741823
+ -2147483647 | -1073741823
 (5 rows)
 
 --
@@ -385,3 +385,49 @@ FROM (VALUES (-2.5::numeric),
   2.5 |          3
 (7 rows)
 
+-- test gcd()
+SELECT a, b, gcd(a, b), gcd(a, -b), gcd(b, a), gcd(-b, a)
+FROM (VALUES (0::int4, 0::int4),
+             (0::int4, 6410818::int4),
+             (61866666::int4, 6410818::int4),
+             (-61866666::int4, 6410818::int4),
+             ((-2147483648)::int4, 1::int4),
+             ((-2147483648)::int4, 2147483647::int4),
+             ((-2147483648)::int4, 1073741824::int4)) AS v(a, b);
+      a      |     b      |    gcd     |    gcd     |    gcd     |    gcd     
+-------------+------------+------------+------------+------------+------------
+           0 |          0 |          0 |          0 |          0 |          0
+           0 |    6410818 |    6410818 |    6410818 |    6410818 |    6410818
+    61866666 |    6410818 |       1466 |       1466 |       1466 |       1466
+   -61866666 |    6410818 |       1466 |       1466 |       1466 |       1466
+ -2147483648 |          1 |          1 |          1 |          1 |          1
+ -2147483648 | 2147483647 |          1 |          1 |          1 |          1
+ -2147483648 | 1073741824 | 1073741824 | 1073741824 | 1073741824 | 1073741824
+(7 rows)
+
+SELECT gcd((-2147483648)::int4, 0::int4); -- overflow
+ERROR:  integer out of range
+SELECT gcd((-2147483648)::int4, (-2147483648)::int4); -- overflow
+ERROR:  integer out of range
+-- test lcm()
+SELECT a, b, lcm(a, b), lcm(a, -b), lcm(b, a), lcm(-b, a)
+FROM (VALUES (0::int4, 0::int4),
+             (0::int4, 42::int4),
+             (42::int4, 42::int4),
+             (330::int4, 462::int4),
+             (-330::int4, 462::int4),
+             ((-2147483648)::int4, 0::int4)) AS v(a, b);
+      a      |  b  | lcm  | lcm  | lcm  | lcm  
+-------------+-----+------+------+------+------
+           0 |   0 |    0 |    0 |    0 |    0
+           0 |  42 |    0 |    0 |    0 |    0
+          42 |  42 |   42 |   42 |   42 |   42
+         330 | 462 | 2310 | 2310 | 2310 | 2310
+        -330 | 462 | 2310 | 2310 | 2310 | 2310
+ -2147483648 |   0 |    0 |    0 |    0 |    0
+(6 rows)
+
+SELECT lcm((-2147483648)::int4, 1::int4); -- overflow
+ERROR:  integer out of range
+SELECT lcm(2147483647::int4, 2147483646::int4); -- overflow
+ERROR:  integer out of range

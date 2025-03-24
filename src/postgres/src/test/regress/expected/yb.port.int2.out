@@ -35,205 +35,209 @@ INSERT INTO INT2_TBL(f1) VALUES ('');
 ERROR:  invalid input syntax for type smallint: ""
 LINE 1: INSERT INTO INT2_TBL(f1) VALUES ('');
                                          ^
-SELECT '' AS five, * FROM INT2_TBL ORDER BY f1;
- five |   f1   
-------+--------
-      | -32767
-      |  -1234
-      |      0
-      |   1234
-      |  32767
+SELECT * FROM INT2_TBL ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+      0
+   1234
+  -1234
+  32767
+ -32767
 (5 rows)
 
-SELECT '' AS four, i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0' ORDER BY i.f1;
- four |   f1   
-------+--------
-      | -32767
-      |  -1234
-      |   1234
-      |  32767
+SELECT * FROM INT2_TBL AS f(a, b);
+ERROR:  table "f" has 1 columns available but 2 columns specified
+SELECT * FROM (TABLE int2_tbl) AS s (a, b);
+ERROR:  table "s" has 1 columns available but 2 columns specified
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+   1234
+  -1234
+  32767
+ -32767
 (4 rows)
 
-SELECT '' AS four, i.* FROM INT2_TBL i WHERE i.f1 <> int4 '0' ORDER BY i.f1;
- four |   f1   
-------+--------
-      | -32767
-      |  -1234
-      |   1234
-      |  32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+   1234
+  -1234
+  32767
+ -32767
 (4 rows)
 
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE i.f1 = int2 '0' ORDER BY i.f1;
- one | f1 
------+----
-     |  0
+SELECT i.* FROM INT2_TBL i WHERE i.f1 = int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+ f1 
+----
+  0
 (1 row)
 
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE i.f1 = int4 '0' ORDER BY i.f1;
- one | f1 
------+----
-     |  0
+SELECT i.* FROM INT2_TBL i WHERE i.f1 = int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+ f1 
+----
+  0
 (1 row)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 < int2 '0' ORDER BY i.f1;
- two |   f1   
------+--------
-     | -32767
-     |  -1234
+SELECT i.* FROM INT2_TBL i WHERE i.f1 < int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+  -1234
+ -32767
 (2 rows)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 < int4 '0' ORDER BY i.f1;
- two |   f1   
------+--------
-     | -32767
-     |  -1234
+SELECT i.* FROM INT2_TBL i WHERE i.f1 < int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+  -1234
+ -32767
 (2 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 <= int2 '0' ORDER BY i.f1;
- three |   f1   
--------+--------
-       | -32767
-       |  -1234
-       |      0
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <= int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+      0
+  -1234
+ -32767
 (3 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 <= int4 '0' ORDER BY i.f1;
- three |   f1   
--------+--------
-       | -32767
-       |  -1234
-       |      0
+SELECT i.* FROM INT2_TBL i WHERE i.f1 <= int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   
+--------
+      0
+  -1234
+ -32767
 (3 rows)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 > int2 '0' ORDER BY i.f1;
- two |  f1   
------+-------
-     |  1234
-     | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 > int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   
+-------
+  1234
+ 32767
 (2 rows)
 
-SELECT '' AS two, i.* FROM INT2_TBL i WHERE i.f1 > int4 '0' ORDER BY i.f1;
- two |  f1   
------+-------
-     |  1234
-     | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 > int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   
+-------
+  1234
+ 32767
 (2 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 >= int2 '0' ORDER BY i.f1;
- three |  f1   
--------+-------
-       |     0
-       |  1234
-       | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 >= int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   
+-------
+     0
+  1234
+ 32767
 (3 rows)
 
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE i.f1 >= int4 '0' ORDER BY i.f1;
- three |  f1   
--------+-------
-       |     0
-       |  1234
-       | 32767
+SELECT i.* FROM INT2_TBL i WHERE i.f1 >= int4 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   
+-------
+     0
+  1234
+ 32767
 (3 rows)
 
 -- positive odds
-SELECT '' AS one, i.* FROM INT2_TBL i WHERE (i.f1 % int2 '2') = int2 '1' ORDER BY i.f1;
- one |  f1   
------+-------
-     | 32767
+SELECT i.* FROM INT2_TBL i WHERE (i.f1 % int2 '2') = int2 '1' ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   
+-------
+ 32767
 (1 row)
 
 -- any evens
-SELECT '' AS three, i.* FROM INT2_TBL i WHERE (i.f1 % int4 '2') = int2 '0' ORDER BY i.f1;
- three |  f1   
+SELECT i.* FROM INT2_TBL i WHERE (i.f1 % int4 '2') = int2 '0' ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   
+-------
+     0
+  1234
+ -1234
+(3 rows)
+
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+ERROR:  smallint out of range
+SELECT i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i
+WHERE abs(f1) < 16384 ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   |   x   
 -------+-------
-       | -1234
-       |     0
-       |  1234
+     0 |     0
+  1234 |  2468
+ -1234 | -2468
 (3 rows)
 
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
-ERROR:  smallint out of range
-SELECT '' AS five, i.f1, i.f1 * int2 '2' AS x FROM INT2_TBL i
-WHERE abs(f1) < 16384 ORDER BY i.f1;
- five |  f1   |   x   
-------+-------+-------
-      | -1234 | -2468
-      |     0 |     0
-      |  1234 |  2468
-(3 rows)
-
-SELECT '' AS five, i.f1, i.f1 * int4 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
- five |   f1   |   x    
-------+--------+--------
-      | -32767 | -65534
-      |  -1234 |  -2468
-      |      0 |      0
-      |   1234 |   2468
-      |  32767 |  65534
+SELECT i.f1, i.f1 * int4 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   |   x    
+--------+--------
+      0 |      0
+   1234 |   2468
+  -1234 |  -2468
+  32767 |  65534
+ -32767 | -65534
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  smallint out of range
-SELECT '' AS five, i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i
-WHERE f1 < 32766 ORDER BY i.f1;
- five |   f1   |   x    
-------+--------+--------
-      | -32767 | -32765
-      |  -1234 |  -1232
-      |      0 |      2
-      |   1234 |   1236
+SELECT i.f1, i.f1 + int2 '2' AS x FROM INT2_TBL i
+WHERE f1 < 32766 ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   |   x    
+--------+--------
+      0 |      2
+   1234 |   1236
+  -1234 |  -1232
+ -32767 | -32765
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 + int4 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
- five |   f1   |   x    
-------+--------+--------
-      | -32767 | -32765
-      |  -1234 |  -1232
-      |      0 |      2
-      |   1234 |   1236
-      |  32767 |  32769
+SELECT i.f1, i.f1 + int4 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   |   x    
+--------+--------
+      0 |      2
+   1234 |   1236
+  -1234 |  -1232
+  32767 |  32769
+ -32767 | -32765
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
 ERROR:  smallint out of range
-SELECT '' AS five, i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i
-WHERE f1 > -32767 ORDER BY i.f1;
- five |  f1   |   x   
-------+-------+-------
-      | -1234 | -1236
-      |     0 |    -2
-      |  1234 |  1232
-      | 32767 | 32765
+SELECT i.f1, i.f1 - int2 '2' AS x FROM INT2_TBL i
+WHERE f1 > -32767 ORDER BY ABS(f1), -f1; -- YB ordering
+  f1   |   x   
+-------+-------
+     0 |    -2
+  1234 |  1232
+ -1234 | -1236
+ 32767 | 32765
 (4 rows)
 
-SELECT '' AS five, i.f1, i.f1 - int4 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
- five |   f1   |   x    
-------+--------+--------
-      | -32767 | -32769
-      |  -1234 |  -1236
-      |      0 |     -2
-      |   1234 |   1232
-      |  32767 |  32765
+SELECT i.f1, i.f1 - int4 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   |   x    
+--------+--------
+      0 |     -2
+   1234 |   1232
+  -1234 |  -1236
+  32767 |  32765
+ -32767 | -32769
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 / int2 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
- five |   f1   |   x    
-------+--------+--------
-      | -32767 | -16383
-      |  -1234 |   -617
-      |      0 |      0
-      |   1234 |    617
-      |  32767 |  16383
+SELECT i.f1, i.f1 / int2 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   |   x    
+--------+--------
+      0 |      0
+   1234 |    617
+  -1234 |   -617
+  32767 |  16383
+ -32767 | -16383
 (5 rows)
 
-SELECT '' AS five, i.f1, i.f1 / int4 '2' AS x FROM INT2_TBL i ORDER BY i.f1;
- five |   f1   |   x    
-------+--------+--------
-      | -32767 | -16383
-      |  -1234 |   -617
-      |      0 |      0
-      |   1234 |    617
-      |  32767 |  16383
+SELECT i.f1, i.f1 / int4 '2' AS x FROM INT2_TBL i ORDER BY ABS(f1), -f1; -- YB ordering
+   f1   |   x    
+--------+--------
+      0 |      0
+   1234 |    617
+  -1234 |   -617
+  32767 |  16383
+ -32767 | -16383
 (5 rows)
 
 -- corner cases

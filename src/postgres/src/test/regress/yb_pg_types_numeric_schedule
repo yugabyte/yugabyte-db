@@ -1,4 +1,4 @@
-# src/test/regress/yb_pg_type_serial_schedule
+# src/test/regress/yb_pg_types_numeric_schedule
 #
 ####################################################################################################
 # Postgres Testsuites: Porting from PostgreSQL original tests.
@@ -15,3 +15,5 @@ test: yb.port.float8
 test: yb.port.numeric
 test: yb.port.numeric_big
 test: yb.port.money
+
+test: yb.orig.money
