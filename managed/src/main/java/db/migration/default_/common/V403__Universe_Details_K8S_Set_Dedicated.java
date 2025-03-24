@@ -16,7 +16,7 @@ import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
 @Slf4j
-public class V395__Universe_Details_K8S_Set_Dedicated extends BaseJavaMigration {
+public class V403__Universe_Details_K8S_Set_Dedicated extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) throws SQLException {
