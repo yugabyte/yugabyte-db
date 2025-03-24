@@ -2583,14 +2583,27 @@ yb_servers(PG_FUNCTION_ARGS)
 		SRF_RETURN_DONE(funcctx);
 }
 
-bool YBIsSupportedLibcLocale(const char *localebuf) {
+bool
+YbIsUtf8Locale(const char *localebuf)
+{
+	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
+		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+}
+
+bool
+YbIsCLocale(const char *localebuf)
+{
+	return strcasecmp(localebuf, "C") == 0 ||
+		   strcasecmp(localebuf, "POSIX") == 0;
+}
+
+bool
+YBIsSupportedLibcLocale(const char *localebuf)
+{
 	/*
 	 * For libc mode, Yugabyte only supports the basic locales.
 	 */
-	if (strcmp(localebuf, "C") == 0 || strcmp(localebuf, "POSIX") == 0)
-		return true;
-	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
-		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+	return YbIsCLocale(localebuf) || YbIsUtf8Locale(localebuf);
 }
 
 static YBCStatus
@@ -3584,7 +3597,7 @@ static Datum GetMetricsAsJsonbDatum(YBCMetricsInfo* metrics, size_t metricsCount
 	result = *pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 	Jsonb *jsonb = JsonbValueToJsonb(&result);
 	return JsonbPGetDatum(jsonb);
-} 
+}
 
 Datum
 yb_servers_metrics(PG_FUNCTION_ARGS)
@@ -3979,7 +3992,41 @@ bool YBIsCollationValidNonC(Oid collation_id) {
 	return is_valid_non_c;
 }
 
-Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
+bool
+YBRequiresCacheToCheckLocale(Oid collation)
+{
+	/*
+	 * lc_collate_is_c and lc_ctype_is_c have some basic checks for C locale.
+	 * If those checks fail to give an answer, then these functions check the
+	 * catalog cache. In DocDB, we cannot use the catalog cache - so we should
+	 * not push down collations where DocDB would need to access the cache to
+	 * get information about the locale.
+	 */
+	return OidIsValid(collation) && collation != DEFAULT_COLLATION_OID
+		&& collation != C_COLLATION_OID && collation != POSIX_COLLATION_OID;
+}
+
+bool
+YBIsDbLocaleDefault()
+{
+	/*
+	 * YB's initdb sets the default locale to UTF-8 for LC_CTYPE and C for
+	 * LC_COLLATE. If a database changes its locale to a non-UTF-8 locale, then
+	 * DocDB may have different semantics and return different results.
+	 * (See CheckMyDatabase in postinit.c and setlocales in initdb.c)
+	 */
+	char *locale;
+	if ((locale = setlocale(LC_CTYPE, NULL)) && !YbIsUtf8Locale(locale))
+		return false;
+	if ((locale = setlocale(LC_COLLATE, NULL)) && !YbIsCLocale(locale))
+		return false;
+
+	return true;
+}
+
+Oid
+YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation)
+{
 	if (attcollation == InvalidOid)
 		return InvalidOid;
 	YBCPgColumnInfo column_info = {0};

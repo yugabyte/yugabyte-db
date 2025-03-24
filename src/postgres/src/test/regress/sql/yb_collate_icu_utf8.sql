@@ -81,6 +81,39 @@ SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
 SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+
+-- Test remote filters with collations - if DocDB uses a different collation, the filter will return
+-- unexpected results.
+set yb_enable_expression_pushdown to on;
+
+CREATE TABLE collate_test_default (
+    a int,
+    b text
+);
+INSERT INTO collate_test_default SELECT * FROM collate_test1;
+
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+
+SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+
+-- repeat the tests with expression pushdown disabled
+set yb_enable_expression_pushdown to off;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+EXPLAIN (costs off) SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+
+SELECT * FROM collate_test1 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test2 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test3 WHERE upper(b) = 'ÄBC';
+SELECT * FROM collate_test_default WHERE upper(b) = 'ÄBC';
+
 set yb_enable_expression_pushdown to on;
 
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv-x-icu";
