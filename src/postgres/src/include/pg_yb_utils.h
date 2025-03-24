@@ -1247,4 +1247,6 @@ extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
 
 extern Oid YbGetDatabaseOidToIncrementCatalogVersion();
 
+extern bool YbRefreshMatviewInPlace();
+
 #endif /* PG_YB_UTILS_H */
