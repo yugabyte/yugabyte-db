@@ -106,7 +106,9 @@ To check if a role with a masked security label will see masked values, use the 
 SELECT rolname, rolconfig FROM pg_roles WHERE rolname = '<role_name>'
 ```
 
-If `rolconfig` contains `search_path=<anon.maskschema>, anon.sourceschema`, then the masked user will see masked values. Example with the the default values of the GUC `anon.maskschema` and `anon.sourceschema`:
+If `rolconfig` contains `search_path=<anon.maskschema>, anon.sourceschema`, then the masked user will see masked values.
+
+The following shows output where the `anon.maskschema` and `anon.sourceschema` parameters are set to their default values:
 
 ```output
  rolname |          rolconfig
