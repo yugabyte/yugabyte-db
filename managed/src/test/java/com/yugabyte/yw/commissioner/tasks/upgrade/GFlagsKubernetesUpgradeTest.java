@@ -280,6 +280,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.GFlagsKubernetesUpgrade,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

@@ -218,5 +218,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.ReadOnlyClusterDelete,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

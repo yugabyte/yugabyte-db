@@ -161,6 +161,7 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
         TaskType.FinalizeUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
