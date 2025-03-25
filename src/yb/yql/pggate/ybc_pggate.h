@@ -114,6 +114,14 @@ bool YBCTryMemRelease(int64_t bytes);
 
 YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 
+int64_t YBCGetTCMallocSamplingPeriod();
+void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+YBCStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
+                             int64_t* num_samples,
+                             bool peak_heap);
+
+void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
+
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
 YBCStatus YBCFetchFromUrl(const char *url, char **buf);

@@ -94,6 +94,7 @@
 
 /* YB includes */
 #include "replication/walsender_private.h"
+#include "yb_tcmalloc_utils.h"
 
 /* ----------------
  *		global variables
@@ -3198,6 +3199,9 @@ ProcessInterrupts(void)
 
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
+
+	if (LogHeapSnapshotPending)
+		ProcessLogHeapSnapshotInterrupt();
 }
 
 

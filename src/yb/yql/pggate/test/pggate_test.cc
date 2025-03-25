@@ -39,6 +39,7 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 
@@ -246,6 +247,16 @@ void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {
   BeginDDLTransaction();
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CommitDDLTransaction();
+}
+
+Result<pgwrapper::PGConn> PggateTest::PgConnect(const std::string& database_name) {
+  auto* ts = cluster_->tablet_server(0);
+  return pgwrapper::PGConnBuilder({
+                                      .host = ts->bind_host(),
+                                      .port = ts->pgsql_rpc_port(),
+                                      .dbname = database_name,
+                                  })
+      .Connect();
 }
 
 // ------------------------------------------------------------------------------------------------

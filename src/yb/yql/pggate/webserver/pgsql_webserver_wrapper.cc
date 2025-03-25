@@ -685,12 +685,12 @@ void DestroyWebserver(struct WebserverWrapper *webserver) {
 
 void SetWebserverConfig(
     WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
-    int webserver_profiler_sample_freq_bytes) {
+    int webserver_profiler_sample_period_bytes) {
   Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
   webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 
-  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
-    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  if (GetTCMallocSamplingPeriod() != webserver_profiler_sample_period_bytes) {
+    SetTCMallocSamplingPeriod(webserver_profiler_sample_period_bytes);
   }
 }
 }  // extern "C"

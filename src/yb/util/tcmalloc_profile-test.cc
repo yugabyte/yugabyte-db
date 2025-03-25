@@ -53,7 +53,7 @@ void SamplingProfilerTest::SetUp() {
 // and 2 MiB for Google tcmalloc.
 // So,allocate enough data after changing the sample rate to cause the new sampling rate to take
 // effect (with high probability).
-void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_freq_bytes) {
+void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
   int64_t old_rate;
 #if YB_GPERFTOOLS_TCMALLOC
   old_rate = MallocExtension::instance()->GetProfileSamplingRate();
@@ -63,7 +63,7 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_freq_bytes) {
 #else
   old_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
 #endif
-  SetTCMallocSamplingFrequency(sample_freq_bytes);
+  SetTCMallocSamplingPeriod(sample_period_bytes);
 
   // The probability of sampling an allocation of size X with sampling rate Y is 1 - e^(-X/Y).
   // An allocation of size Y * 14 is thus sampled with probability > 99.9999%.
@@ -217,7 +217,7 @@ TEST_F(SamplingProfilerTest, OnlyOneHeapProfile) {
   ASSERT_NOK(status2);
   ASSERT_STR_CONTAINS(status2.message().ToBuffer(), "A heap profile is already running");
 
-  ASSERT_EQ(GetTCMallocSamplingFrequency(), 1);
+  ASSERT_EQ(GetTCMallocSamplingPeriod(), 1);
 }
 
 // Verify that the estimated bytes and count are close to their actual values.

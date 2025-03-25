@@ -137,6 +137,7 @@ extern bool optimize_bounded_sort;
 static double yb_transaction_priority_lower_bound = 0.0;
 static double yb_transaction_priority_upper_bound = 1.0;
 static double yb_transaction_priority = 0.0;
+static int yb_tcmalloc_sample_period = 1024 * 1024; /* 1MB */
 
 static int	GUC_check_errcode_value;
 
@@ -230,6 +231,9 @@ static bool check_backoff_multiplier(double *multiplier, void **extra, GucSource
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static void check_reserved_prefixes(const char *varName);
 static List *reserved_class_prefix = NIL;
+
+static const char *show_tcmalloc_sample_period(void);
+static void assign_tcmalloc_sample_period(int newval, void *extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -4169,6 +4173,18 @@ static struct config_int ConfigureNamesInt[] =
 		yb_check_toast_catcache_threshold, NULL, NULL
 	},
 
+	{{"yb_tcmalloc_sample_period", PGC_SUSET, STATS_MONITORING,
+	  gettext_noop("TCMalloc sample interval in bytes, i.e. approximately "
+				   "how many bytes between sampling allocation call stacks"), NULL,
+	  GUC_UNIT_BYTE},
+	 &yb_tcmalloc_sample_period,
+	 1024 * 1024, /* 1MB */
+	 0,
+	 INT_MAX,
+	 NULL,
+	 assign_tcmalloc_sample_period,
+	 show_tcmalloc_sample_period},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -5563,6 +5579,7 @@ static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
 	"yb_make_next_ddl_statement_nonincrementing",
+	"yb_tcmalloc_sample_period",
 };
 
 
@@ -12914,5 +12931,18 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	return true;
 }
 
+static const char *
+show_tcmalloc_sample_period(void)
+{
+	static char nbuf[32];
+	snprintf(nbuf, sizeof(nbuf), "%" PRId64, YBCGetTCMallocSamplingPeriod());
+	return nbuf;
+}
+
+static void
+assign_tcmalloc_sample_period(int newval, void *extra)
+{
+	YBCSetTCMallocSamplingPeriod(newval);
+}
 
 #include "guc-file.c"
