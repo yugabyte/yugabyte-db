@@ -16,7 +16,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../sequelize/" class="nav-link active">
+    <a href="../sequelize/" class="nav-link">
       <i class="fa-brands fa-node-js" aria-hidden="true"></i>
       Sequelize
     </a>
@@ -28,7 +28,7 @@ type: docs
     </a>
   </li>
   <li >
-    <a href="../typeorm/" class="nav-link ">
+    <a href="../typeorm/" class="nav-link active">
       <i class="fa-brands fa-node-js" aria-hidden="true"></i>
       TypeORM
     </a>
