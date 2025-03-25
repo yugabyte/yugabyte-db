@@ -2238,5 +2238,203 @@ ALTER TABLE testtable ADD COLUMN value INT;
   ASSERT_EQ(result, expected);
 }
 
+// This test verifies that for a set of common DDLs generate stable invalidation messages.
+// If the test fails due to fingerprint change that indicates one or more DDL has generated
+// a different list of invalidation messages and we need to examine that to decide whether
+// we should increment yb_version of one or more types of SharedInvalidationMessage.
+TEST_F(PgCatalogVersionTest, InvalMessageSampleDDLs) {
+  // Disable auto analyze to prevent unexpected invalidation messages.
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_enable_auto_analyze_service=false",
+        "--ysql_enable_table_mutation_counter=false",
+        "--ysql_yb_invalidation_message_expiration_secs=36000" });
+  const string sample_ddl_script =
+        R"#(
+SET yb_test_inval_message_portability = true;
+SET log_min_messages = DEBUG1;
+CREATE TABLE my_first_table (
+    first_column text,
+    second_column integer
+);
+CREATE TABLE products (
+    product_no integer,
+    name text,
+    price numeric
+);
+DROP TABLE my_first_table;
+DROP TABLE products;
+CREATE TABLE products (
+    product_no integer PRIMARY KEY,
+    name text,
+    price numeric
+);
+CREATE TABLE orders (
+    order_id integer PRIMARY KEY,
+    product_no integer REFERENCES products (product_no),
+    quantity integer
+);
+CREATE TABLE tenants (
+    tenant_id integer PRIMARY KEY
+);
+CREATE TABLE users (
+    tenant_id integer REFERENCES tenants ON DELETE CASCADE,
+    user_id integer NOT NULL,
+    PRIMARY KEY (tenant_id, user_id)
+);
+CREATE TABLE posts (
+    tenant_id integer REFERENCES tenants ON DELETE CASCADE,
+    post_id integer NOT NULL,
+    author_id integer,
+    PRIMARY KEY (tenant_id, post_id),
+    FOREIGN KEY (tenant_id, author_id) REFERENCES users ON DELETE SET NULL (author_id)
+);
+ALTER TABLE products ADD COLUMN description text CHECK (description <> '');
+ALTER TABLE products DROP COLUMN description;
+ALTER TABLE products ADD CHECK (name <> '');
+ALTER TABLE posts ALTER COLUMN author_id SET NOT NULL;
+ALTER TABLE products ADD CONSTRAINT some_name UNIQUE (product_no);
+ALTER TABLE products DROP CONSTRAINT some_name;
+ALTER TABLE posts ALTER COLUMN author_id DROP NOT NULL;
+ALTER TABLE products ALTER COLUMN price SET DEFAULT 7.77;
+ALTER TABLE products ALTER COLUMN price DROP DEFAULT;
+ALTER TABLE products ALTER COLUMN price TYPE numeric(10,2);
+ALTER TABLE products RENAME COLUMN product_no TO product_number;
+ALTER TABLE products RENAME TO items;
+
+-- row security example
+-- Simple passwd-file based example
+CREATE TABLE passwd (
+  user_name             text UNIQUE NOT NULL,
+  pwhash                text,
+  uid                   int  PRIMARY KEY,
+  gid                   int  NOT NULL,
+  real_name             text NOT NULL,
+  home_phone            text,
+  extra_info            text,
+  home_dir              text NOT NULL,
+  shell                 text NOT NULL
+);
+
+CREATE ROLE admin;  -- Administrator
+CREATE ROLE bob;    -- Normal user
+CREATE ROLE alice;  -- Normal user
+
+-- Populate the table
+INSERT INTO passwd VALUES
+  ('admin','xxx',0,0,'Admin','111-222-3333',null,'/root','/bin/dash');
+INSERT INTO passwd VALUES
+  ('bob','xxx',1,1,'Bob','123-456-7890',null,'/home/bob','/bin/zsh');
+INSERT INTO passwd VALUES
+  ('alice','xxx',2,1,'Alice','098-765-4321',null,'/home/alice','/bin/zsh');
+
+-- Be sure to enable row level security on the table
+ALTER TABLE passwd ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+-- Administrator can see all rows and add any rows
+CREATE POLICY admin_all ON passwd TO admin USING (true) WITH CHECK (true);
+-- Normal users can view all rows
+CREATE POLICY all_view ON passwd FOR SELECT USING (true);
+-- Normal users can update their own records, but
+-- limit which shells a normal user is allowed to set
+CREATE POLICY user_mod ON passwd FOR UPDATE
+  USING (current_user = user_name)
+  WITH CHECK (
+    current_user = user_name AND
+    shell IN ('/bin/bash','/bin/sh','/bin/dash','/bin/zsh','/bin/tcsh')
+  );
+
+-- Allow admin all normal rights
+GRANT SELECT, INSERT, UPDATE, DELETE ON passwd TO admin;
+-- Users only get select access on public columns
+GRANT SELECT
+  (user_name, uid, gid, real_name, home_phone, extra_info, home_dir, shell)
+  ON passwd TO public;
+-- Allow users to update certain columns
+GRANT UPDATE
+  (pwhash, real_name, home_phone, extra_info, shell)
+  ON passwd TO public;
+
+CREATE SCHEMA hollywood;
+CREATE TABLE hollywood.films (title text, release date, awards text[]);
+CREATE VIEW hollywood.winners AS
+    SELECT title, release FROM hollywood.films WHERE awards IS NOT NULL;
+DROP SCHEMA hollywood CASCADE;
+
+-- Create a partitioned hierarchy of LIST, RANGE and HASH.
+CREATE TABLE root_list_parent (list_part_key char, hash_part_key int, range_part_key int)
+  PARTITION BY LIST(list_part_key);
+CREATE TABLE hash_parent PARTITION OF root_list_parent FOR VALUES in ('a', 'b')
+  PARTITION BY HASH (hash_part_key);
+CREATE TABLE range_parent PARTITION OF hash_parent FOR VALUES WITH (modulus 1, remainder 0)
+  PARTITION BY RANGE (range_part_key);
+CREATE TABLE child_partition PARTITION OF range_parent FOR VALUES FROM (1) TO (5);
+
+-- Add a column to the parent table, verify that selecting data still works.
+ALTER TABLE root_list_parent ADD COLUMN foo VARCHAR(2);
+
+-- Alter column type at the parent table.
+ALTER TABLE root_list_parent ALTER COLUMN foo TYPE VARCHAR(3);
+
+-- Drop a column from the parent table, verify that selecting data still works.
+ALTER TABLE root_list_parent DROP COLUMN foo;
+
+-- Retry adding a column after error.
+ALTER TABLE root_list_parent ADD COLUMN foo text not null DEFAULT 'abc'; -- passes
+
+-- Rename a column belonging to the parent table.
+ALTER TABLE root_list_parent RENAME COLUMN list_part_key TO list_part_key_renamed;
+TRUNCATE root_list_parent;
+
+-- Add constraint to the parent table, verify that it reflects on the child partition.
+ALTER TABLE root_list_parent ADD CONSTRAINT constraint_test UNIQUE
+  (list_part_key_renamed, hash_part_key, range_part_key, foo);
+
+-- Remove constraint from the parent table, verify that it reflects on the child partition.
+ALTER TABLE root_list_parent DROP CONSTRAINT constraint_test;
+
+CREATE USER test_user;
+CREATE DATABASE sqlcrossdb_0;
+\c sqlcrossdb_0
+SET yb_test_inval_message_portability = true;
+SET log_min_messages = DEBUG1;
+GRANT ALL ON SCHEMA public TO test_user;
+SET SESSION AUTHORIZATION test_user;
+CREATE TABLE IF NOT EXISTS tb_0 (k varchar PRIMARY KEY, v1 VARCHAR, v2 integer, v3 money, v4 JSONB,
+v5 TIMESTAMP, v6 bool, v7 DATE, v8 TIME, v9 VARCHAR, v10 integer, v11 money, v12 JSONB, v13
+TIMESTAMP, v14 bool, v15 DATE, v16 TIME, v17 VARCHAR, v18 integer, v19 money, v20 JSONB, v21
+TIMESTAMP, v22 bool, v23 DATE, v24 TIME, v25 VARCHAR, v26 integer, v27 money, v28 JSONB, v29
+TIMESTAMP, v30 bool);
+CREATE MATERIALIZED VIEW mv2 as SELECT k from tb_0 limit 10000;
+REFRESH MATERIALIZED VIEW mv2;
+DROP MATERIALIZED VIEW mv2;
+CREATE VIEW view2_tb_0 AS SELECT k from tb_0;
+DROP VIEW view2_tb_0;
+CREATE TABLE tempTable2 AS SELECT * FROM tb_0 limit 1000000;
+CREATE INDEX idx2 ON tempTable2(k);
+ALTER TABLE tb_0 ADD newColumn4 TEXT DEFAULT 'dummyString';
+ALTER TABLE tempTable2 ADD newColumn2 TEXT DEFAULT 'dummyString';
+TRUNCATE table tb_0 cascade;
+DROP INDEX idx2;
+DROP TABLE tempTable2;
+        )#";
+
+  auto ts_index = static_cast<int>(RandomUniformInt(0UL, cluster_->num_tablet_servers() - 1));
+  auto hostport = cluster_->ysql_hostport(ts_index);
+  YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
+  auto output = CHECK_RESULT(ysqlsh_runner.ExecuteSqlScript(
+      sample_ddl_script, "sample_ddl" /* tmp_file_prefix */));
+  LOG(INFO) << "output: " << output;
+  auto query = "SELECT current_version, encode(messages, 'hex') "
+               "FROM pg_yb_invalidation_messages"s;
+  auto conn = ASSERT_RESULT(Connect());
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
+  auto fingerprint = HashUtil::MurmurHash2_64(result.data(), result.size(), 0 /* seed */);
+  LOG(INFO) << "result.size(): " << result.size();
+  LOG(INFO) << "fingerprint: " << fingerprint;
+  ASSERT_EQ(result.size(), 54564U);
+  ASSERT_EQ(fingerprint, 11398401310271930677UL);
+}
+
 } // namespace pgwrapper
 } // namespace yb
