@@ -165,9 +165,13 @@ public class SetupYNP extends AbstractTaskBase {
     // Extract only the installer file.
     sb.append(" && mkdir -p ").append(ynpStagingDir).append("/thirdparty");
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
-    sb.append(" --strip-components=2 -C ").append(ynpStagingDir).append("/thirdparty");
+    sb.append(" --strip-components=2 -C ")
+        .append(ynpStagingDir)
+        .append("/thirdparty/ ")
+        .append("--wildcards '*/thirdparty/*'");
 
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
+    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh'");
     sb.append(" --strip-components=3 -C ").append(ynpStagingDir);
 
     // Move the node-agent source folder to the right location.
