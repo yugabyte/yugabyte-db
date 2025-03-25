@@ -115,7 +115,7 @@ The following shows output where the `anon.maskschema` and `anon.sourceschema` p
 ---------+------------------------------
  skynet  | {"search_path=mask, public"}
 ```
-Note that [Backup and restore](../../../../manage/backup-restore/) features which don't restore roles will also not restore masked security label for roles. The security label for roles will need to be recreated manually and dynamic masking should be enabled after that.
+Note that [Backup and restore](../../../../manage/backup-restore/) doesn't preserve roles, and will also not restore masked security labels for roles. After a restore, you will need to manually recreate security labels for roles, and then enable dynamic masking.
 
 To disable dynamic masking:
 
