@@ -195,6 +195,12 @@ If a ulimit is set to `unlimited`, set it to `infinity` in the systemd configura
 
 Transparent hugepages should be enabled for optimal performance. By default, they are enabled.
 
+You can check with the following command:
+
+```sh
+$ cat /sys/kernel/mm/transparent_hugepage/enabled
+```
+
 You should see the following output:
 
 ```output

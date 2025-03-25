@@ -195,7 +195,7 @@ LimitRTPRIO=    | ulimit -r            | 0 |
 
 If a ulimit is set to `unlimited`, set it to `infinity` in the systemd configuration file.
 
-## transparent hugepages
+## Enable transparent hugepages
 
 Transparent hugepages should be enabled for optimal performance. By default, they are enabled.
 
