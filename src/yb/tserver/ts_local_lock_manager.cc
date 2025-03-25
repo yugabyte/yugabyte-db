@@ -60,6 +60,9 @@ class TSLocalLockManager::Impl {
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       WaitForBootstrap wait) {
     TRACE_FUNC();
+    auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+    docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
+    VLOG(3) << object_lock_owner.ToString() << " Acquiring lock : " << req.ShortDebugString();
     if (wait) {
       VTRACE(1, "Waiting for bootstrap.");
       RETURN_NOT_OK(Wait(
@@ -71,13 +74,11 @@ class TSLocalLockManager::Impl {
           deadline, "Waiting to Bootstrap."));
     }
     TRACE("Through wait for bootstrap.");
-    auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
     RETURN_NOT_OK(CheckRequestForDeadline(req));
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
-    docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
     if (object_lock_manager_.Lock(object_lock_owner, keys_to_lock.lock_batch, deadline)) {
       TRACE("Successfully obtained object locks.");
@@ -128,16 +129,19 @@ class TSLocalLockManager::Impl {
 
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
+    auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+    docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
+    VLOG(3) << object_lock_owner.ToString()
+            << " Releasing locks : " << req.ShortDebugString();
+
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
-    auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
     // In case of exclusive locks, invalidate the db table cache before releasing them.
     if (req.has_db_catalog_version_data()) {
       server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
     }
-    docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     object_lock_manager_.Unlock(object_lock_owner);
     return Status::OK();
   }
@@ -259,12 +263,34 @@ TSLocalLockManager::~TSLocalLockManager() {}
 Status TSLocalLockManager::AcquireObjectLocks(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
     WaitForBootstrap wait) {
-  return impl_->AcquireObjectLocks(req, deadline, wait);
+  if (VLOG_IS_ON(4)) {
+    std::stringstream output;
+    impl_->DumpLocksToHtml(output);
+    VLOG(4) << "Dumping current state Before acquire : " << output.str();
+  }
+  auto ret = impl_->AcquireObjectLocks(req, deadline, wait);
+  if (VLOG_IS_ON(3)) {
+    std::stringstream output;
+    impl_->DumpLocksToHtml(output);
+    VLOG(3) << "Dumping current state After acquire : " << output.str();
+  }
+  return ret;
 }
 
 Status TSLocalLockManager::ReleaseObjectLocks(
     const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
-  return impl_->ReleaseObjectLocks(req, deadline);
+  if (VLOG_IS_ON(4)) {
+    std::stringstream output;
+    impl_->DumpLocksToHtml(output);
+    VLOG(4) << "Dumping current state Before release : " << output.str();
+  }
+  auto ret = impl_->ReleaseObjectLocks(req, deadline);
+  if (VLOG_IS_ON(3)) {
+    std::stringstream output;
+    impl_->DumpLocksToHtml(output);
+    VLOG(3) << "Dumping current state After release : " << output.str();
+  }
+  return ret;
 }
 
 void TSLocalLockManager::DumpLocksToHtml(std::ostream& out) {
