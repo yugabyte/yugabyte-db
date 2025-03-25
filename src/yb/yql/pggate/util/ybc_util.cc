@@ -96,6 +96,10 @@ Status InitGFlags(const char* argv0) {
     ChangeWorkingDir(pg_working_dir);
   });
 
+  // This is needed in case VLOG/VLOG_IS_ON was called before that and initial vmodule flag
+  // value has already been cached.
+  RegisterGlobalFlagsCallbacksOnce();
+
   // Also allow overriding flags on the command line using the appropriate environment variables.
   std::vector<google::CommandLineFlagInfo> flag_infos;
   google::GetAllFlags(&flag_infos);
@@ -103,7 +107,9 @@ Status InitGFlags(const char* argv0) {
     string env_var_name = "FLAGS_" + flag_info.name;
     const char* env_var_value = getenv(env_var_name.c_str());
     if (env_var_value) {
-      google::SetCommandLineOption(flag_info.name.c_str(), env_var_value);
+      // Make sure callbacks are called.
+      RETURN_NOT_OK(flags_internal::SetFlagInternal(
+          flag_info.flag_ptr, flag_info.name.c_str(), env_var_value));
     }
   }
 
