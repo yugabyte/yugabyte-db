@@ -873,6 +873,7 @@ public class NodeManager extends DevopsBase {
     allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
 
     GFlagsUtil.processUserGFlags(
+        universe,
         node,
         gflags,
         GFlagsUtil.getAllDefaultGFlags(
