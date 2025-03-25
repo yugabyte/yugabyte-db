@@ -412,6 +412,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         TaskType.SoftwareUpgradeYB,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(

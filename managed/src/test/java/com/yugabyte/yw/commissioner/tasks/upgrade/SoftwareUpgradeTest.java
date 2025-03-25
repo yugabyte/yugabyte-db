@@ -489,6 +489,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         TaskType.SoftwareUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

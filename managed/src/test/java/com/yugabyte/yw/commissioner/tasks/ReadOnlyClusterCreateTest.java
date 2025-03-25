@@ -321,5 +321,6 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.ReadOnlyClusterCreate,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

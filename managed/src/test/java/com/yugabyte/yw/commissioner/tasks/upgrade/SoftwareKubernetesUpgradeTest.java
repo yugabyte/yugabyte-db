@@ -412,5 +412,6 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.SoftwareKubernetesUpgrade,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

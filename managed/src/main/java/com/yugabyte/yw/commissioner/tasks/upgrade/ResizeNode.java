@@ -249,8 +249,15 @@ public class ResizeNode extends UpgradeTaskBase {
                     .postAction(
                         node -> {
                           // Persist the new instance type in the node details.
-                          node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
-                          createNodeDetailsUpdateTask(node, false)
+                          String instanceType = userIntent.getInstanceTypeForNode(node);
+                          node.cloudInfo.instance_type = instanceType;
+                          createUpdateUniverseFieldsTask(
+                                  univ -> {
+                                    NodeDetails nodeDetails = univ.getNode(node.nodeName);
+                                    if (nodeDetails != null) {
+                                      nodeDetails.cloudInfo.instance_type = instanceType;
+                                    }
+                                  })
                               .setSubTaskGroupType(
                                   UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
                         })

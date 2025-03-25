@@ -155,6 +155,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         TaskType.ThirdpartySoftwareUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   private MockUpgrade initMockUpgrade() {

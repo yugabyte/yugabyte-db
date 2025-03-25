@@ -584,5 +584,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         TaskType.VMImageUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

@@ -717,6 +717,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test
