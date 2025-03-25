@@ -94,8 +94,9 @@ class ObjectLockInfoManager::Impl {
       const tserver::AcquireObjectLockRequestPB& req, rpc::RpcContext context,
       StdStatusCallback callback);
 
+  void PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req);
   void UnlockObject(
-      ReleaseObjectLockRequestPB req, ReleaseObjectLocksGlobalResponsePB* resp,
+      ReleaseObjectLockRequestPB&& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
   void UnlockObject(
       const tserver::ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
@@ -602,9 +603,35 @@ void ObjectLockInfoManager::Impl::LockObject(
   lock_objects->Launch();
 }
 
+void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLockRequestPB& req) {
+  // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
+  // logic on the tserver side expects a full report. Fix it and then optimize the below to only
+  // send the catalog version of the db being operated on by the txn.
+  DbOidToCatalogVersionMap versions;
+  uint64_t fingerprint;
+  auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
+      FLAGS_enable_heartbeat_pg_catalog_versions_cache, &versions, &fingerprint);
+  if (!s.ok()) {
+    // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
+    LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
+    return;
+  }
+  if (versions.empty()) {
+    return;
+  }
+  auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
+  for (const auto& it : versions) {
+    auto* const catalog_version_pb = db_catalog_version_data->add_db_catalog_versions();
+    catalog_version_pb->set_db_oid(it.first);
+    catalog_version_pb->set_current_version(it.second.current_version);
+    catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
+  }
+}
+
 void ObjectLockInfoManager::Impl::UnlockObject(
-    ReleaseObjectLockRequestPB req, ReleaseObjectLocksGlobalResponsePB* resp,
+    ReleaseObjectLockRequestPB&& req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext context) {
+  PopulateDbCatalogVersionCache(req);
   UnlockObject(req, std::move(context), std::nullopt, [resp, clock = clock_](const Status& s) {
     resp->set_propagated_hybrid_time(clock->Now().ToUint64());
     FillErrorIfRequired(s, resp);
@@ -636,26 +663,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
     req.set_lease_epoch(it->second.lease_epoch);
   }
 
-  // TODO: Currently, we fetch and send catalog version of all dbs because the cache invalidation
-  // logic on the tserver side expects a full report. Fix it and then optimize the below to only
-  // send the catalog version of the db being operated on by the txn.
-  DbOidToCatalogVersionMap versions;
-  uint64_t fingerprint;
-  auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
-      FLAGS_enable_heartbeat_pg_catalog_versions_cache, &versions, &fingerprint);
-  if (s.ok()) {
-    auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
-    for (const auto& it : versions) {
-      auto* const catalog_version_pb = db_catalog_version_data->add_db_catalog_versions();
-      catalog_version_pb->set_db_oid(it.first);
-      catalog_version_pb->set_current_version(it.second.current_version);
-      catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
-    }
-  } else {
-    // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
-    LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
-  }
-
+  PopulateDbCatalogVersionCache(req);
   return UnlockObject(
       std::move(req), std::nullopt /* context */, std::nullopt /* leader epoch */,
       [txn_id](Status s) {
@@ -683,6 +691,11 @@ void ObjectLockInfoManager::Impl::ReleaseLocksHeldByExpiredLeaseEpoch(
         auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
         request->set_txn_id(txn_id.data(), txn_id.size());
         request->set_lease_epoch(max_lease_epoch_to_release + 1);
+        if (requests_per_txn.empty()) {
+          // Set the db catalog cache on just one of the unlock requests, since it would be the same
+          // unless a new DDL modified it, in which case it's release would set the latest cache.
+          PopulateDbCatalogVersionCache(*request.get());
+        }
         requests_per_txn.push_back(request);
       }
     }

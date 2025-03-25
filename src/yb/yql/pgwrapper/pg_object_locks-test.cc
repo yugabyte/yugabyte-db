@@ -40,6 +40,9 @@ using namespace std::literals;
 
 namespace yb::pgwrapper {
 
+constexpr uint64_t kDefaultMasterYSQLLeaseTTLMilli = 5 * 1000;
+constexpr uint64_t kDefaultYSQLLeaseRefreshIntervalMilli = 500;
+
 class PgObjectLocksTestRF1 : public PgMiniTestBase {
  protected:
   void SetUp() override {
@@ -163,5 +166,164 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
   ASSERT_OK(status_future.get());
 }
 #endif
+
+class PgObjectLocksTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
+    opts->extra_tserver_flags.emplace_back("--TEST_enable_ysql_operation_lease=true");
+    opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
+    opts->extra_tserver_flags.emplace_back(
+        Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
+
+    opts->extra_master_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
+    opts->extra_master_flags.emplace_back("--TEST_enable_ysql_operation_lease=true");
+    opts->extra_master_flags.emplace_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
+  }
+
+  int GetNumTabletServers() const override {
+    return 3;
+  }
+};
+
+TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  ts2->Shutdown();
+  LogWaiter log_waiter(ts2, "Received new lease epoch");
+  ASSERT_OK(ts2->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {std::make_pair("TEST_ysql_disable_transparent_cache_refresh_retry", "true")}));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 2 /* columns */));
+
+  // Disable catalog cache invalidation on tserver-master heartbeat path. Set it after the tserver
+  // boots up since setting it as part of initialization seems to error.
+  ASSERT_OK(cluster_->SetFlag(
+      ts2,
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+      "true"));
+
+  // Release of exclusive locks of the below DDL should invalidate catalog cache on all tservers.
+  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+  // The DML should now see the updated schema and not hit a catalog cache/schema version mismatch.
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
+}
+
+TEST_F(PgObjectLocksTest, ConsecutiveAltersSucceedWithoutCatalogVersionIssues) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
+
+  ASSERT_OK(cluster_->SetFlag(
+      ts2,
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+      "true"));
+
+  ASSERT_OK(conn1.Execute("ALTER TABLE t1 ADD COLUMN c3 INT"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t1 ADD COLUMN c4 INT"));
+}
+
+TEST_F(PgObjectLocksTest, BackfillIndexSanityTest) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test select generate_series(1, 100000)"));
+  ASSERT_OK(cluster_->SetFlag(
+      ts2,
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+      "true"));
+
+  ASSERT_OK(conn1.Execute("CREATE INDEX test_k ON test(k)"));
+
+  std::string select_query = "SELECT * FROM test WHERE k=1";
+  auto analyze_query = Format("EXPLAIN ANALYZE $0", Format(select_query));
+  auto values = ASSERT_RESULT(conn2.FetchRows<std::string>(analyze_query));
+  const auto index_only_scan_test = "Index Only Scan using test_k on test";
+  const auto index_cond_text = "Index Cond: (k = 1)";
+  bool found_index_only_scan = false;
+  bool found_index_cond = false;
+  for (const auto& value : values) {
+    if (value.find(index_only_scan_test) != std::string::npos) {
+      found_index_only_scan = true;
+    } else if (value.find(index_cond_text) != std::string::npos) {
+      found_index_cond = true;
+    }
+  }
+  ASSERT_TRUE(found_index_only_scan && found_index_cond)
+      << "Expected following text - \n"
+      << "1. " << index_only_scan_test << "\n"
+      << "2. " << index_cond_text << "\n"
+      << "in " << analyze_query;
+  ASSERT_OK(conn2.Execute("INSERT INTO test values(200000)"));
+}
+
+TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  ts2->Shutdown();
+  {
+    LogWaiter log_waiter(ts2, "Received new lease epoch");
+    ASSERT_OK(ts2->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {std::make_pair("TEST_ysql_disable_transparent_cache_refresh_retry", "true")}));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  }
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 2 /* columns */));
+
+  ASSERT_OK(cluster_->SetFlag(
+      ts2,
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+      "true"));
+  auto master_leader = cluster_->GetLeaderMaster();
+  ASSERT_OK(cluster_->SetFlag(
+      master_leader,
+      "TEST_disable_release_object_locks_on_ddl_verification",
+      "true"));
+
+  {
+    LogWaiter log_waiter(ts2,
+                         "Invalidating db PgTableCache caches since catalog version incremented");
+    ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+    ts1->Shutdown();
+    ASSERT_OK(log_waiter.WaitFor(2s * kTimeMultiplier * kDefaultMasterYSQLLeaseTTLMilli));
+  }
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
+  ASSERT_OK(ts1->Restart());
+}
 
 }  // namespace yb::pgwrapper

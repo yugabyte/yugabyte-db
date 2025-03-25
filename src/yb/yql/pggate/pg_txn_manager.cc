@@ -838,7 +838,7 @@ Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObject
     return Status::OK();
   }
   RETURN_NOT_OK(CalculateIsolation(
-      true /* read_only */,
+      mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
       isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
   tserver::PgAcquireObjectLockRequestPB req;
   RETURN_NOT_OK(SetupPerformOptions(req.mutable_options()));

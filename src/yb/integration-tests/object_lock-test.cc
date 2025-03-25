@@ -81,7 +81,6 @@ MATCHER_P(EqualsStatus, expected_status, "") {
 
 constexpr uint64_t kDefaultMasterYSQLLeaseTTLMilli = 5 * 1000;
 constexpr uint64_t kDefaultYSQLLeaseRefreshIntervalMilli = 500;
-constexpr size_t kPgConnectionTimeoutSecs = 10 * kTimeMultiplier;
 const std::string kTServerYsqlLeaseRefreshFlagName = "TEST_tserver_enable_ysql_lease_refresh";
 
 class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
@@ -1366,61 +1365,6 @@ Status ExternalObjectLockTest::WaitForTServerLease(const std::string& ts_uuid, M
         return ts_opt && ts_opt->has_lease_info() && ts_opt->lease_info().is_live();
       },
       timeout, "Wait for master to establish tserver's lease");
-}
-
-TEST_F(ExternalObjectLockTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
-  const auto ts1_idx = 1;
-  const auto ts2_idx = 2;
-  auto* ts1 = cluster_->tablet_server(ts1_idx);
-  auto* ts2 = cluster_->tablet_server(ts2_idx);
-
-  ts2->Shutdown();
-  LogWaiter log_waiter(ts2, "Received new lease epoch");
-  ASSERT_OK(ts2->Restart(
-      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      {std::make_pair("TEST_ysql_disable_transparent_cache_refresh_retry", "true")}));
-  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
-
-  auto conn1 = ASSERT_RESULT(ConnectToTabletServer(ts1, kPgConnectionTimeoutSecs));
-  auto conn2 = ASSERT_RESULT(ConnectToTabletServer(ts2, kPgConnectionTimeoutSecs));
-
-  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
-
-  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 2 /* columns */));
-
-  // Disable catalog cache invalidation on tserver-master heartbeat path. Set it after the tserver
-  // boots up since setting it as part of initialization seems to error.
-  ASSERT_OK(cluster_->SetFlag(
-      ts2,
-      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-      "true"));
-
-  // Release of exclusive locks of the below DDL should invalidate catalog cache on all tservers.
-  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
-  // The DML should now see the updated schema and not hit a catalog cache/schema version mismatch.
-  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
-}
-
-TEST_F(ExternalObjectLockTest, ConsecutiveAltersSucceedWithoutCatalogVersionIssues) {
-  const auto ts1_idx = 1;
-  const auto ts2_idx = 2;
-  auto* ts1 = cluster_->tablet_server(ts1_idx);
-  auto* ts2 = cluster_->tablet_server(ts2_idx);
-
-  auto conn1 = ASSERT_RESULT(ConnectToTabletServer(ts1, kPgConnectionTimeoutSecs));
-  auto conn2 = ASSERT_RESULT(ConnectToTabletServer(ts2, kPgConnectionTimeoutSecs));
-
-  ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
-  ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
-
-  ASSERT_OK(cluster_->SetFlag(
-      ts2,
-      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-      "true"));
-
-  ASSERT_OK(conn1.Execute("ALTER TABLE t1 ADD COLUMN c3 INT"));
-  ASSERT_OK(conn2.Execute("ALTER TABLE t1 ADD COLUMN c4 INT"));
 }
 
 }  // namespace yb

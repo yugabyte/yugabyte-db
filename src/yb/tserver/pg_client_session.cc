@@ -1115,6 +1115,26 @@ Request AcquireRequestFor(
   return req;
 }
 
+template <typename Request>
+Request ReleaseRequestFor(
+    const std::string& session_host_uuid, const TransactionId& txn_id,
+    std::optional<SubTransactionId> subtxn_id, uint64_t lease_epoch = 0,
+    ClockBase* clock = nullptr) {
+  Request req;
+  req.set_txn_id(txn_id.data(), txn_id.size());
+  if (subtxn_id) {
+    req.set_subtxn_id(*subtxn_id);
+  }
+  req.set_session_host_uuid(session_host_uuid);
+  if (lease_epoch) {
+    req.set_lease_epoch(lease_epoch);
+  }
+  if (clock) {
+    req.set_propagated_hybrid_time(clock->Now().ToUint64());
+  }
+  return req;
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -2081,14 +2101,22 @@ class PgClientSession::Impl {
         setup_session_result.is_plain ||
         (options.ddl_mode() && setup_session_result.session_data.transaction),
         IllegalState, "Expected kPlain/kDdl session");
+    if (setup_session_result.is_plain && setup_session_result.session_data.transaction) {
+      RETURN_NOT_OK(setup_session_result.session_data.transaction->GetMetadata(deadline).get());
+    }
     auto& txn_id = setup_session_result.session_data.transaction
         ? setup_session_result.session_data.transaction->id()
         : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline));
-    VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "txn_id " << txn_id << " req: " << req.ShortDebugString();
-
     const auto lock_type = static_cast<TableLockType>(req.lock_type());
+    VLOG_WITH_PREFIX_AND_FUNC(1)
+        << "txn_id " << txn_id
+        << " lock_type: " << AsString(lock_type)
+        << " req: " << req.ShortDebugString();
+
     if (IsTableLockTypeGlobal(lock_type)) {
+      if (setup_session_result.is_plain) {
+        plain_session_has_exclusive_object_locks_.store(true);
+      }
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
           instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
           req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
@@ -2165,33 +2193,42 @@ class PgClientSession::Impl {
 
   Status DdlAtomicityFinishTransaction(
       bool has_docdb_schema_changes, const TransactionMetadata* metadata,
-      std::optional<bool> commit) {
+      std::optional<bool> commit, CoarseTimePoint deadline) {
     // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
     // any operations postponed to the end of transaction. If the status is known
     // (commit.has_value() is true), then report the status of the transaction and wait for the
     // post-processing by YB-Master to end.
-    if (YsqlDdlRollbackEnabled() && has_docdb_schema_changes && metadata) {
-      if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
-        // If we failed to report the status of this DDL transaction, we can just log and ignore it,
-        // as the poller in the YB-Master will figure out the status of this transaction using the
-        // transaction status tablet and PG catalog.
-        ERROR_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
-                    Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
-      }
+    if (YsqlDdlRollbackEnabled() && metadata) {
+      if (has_docdb_schema_changes ) {
+        if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
+          // If we failed to report the status of this DDL transaction, we can just log and ignore
+          // it, as the poller in the YB-Master will figure out the status of this transaction using
+          // the transaction status tablet and PG catalog.
+          ERROR_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
+                      Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
+        }
 
-      if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {
-        // Wait for DDL verification to end. This may include actions such as a) removing an added
-        // column in case of ADD COLUMN abort b) dropping a column marked for deletion in case of
-        // DROP COLUMN commit. c) removing DELETE marker on a column if DROP COLUMN aborted d) Roll
-        // back changes to table/column names in case of transaction abort. d) dropping a table in
-        // case of DROP TABLE commit. All the above actions take place only after the transaction
-        // is completed.
-        // Note that this is called even when the DDL transaction status is not known
-        // (commit.has_value() is false), the purpose is to use the side effect of
-        // WaitForDdlVerificationToFinish to trigger the start of a background task to
-        // complete the DDL transaction at the DocDB side.
-        ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
-                    "WaitForDdlVerificationToFinish call failed");
+        if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {
+          // Wait for DDL verification to end. This may include actions such as a) removing an added
+          // column in case of ADD COLUMN abort b) dropping a column marked for deletion in case of
+          // DROP COLUMN commit. c) removing DELETE marker on a column if DROP COLUMN aborted d)
+          // rollback changes to table/column names in case of txn abort. d) dropping a table in
+          // case of DROP TABLE commit. All the above actions take place only after the transaction
+          // is completed.
+          // Note that this is called even when the DDL transaction status is not known
+          // (commit.has_value() is false), the purpose is to use the side effect of
+          // WaitForDdlVerificationToFinish to trigger the start of a background task to
+          // complete the DDL transaction at the DocDB side.
+          ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
+                       "WaitForDdlVerificationToFinish call failed");
+        }
+      } else if (IsObjectLockingEnabled()) {
+        // Few DDLs without schema changes might increment catalog version, for instance, as part of
+        // CREATE INDEX we launch some that increment catalog version and the backfill jobs wait for
+        // it to take effect on all tservers (they aren't tracked by master's ddl verification task)
+        return DoReleaseObjectLocks(
+            metadata->transaction_id, std::nullopt /* subtxn */, deadline,
+            true /* exclusive locks */);
       }
     }
     return Status::OK();
@@ -2547,6 +2584,7 @@ class PgClientSession::Impl {
       if (options.use_existing_priority()) {
         saved_priority_ = txn->GetPriority();
       }
+      RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(kSessionKind, deadline));
       txn->Abort();
       session->SetTransaction(nullptr);
       txn = nullptr;
@@ -2885,7 +2923,7 @@ class PgClientSession::Impl {
     auto ddl_use_regular_transaction_block = false;
     auto has_docdb_schema_changes = false;
     std::optional<uint32_t> silently_altered_db;
-
+    const TransactionMetadata* metadata = nullptr;
     if (is_ddl) {
       const auto& ddl_mode = req.ddl_mode();
       ddl_use_regular_transaction_block = ddl_mode.use_regular_transaction_block();
@@ -2893,13 +2931,11 @@ class PgClientSession::Impl {
       if (ddl_mode.has_silently_altered_db()) {
         silently_altered_db = ddl_mode.silently_altered_db().value();
       }
-    }
-
-    const TransactionMetadata* metadata = nullptr;
-    if (has_docdb_schema_changes) {
       metadata = &ddl_txn_metadata_;
-      LOG_IF(DFATAL, metadata->transaction_id.IsNil()) << "Valid ddl metadata is required";
     }
+    RSTATUS_DCHECK(
+        !has_docdb_schema_changes || !metadata->transaction_id.IsNil(), IllegalState,
+        "Valid ddl metadata is required");
 
     if (req.commit()) {
       const auto commit_status = Commit(
@@ -2910,6 +2946,7 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "ddl: " << is_ddl
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
+          << ", has_docdb_schema_changes: " << has_docdb_schema_changes
           << ", txn: " << txn->id() << ", commit: " << commit_status;
       // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
       // is possible that the commit succeeded at the transaction coordinator but we failed to get
@@ -2918,7 +2955,7 @@ class PgClientSession::Impl {
       // background task to figure out whether the transaction succeeded or failed.
       if (!commit_status.ok()) {
         auto status = DdlAtomicityFinishTransaction(
-            has_docdb_schema_changes, metadata, std::nullopt);
+            has_docdb_schema_changes, metadata, std::nullopt, deadline);
         if (!status.ok()) {
           // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
           // not be able to start a background task to figure out whether the DDL transaction
@@ -2943,22 +2980,18 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "ddl: " << is_ddl
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
+          << ", has_docdb_schema_changes: " << has_docdb_schema_changes
           << ", txn: " << txn->id() << ", abort";
       txn->Abort();
     }
-    return DdlAtomicityFinishTransaction(has_docdb_schema_changes, metadata, req.commit());
+    return DdlAtomicityFinishTransaction(
+        has_docdb_schema_changes, metadata, req.commit(), deadline);
   }
 
   Status ReleaseObjectLocksIfNecessary(
       PgClientSessionKind kind, CoarseTimePoint deadline,
       std::optional<SubTransactionId> subtxn_id = std::nullopt) {
     if (!IsObjectLockingEnabled()) {
-      return Status::OK();
-    }
-    // TODO(table-locks): Figure out the semantics for releasing exclusive object locks. Ideally,
-    // we need to enfore catalog cache refresh on the release path, so locks should be released
-    // once the sys catalog's ddl verification task completes and applies the schema changes.
-    if (kind == PgClientSessionKind::kDdl) {
       return Status::OK();
     }
     if (kind != PgClientSessionKind::kPlain) {
@@ -2968,23 +3001,49 @@ class PgClientSession::Impl {
     RSTATUS_DCHECK(
         txn || !subtxn_id, IllegalState,
         "Cannot release object locks of a subtxn when there is no distributed txn with session");
+    const auto has_exclusive_locks = plain_session_has_exclusive_object_locks_.load();
+    if (has_exclusive_locks) {
+      SCHECK_NOTNULL(txn);
+      VLOG(1) << "Requesting release of global object locks for "
+              << " txn " << txn->id() << " subtxn_id " << AsString(subtxn_id);
+      // Statements like BACKFILL INDEX seem to operate under DML mode but acquire exclusive
+      // locks on objects. This is because they don't lead to any schema changes. For such DMLs
+      // we need to propagate the release locks request to master to release the object locks
+      // globally on all tservers.
+      if (!subtxn_id) {
+        plain_session_has_exclusive_object_locks_.store(false);
+      }
+    }
     return DoReleaseObjectLocks(
         txn ? txn->id() : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline)),
-        subtxn_id, deadline);
+        subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
-      CoarseTimePoint deadline) {
-    VLOG_WITH_PREFIX_AND_FUNC(2)
-        << "txn: " << txn_id << " subtxn: " << AsString(subtxn_id);
-    tserver::ReleaseObjectLockRequestPB req;
-    req.set_txn_id(txn_id.data(), txn_id.size());
-    if (subtxn_id) {
-      req.set_subtxn_id(*subtxn_id);
+      CoarseTimePoint deadline, bool has_exclusive_locks) {
+    if (!has_exclusive_locks) {
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+          << "txn: " << txn_id << " subtxn: " << AsString(subtxn_id);
+      return ts_lock_manager()->ReleaseObjectLocks(
+          ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
+              instance_uuid(), txn_id, subtxn_id),
+          deadline);
     }
-    req.set_session_host_uuid(instance_uuid());
-    return ts_lock_manager()->ReleaseObjectLocks(req, deadline);
+    // TODO: Need to handle failures here, else there could be a leak of exclusive locks. The
+    // problem is only with the following types of transactions. (GHI #26498)
+    // 1. DDLs that don't have schema changes (not tracked by master's bg DDL verification task).
+    // 2. pggate doesn't tag statements like 'BACKFILL INDEX' as DDL, so they operate under DML mode
+    //    but take exclusive object locks.
+    auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
+        ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
+            instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
+    client_.ReleaseObjectLocksGlobalAsync(
+        *release_req, [release_req](Status s) {
+          WARN_NOT_OK(
+              s, Format("Realese global locks failed for req $0", release_req->ShortDebugString()));
+        }, deadline - ToCoarse(MonoTime::Now()));
+    return Status::OK();
   }
 
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
@@ -3027,6 +3086,8 @@ class PgClientSession::Impl {
 
   simple_spinlock pending_data_mutex_;
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
+
+  std::atomic<bool> plain_session_has_exclusive_object_locks_{false};
 };
 
 PgClientSession::PgClientSession(
