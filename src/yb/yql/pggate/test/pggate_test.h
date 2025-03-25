@@ -32,6 +32,7 @@
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
@@ -79,6 +80,8 @@ class PggateTest : public YBTest {
   //------------------------------------------------------------------------------------------------
 
   virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
+
+  Result<pgwrapper::PGConn> PgConnect(const std::string& database_name);
 
  protected:
   void BeginDDLTransaction();
