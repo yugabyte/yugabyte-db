@@ -81,7 +81,8 @@ export const RuntimeConfigKey = {
   RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change',
   NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
   NODE_AGENT_ENABLER_SCAN_INTERVAL: 'yb.node_agent.enabler.scan_interval',
-  HYPERDISKS_STORAGE_TYPE: 'yb.gcp.show_hyperdisks_storage_type'
+  HYPERDISKS_STORAGE_TYPE: 'yb.gcp.show_hyperdisks_storage_type',
+  CIPHERTRUST_KMS_ENABLE: 'yb.kms.allow_ciphertrust'
 } as const;
 
 /**

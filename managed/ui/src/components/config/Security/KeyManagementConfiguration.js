@@ -26,7 +26,7 @@ import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
-import { YBAHost } from '../../../redesign/helpers/constants';
+import { RuntimeConfigKey, YBAHost } from '../../../redesign/helpers/constants';
 
 const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
@@ -44,7 +44,7 @@ export const KmsProvider = {
 };
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns a list of supported KMS Configurations
-let kmsConfigTypes = [
+const allKmsConfigTypes = [
   // Equinix KMS support is deprecated from 2.12.1
   // { value: 'SMARTKEY', label: 'Equinix SmartKey' },
   { value: KmsProvider.AWS, label: 'AWS KMS' },
@@ -109,7 +109,7 @@ const DEFAULT_CIPHERTRUST_KEY_ALGORITHM_OPTION = CIPHERTRUST_KEY_ALGORITHM_OPTIO
 
 //Form Data
 const DEFAULT_FORM_DATA = {
-  kmsProvider: kmsConfigTypes[0],
+  kmsProvider: { value: KmsProvider.AWS, label: 'AWS KMS' },
   PROTECTION_LEVEL: DEFAULT_PROTECTION,
   LOCATION_ID: DEFAULT_GCP_LOCATION,
   AZU_KEY_ALGORITHM: DEFAULT_AZU_PROTECTION_ALGO,
@@ -170,6 +170,7 @@ class KeyManagementConfiguration extends Component {
       }
     });
     this.props.fetchHostInfo();
+    this.props.fetchCustomerRuntimeConfigs();
     this._ismounted = true;
   }
 
@@ -1250,7 +1251,7 @@ class KeyManagementConfiguration extends Component {
       AZU_KEY_SIZE
     } = credentials;
     if (provider) {
-      formData.kmsProvider = kmsConfigTypes.find((config) => config.value === provider);
+      formData.kmsProvider = allKmsConfigTypes.find((config) => config.value === provider);
     }
     if (AWS_REGION) {
       formData.region = awsRegionList.find((region) => region.value === AWS_REGION);
@@ -1331,7 +1332,7 @@ class KeyManagementConfiguration extends Component {
   };
 
   render() {
-    const { configList, featureFlags, currentUserInfo } = this.props;
+    const { configList, featureFlags, currentUserInfo, runtimeConfigs } = this.props;
     const { listView, enabledIAMProfile, formData, enabledMI } = this.state;
     const isAdmin = ['Admin', 'SuperAdmin'].includes(currentUserInfo.role);
     const isEdit = this.isEditMode();
@@ -1346,30 +1347,40 @@ class KeyManagementConfiguration extends Component {
         featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
       const isGcpKMSEnabled = featureFlags.test.enableGcpKMS || featureFlags.released.enableGcpKMS;
       const isAzuKMSEnabled = featureFlags.test.enableAzuKMS || featureFlags.released.enableAzuKMS;
+      const isCipherTrustKmsEnabled =
+        runtimeConfigs?.data?.configEntries?.find(
+          (c) => c.key === RuntimeConfigKey.CIPHERTRUST_KMS_ENABLE
+        )?.value === 'true';
+
+      const kmsConfigTypes = allKmsConfigTypes.filter((configType) => {
+        return (
+          ![
+            KmsProvider.HASHICORP,
+            KmsProvider.GCP,
+            KmsProvider.AZU,
+            KmsProvider.CIPHERTRUST
+          ].includes(configType.value) ||
+          (configType.value === KmsProvider.HASHICORP && isHCVaultEnabled) ||
+          (configType.value === KmsProvider.GCP && isGcpKMSEnabled) ||
+          (configType.value === KmsProvider.AZU && isAzuKMSEnabled) ||
+          (configType.value === KmsProvider.CIPHERTRUST && isCipherTrustKmsEnabled)
+        );
+      });
 
       let configs = configList.data;
-      if (isHCVaultEnabled || isGcpKMSEnabled || isAzuKMSEnabled) {
-        kmsConfigTypes = kmsConfigTypes.filter((config) => {
-          return (
-            ![KmsProvider.HASHICORP, KmsProvider.GCP, KmsProvider.AZU].includes(config.value) ||
-            (config.value === KmsProvider.HASHICORP && isHCVaultEnabled) ||
-            (config.value === KmsProvider.GCP && isGcpKMSEnabled) ||
-            (config.value === KmsProvider.AZU && isAzuKMSEnabled)
-          );
-        });
-        configs = configs
-          ? configs.filter((config) => {
-              return (
-                ![KmsProvider.HASHICORP, KmsProvider.GCP, KmsProvider.AZU].includes(
-                  config.metadata.provider
-                ) ||
-                (config.metadata.provider === KmsProvider.HASHICORP && isHCVaultEnabled) ||
-                (config.metadata.provider === KmsProvider.GCP && isGcpKMSEnabled) ||
-                (config.metadata.provider === KmsProvider.AZU && isAzuKMSEnabled)
-              );
-            })
-          : [];
-      }
+      configs = configs
+        ? configs.filter((config) => {
+            return (
+              ![KmsProvider.HASHICORP, KmsProvider.GCP, KmsProvider.AZU].includes(
+                config.metadata.provider
+              ) ||
+              (config.metadata.provider === KmsProvider.HASHICORP && isHCVaultEnabled) ||
+              (config.metadata.provider === KmsProvider.GCP && isGcpKMSEnabled) ||
+              (config.metadata.provider === KmsProvider.AZU && isAzuKMSEnabled)
+            );
+          })
+        : [];
+
       //feature flagging
 
       if (listView) {
@@ -1380,6 +1391,7 @@ class KeyManagementConfiguration extends Component {
             onDelete={this.deleteAuthConfig}
             onEdit={this.handleEdit}
             isAdmin={isAdmin}
+            isCipherTrustKmsEnabled={isCipherTrustKmsEnabled}
           />
         );
       }
@@ -1573,7 +1585,7 @@ class KeyManagementConfiguration extends Component {
                         </Col>
                         <Col lg={1} className="config-zone-tooltip">
                           <YBInfoTip
-                            title="Confriguration Name"
+                            title="Configuration Name"
                             content="The name of the KMS configuration (Required)."
                           />
                         </Col>
