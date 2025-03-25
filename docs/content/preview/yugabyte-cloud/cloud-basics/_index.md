@@ -1,5 +1,6 @@
 ---
 title: Deploy clusters in YugabyteDB Aeon
+headerTitle: Deploy clusters
 linkTitle: Deploy clusters
 description: Deploy clusters in YugabyteDB Aeon.
 headcontent: Deploy production-ready clusters
