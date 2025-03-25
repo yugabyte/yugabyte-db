@@ -25,6 +25,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
@@ -1434,6 +1435,56 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         TaskType.ResizeNode,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testResizeNodeRetryLastNodeState() throws InterruptedException {
+    ResizeNodeParams taskParams = new ResizeNodeParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
+    TestUtils.setFakeHttpContext(defaultUser);
+    setPausePosition(5);
+    // Need not sleep for default 3min in tests.
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    UUID taskUUID = commissioner.submit(TaskType.ResizeNode, taskParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    int i = 0;
+    int lastNodeUpdatePosition = 0;
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    for (TaskInfo subTask : subTasks) {
+      if (subTask.getTaskType() == TaskType.ChangeInstanceType) {
+        lastNodeUpdatePosition = i;
+      }
+      i++;
+    }
+    setAbortPosition(lastNodeUpdatePosition); // Aborting while resizing the last node.
+    commissioner.resumeTask(taskInfo.getUuid());
+    taskInfo = waitForTask(taskInfo.getUuid());
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    clearAbortOrPausePositions();
+    CustomerTask customerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    taskUUID = customerTask.getTaskUUID();
+    taskInfo = waitForTask(taskUUID);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(NodeDetails.NodeState.Live, nodeDetails.state);
+    }
   }
 
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {
@@ -1524,7 +1575,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     return UpgradeTaskBase.UpgradeContext.builder()
         .postAction(
             node -> {
-              mockUpgrade.addTask(TaskType.UpdateNodeDetails, null);
+              mockUpgrade.addTask(TaskType.UpdateUniverseFields, null);
             })
         .build();
   }
