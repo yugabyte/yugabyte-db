@@ -173,7 +173,7 @@ IsCommonSpecIgnoredField(const char *fieldName)
 void
 SetExplicitStatementTimeout(int timeoutMilliseconds)
 {
-	if (!EnableBackendStatementTimeout)
+	if (!EnableBackendStatementTimeout || timeoutMilliseconds <= 0)
 	{
 		return;
 	}
