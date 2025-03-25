@@ -100,7 +100,7 @@ You must run this every time a masked security label is created for a user or ro
 
 The boolean parameter indicates whether fake data should be loaded or not. It is recommended to use `anon.init()` to load fake data. This creates masked views on the `anon.maskschema` for all the tables present in `anon.sourceschema`, and alters the privileges of all users with a masked security label so that a masked user will only be able to read masked data and not the original data.
 
-To check if a role with masked security label will see masked values:
+To check if a role with a masked security label will see masked values, use the following query:
 
 ```sql
 SELECT rolname, rolconfig FROM pg_roles WHERE rolname = '<role_name>'
