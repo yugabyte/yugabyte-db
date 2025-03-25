@@ -15,8 +15,8 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 namespace pgwrapper {

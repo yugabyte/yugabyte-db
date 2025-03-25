@@ -36,6 +36,8 @@ typedef enum
 	PROCSIG_PARALLEL_MESSAGE,	/* message from cooperating parallel backend */
 	PROCSIG_WALSND_INIT_STOPPING,	/* ask walsenders to prepare for shutdown  */
 	PROCSIG_LOG_MEMORY_CONTEXT, /* ask backend to log the memory contexts */
+	PROCSIG_LOG_HEAP_SNAPSHOT,  /* ask backend to log the heap snapshot */
+	PROCSIG_LOG_HEAP_SNAPSHOT_PEAK, /* ask backend to log the peak heap snapshot */
 
 	/* Recovery conflict reasons */
 	PROCSIG_RECOVERY_CONFLICT_DATABASE,

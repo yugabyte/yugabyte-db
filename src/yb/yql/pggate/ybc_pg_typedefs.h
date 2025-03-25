@@ -510,6 +510,21 @@ typedef struct YbTcmallocStats {
   int64_t pageheap_unmapped_bytes;
 } YbTcmallocStats;
 
+typedef struct {
+  int64_t estimated_bytes;
+  int64_t estimated_count;
+  int64_t avg_bytes_per_allocation;
+  int64_t sampled_bytes;
+  int64_t sampled_count;
+  char* call_stack;
+  bool estimated_bytes_is_null;
+  bool estimated_count_is_null;
+  bool avg_bytes_per_allocation_is_null;
+  bool sampled_bytes_is_null;
+  bool sampled_count_is_null;
+  bool call_stack_is_null;
+} YbcHeapSnapshotSample;
+
 // In per database catalog version mode, this puts a limit on the maximum
 // number of databases that can exist in a cluster.
 static const int32_t kYBCMaxNumDbCatalogVersions = 10000;

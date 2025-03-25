@@ -92,6 +92,9 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "yb_tcmalloc_utils.h"
+
 /* ----------------
  *		global variables
  * ----------------
@@ -3191,6 +3194,9 @@ ProcessInterrupts(void)
 
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
+
+	if (LogHeapSnapshotPending)
+		ProcessLogHeapSnapshotInterrupt();
 }
 
 

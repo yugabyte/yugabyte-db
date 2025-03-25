@@ -97,6 +97,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
+#include "storage/procarray.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
