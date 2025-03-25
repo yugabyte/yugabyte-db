@@ -52,6 +52,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Request;
 import play.mvc.Result;
@@ -745,6 +746,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
       log.debug("setting up gflag audit logging");
       additionalDetails =
           gFlagsAuditHandler.constructGFlagAuditPayload((GFlagsUpgradeParams) requestParams);
+    } else if (auditActionType == Audit.ActionType.ResizeNode) {
+      additionalDetails = Json.toJson(universe.getUniverseDetails());
     }
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     auditService()
