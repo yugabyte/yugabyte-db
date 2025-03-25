@@ -195,7 +195,7 @@ LimitRTPRIO=    | ulimit -r            | 0 |
 
 If a ulimit is set to `unlimited`, set it to `infinity` in the systemd configuration file.
 
-## transparent hugepages
+## Enable transparent hugepages
 
 Transparent hugepages should be enabled for optimal performance. By default, they are enabled.
 
@@ -205,17 +205,25 @@ You can check with the following command:
 $ cat /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
-It is generally not necessary to adjust the kernel command line if the output is as follows:
+You should see the following output:
 
 ```output
 [always] madvise never
 ```
 
-However, if the value is set to "madvise" or "never", you should modify your kernel command line to set transparent hugepages to "always".
+In addition, you should verify that transparent hugepages use the following settings:
 
-You should consult your operating system documentation to determine the best way to modify a kernel command line argument for your operating system.
+```output
+/sys/kernel/mm/transparent_hugepage/defrag:
+    always defer [defer+madvise] madvise never
 
-On RHEL or CentOS 7 or 8, using grub2, the following steps are one solution:
+/sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none:
+    0
+```
+
+If any of these values are not set as shown, you should modify your kernel command line to match. Consult your operating system documentation to determine the best way to modify a kernel command line argument for your operating system.
+
+For example, on RHEL or CentOS 7 or 8, using grub2, you can use the following steps to enable transparent hugepages:
 
 1. Append "transparent_hugepage=always" to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`.
 
