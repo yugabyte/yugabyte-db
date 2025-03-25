@@ -1,7 +1,8 @@
-thirdparty_dir="{{ ynp_dir }}/../../thirdparty"
-{% if cloud_type is defined and cloud_type != '' %}
-    thirdparty_dir="{{ ynp_dir }}/../thirdparty"
-{% endif %}
+if [[ -z "{{ package_path | default('') }}" ]]; then
+  package_path="{{ ynp_dir }}/../../thirdparty"
+else
+  package_path="{{ package_path }}"
+fi
 
 # Setup the directories & permissions for prometheus user
 mkdir -p /opt/prometheus
@@ -26,10 +27,10 @@ else
 fi
 
 # Copy the appropriate package if it exists
-if [ -f "$thirdparty_dir/$node_exporter_package" ]; then
-    cp "$thirdparty_dir/$node_exporter_package" /opt/prometheus
+if [ -f "$package_path/$node_exporter_package" ]; then
+    cp "$package_path/$node_exporter_package" /opt/prometheus
 else
-    echo "Error: $node_exporter_package not found in $thirdparty_dir"
+    echo "Error: $node_exporter_package not found in $package_path"
     exit 1
 fi
 

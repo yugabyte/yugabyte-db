@@ -55,13 +55,20 @@ fi
 clockbound_gz="clockbound-linux-${arch}.tar.gz"
 echo "Using clockbound package ${clockbound_gz}"
 
+if [[ -z "{{ package_path | default('') }}" ]]; then
+  package_path="{{ ynp_dir }}/../../thirdparty"
+else
+  package_path="{{ package_path }}"
+fi
+
 local_path="/usr/local"
 local_bin_path="/usr/local/bin"
 clockbound_binary="clockbound"
 clockbound_check_binary="clockbound-check"
 
 echo "Extracting clockbound and clockbound-check binary"
-tar -xvzf {{ package_path }}/"${clockbound_gz}" -C "${local_path}"
+echo "Untaring to ${package_path}/${clockbound_gz}"
+tar -xvzf "${package_path}/${clockbound_gz}" -C "${local_path}"
 
 echo "Linking clockbound and clockbound-check to ${local_bin_path}"
 ln -sf "${local_path}/${clockbound_binary}" "${local_bin_path}/${clockbound_binary}"
@@ -76,7 +83,7 @@ else
     echo "chrony user neither chrony nor _chrony, exiting"
     exit 1
 fi
-echo "Making ${chrony_user} owner of ${local_bin_path}/${clockbound_binary}"
+echo "Making ${chrony_user} user owner of ${local_bin_path}/${clockbound_binary}"
 chown "${chrony_user}":"${chrony_user}" "${local_bin_path}/${clockbound_binary}"
 
 # Add systemd unit file for clockbound
