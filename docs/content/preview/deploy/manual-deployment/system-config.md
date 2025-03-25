@@ -258,15 +258,13 @@ You can check with the following command:
 $ cat /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
-It is generally not necessary to adjust the kernel command line if the output is as follows:
+You should see the following output:
 
 ```output
 [always] madvise never
 ```
 
-However, if the value is set to "madvise" or "never", you should modify your kernel command line to set transparent hugepages to "always".
-
-In addition, you should use the following settings:
+In addition, you should verify that transparent hugepages use the following settings:
 
 ```output
 /sys/kernel/mm/transparent_hugepage/defrag:
@@ -276,9 +274,9 @@ In addition, you should use the following settings:
     0
 ```
 
-Consult your operating system documentation to determine the best way to modify a kernel command line argument for your operating system.
+If any of these values are not set as shown, you should modify your kernel command line to match. Consult your operating system documentation to determine the best way to modify a kernel command line argument for your operating system.
 
-On RHEL or CentOS 7 or 8, using grub2, the following steps are one solution:
+For example, on RHEL or CentOS 7 or 8, using grub2, you can use the following steps to enable transparent hugepages:
 
 1. Append "transparent_hugepage=always" to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`.
 
