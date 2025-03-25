@@ -266,7 +266,17 @@ It is generally not necessary to adjust the kernel command line if the output is
 
 However, if the value is set to "madvise" or "never", you should modify your kernel command line to set transparent hugepages to "always".
 
-You should consult your operating system documentation to determine the best way to modify a kernel command line argument for your operating system.
+In addition, you should use the following settings:
+
+```output
+/sys/kernel/mm/transparent_hugepage/defrag:
+    always defer [defer+madvise] madvise never
+
+/sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none:
+    0
+```
+
+Consult your operating system documentation to determine the best way to modify a kernel command line argument for your operating system.
 
 On RHEL or CentOS 7 or 8, using grub2, the following steps are one solution:
 
