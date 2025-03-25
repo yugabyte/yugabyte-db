@@ -667,5 +667,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         universe.getUniverseUUID(),
         TaskType.AddNodeToUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

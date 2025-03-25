@@ -298,6 +298,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         TaskType.RollbackUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
