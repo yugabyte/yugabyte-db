@@ -172,7 +172,7 @@ StartupDecodingContext(List *output_plugin_options,
 	/* shorter lines... */
 	slot = MyReplicationSlot;
 
-	context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	context = AllocSetContextCreate(CurrentMemoryContext,
 									"Logical decoding context",
 									ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(context);

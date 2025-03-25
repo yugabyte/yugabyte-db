@@ -5333,7 +5333,7 @@ IsSubTransaction(void)
  * If you're wondering why this is separate from PushTransaction: it's because
  * we can't conveniently do this stuff right inside DefineSavepoint.  The
  * SAVEPOINT utility command will be executed inside a Portal, and if we
- * muck with GetCurrentMemoryContext() or CurrentResourceOwner then exit from
+ * muck with CurrentMemoryContext or CurrentResourceOwner then exit from
  * the Portal will undo those settings.  So we make DefineSavepoint just
  * push a dummy transaction block, and when control returns to the main
  * idle loop, CommitTransactionCommand will be called, and we'll come here

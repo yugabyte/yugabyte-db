@@ -1658,12 +1658,12 @@ shdepReassignOwned(List *roleids, Oid newrole)
 
 			/*
 			 * The various ALTER OWNER routines tend to leak memory in
-			 * GetCurrentMemoryContext().  That's not a problem when they're only
+			 * CurrentMemoryContext.  That's not a problem when they're only
 			 * called once per command; but in this usage where we might be
 			 * touching many objects, it can amount to a serious memory leak.
 			 * Fix that by running each call in a short-lived context.
 			 */
-			cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+			cxt = AllocSetContextCreate(CurrentMemoryContext,
 										"shdepReassignOwned",
 										ALLOCSET_DEFAULT_SIZES);
 			oldcxt = MemoryContextSwitchTo(cxt);

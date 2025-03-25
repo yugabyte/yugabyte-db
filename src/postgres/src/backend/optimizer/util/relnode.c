@@ -410,7 +410,7 @@ build_join_rel_hash(PlannerInfo *root)
 	hash_ctl.entrysize = sizeof(JoinHashEntry);
 	hash_ctl.hash = bitmap_hash;
 	hash_ctl.match = bitmap_match;
-	hash_ctl.hcxt = GetCurrentMemoryContext();
+	hash_ctl.hcxt = CurrentMemoryContext;
 	hashtab = hash_create("JoinRelHashTable",
 						  256L,
 						  &hash_ctl,

@@ -316,10 +316,10 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 		so->keyData = NULL;
 	initSpGistState(&so->state, scan->indexRelation);
 
-	so->tempCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->tempCxt = AllocSetContextCreate(CurrentMemoryContext,
 										"SP-GiST search temporary context",
 										ALLOCSET_DEFAULT_SIZES);
-	so->traversalCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->traversalCxt = AllocSetContextCreate(CurrentMemoryContext,
 											 "SP-GiST traversal-value context",
 											 ALLOCSET_DEFAULT_SIZES);
 
@@ -363,11 +363,11 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 
 	fmgr_info_copy(&so->innerConsistentFn,
 				   index_getprocinfo(rel, 1, SPGIST_INNER_CONSISTENT_PROC),
-				   GetCurrentMemoryContext());
+				   CurrentMemoryContext);
 
 	fmgr_info_copy(&so->leafConsistentFn,
 				   index_getprocinfo(rel, 1, SPGIST_LEAF_CONSISTENT_PROC),
-				   GetCurrentMemoryContext());
+				   CurrentMemoryContext);
 
 	so->indexCollation = rel->rd_indcollation[0];
 

@@ -304,7 +304,7 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 	 * context for the arguments of all tSRFs, as they have roughly equivalent
 	 * lifetimes.
 	 */
-	state->argcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	state->argcontext = AllocSetContextCreate(CurrentMemoryContext,
 											  "tSRF function arguments",
 											  ALLOCSET_DEFAULT_SIZES);
 

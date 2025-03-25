@@ -406,7 +406,7 @@ defGetCopyHeaderChoice(DefElem *def, bool is_from)
  *
  * This is exported so that external users of the COPY API can sanity-check
  * a list of options.  In that usage, 'opts_out' can be passed as NULL and
- * the collected data is just leaked until GetCurrentMemoryContext() is reset.
+ * the collected data is just leaked until CurrentMemoryContext is reset.
  *
  * Note that additional checking, such as whether column names listed in FORCE
  * QUOTE actually exist, has to be applied later.  This just checks for

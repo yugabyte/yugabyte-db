@@ -623,7 +623,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->parent_root = parent_root;
 	root->plan_params = NIL;
 	root->outer_params = NULL;
-	root->planner_cxt = GetCurrentMemoryContext();
+	root->planner_cxt = CurrentMemoryContext;
 	root->init_plans = NIL;
 	root->cte_plan_ids = NIL;
 	root->multiexpr_params = NIL;
@@ -6243,7 +6243,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 	root->parse = query;
 	root->glob = glob;
 	root->query_level = 1;
-	root->planner_cxt = GetCurrentMemoryContext();
+	root->planner_cxt = CurrentMemoryContext;
 	root->wt_param_id = -1;
 
 	/* Build a minimal RTE for the rel */
@@ -6363,7 +6363,7 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 	root->parse = query;
 	root->glob = glob;
 	root->query_level = 1;
-	root->planner_cxt = GetCurrentMemoryContext();
+	root->planner_cxt = CurrentMemoryContext;
 	root->wt_param_id = -1;
 
 	/*

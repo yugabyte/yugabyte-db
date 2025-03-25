@@ -546,7 +546,7 @@ bt_check_every_level(Relation rel, Relation heaprel, bool heapkeyspace,
 				 errhint("Only B-Tree version 4 indexes support rootdescend verification.")));
 
 	/* Create context for page */
-	state->targetcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	state->targetcontext = AllocSetContextCreate(CurrentMemoryContext,
 												 "amcheck context",
 												 ALLOCSET_DEFAULT_SIZES);
 	state->checkstrategy = GetAccessStrategy(BAS_BULKREAD);

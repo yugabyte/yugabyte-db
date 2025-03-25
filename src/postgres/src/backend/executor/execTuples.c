@@ -1149,7 +1149,7 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 	if (tupleDesc != NULL)
 		slot->tts_flags |= TTS_FLAG_FIXED;
 	slot->tts_tupleDescriptor = tupleDesc;
-	slot->tts_mcxt = GetCurrentMemoryContext();
+	slot->tts_mcxt = CurrentMemoryContext;
 	slot->tts_nvalid = 0;
 
 	if (tupleDesc != NULL)

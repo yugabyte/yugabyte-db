@@ -101,7 +101,7 @@ entryIndexByFrequencyCmp(const void *a1, const void *a2, void *arg)
 static void
 startScanKey(GinScanOpaque so, GinScanKey key)
 {
-	MemoryContext oldCtx = GetCurrentMemoryContext();
+	MemoryContext oldCtx = CurrentMemoryContext;
 	int			i;
 	int			j;
 	int		   *entryIndexes;

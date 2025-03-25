@@ -889,7 +889,7 @@ xml_is_document(xmltype *arg)
 #ifdef USE_LIBXML
 	bool		result;
 	volatile xmlDocPtr doc = NULL;
-	MemoryContext ccxt = GetCurrentMemoryContext();
+	MemoryContext ccxt = CurrentMemoryContext;
 
 	/* We want to catch ereport(INVALID_XML_DOCUMENT) and return false */
 	PG_TRY();
@@ -3918,7 +3918,7 @@ xml_xpathobjtoxmlarray(xmlXPathObjectPtr xpathobj,
 						datum = PointerGetDatum(xml_xmlnodetoxmltype(xpathobj->nodesetval->nodeTab[i],
 																	 xmlerrcxt));
 						(void) accumArrayResult(astate, datum, false,
-												XMLOID, GetCurrentMemoryContext());
+												XMLOID, CurrentMemoryContext);
 					}
 				}
 			}
@@ -3955,7 +3955,7 @@ xml_xpathobjtoxmlarray(xmlXPathObjectPtr xpathobj,
 	result_str = map_sql_value_to_xml_value(datum, datumtype, true);
 	datum = PointerGetDatum(cstring_to_xmltype(result_str));
 	(void) accumArrayResult(astate, datum, false,
-							XMLOID, GetCurrentMemoryContext());
+							XMLOID, CurrentMemoryContext);
 	return 1;
 }
 
@@ -4171,10 +4171,10 @@ xpath(PG_FUNCTION_ARGS)
 	ArrayType  *namespaces = PG_GETARG_ARRAYTYPE_P(2);
 	ArrayBuildState *astate;
 
-	astate = initArrayResult(XMLOID, GetCurrentMemoryContext(), true);
+	astate = initArrayResult(XMLOID, CurrentMemoryContext, true);
 	xpath_internal(xpath_expr_text, data, namespaces,
 				   NULL, astate);
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, GetCurrentMemoryContext()));
+	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
 #else
 	NO_XML_SUPPORT();
 	return 0;

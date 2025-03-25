@@ -457,7 +457,7 @@ IdentifySystem(void)
 
 	if (MyDatabaseId != InvalidOid)
 	{
-		MemoryContext cur = GetCurrentMemoryContext();
+		MemoryContext cur = CurrentMemoryContext;
 
 		/* syscache access needs a transaction env. */
 		StartTransactionCommand();
@@ -1976,7 +1976,7 @@ exec_replication_command(const char *cmd_string)
 	/*
 	 * Prepare to parse and execute the command.
 	 */
-	cmd_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cmd_context = AllocSetContextCreate(CurrentMemoryContext,
 										"Replication command context",
 										ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(cmd_context);

@@ -74,7 +74,7 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -214,7 +214,7 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		return NULL;
 	}
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -310,7 +310,7 @@ PLy_spi_execute_query(char *query, long limit)
 	volatile ResourceOwner oldowner;
 	PyObject   *ret = NULL;
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -373,7 +373,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 		Py_DECREF(result->nrows);
 		result->nrows = PyLong_FromUnsignedLongLong(rows);
 
-		cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		cxt = AllocSetContextCreate(CurrentMemoryContext,
 									"PL/Python temp context",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -381,7 +381,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 		PLy_input_setup_func(&ininfo, cxt, RECORDOID, -1,
 							 exec_ctx->curr_proc);
 
-		oldcontext = GetCurrentMemoryContext();
+		oldcontext = CurrentMemoryContext;
 		PG_TRY();
 		{
 			MemoryContext oldcontext2;
@@ -457,7 +457,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 PyObject *
 PLy_commit(PyObject *self, PyObject *args)
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
 	PG_TRY();
@@ -504,7 +504,7 @@ PLy_commit(PyObject *self, PyObject *args)
 PyObject *
 PLy_rollback(PyObject *self, PyObject *args)
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
 	PG_TRY();
@@ -553,7 +553,7 @@ PLy_rollback(PyObject *self, PyObject *args)
  *
  * Usage:
  *
- *	MemoryContext oldcontext = GetCurrentMemoryContext();
+ *	MemoryContext oldcontext = CurrentMemoryContext;
  *	ResourceOwner oldowner = CurrentResourceOwner;
  *
  *	PLy_spi_subtransaction_begin(oldcontext, oldowner);

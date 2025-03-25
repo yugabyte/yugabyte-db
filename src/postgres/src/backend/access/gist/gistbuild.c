@@ -184,7 +184,7 @@ gistbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	IndexBuildResult *result;
 	double		reltuples;
 	GISTBuildState buildstate;
-	MemoryContext oldcxt = GetCurrentMemoryContext();
+	MemoryContext oldcxt = CurrentMemoryContext;
 	int			fillfactor;
 	Oid			SortSupportFnOids[INDEX_MAX_KEYS];
 	GiSTOptions *options = (GiSTOptions *) index->rd_options;
@@ -1572,7 +1572,7 @@ gistInitParentMap(GISTBuildState *buildstate)
 
 	hashCtl.keysize = sizeof(BlockNumber);
 	hashCtl.entrysize = sizeof(ParentMapEntry);
-	hashCtl.hcxt = GetCurrentMemoryContext();
+	hashCtl.hcxt = CurrentMemoryContext;
 	buildstate->parentMap = hash_create("gistbuild parent map",
 										1024,
 										&hashCtl,

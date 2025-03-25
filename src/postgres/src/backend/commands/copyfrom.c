@@ -541,7 +541,7 @@ CopyFrom(CopyFromState cstate)
 	ModifyTableState *mtstate;
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	PartitionTupleRouting *proute = NULL;
 	ErrorContextCallback errcallback;
@@ -1480,7 +1480,7 @@ BeginCopyFrom(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 

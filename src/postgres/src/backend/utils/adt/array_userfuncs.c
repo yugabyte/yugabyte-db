@@ -59,7 +59,7 @@ fetch_array_arg_replace_nulls(FunctionCallInfo fcinfo, int argno)
 
 	/* Figure out which context we want the result in */
 	if (!AggCheckCallContext(fcinfo, &resultcxt))
-		resultcxt = GetCurrentMemoryContext();
+		resultcxt = CurrentMemoryContext;
 
 	/* Now collect the array value */
 	if (!PG_ARGISNULL(argno))
@@ -525,7 +525,7 @@ array_agg_finalfn(PG_FUNCTION_ARGS)
 	 * so.
 	 */
 	result = makeMdArrayResult(state, 1, dims, lbs,
-							   GetCurrentMemoryContext(),
+							   CurrentMemoryContext,
 							   false);
 
 	PG_RETURN_DATUM(result);
@@ -598,7 +598,7 @@ array_agg_array_finalfn(PG_FUNCTION_ARGS)
 	 * nodeAgg.c's responsibility to reset the aggcontext when it's safe to do
 	 * so.
 	 */
-	result = makeArrayResultArr(state, GetCurrentMemoryContext(), false);
+	result = makeArrayResultArr(state, CurrentMemoryContext, false);
 
 	PG_RETURN_DATUM(result);
 }
@@ -814,13 +814,13 @@ array_positions(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("searching for elements in multidimensional arrays is not supported")));
 
-	astate = initArrayResult(INT4OID, GetCurrentMemoryContext(), false);
+	astate = initArrayResult(INT4OID, CurrentMemoryContext, false);
 
 	if (PG_ARGISNULL(1))
 	{
 		/* fast return when the array doesn't have nulls */
 		if (!array_contains_nulls(array))
-			PG_RETURN_DATUM(makeArrayResult(astate, GetCurrentMemoryContext()));
+			PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
 		searched_element = (Datum) 0;
 		null_search = true;
 	}
@@ -882,7 +882,7 @@ array_positions(PG_FUNCTION_ARGS)
 			if (isnull && null_search)
 				astate =
 					accumArrayResult(astate, Int32GetDatum(position), false,
-									 INT4OID, GetCurrentMemoryContext());
+									 INT4OID, CurrentMemoryContext);
 
 			continue;
 		}
@@ -892,7 +892,7 @@ array_positions(PG_FUNCTION_ARGS)
 										   searched_element, value)))
 			astate =
 				accumArrayResult(astate, Int32GetDatum(position), false,
-								 INT4OID, GetCurrentMemoryContext());
+								 INT4OID, CurrentMemoryContext);
 	}
 
 	array_free_iterator(array_iterator);
@@ -900,5 +900,5 @@ array_positions(PG_FUNCTION_ARGS)
 	/* Avoid leaking memory when handed toasted input */
 	PG_FREE_IF_COPY(array, 0);
 
-	PG_RETURN_DATUM(makeArrayResult(astate, GetCurrentMemoryContext()));
+	PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
 }

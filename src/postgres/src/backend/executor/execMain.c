@@ -122,7 +122,7 @@ static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
  *
  * eflags contains flag bits as described in executor.h.
  *
- * NB: the GetCurrentMemoryContext() when this is called will become the parent
+ * NB: the CurrentMemoryContext when this is called will become the parent
  * of the per-query context used for this Executor invocation.
  *
  * We provide a function hook variable that lets loadable plugins

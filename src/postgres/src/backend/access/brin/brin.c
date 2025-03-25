@@ -167,7 +167,7 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 	BrinRevmap *revmap;
 	Buffer		buf = InvalidBuffer;
 	MemoryContext tupcxt = NULL;
-	MemoryContext oldcxt = GetCurrentMemoryContext();
+	MemoryContext oldcxt = CurrentMemoryContext;
 	bool		autosummarize = BrinGetAutoSummarize(idxRel);
 
 	revmap = brinRevmapInitialize(idxRel, &pagesPerRange, NULL);
@@ -240,7 +240,7 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 		/* First time through in this brininsert call? */
 		if (tupcxt == NULL)
 		{
-			tupcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+			tupcxt = AllocSetContextCreate(CurrentMemoryContext,
 										   "brininsert cxt",
 										   ALLOCSET_DEFAULT_SIZES);
 			MemoryContextSwitchTo(tupcxt);
@@ -493,7 +493,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 			tmp = index_getprocinfo(idxRel, keyattno,
 									BRIN_PROCNUM_CONSISTENT);
 			fmgr_info_copy(&consistentFn[keyattno - 1], tmp,
-						   GetCurrentMemoryContext());
+						   CurrentMemoryContext);
 		}
 
 		/* Add key to the proper per-attribute array. */
@@ -516,7 +516,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	 * Setup and use a per-range memory context, which is reset every time we
 	 * loop below.  This avoids having to free the tuples within the loop.
 	 */
-	perRangeCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	perRangeCxt = AllocSetContextCreate(CurrentMemoryContext,
 										"bringetbitmap cxt",
 										ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(perRangeCxt);
@@ -1198,7 +1198,7 @@ brin_build_desc(Relation rel)
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
 								"brin desc cxt",
 								ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -1596,7 +1596,7 @@ union_tuples(BrinDesc *bdesc, BrinMemTuple *a, BrinTuple *b)
 	MemoryContext oldcxt;
 
 	/* Use our own memory context to avoid retail pfree */
-	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
 								"brin union",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);

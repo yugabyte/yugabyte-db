@@ -865,7 +865,7 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		myState = (DR_sqlfunction *) dest;
 		Assert(myState->pub.mydest == DestSQLFunction);
 		myState->tstore = fcache->tstore;
-		myState->cxt = GetCurrentMemoryContext();
+		myState->cxt = CurrentMemoryContext;
 		myState->filter = fcache->junkFilter;
 	}
 	else

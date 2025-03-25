@@ -32,7 +32,7 @@
 #define INIT_MEM_CONTEXT_AND_SPI_CONNECT(desc) \
 	do \
 	{ \
-		context_new = AllocSetContextCreate(GetCurrentMemoryContext(), desc, \
+		context_new = AllocSetContextCreate(CurrentMemoryContext, desc, \
 											ALLOCSET_DEFAULT_SIZES); \
 		context_old = MemoryContextSwitchTo(context_new); \
 		GetUserIdAndSecContext(&save_userid, &save_sec_context); \

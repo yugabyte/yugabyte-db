@@ -232,7 +232,7 @@ ExecSetupPartitionTupleRouting(EState *estate, Relation rel)
 	 */
 	proute = (PartitionTupleRouting *) palloc0(sizeof(PartitionTupleRouting));
 	proute->partition_root = rel;
-	proute->memcxt = GetCurrentMemoryContext();
+	proute->memcxt = CurrentMemoryContext;
 	/* Rest of members initialized by zeroing */
 
 	/*
@@ -1764,7 +1764,7 @@ CreatePartitionPruneState(PlanState *planstate, PartitionPruneInfo *pruneinfo)
 	 * our control.
 	 */
 	prunestate->prune_context =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
+		AllocSetContextCreate(CurrentMemoryContext,
 							  "Partition Prune",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -1966,7 +1966,7 @@ InitPartitionPruneContext(PartitionPruneContext *context,
 	context->stepcmpfuncs = (FmgrInfo *)
 		palloc0(sizeof(FmgrInfo) * n_steps * partnatts);
 
-	context->ppccontext = GetCurrentMemoryContext();
+	context->ppccontext = CurrentMemoryContext;
 	context->planstate = planstate;
 	context->exprcontext = econtext;
 

@@ -752,7 +752,7 @@ execute_sql_string(const char *sql)
 		 * limit the memory used when there are many commands in the string.
 		 */
 		per_parsetree_context =
-			AllocSetContextCreate(GetCurrentMemoryContext(),
+			AllocSetContextCreate(CurrentMemoryContext,
 								  "execute_sql_string per-statement context",
 								  ALLOCSET_DEFAULT_SIZES);
 		oldcontext = MemoryContextSwitchTo(per_parsetree_context);

@@ -72,7 +72,7 @@
 /*
  * Initialization requires a lot of memory that's not needed
  * after the initialization is done.  During initialization,
- * GetCurrentMemoryContext() is the long-lived memory context associated
+ * CurrentMemoryContext is the long-lived memory context associated
  * with the dictionary cache entry.  We keep the short-lived stuff
  * in the Conf->buildCxt context.
  */
@@ -766,7 +766,7 @@ NIAddAffix(IspellDict *Conf, const char *flag, char flagflags, const char *mask,
 
 		pregex->mcallback.func = regex_affix_deletion_callback;
 		pregex->mcallback.arg = (void *) pregex;
-		MemoryContextRegisterResetCallback(GetCurrentMemoryContext(),
+		MemoryContextRegisterResetCallback(CurrentMemoryContext,
 										   &pregex->mcallback);
 	}
 

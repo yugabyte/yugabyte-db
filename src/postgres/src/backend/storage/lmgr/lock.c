@@ -3329,7 +3329,7 @@ CheckForSessionAndXactLocks(void)
 	/* Create a local hash table keyed by LOCKTAG only */
 	hash_ctl.keysize = sizeof(LOCKTAG);
 	hash_ctl.entrysize = sizeof(PerLockTagEntry);
-	hash_ctl.hcxt = GetCurrentMemoryContext();
+	hash_ctl.hcxt = CurrentMemoryContext;
 
 	lockhtab = hash_create("CheckForSessionAndXactLocks table",
 						   256, /* arbitrary initial size */

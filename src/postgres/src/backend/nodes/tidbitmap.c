@@ -255,7 +255,7 @@ static int	tbm_shared_comparator(const void *left, const void *right,
 /*
  * tbm_create - create an initially-empty bitmap
  *
- * The bitmap will live in the memory context that is GetCurrentMemoryContext()
+ * The bitmap will live in the memory context that is CurrentMemoryContext
  * at the time of this call.  It will be limited to (approximately) maxbytes
  * total memory consumption.  If the DSA passed to this function is not NULL
  * then the memory for storing elements of the underlying page table will
@@ -269,7 +269,7 @@ tbm_create(long maxbytes, dsa_area *dsa)
 	/* Create the TIDBitmap struct and zero all its fields */
 	tbm = makeNode(TIDBitmap);
 
-	tbm->mcxt = GetCurrentMemoryContext();
+	tbm->mcxt = CurrentMemoryContext;
 	tbm->status = TBM_EMPTY;
 
 	tbm->maxentries = (int) tbm_calculate_entries(maxbytes);

@@ -743,7 +743,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 * restart.  So we need to be prepared to restore it as pointing to the
 	 * exit-time TopTransactionResourceOwner.  (Ain't that ugly?  This idea of
 	 * internally starting whole new transactions is not good.)
-	 * GetCurrentMemoryContext() has a similar problem, but the other pointers we
+	 * CurrentMemoryContext has a similar problem, but the other pointers we
 	 * save here will be NULL or pointing to longer-lived objects.
 	 */
 	saveTopTransactionResourceOwner = TopTransactionResourceOwner;
@@ -751,7 +751,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	saveActivePortal = ActivePortal;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
-	saveMemoryContext = GetCurrentMemoryContext();
+	saveMemoryContext = CurrentMemoryContext;
 	PG_TRY();
 	{
 		ActivePortal = portal;
@@ -1355,7 +1355,7 @@ PortalRunMulti(Portal portal,
 		/*
 		 * Clear subsidiary contexts to recover temporary memory.
 		 */
-		Assert(portal->portalContext == GetCurrentMemoryContext());
+		Assert(portal->portalContext == CurrentMemoryContext);
 
 		MemoryContextDeleteChildren(portal->portalContext);
 

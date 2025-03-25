@@ -115,7 +115,7 @@ static ResourceOwner shared_simple_eval_resowner = NULL;
  *
  * 1. Function-call-lifespan data, such as variable values, is kept in the
  * "main" context, a/k/a the "SPI Proc" context established by SPI_connect().
- * This is usually the GetCurrentMemoryContext() while running code in this module
+ * This is usually the CurrentMemoryContext while running code in this module
  * (which is not good, because careless coding can easily cause
  * function-lifespan memory leaks, but we live with it for now).
  *
@@ -1748,7 +1748,7 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		/*
 		 * Execute the statements in the block's body inside a sub-transaction
 		 */
-		MemoryContext oldcontext = GetCurrentMemoryContext();
+		MemoryContext oldcontext = CurrentMemoryContext;
 		ResourceOwner oldowner = CurrentResourceOwner;
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
@@ -4037,7 +4037,7 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	estate->ndatums = func->ndatums;
 	estate->datums = NULL;
 	/* the datums array will be filled by copy_plpgsql_datums() */
-	estate->datum_context = GetCurrentMemoryContext();
+	estate->datum_context = CurrentMemoryContext;
 
 	/* initialize our ParamListInfo with appropriate hook functions */
 	estate->paramLI = makeParamList(0);
@@ -4056,12 +4056,12 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 		/* Private cast hash just lives in function's main context */
 		ctl.keysize = sizeof(plpgsql_CastHashKey);
 		ctl.entrysize = sizeof(plpgsql_CastHashEntry);
-		ctl.hcxt = GetCurrentMemoryContext();
+		ctl.hcxt = CurrentMemoryContext;
 		estate->cast_hash = hash_create("PLpgSQL private cast cache",
 										16, /* start small and extend */
 										&ctl,
 										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-		estate->cast_hash_context = GetCurrentMemoryContext();
+		estate->cast_hash_context = CurrentMemoryContext;
 	}
 	else
 	{
@@ -4098,7 +4098,7 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	 * context.  Additional stmt_mcontexts might be created as children of it.
 	 */
 	estate->stmt_mcontext = NULL;
-	estate->stmt_mcontext_parent = GetCurrentMemoryContext();
+	estate->stmt_mcontext_parent = CurrentMemoryContext;
 
 	estate->eval_tuptable = NULL;
 	estate->eval_processed = 0;

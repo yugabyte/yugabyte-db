@@ -1231,7 +1231,7 @@ test_enc_conversion(PG_FUNCTION_ARGS)
 							   (int) srclen)));
 
 		dstsize = (Size) srclen * MAX_CONVERSION_GROWTH + 1;
-		dst = MemoryContextAlloc(GetCurrentMemoryContext(), dstsize);
+		dst = MemoryContextAlloc(CurrentMemoryContext, dstsize);
 
 		/* perform conversion */
 		convertedbytes = pg_do_encoding_conversion_buf(proc,

@@ -2232,7 +2232,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 				memset(&hctl, 0, sizeof(HASHCTL));
 				hctl.keysize = sizeof(Oid);
 				hctl.entrysize = sizeof(ForeignTruncateInfo);
-				hctl.hcxt = GetCurrentMemoryContext();
+				hctl.hcxt = CurrentMemoryContext;
 
 				ft_htab = hash_create("TRUNCATE for Foreign Tables",
 									  32,	/* start small and extend */
@@ -12519,11 +12519,11 @@ validateForeignKeyConstraint(char *conname,
 
 	/* YB note: perTupCxt is used as per-batch (and not per-tuple) context */
 	if (IsYBRelation(rel))
-		perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
 										  "validateForeignKeyConstraint",
 										  ALLOCSET_DEFAULT_SIZES);
 	else
-		perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
 										  "validateForeignKeyConstraint",
 										  ALLOCSET_SMALL_SIZES);
 
@@ -19286,7 +19286,7 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel, List **yb_wqueue)
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
 								"AttachPartitionEnsureIndexes",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -19485,7 +19485,7 @@ CloneRowTriggersToPartition(Relation parent, Relation partition)
 	scan = systable_beginscan(pg_trigger, TriggerRelidNameIndexId,
 							  true, NULL, 1, &key);
 
-	perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
 									  "clone trig", ALLOCSET_SMALL_SIZES);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
@@ -22325,7 +22325,7 @@ YbATCopyTriggers(const Relation old_rel, const Relation new_rel,
 							  true /* indexOK */ , NULL /* snapshot */ ,
 							  1 /* nkeys */ , &key);
 
-	per_tup_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	per_tup_cxt = AllocSetContextCreate(CurrentMemoryContext,
 										"copy triggers", ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(per_tup_cxt);
 

@@ -3579,7 +3579,7 @@ ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op, ExprContext *eco
 		 * If the array happens to contain many duplicate values then it'll
 		 * just mean that we sized the table a bit on the large side.
 		 */
-		elements_tab->hashtab = saophash_create(GetCurrentMemoryContext(), nitems,
+		elements_tab->hashtab = saophash_create(CurrentMemoryContext, nitems,
 												elements_tab);
 
 		MemoryContextSwitchTo(oldcontext);
@@ -4430,7 +4430,7 @@ ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
 		if (DatumIsReadWriteExpandedObject(newValue,
 										   false,
 										   pertrans->transtypeLen) &&
-			MemoryContextGetParent(DatumGetEOHP(newValue)->eoh_context) == GetCurrentMemoryContext())
+			MemoryContextGetParent(DatumGetEOHP(newValue)->eoh_context) == CurrentMemoryContext)
 			 /* do nothing */ ;
 		else
 			newValue = datumCopy(newValue,

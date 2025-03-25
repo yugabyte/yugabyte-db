@@ -1193,7 +1193,7 @@ CompactCheckpointerRequestQueue(void)
 	/* Initialize temporary hash table */
 	ctl.keysize = sizeof(CheckpointerRequest);
 	ctl.entrysize = sizeof(struct CheckpointerSlotMapping);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 
 	htab = hash_create("CompactCheckpointerRequestQueue",
 					   CheckpointerShmem->num_requests,

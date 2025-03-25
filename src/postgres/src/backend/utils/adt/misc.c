@@ -757,7 +757,7 @@ parse_ident(PG_FUNCTION_ARGS)
 						 errdetail("Quoted identifier must not be empty.")));
 
 			astate = accumArrayResult(astate, CStringGetTextDatum(curname),
-									  false, TEXTOID, GetCurrentMemoryContext());
+									  false, TEXTOID, CurrentMemoryContext);
 			missing_ident = false;
 		}
 		else if (is_ident_start((unsigned char) *nextp))
@@ -781,7 +781,7 @@ parse_ident(PG_FUNCTION_ARGS)
 			downname = downcase_identifier(curname, len, false, false);
 			part = cstring_to_text_with_len(downname, len);
 			astate = accumArrayResult(astate, PointerGetDatum(part), false,
-									  TEXTOID, GetCurrentMemoryContext());
+									  TEXTOID, CurrentMemoryContext);
 			missing_ident = false;
 		}
 
@@ -832,7 +832,7 @@ parse_ident(PG_FUNCTION_ARGS)
 		}
 	}
 
-	PG_RETURN_DATUM(makeArrayResult(astate, GetCurrentMemoryContext()));
+	PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
 }
 
 /*

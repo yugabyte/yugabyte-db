@@ -505,7 +505,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	 * evaluation results into the query-lifespan context either.  We just
 	 * need one context, because we evaluate each function separately.
 	 */
-	scanstate->argcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	scanstate->argcontext = AllocSetContextCreate(CurrentMemoryContext,
 												  "Table function arguments",
 												  ALLOCSET_DEFAULT_SIZES);
 

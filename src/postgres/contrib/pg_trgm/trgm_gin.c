@@ -113,7 +113,7 @@ gin_extract_query_trgm(PG_FUNCTION_ARGS)
 			switch_fallthrough();
 		case RegExpStrategyNumber:
 			trg = createTrgmNFA(val, PG_GET_COLLATION(),
-								&graph, GetCurrentMemoryContext());
+								&graph, CurrentMemoryContext);
 			if (trg && ARRNELEM(trg) > 0)
 			{
 				/*

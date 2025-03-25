@@ -1186,7 +1186,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 			SortSupport orderbysort = &indexstate->iss_SortSupport[i];
 
 			/* Initialize sort support */
-			orderbysort->ssup_cxt = GetCurrentMemoryContext();
+			orderbysort->ssup_cxt = CurrentMemoryContext;
 			orderbysort->ssup_collation = orderbyColl;
 			/* See cmp_orderbyvals() comments on NULLS LAST */
 			orderbysort->ssup_nulls_first = false;

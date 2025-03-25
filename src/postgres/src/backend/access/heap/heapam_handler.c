@@ -1192,7 +1192,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 	BlockNumber previous_blkno = InvalidBlockNumber;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	int			yb_tuples_done = 0;
 
 	/*

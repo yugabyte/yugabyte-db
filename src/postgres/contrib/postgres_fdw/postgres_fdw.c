@@ -5022,8 +5022,8 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	reservoir_init_selection_state(&astate.rstate, targrows);
 
 	/* Remember ANALYZE context, and create a per-tuple temp context */
-	astate.anl_cxt = GetCurrentMemoryContext();
-	astate.temp_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	astate.anl_cxt = CurrentMemoryContext;
+	astate.temp_cxt = AllocSetContextCreate(CurrentMemoryContext,
 											"postgres_fdw temporary data",
 											ALLOCSET_SMALL_SIZES);
 

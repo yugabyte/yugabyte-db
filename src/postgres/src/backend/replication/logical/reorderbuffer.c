@@ -313,7 +313,7 @@ ReorderBufferAllocate(void)
 	Assert(MyReplicationSlot != NULL);
 
 	/* allocate memory in own context, to have better accountability */
-	new_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	new_ctx = AllocSetContextCreate(CurrentMemoryContext,
 									"ReorderBuffer",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -2078,7 +2078,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 						bool streaming)
 {
 	bool		using_subtxn;
-	MemoryContext ccxt = GetCurrentMemoryContext();
+	MemoryContext ccxt = CurrentMemoryContext;
 	ReorderBufferIterTXNState *volatile iterstate = NULL;
 	volatile XLogRecPtr prev_lsn = InvalidXLogRecPtr;
 	ReorderBufferChange *volatile specinsert = NULL;

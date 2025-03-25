@@ -6359,7 +6359,7 @@ get_actual_variable_range(PlannerInfo *root, VariableStatData *vardata,
 			ScanKeyData scankeys[1];
 
 			/* Make sure any cruft gets recycled when we're done */
-			tmpcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+			tmpcontext = AllocSetContextCreate(CurrentMemoryContext,
 											   "get_actual_variable_range workspace",
 											   ALLOCSET_DEFAULT_SIZES);
 			oldcontext = MemoryContextSwitchTo(tmpcontext);

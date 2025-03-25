@@ -471,7 +471,7 @@ tokenize_auth_file(const char *filename, FILE *file, List **tok_lines,
 	MemoryContext linecxt;
 	MemoryContext oldcxt;
 
-	linecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	linecxt = AllocSetContextCreate(CurrentMemoryContext,
 									"tokenize_auth_file",
 									ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(linecxt);

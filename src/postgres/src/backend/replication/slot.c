@@ -580,7 +580,7 @@ retry:
 		 * and the replica identity.
 		 */
 		ctl.entrysize = sizeof(YbcPgReplicaIdentityDescriptor);
-		ctl.hcxt = GetCurrentMemoryContext();
+		ctl.hcxt = CurrentMemoryContext;
 
 		replica_identities = hash_create("yb_repl_slot_replica_identities",
 										 32,	/* start small and extend */

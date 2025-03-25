@@ -2367,7 +2367,7 @@ AsyncExistsPendingNotify(Notification *n)
  * Add a notification event to a pre-existing pendingNotifies list.
  *
  * Because pendingNotifies->events is already nonempty, this works
- * correctly no matter what GetCurrentMemoryContext() is.
+ * correctly no matter what CurrentMemoryContext is.
  */
 static void
 AddEventToPendingNotifies(Notification *n)

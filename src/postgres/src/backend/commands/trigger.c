@@ -1173,7 +1173,7 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 		MemoryContext oldcxt,
 					perChildCxt;
 
-		perChildCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		perChildCxt = AllocSetContextCreate(CurrentMemoryContext,
 											"part trig clone",
 											ALLOCSET_SMALL_SIZES);
 
@@ -4749,7 +4749,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 
 	/* Make a per-tuple memory context for trigger function calls */
 	per_tuple_context =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
+		AllocSetContextCreate(CurrentMemoryContext,
 							  "AfterTriggerTupleContext",
 							  ALLOCSET_DEFAULT_SIZES);
 

@@ -1323,7 +1323,7 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 				/* No match, so keep old option */
 				astate = accumArrayResult(astate, oldoptions[i],
 										  false, TEXTOID,
-										  GetCurrentMemoryContext());
+										  CurrentMemoryContext);
 			}
 		}
 	}
@@ -1424,12 +1424,12 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 
 			astate = accumArrayResult(astate, PointerGetDatum(t),
 									  false, TEXTOID,
-									  GetCurrentMemoryContext());
+									  CurrentMemoryContext);
 		}
 	}
 
 	if (astate)
-		result = makeArrayResult(astate, GetCurrentMemoryContext());
+		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
 
@@ -1489,11 +1489,11 @@ ybExcludeNonPersistentReloptions(Datum options)
 
 		astate = accumArrayResult(astate, optiondatums[i],
 								  false, TEXTOID,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 	}
 
 	if (astate)
-		result = makeArrayResult(astate, GetCurrentMemoryContext());
+		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
 

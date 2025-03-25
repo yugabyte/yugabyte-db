@@ -4085,7 +4085,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
 	TM_Result	res = TM_Ok;
-	MemoryContext exec_context = GetCurrentMemoryContext();
+	MemoryContext exec_context = CurrentMemoryContext;
 
 	PG_TRY();
 	{

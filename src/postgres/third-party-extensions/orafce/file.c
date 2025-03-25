@@ -923,7 +923,7 @@ safe_named_location(text *location)
 	char	nulls[1] = {' '};
 	char   *result;
 
-	old_cxt = GetCurrentMemoryContext();
+	old_cxt = CurrentMemoryContext;
 
 	values[0] = PointerGetDatum(location);
 

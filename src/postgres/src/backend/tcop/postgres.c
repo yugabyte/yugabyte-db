@@ -6274,7 +6274,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
-					MemoryContext oldcontext = GetCurrentMemoryContext();
+					MemoryContext oldcontext = CurrentMemoryContext;
 
 					PG_TRY();
 					{
@@ -6366,7 +6366,7 @@ PostgresMain(const char *dbname, const char *username)
 					}
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = GetCurrentMemoryContext();
+					MemoryContext oldcontext = CurrentMemoryContext;
 
 					PG_TRY();
 					{
@@ -6429,7 +6429,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = GetCurrentMemoryContext();
+					MemoryContext oldcontext = CurrentMemoryContext;
 					const YBQueryRetryData *retry_data = yb_collect_portal_restart_data(portal_name);
 
 					PG_TRY();
@@ -6562,7 +6562,7 @@ PostgresMain(const char *dbname, const char *username)
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(max_rows,
 														retry_data,
-														GetCurrentMemoryContext());
+														CurrentMemoryContext);
 							}
 							PG_CATCH();
 							{

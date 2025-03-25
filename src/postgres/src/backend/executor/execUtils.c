@@ -84,7 +84,7 @@ static void ShutdownExprContext(ExprContext *econtext, bool isCommit);
  * Principally, this creates the per-query memory context that will be
  * used to hold all working data that lives till the end of the query.
  * Note that the per-query context will become a child of the caller's
- * GetCurrentMemoryContext().
+ * CurrentMemoryContext.
  * ----------------
  */
 EState *
@@ -97,7 +97,7 @@ CreateExecutorState(void)
 	/*
 	 * Create the per-query context for this Executor run.
 	 */
-	qcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	qcontext = AllocSetContextCreate(CurrentMemoryContext,
 									 "ExecutorState",
 									 ALLOCSET_DEFAULT_SIZES);
 
@@ -411,13 +411,13 @@ CreateStandaloneExprContext(void)
 	econtext->ecxt_innertuple = NULL;
 	econtext->ecxt_outertuple = NULL;
 
-	econtext->ecxt_per_query_memory = GetCurrentMemoryContext();
+	econtext->ecxt_per_query_memory = CurrentMemoryContext;
 
 	/*
 	 * Create working memory for expression evaluation in this context.
 	 */
 	econtext->ecxt_per_tuple_memory =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
+		AllocSetContextCreate(CurrentMemoryContext,
 							  "ExprContext",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -512,7 +512,7 @@ MakePerTupleExprContext(EState *estate)
 /* ----------------------------------------------------------------
  *				 miscellaneous node-init support functions
  *
- * Note: all of these are expected to be called with GetCurrentMemoryContext()
+ * Note: all of these are expected to be called with CurrentMemoryContext
  * equal to the per-query memory context.
  * ----------------------------------------------------------------
  */

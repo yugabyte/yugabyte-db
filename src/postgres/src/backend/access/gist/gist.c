@@ -119,7 +119,7 @@ gisthandler(PG_FUNCTION_ARGS)
 MemoryContext
 createTempGistContext(void)
 {
-	return AllocSetContextCreate(GetCurrentMemoryContext(),
+	return AllocSetContextCreate(CurrentMemoryContext,
 								 "GiST temporary context",
 								 ALLOCSET_DEFAULT_SIZES);
 }
@@ -1514,7 +1514,7 @@ initGISTstate(Relation index)
 			 index->rd_att->natts, INDEX_MAX_KEYS);
 
 	/* Create the memory context that will hold the GISTSTATE */
-	scanCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	scanCxt = AllocSetContextCreate(CurrentMemoryContext,
 									"GiST scan context",
 									ALLOCSET_DEFAULT_SIZES);
 	oldCxt = MemoryContextSwitchTo(scanCxt);

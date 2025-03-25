@@ -3580,7 +3580,7 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 	pair.key.type = jbvString;
 	pair.value.type = jbvNumeric;
 
-	MemoryContext tempContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tempContext = AllocSetContextCreate(CurrentMemoryContext,
 													  "JSONB processing temporary context",
 													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext oldContext = MemoryContextSwitchTo(tempContext);

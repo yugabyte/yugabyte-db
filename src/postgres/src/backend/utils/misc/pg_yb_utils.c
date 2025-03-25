@@ -2283,7 +2283,7 @@ YBResetDdlState()
 
 	if (ddl_transaction_state.mem_context)
 	{
-		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
+		if (CurrentMemoryContext == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 
 		/*
@@ -2386,7 +2386,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 		 */
 		ddl_transaction_state.num_committed_pg_txns = 0;
 		ddl_transaction_state.mem_context =
-			AllocSetContextCreate(GetCurrentMemoryContext(),
+			AllocSetContextCreate(CurrentMemoryContext,
 								  "aux ddl memory context",
 								  ALLOCSET_DEFAULT_SIZES);
 
@@ -2423,7 +2423,7 @@ YBSetDdlState(YbDdlMode mode)
 	}
 
 	ddl_transaction_state.mem_context =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
+		AllocSetContextCreate(CurrentMemoryContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
@@ -2648,7 +2648,7 @@ YBCommitTransactionContainingDDL()
 	 * ddl transaction commits successfully.
 	 */
 
-	if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
+	if (CurrentMemoryContext == ddl_transaction_state.mem_context)
 		MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 
 	YBResetEnableSpecialDDLMode();

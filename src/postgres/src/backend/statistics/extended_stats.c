@@ -132,7 +132,7 @@ BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 	statslist = fetch_statentries_for_relation(pg_stext, RelationGetRelid(onerel));
 
 	/* memory context for building each statistics object */
-	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
 								"BuildRelationExtStatistics",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -279,7 +279,7 @@ ComputeExtStatisticsRows(Relation onerel,
 	if (!natts)
 		return 0;
 
-	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
 								"ComputeExtStatisticsRows",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -664,7 +664,7 @@ examine_expression(Node *expr, int stattarget)
 		elog(ERROR, "cache lookup failed for type %u", stats->attrtypid);
 
 	stats->attrtype = (Form_pg_type) GETSTRUCT(typtuple);
-	stats->anl_context = GetCurrentMemoryContext(); /* XXX should be using
+	stats->anl_context = CurrentMemoryContext; /* XXX should be using
 													 * something else? */
 	stats->tupattnum = InvalidAttrNumber;
 
@@ -878,7 +878,7 @@ multi_sort_add_dimension(MultiSortSupport mss, int sortdim,
 {
 	SortSupport ssup = &mss->ssup[sortdim];
 
-	ssup->ssup_cxt = GetCurrentMemoryContext();
+	ssup->ssup_cxt = CurrentMemoryContext;
 	ssup->ssup_collation = collation;
 	ssup->ssup_nulls_first = false;
 
@@ -2141,7 +2141,7 @@ compute_expr_stats(Relation onerel, double totalrows,
 	int			ind,
 				i;
 
-	expr_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	expr_context = AllocSetContextCreate(CurrentMemoryContext,
 										 "Analyze Expression",
 										 ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(expr_context);
@@ -2160,7 +2160,7 @@ compute_expr_stats(Relation onerel, double totalrows,
 		int			tcnt;
 
 		/* Are we still in the main context? */
-		Assert(GetCurrentMemoryContext() == expr_context);
+		Assert(CurrentMemoryContext == expr_context);
 
 		/*
 		 * Need an EState for evaluation of expressions.  Create it in the
@@ -2215,7 +2215,7 @@ compute_expr_stats(Relation onerel, double totalrows,
 			else
 			{
 				/* Make sure we copy the data into the context. */
-				Assert(GetCurrentMemoryContext() == expr_context);
+				Assert(CurrentMemoryContext == expr_context);
 
 				exprvals[tcnt] = datumCopy(datum,
 										   stats->attrtype->typbyval,
@@ -2352,7 +2352,7 @@ serialize_expr_stats(AnlExprData *exprdata, int nexprs)
 									  (Datum) 0,
 									  true,
 									  typOid,
-									  GetCurrentMemoryContext());
+									  CurrentMemoryContext);
 			continue;
 		}
 
@@ -2438,12 +2438,12 @@ serialize_expr_stats(AnlExprData *exprdata, int nexprs)
 								  heap_copy_tuple_as_datum(stup, RelationGetDescr(sd)),
 								  false,
 								  typOid,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 	}
 
 	table_close(sd, RowExclusiveLock);
 
-	return makeArrayResult(astate, GetCurrentMemoryContext());
+	return makeArrayResult(astate, CurrentMemoryContext);
 }
 
 /*

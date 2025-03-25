@@ -556,7 +556,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
  * copied into the table.
  *
  * Also, the caller must select an appropriate memory context for running
- * the hash functions. (dynahash.c doesn't change GetCurrentMemoryContext().)
+ * the hash functions. (dynahash.c doesn't change CurrentMemoryContext.)
  */
 static uint32
 TupleHashTableHash_internal(struct tuplehash_hash *tb,

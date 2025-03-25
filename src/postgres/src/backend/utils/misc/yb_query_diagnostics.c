@@ -1256,7 +1256,7 @@ FlushAndCleanBundles()
 	TimestampTz current_time = GetCurrentTimestamp();
 	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
-	MemoryContext curr_context = GetCurrentMemoryContext();
+	MemoryContext curr_context = CurrentMemoryContext;
 	int			expired_entries_index = 0;
 	YbQueryDiagnosticsEntry *expired_entries;
 
@@ -1509,7 +1509,7 @@ static int
 DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
 {
 	StringInfoData schema_details;
-	MemoryContext curr_context = GetCurrentMemoryContext();
+	MemoryContext curr_context = CurrentMemoryContext;
 	int			status = YB_DIAGNOSTICS_SUCCESS;
 
 	initStringInfo(&schema_details);
@@ -2256,7 +2256,7 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	File		file = 0;
 	const int	file_path_len = MAXPGPATH + strlen(file_name) + 1;
 	char		file_path[file_path_len];
-	MemoryContext curr_context = GetCurrentMemoryContext();
+	MemoryContext curr_context = CurrentMemoryContext;
 
 	/* No data to write */
 	if (data[0] == '\0')

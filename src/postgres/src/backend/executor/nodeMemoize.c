@@ -997,7 +997,7 @@ ExecInitMemoize(Memoize *node, EState *estate, int eflags)
 	mstate->mem_limit = get_hash_memory_limit();
 
 	/* A memory context dedicated for the cache */
-	mstate->tableContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	mstate->tableContext = AllocSetContextCreate(CurrentMemoryContext,
 												 "MemoizeHashTable",
 												 ALLOCSET_DEFAULT_SIZES);
 

@@ -4677,7 +4677,7 @@ makeNumericAggStateCurrentContext(bool calcSumX2)
 
 	state = (NumericAggState *) palloc0(sizeof(NumericAggState));
 	state->calcSumX2 = calcSumX2;
-	state->agg_context = GetCurrentMemoryContext();
+	state->agg_context = CurrentMemoryContext;
 
 	return state;
 }

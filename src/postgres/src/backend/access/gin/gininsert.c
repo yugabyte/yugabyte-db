@@ -363,7 +363,7 @@ ginbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	 * create a temporary memory context that is used to hold data not yet
 	 * dumped out to the index
 	 */
-	buildstate.tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate.tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
 											  "Gin build temporary context",
 											  ALLOCSET_DEFAULT_SIZES);
 
@@ -371,7 +371,7 @@ ginbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	 * create a temporary memory context that is used for calling
 	 * ginExtractEntries(), and can be reset after each tuple
 	 */
-	buildstate.funcCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate.funcCtx = AllocSetContextCreate(CurrentMemoryContext,
 											   "Gin build temporary context for user-defined function",
 											   ALLOCSET_DEFAULT_SIZES);
 
@@ -506,7 +506,7 @@ gininsert(Relation index, Datum *values, bool *isnull,
 		MemoryContextSwitchTo(oldCtx);
 	}
 
-	insertCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	insertCtx = AllocSetContextCreate(CurrentMemoryContext,
 									  "Gin insert temporary context",
 									  ALLOCSET_DEFAULT_SIZES);
 

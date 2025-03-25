@@ -2739,7 +2739,7 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 static YbcStatus
 YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx)
 {
-	MemoryContext own_mem_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext own_mem_ctx = AllocSetContextCreate(CurrentMemoryContext,
 													  "UpdateRelationCacheContext",
 													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext old_mem_ctx = MemoryContextSwitchTo(own_mem_ctx);
@@ -3076,7 +3076,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	/*
 	 * This function and its subroutines can allocate a good deal of transient
-	 * data in GetCurrentMemoryContext().  Traditionally we've just leaked that
+	 * data in CurrentMemoryContext.  Traditionally we've just leaked that
 	 * data, reasoning that the caller's context is at worst of transaction
 	 * scope, and relcache loads shouldn't happen so often that it's essential
 	 * to recover transient data before end of statement/transaction.  However
@@ -3095,7 +3095,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	if (RECOVER_RELATION_BUILD_MEMORY || debug_discard_caches > 0)
 	{
-		tmpcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
 									   "RelationBuildDesc workspace",
 									   ALLOCSET_DEFAULT_SIZES);
 		oldcxt = MemoryContextSwitchTo(tmpcxt);

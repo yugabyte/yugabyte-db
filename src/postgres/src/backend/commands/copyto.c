@@ -416,7 +416,7 @@ BeginCopyTo(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -825,7 +825,7 @@ DoCopyTo(CopyToState cstate)
 	 * datatype output routines, and should be faster than retail pfree's
 	 * anyway.  (We don't need a whole econtext as CopyFrom does.)
 	 */
-	cstate->rowcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
 											   "COPY TO",
 											   ALLOCSET_DEFAULT_SIZES);
 
@@ -899,7 +899,7 @@ DoCopyTo(CopyToState cstate)
 		 */
 		if (is_yb_relation)
 		{
-			yb_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+			yb_context = AllocSetContextCreate(CurrentMemoryContext,
 											   "COPY TO (YB)",
 											   ALLOCSET_DEFAULT_SIZES);
 			oldcontext = MemoryContextSwitchTo(yb_context);

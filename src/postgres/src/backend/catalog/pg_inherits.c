@@ -268,7 +268,7 @@ find_all_inheritors(Oid parentrelId, LOCKMODE lockmode, List **numparents)
 
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(SeenRelsEntry);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 
 	seen_rels = hash_create("find_all_inheritors temporary table",
 							32, /* start small and extend */

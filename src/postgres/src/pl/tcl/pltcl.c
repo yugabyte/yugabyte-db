@@ -1798,7 +1798,7 @@ pltcl_elog(ClientData cdata, Tcl_Interp *interp,
 	 * This path is also used for FATAL errors, which aren't going to come
 	 * back to us at all.
 	 */
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	PG_TRY();
 	{
 		UTF_BEGIN;
@@ -2151,7 +2151,7 @@ pltcl_returnnext(ClientData cdata, Tcl_Interp *interp,
 	pltcl_call_state *call_state = pltcl_current_call_state;
 	FunctionCallInfo fcinfo = call_state->fcinfo;
 	pltcl_proc_desc *prodesc = call_state->prodesc;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
 	volatile int result = TCL_OK;
 
@@ -2248,7 +2248,7 @@ pltcl_returnnext(ClientData cdata, Tcl_Interp *interp,
  *
  * Intended usage pattern is:
  *
- *	MemoryContext oldcontext = GetCurrentMemoryContext();
+ *	MemoryContext oldcontext = CurrentMemoryContext;
  *	ResourceOwner oldowner = CurrentResourceOwner;
  *
  *	...
@@ -2326,7 +2326,7 @@ pltcl_SPI_execute(ClientData cdata, Tcl_Interp *interp,
 	int			count = 0;
 	const char *volatile arrayname = NULL;
 	Tcl_Obj    *volatile loop_body = NULL;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
 
 	enum options
@@ -2546,7 +2546,7 @@ pltcl_SPI_prepare(ClientData cdata, Tcl_Interp *interp,
 	Tcl_HashEntry *hashent;
 	int			hashnew;
 	Tcl_HashTable *query_hash;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
 
 	/************************************************************
@@ -2679,7 +2679,7 @@ pltcl_SPI_execute_plan(ClientData cdata, Tcl_Interp *interp,
 	int			callObjc;
 	Tcl_Obj   **callObjv = NULL;
 	Datum	   *argvalues;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
 	Tcl_HashTable *query_hash;
 
@@ -2881,7 +2881,7 @@ static int
 pltcl_subtransaction(ClientData cdata, Tcl_Interp *interp,
 					 int objc, Tcl_Obj *const objv[])
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
 	int			retcode;
 
@@ -2929,7 +2929,7 @@ static int
 pltcl_commit(ClientData cdata, Tcl_Interp *interp,
 			 int objc, Tcl_Obj *const objv[])
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	PG_TRY();
 	{
@@ -2968,7 +2968,7 @@ static int
 pltcl_rollback(ClientData cdata, Tcl_Interp *interp,
 			   int objc, Tcl_Obj *const objv[])
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	PG_TRY();
 	{

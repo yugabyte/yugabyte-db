@@ -811,7 +811,7 @@ prune_append_rel_partitions(RelOptInfo *rel, Oid *yb_oids)
 	context.stepcmpfuncs = (FmgrInfo *) palloc0(sizeof(FmgrInfo) *
 												context.partnatts *
 												list_length(pruning_steps));
-	context.ppccontext = GetCurrentMemoryContext();
+	context.ppccontext = CurrentMemoryContext;
 	context.partrelids = (Oid *) palloc0(sizeof(Oid) * rel->nparts);
 
 	for (int i = 0; i < rel->nparts; ++i)

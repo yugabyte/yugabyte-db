@@ -127,7 +127,7 @@ extern void fmgr_info(Oid functionId, FmgrInfo *finfo);
 
 /*
  * Same, when the FmgrInfo struct is in a memory context longer-lived than
- * GetCurrentMemoryContext.  The specified context will be set as fn_mcxt
+ * CurrentMemoryContext.  The specified context will be set as fn_mcxt
  * and used to hold all subsidiary data of finfo.
  */
 extern void fmgr_info_cxt(Oid functionId, FmgrInfo *finfo,

@@ -95,7 +95,7 @@ PLy_cursor_query(const char *query)
 						 RECORDOID, -1,
 						 exec_ctx->curr_proc);
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -193,7 +193,7 @@ PLy_cursor_plan(PyObject *ob, PyObject *args)
 						 RECORDOID, -1,
 						 exec_ctx->curr_proc);
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -330,7 +330,7 @@ PLy_cursor_iternext(PyObject *self)
 		return NULL;
 	}
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -400,7 +400,7 @@ PLy_cursor_fetch(PyObject *self, PyObject *args)
 	if (ret == NULL)
 		return NULL;
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);

@@ -938,7 +938,7 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	vstate.cycleid = cycleid;
 
 	/* Create a temporary memory context to run _bt_pagedel in */
-	vstate.pagedelcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	vstate.pagedelcontext = AllocSetContextCreate(CurrentMemoryContext,
 												  "_bt_pagedel",
 												  ALLOCSET_DEFAULT_SIZES);
 

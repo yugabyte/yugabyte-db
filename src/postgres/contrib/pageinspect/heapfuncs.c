@@ -317,7 +317,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 	rel = relation_open(relid, AccessShareLock);
 	tupdesc = RelationGetDescr(rel);
 
-	raw_attrs = initArrayResult(BYTEAOID, GetCurrentMemoryContext(), false);
+	raw_attrs = initArrayResult(BYTEAOID, CurrentMemoryContext, false);
 	nattrs = tupdesc->natts;
 
 	if (rel->rd_rel->relam != HEAP_TABLE_AM_OID)
@@ -396,7 +396,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 		}
 
 		raw_attrs = accumArrayResult(raw_attrs, PointerGetDatum(attr_data),
-									 is_null, BYTEAOID, GetCurrentMemoryContext());
+									 is_null, BYTEAOID, CurrentMemoryContext);
 		if (attr_data)
 			pfree(attr_data);
 	}
@@ -408,7 +408,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 
 	relation_close(rel, AccessShareLock);
 
-	return makeArrayResult(raw_attrs, GetCurrentMemoryContext());
+	return makeArrayResult(raw_attrs, CurrentMemoryContext);
 }
 
 /*

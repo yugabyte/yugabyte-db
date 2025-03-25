@@ -2826,7 +2826,7 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 			Oid			finalargtypmod = innerTypMod;
 			Node	   *coerced = NULL;
 
-			MemoryContext cxt = GetCurrentMemoryContext();
+			MemoryContext cxt = CurrentMemoryContext;
 
 			PG_TRY();
 			{

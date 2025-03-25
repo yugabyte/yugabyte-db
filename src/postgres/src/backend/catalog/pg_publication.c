@@ -1276,7 +1276,7 @@ yb_pg_get_publications_tables(List *publications)
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(Oid);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 
 	seen_tables = hash_create("yb_pg_get_publications_tables temporary table",
 							  32,	/* start small and extend */

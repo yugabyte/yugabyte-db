@@ -195,7 +195,7 @@ datumTransfer(Datum value, bool typByVal, int typLen)
 {
 	if (!typByVal && typLen == -1 &&
 		VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(value)))
-		value = TransferExpandedObject(value, GetCurrentMemoryContext());
+		value = TransferExpandedObject(value, CurrentMemoryContext);
 	else
 		value = datumCopy(value, typByVal, typLen);
 	return value;

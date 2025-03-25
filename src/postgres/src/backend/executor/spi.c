@@ -230,7 +230,7 @@ SPI_start_transaction(void)
 static void
 _SPI_commit(bool chain)
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	SavedTransactionCharacteristics savetc;
 
 	/*
@@ -335,7 +335,7 @@ SPI_commit_and_chain(void)
 static void
 _SPI_rollback(bool chain)
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	SavedTransactionCharacteristics savetc;
 
 	/* see under SPI_commit() */
@@ -2130,7 +2130,7 @@ spi_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 
 	oldcxt = _SPI_procmem();	/* switch to procedure memory context */
 
-	tuptabcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tuptabcxt = AllocSetContextCreate(CurrentMemoryContext,
 									  "SPI TupTable",
 									  ALLOCSET_DEFAULT_SIZES);
 	MemoryContextSwitchTo(tuptabcxt);
@@ -2206,10 +2206,10 @@ spi_printtup(TupleTableSlot *slot, DestReceiver *self)
  * plan->cursor_options.
  *
  * Results are stored into *plan (specifically, plan->plancache_list).
- * Note that the result data is all in GetCurrentMemoryContext() or child contexts
+ * Note that the result data is all in CurrentMemoryContext or child contexts
  * thereof; in practice this means it is in the SPI executor context, and
  * what we are creating is a "temporary" SPIPlan.  Cruft generated during
- * parsing is also left in GetCurrentMemoryContext().
+ * parsing is also left in CurrentMemoryContext.
  */
 static void
 _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
@@ -2314,10 +2314,10 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
  * attributes are good things for SPI_execute() and similar cases.
  *
  * Results are stored into *plan (specifically, plan->plancache_list).
- * Note that the result data is all in GetCurrentMemoryContext() or child contexts
+ * Note that the result data is all in CurrentMemoryContext or child contexts
  * thereof; in practice this means it is in the SPI executor context, and
  * what we are creating is a "temporary" SPIPlan.  Cruft generated during
- * parsing is also left in GetCurrentMemoryContext().
+ * parsing is also left in CurrentMemoryContext.
  */
 static void
 _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
@@ -3206,7 +3206,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 	 * very large, so use smaller-than-default alloc parameters.  It's a
 	 * transient context until we finish copying everything.
 	 */
-	plancxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	plancxt = AllocSetContextCreate(CurrentMemoryContext,
 									"SPI Plan",
 									ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(plancxt);

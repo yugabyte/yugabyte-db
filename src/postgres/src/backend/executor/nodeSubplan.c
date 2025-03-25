@@ -269,7 +269,7 @@ ExecScanSubPlan(SubPlanState *node,
 	/* Initialize ArrayBuildStateAny in caller's context, if needed */
 	if (subLinkType == ARRAY_SUBLINK)
 		astate = initArrayResultAny(subplan->firstColType,
-									GetCurrentMemoryContext(), true);
+									CurrentMemoryContext, true);
 
 	/*
 	 * We are probably in a short-lived expression-evaluation context. Switch
@@ -881,12 +881,12 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 
 		/* We need a memory context to hold the hash table(s) */
 		sstate->hashtablecxt =
-			AllocSetContextCreate(GetCurrentMemoryContext(),
+			AllocSetContextCreate(CurrentMemoryContext,
 								  "Subplan HashTable Context",
 								  ALLOCSET_DEFAULT_SIZES);
 		/* and a small one for the hash tables to use as temp storage */
 		sstate->hashtempcxt =
-			AllocSetContextCreate(GetCurrentMemoryContext(),
+			AllocSetContextCreate(CurrentMemoryContext,
 								  "Subplan HashTable Temp Context",
 								  ALLOCSET_SMALL_SIZES);
 		/* and a short-lived exprcontext for function evaluation */
@@ -1090,7 +1090,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 	/* Initialize ArrayBuildStateAny in caller's context, if needed */
 	if (subLinkType == ARRAY_SUBLINK)
 		astate = initArrayResultAny(subplan->firstColType,
-									GetCurrentMemoryContext(), true);
+									CurrentMemoryContext, true);
 
 	/*
 	 * Must switch to per-query memory context.
