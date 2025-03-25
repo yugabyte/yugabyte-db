@@ -59,6 +59,8 @@ DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 10 * 1000,
                       "through the YSQL API.");
 TAG_FLAG(master_ysql_operation_lease_ttl_ms, advanced);
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 namespace yb {
 namespace master {
 
@@ -506,7 +508,8 @@ TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     updated = true;
   }
-  if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease) &&
+  if ((GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
+       GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) &&
       proto_lock->pb.live_client_operation_lease() &&
       last_ysql_lease_refresh_ + MonoDelta::FromMilliseconds(
                                      GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms)) <

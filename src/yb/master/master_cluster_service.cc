@@ -39,6 +39,7 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DECLARE_bool(emergency_repair_mode);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 
@@ -154,7 +155,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
-      if (FLAGS_TEST_enable_ysql_operation_lease) {
+      if (FLAGS_TEST_enable_object_locking_for_table_locks ||
+          FLAGS_TEST_enable_ysql_operation_lease) {
         auto& lease_info = *entry->mutable_lease_info();
         lease_info.set_is_live(l->pb.live_client_operation_lease());
         lease_info.set_lease_epoch(l->pb.lease_epoch());

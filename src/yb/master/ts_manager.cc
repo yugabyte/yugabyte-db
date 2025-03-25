@@ -251,9 +251,6 @@ Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
 
 Result<YsqlLeaseUpdate> TSManager::RefreshYsqlLease(
     const LeaderEpoch& epoch, const NodeInstancePB& instance) {
-  if (!FLAGS_TEST_enable_ysql_operation_lease) {
-    return STATUS(NotSupported, "The ysql lease is currently a test feature.");
-  }
   auto ts_desc = VERIFY_RESULT(LookupTS(instance));
   auto [lease_update, lock_opt] = ts_desc->RefreshYsqlLease();
   if (lock_opt) {

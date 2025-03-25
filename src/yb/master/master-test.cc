@@ -2857,7 +2857,6 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
 }
 
 TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
   const char* kTsUUID = "my-ts-uuid";
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
   auto result = ddl_client.RefreshYsqlLease(kTsUUID, 1);
@@ -2866,7 +2865,6 @@ TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
 }
 
 TEST_F(MasterTest, RefreshYsqlLease) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
   const char *kTsUUID = "my-ts-uuid";
 
   SysClusterConfigEntryPB config =
