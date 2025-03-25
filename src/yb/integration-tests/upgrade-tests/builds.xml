@@ -36,22 +36,22 @@ darwin_release_arm64
       https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.25.0.0-b340/yugabyte-2.25.0.0-6ad0081e6a0d760a657ae5cf43f376086b15edce-release-clang-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
-  <build version="2024.2.2.0">
-    <build_number>b35</build_number>
+  <build version="2024.2.3.0">
+    <build_number>b62</build_number>
     <linux_debug_x86>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.2.0-b35/yugabyte-2024.2.2.0-9365e71f2bd36a29ef4f222ac218a48ab9fa234a-debug-clang17-centos-x86_64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b62/yugabyte-2024.2.3.0-9c53b646c9f440ba73b96b74d5bc7bdc8561aea1-debug-clang17-centos-x86_64.tar.gz
     </linux_debug_x86>
     <linux_release_x86>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.2.0-b35/yugabyte-2024.2.2.0-9365e71f2bd36a29ef4f222ac218a48ab9fa234a-release-clang17-centos-x86_64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b62/yugabyte-2024.2.3.0-9c53b646c9f440ba73b96b74d5bc7bdc8561aea1-release-clang17-centos-x86_64.tar.gz
     </linux_release_x86>
     <linux_release_aarch64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.2.0-b35/yugabyte-2024.2.2.0-b35-almalinux8-aarch64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b62/yugabyte-2024.2.3.0-b62-almalinux8-aarch64.tar.gz
     </linux_release_aarch64>
     <darwin_debug_arm64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.2.0-b35/yugabyte-2024.2.2.0-9365e71f2bd36a29ef4f222ac218a48ab9fa234a-debug-clang-darwin-arm64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b62/yugabyte-2024.2.3.0-9c53b646c9f440ba73b96b74d5bc7bdc8561aea1-debug-clang-darwin-arm64.tar.gz
     </darwin_debug_arm64>
     <darwin_release_arm64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.2.0-b35/yugabyte-2024.2.2.0-9365e71f2bd36a29ef4f222ac218a48ab9fa234a-release-clang-darwin-arm64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b62/yugabyte-2024.2.3.0-9c53b646c9f440ba73b96b74d5bc7bdc8561aea1-release-clang-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
 </builds>
