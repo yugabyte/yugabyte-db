@@ -33,6 +33,7 @@
     "ip-address": "8.1.0",
     "material-ui-pickers-v4": "3.3.12",
     "mui-datatables": "3.7.7",
+    "openapi": "^1.0.1",
     "query-string": "7.0.1",
     "react": "17.0.2",
     "react-ace": "9.4.4",

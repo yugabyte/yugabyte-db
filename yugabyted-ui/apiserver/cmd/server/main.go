@@ -254,7 +254,8 @@ func main() {
     e.GET("/api/migrations", c.GetVoyagerMigrations)
 
     // Get Voyager assement info
-    e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
+    // Deprecating this API as we now use the migration_assessment_v2 API
+    // e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
 
     // Get Voyager assessment report
     e.GET("/api/migration_assessment_v2", c.GetVoyagerAssessmentReport)
