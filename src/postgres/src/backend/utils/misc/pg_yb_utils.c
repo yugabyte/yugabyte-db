@@ -1169,6 +1169,23 @@ typedef struct
 	 * change can never happen in a transaction block.
 	 */
 	bool use_regular_txn_block;
+
+	/*
+	 * List of table OIDs that have been altered in the current transaction
+	 * block. This is used to invalidate the cache of the altered tables upon
+	 * rollback of the transaction.
+	 *
+	 * When FLAGS_TEST_yb_ddl_transaction_block_enabled is false, this list just
+	 * contains the tables that have been altered as part of the current ALTER
+	 * TABLE statement. Otherwise, it includes all the tables that have been
+	 * altered in the transaction block i.e. could be from multiple alter table
+	 * statements.
+	 *
+	 * Allocated inside the TopTransactionContext since it needs to be
+	 * maintained for the complete transaction block. Cleared whenever
+	 * ddl_transaction_state is reset.
+	 */
+	List	   *altered_table_ids;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2285,6 +2302,16 @@ YBResetDdlState()
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 
+	/*
+	 * Free up the altered_table_ids list which is allocated in the
+	 * TopTransactionContext.
+	 */
+	if (ddl_transaction_state.altered_table_ids != NIL)
+	{
+		list_free(ddl_transaction_state.altered_table_ids);
+		ddl_transaction_state.altered_table_ids = NIL;
+	}
+
 	bool use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 	ddl_transaction_state = (YbDdlTransactionState)
 	{
@@ -2339,6 +2366,19 @@ YbIncrementPgTxnsCommitted()
 }
 
 void
+YbTrackAlteredTableId(Oid relid)
+{
+	MemoryContext oldcontext;
+
+	Assert(TopTransactionContext != NULL);
+	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
+
+	ddl_transaction_state.altered_table_ids =
+		list_append_unique_oid(ddl_transaction_state.altered_table_ids, relid);
+	MemoryContextSwitchTo(oldcontext);
+}
+
+void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
 	if (ddl_transaction_state.nesting_level == 0)
@@ -2385,6 +2425,10 @@ YBSetDdlState(YbDdlMode mode)
 		return;
 	}
 
+	ddl_transaction_state.mem_context =
+		AllocSetContextCreate(GetCurrentMemoryContext(),
+							  "aux ddl memory context",
+							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
@@ -3358,10 +3402,24 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 	if (!is_ddl)
 	{
-		if (ddl_transaction_state.nesting_level == 0)
+		/* Only clear up the DDL state if DDL, DML unification is disabled. */
+		if (ddl_transaction_state.nesting_level == 0 &&
+			!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		{
+			/*
+			 * Free up the altered_table_ids list separately which is allocated
+			 * in the TopTransactionContext.
+			 */
+			if (ddl_transaction_state.altered_table_ids != NIL)
+			{
+				list_free(ddl_transaction_state.altered_table_ids);
+				ddl_transaction_state.altered_table_ids = NIL;
+			}
+
 			ddl_transaction_state = (YbDdlTransactionState)
 			{
 			};
+		}
 		return (YbDdlModeOptional)
 		{
 		};
@@ -3573,6 +3631,51 @@ YBCInstallTxnDdlHook()
 		ProcessUtility_hook = YBTxnDdlProcessUtility;
 	}
 };
+
+/*
+ * Used in YB to re-invalidate table cache entries either at the end of:
+ * a) Transaction if DDL + DML transaction support is enabled and the
+ *    transaction included an ALTER TABLE operation.
+ * b) ALTER TABLE operation:
+ *    1. Phase 3 scan/rewrite tables.
+ *    2. Any failures during the ALTER TABLE operation, if DDL + DML transaction
+ *       support is disabled.
+ */
+void
+YbInvalidateTableCacheForAlteredTables()
+{
+	if ((YbDdlRollbackEnabled() ||
+		YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) &&
+		ddl_transaction_state.altered_table_ids)
+	{
+		/*
+		 * As part of DDL transaction verification, we may have incremented
+		 * the schema version for the affected tables. So, re-invalidate
+		 * the table cache entries of the affected tables.
+		 */
+		ListCell *lc = NULL;
+
+		foreach (lc, ddl_transaction_state.altered_table_ids)
+		{
+			Oid relid = lfirst_oid(lc);
+			Relation rel = RelationIdGetRelation(relid);
+
+			/*
+			 * The relation may no longer exist if it was dropped as part of
+			 * a legacy rewrite operation. We can skip invalidation in that
+			 * case.
+			 */
+			if (!rel)
+			{
+				Assert(!yb_enable_alter_table_rewrite);
+				continue;
+			}
+			YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOidByRelid(relid),
+												YbGetRelfileNodeIdFromRelId(relid));
+			RelationClose(rel);
+		}
+	}
+}
 
 static unsigned int buffering_nesting_level = 0;
 

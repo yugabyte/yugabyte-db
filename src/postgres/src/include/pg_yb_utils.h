@@ -810,6 +810,9 @@ extern NodeTag YBGetDdlOriginalNodeTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
+extern void YbTrackAlteredTableId(Oid relid);
+extern void YbInvalidateTableCacheForAlteredTables();
+
 
 typedef enum YbSysCatalogModificationAspect
 {

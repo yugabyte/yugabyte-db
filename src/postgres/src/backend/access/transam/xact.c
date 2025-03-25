@@ -2976,6 +2976,15 @@ AbortTransaction(void)
 	Assert(s->parent == NULL);
 
 	/*
+	 * Invalidate the table cache for any tables which have been altered as part
+	 * of the transaction. We do this before setting the transaction state to
+	 * TRANS_ABORT since the invalidation requires us to fetch the Relation
+	 * descriptor which requires us to be in a valid PG transaction block.
+	 */
+	if (IsYugaByteEnabled())
+		YbInvalidateTableCacheForAlteredTables();
+
+	/*
 	 * set the current transaction state information appropriately during the
 	 * abort processing
 	 */

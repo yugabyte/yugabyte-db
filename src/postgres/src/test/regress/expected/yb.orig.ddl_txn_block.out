@@ -46,14 +46,7 @@ SELECT * FROM test4;
 ERROR:  relation "test4" does not exist
 LINE 1: SELECT * FROM test4;
                       ^
--- TODO(#23825): The following select will retry after encountering a version
--- mismatch error, and it will result in double output for now. This is a known
--- issue.
 SELECT * FROM test1;
- id 
-----
-(0 rows)
-
  id 
 ----
   2
@@ -99,14 +92,7 @@ SELECT * FROM test6;
 ERROR:  relation "test6" does not exist
 LINE 1: SELECT * FROM test6;
                       ^
--- TODO(#23825): The following select will retry after encountering a version
--- mismatch error, and it will result in double output for now. This is a known
--- issue.
 SELECT * FROM test1;
- id | value 
-----+-------
-(0 rows)
-
  id | value 
 ----+-------
   2 | 
@@ -147,4 +133,21 @@ SELECT value FROM test1 WHERE value='text';
  text
  text
 (3 rows)
+
+-- Test that schema version bump in case of alter table rollback is handled.
+CREATE TABLE test7 (a int primary key, b int);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test7 VALUES (1, 1);
+INSERT INTO test7 VALUES (2, 2);
+ALTER TABLE test7 ADD COLUMN c int;
+INSERT INTO test7 VALUES (3, 3, 3);
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test7 VALUES (1, 1);
+COMMIT;
+SELECT * FROM test7;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
 
