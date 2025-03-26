@@ -36,7 +36,6 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
-import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
 import "yb/consensus/metadata.proto";

@@ -13,11 +13,15 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
-#include "yb/client/xcluster_client.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/xcluster_util.h"
+
+#include "yb/client/xcluster_client.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+
 #include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"

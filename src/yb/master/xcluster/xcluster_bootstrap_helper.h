@@ -79,7 +79,7 @@ class SetupUniverseReplicationWithBootstrapHelper
   // mutation to the sys catalog.
   void SetReplicationBootstrapState(
       scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info,
-      const SysUniverseReplicationBootstrapEntryPB::State& state);
+      const SysUniverseReplicationBootstrapEntryPB_State& state);
 
   // SetupReplicationWithBootstrap
   Status ValidateReplicationBootstrapRequest(

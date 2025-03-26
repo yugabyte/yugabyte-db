@@ -66,6 +66,7 @@
 
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/server/clock.h"
 
@@ -100,7 +101,6 @@ namespace tserver {
 class LocalTabletServer;
 class TabletConsensusInfoPB;
 class TabletServerServiceProxy;
-enum PGReplicationSlotLsnType : int;
 }
 
 namespace xcluster {

@@ -26,6 +26,7 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"

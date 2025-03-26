@@ -23,7 +23,6 @@ import "yb/common/pgsql_protocol.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
-import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
