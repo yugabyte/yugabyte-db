@@ -2070,8 +2070,13 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 	 * Use DUMP_COMPONENT_ACL for built-in extensions, to allow users to
 	 * change permissions on their member objects, if they wish to, and have
 	 * those changes preserved.
+	 * YB: plpgsql is a built-in extension, but it may be detected as a
+	 * user installed extension if the user drops and then re-creates it.
+	 * Avoid dumping plpgsql to prevent potential issues with upgrade:
+	 * see GH issue #25346.
 	 */
-	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid)
+	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid ||
+		strcmp("plpgsql", extinfo->dobj.name) == 0)
 		extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_ACL;
 	else
 	{

@@ -355,4 +355,16 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Anon) {
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
   ASSERT_NO_FATALS(check_query(kAnyTserver));
 }
+
+TEST_F(YsqlMajorExtensionUpgradeTest, PlPgsql) {
+  ASSERT_OK(ExecuteStatements({
+    "DROP EXTENSION plpgsql CASCADE",
+    "CREATE LANGUAGE plpgsql",
+    "CREATE FUNCTION test() RETURNS INTEGER AS $$begin return 1; end$$ LANGUAGE plpgsql",
+    "DROP LANGUAGE plpgsql CASCADE",
+    "CREATE EXTENSION plpgsql",
+  }));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+}
 } // namespace yb
