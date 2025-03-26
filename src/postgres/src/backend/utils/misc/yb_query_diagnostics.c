@@ -109,7 +109,7 @@ typedef struct
 	LocationLen locations[YB_QD_MAX_CONSTANTS];
 } YbQueryConstantsMetadata;
 
-typedef struct DatabaseConnectionWorkerInfo
+typedef struct YbDatabaseConnectionWorkerInfo
 {
 	/*
 	 * Create a deep copy of the data to prevent race conditions. The original
@@ -119,7 +119,7 @@ typedef struct DatabaseConnectionWorkerInfo
 	 */
 	YbQueryDiagnosticsEntry entry;  /* Copy of the entry we're processing */
 	bool		initialized;  /* Flag to check if the worker is initialized */
-} DatabaseConnectionWorkerInfo;
+} YbDatabaseConnectionWorkerInfo;
 
 /* GUC variables */
 bool		yb_enable_query_diagnostics;
@@ -143,11 +143,11 @@ static YbQueryConstantsMetadata query_constants = {
 	.locations = {{0, 0}}
 };
 
-typedef struct BackgroundWorkerHandle
+typedef struct YbBackgroundWorkerHandle
 {
 	int slot;
 	uint64 generation;
-} BackgroundWorkerHandle;
+} YbBackgroundWorkerHandle;
 
 enum QueryOutputFormat
 {
@@ -162,14 +162,17 @@ static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
-static BackgroundWorkerHandle *bg_worker_handle = NULL;
-static DatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
+static YbBackgroundWorkerHandle *bg_worker_handle = NULL;
+static YbDatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
+static bool *bg_worker_should_be_active = NULL;
 
 static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
 												  JumbleState *jstate);
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc);
 
+static bool IsBgWorkerStopped();
+static void StartBgWorkerIfStopped();
 static void InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata);
 static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo);
 static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
@@ -256,8 +259,9 @@ YbQueryDiagnosticsShmemSize(void)
 											 sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
-	size = add_size(size, sizeof(BackgroundWorkerHandle)); /* bg_worker_handle */
-	size = add_size(size, sizeof(DatabaseConnectionWorkerInfo)); /* database_connection_worker_info */
+	size = add_size(size, sizeof(YbBackgroundWorkerHandle)); /* bg_worker_handle */
+	size = add_size(size, sizeof(YbDatabaseConnectionWorkerInfo)); /* database_connection_worker_info */
+	size = add_size(size, sizeof(bool)); /* bg_worker_should_be_active */
 
 	return size;
 }
@@ -318,14 +322,23 @@ YbQueryDiagnosticsShmemInit(void)
 	(*yb_pgss_last_reset_time) = 0;
 
 	/* Initialize the background worker handle */
-	bg_worker_handle = (BackgroundWorkerHandle *) ShmemAlloc(sizeof(BackgroundWorkerHandle));
+	bg_worker_handle = (YbBackgroundWorkerHandle *) ShmemAlloc(sizeof(YbBackgroundWorkerHandle));
 	bg_worker_handle->slot = -1;
 	bg_worker_handle->generation = -1;
 
 	/* Initialize the database connection worker info */
-	database_connection_worker_info = (DatabaseConnectionWorkerInfo *)
-			ShmemAlloc(sizeof(DatabaseConnectionWorkerInfo));
+	database_connection_worker_info = (YbDatabaseConnectionWorkerInfo *)
+			ShmemAlloc(sizeof(YbDatabaseConnectionWorkerInfo));
 	database_connection_worker_info->initialized = false;
+
+	/* Initialize bg_worker_should_be_active */
+	bg_worker_should_be_active = (bool *) ShmemAlloc(sizeof(bool));
+
+	/*
+	 * Initialize background worker as inactive until
+	 * explicitly triggered by a diagnostics request.
+	 */
+	(*bg_worker_should_be_active) = false;
 }
 
 static inline int
@@ -598,8 +611,10 @@ BgWorkerRegister(void)
 	Assert(status == BGWH_STARTED);
 
 	/* Save the handle for future use */
-	bg_worker_handle->slot = handle->slot;
-	bg_worker_handle->generation = handle->generation;
+	memcpy(bg_worker_handle, handle, sizeof(YbBackgroundWorkerHandle));
+
+	/* Set the bg_worker_should_be_active to true */
+	(*bg_worker_should_be_active) = true;
 }
 
 /*
@@ -1141,21 +1156,83 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	pfree(es);
 }
 
+static bool
+IsBgWorkerStopped()
+{
+	pid_t		pid;
+
+	return (GetBackgroundWorkerPid((BackgroundWorkerHandle *)bg_worker_handle,
+								   &pid) != BGWH_STARTED);
+}
+
+/*
+ * StartBgWorkerIfStopped()
+ *		Starts the background worker if it is not already running.
+ *
+ * This function manages the background worker lifecycle with the following logic:
+ * 1.	If no worker has ever been initialized (invalid slot and generation),
+ *		registers a new worker immediately.
+ * 2.	If a worker is marked as inactive and not running, registers a new worker.
+ * 3.	If a worker is marked as inactive but still running (in termination process),
+ *		waits for the worker to fully terminate before registering a new one.
+ *		If the wait exceeds the timeout (5 seconds), raises an ERROR to prevent
+ *		indefinite waiting.
+ */
+static void
+StartBgWorkerIfStopped()
+{
+	int			max_attempts = 50;
+	int			attempts = 0;
+
+	/* Worker was never initialized (invalid slot and generation) */
+	if (bg_worker_handle->slot == -1 && bg_worker_handle->generation == -1)
+		BgWorkerRegister();
+
+	/* Worker was initialized but not currently running */
+	else if ((*bg_worker_should_be_active) == false)
+	{
+		while (attempts < max_attempts)
+		{
+			if (IsBgWorkerStopped())
+			{
+				BgWorkerRegister();
+				break;
+			}
+
+			pg_usleep(100000); /* Sleep for 100ms */
+			attempts++;
+		}
+
+		if (attempts >= max_attempts)
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+					 errmsg("timed out after waiting 5 seconds for "
+							"query diagnostics background worker to terminate")));
+	}
+}
+
 /*
  * InsertNewBundleInfo
  *		Adds the entry into bundles_in_progress hash table.
  *		Entry is inserted only if it is not already present,
- *		otherwise an error is raised.
+ *		otherwise an error is raised. This function also starts
+ *		yb_query_diagnostics bgworker if it is not already running.
  */
 static void
 InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 {
 	int64		key = metadata->params.query_id;
 	bool		found;
-	pid_t		pid;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+	/*
+	 * Note that we need not worry about concurrent registration attempts
+	 * from different sessions as we are within an EXCLUSIVE lock.
+	 */
+	StartBgWorkerIfStopped();
+
 	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress, &key,
 													HASH_ENTER, &found);
 
@@ -1177,19 +1254,6 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 				.query_offset = 0,
 				.query_len = 0,
 		};
-
-		/*
-		 * Note that we need not worry about concurrent registration attempts
-		 * from different sessions as we are within an EXCLUSIVE lock.
-		 */
-
-		/* Worker was never initialized (invalid slot and generation) */
-		if (bg_worker_handle->slot == -1 && bg_worker_handle->generation == -1)
-			BgWorkerRegister();
-
-		/* Worker was initialized but not currently running */
-		else if (GetBackgroundWorkerPid(bg_worker_handle, &pid) != BGWH_STARTED)
-			BgWorkerRegister();
 	}
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -2357,9 +2421,6 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		/* Check for expired entries within the shared hash table */
 		FlushAndCleanBundles();
 
-		/* Kill bgworker if there are no active bundles */
-		bool should_terminate = false;
-
 		/*
 		 * Acquire the exclusive lock on the bundles_in_progress hash table.
 		 * This is necessary to prevent other sessions from
@@ -2369,13 +2430,16 @@ YbQueryDiagnosticsMain(Datum main_arg)
 
 		/* If there are no bundles being diagnosed, switch off the bgworker */
 		if (hash_get_num_entries(bundles_in_progress) == 0)
-			should_terminate = true;
+			(*bg_worker_should_be_active) = false;
 
 		LWLockRelease(bundles_in_progress_lock);
 
 		/* Do this outside the lock to ensure we release the lock before exiting. */
-		if (should_terminate)
+		if (!(*bg_worker_should_be_active))
 		{
+			if (YBQueryDiagnosticsTestRaceCondition())
+				pg_usleep(10000000L); /* 10 seconds */
+
 			/* Kill the bgworker */
 			ereport(LOG,
 					(errmsg("stopping query diagnostics background worker "

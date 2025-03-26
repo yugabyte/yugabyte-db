@@ -81,6 +81,9 @@ DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
 
+DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
+                 "If true, enables race condition testing for query diagnostics.");
+
 // Default to 5MB
 DEFINE_UNKNOWN_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
