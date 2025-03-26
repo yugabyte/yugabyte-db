@@ -85,7 +85,7 @@ Ollama provides installers for a variety of platforms, and the [Ollama models li
 1. Pull the model using the Ollama CLI.
 
     ```sh
-    ollama pull nomid-embed-text:latest
+    ollama pull nomic-embed-text:latest
     ```
 
 1. With Ollama up and running on your machine, run the following command to verify the installation:
