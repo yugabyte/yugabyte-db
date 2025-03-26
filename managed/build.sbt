@@ -154,7 +154,7 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
+  "org.bouncycastle" % "bcpkix-jdk18on" % "1.80",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.599",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.599",
