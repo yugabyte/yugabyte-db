@@ -909,10 +909,12 @@ To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set
 --ssl_protocols = tls12,tls13
 ```
 
-In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
+
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
 
 ```sh
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
 ```
 
 ## Change data capture (CDC) flags

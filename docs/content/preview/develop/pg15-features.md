@@ -195,9 +195,11 @@ SELECT * FROM t WHERE migration_UUID=$1 ORDER BY schema_name
 
 ### TLS and authentication
 
-The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value. This change was made in [PostgreSQL 12](https://www.postgresql.org/docs/12/ssl-tcp.html) in the PostgreSQL documentation.
+The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value of `verify-ca` or `verify-full`. Refer to [TLS and authentication](../../secure/tls-encryption/tls-authentication/).
 
-The default value for `ssl_min_protocol_version` is updated from TLS v1 to TLS v1.2. This change was made in [PostgreSQL 13](https://www.postgresql.org/docs/13/release-13.html#id-1.11.6.26.5.3.9). Ensure your client supports TLS v1.2; clients that do not support it will get a connection error.
+### TLS minimum version
+
+The default value for `ssl_min_protocol_version` is updated from TLS v1 to TLS v1.2. Ensure your client supports TLS v1.2; clients that do not support it will get a connection error.
 
 You can use the version column of the `pg_stat_ssl` view to determine what version of SSL is used in each connection, as follows:
 
@@ -210,8 +212,6 @@ SELECT pid, ssl, version FROM pg_stat_ssl;
 -----+---------+---------
 44345 |    t   | TLSv1.2 |
 ```
-
-For more information on TLS in YugabyteDB, refer to [TLS and authentication](../../secure/tls-encryption/tls-authentication/).
 
 ### CREATE permission on public schema revoked for new users
 
