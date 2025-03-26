@@ -93,3 +93,27 @@ DETAIL:  Key (customer_id)=(2) is still referenced from table "orders_test".
 -- Test that invalidation of the foreign key cache works
 ALTER TABLE orders_test DROP CONSTRAINT fk_orders_customers;
 INSERT INTO orders_test (customer_id, name) VALUES (3, 'Order 3');
+-- GH-26464: Test deleting rows across multiple partitions of a partitioned table
+CREATE TABLE base (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k);
+CREATE TABLE part1 PARTITION OF base FOR VALUES FROM (11) TO (21);
+CREATE TABLE part2 PARTITION OF base FOR VALUES FROM (21) TO (31);
+CREATE TABLE part3 PARTITION OF base FOR VALUES FROM (31) TO (41);
+CREATE TABLE part4 (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k);
+CREATE TABLE part4a PARTITION OF part4 FOR VALUES FROM (41) TO (46);
+CREATE TABLE part4b PARTITION OF part4 FOR VALUES FROM (46) TO (51);
+ALTER TABLE base ATTACH PARTITION part4 FOR VALUES FROM (41) TO (51);
+CREATE INDEX ON part3 (v);
+CREATE INDEX ON part4b (v);
+INSERT INTO base VALUES (11, 11), (22, 22), (23, 23), (33, 33), (34, 44), (44, 44), (47 ,47);
+-- Two partitions that individually satisfy single shard constraints.
+DELETE FROM base WHERE k IN (11, 22);
+-- One satisfies the single shard constraint, the other does not.
+DELETE FROM base WHERE k IN (23, 33);
+-- Partitions that are on different levels of the tree, some of which satisfy
+-- single shard constraints.
+DELETE FROM base WHERE k IN (34, 44, 47);
+SELECT * FROM base ORDER BY k;
+ k | v 
+---+---
+(0 rows)
+
