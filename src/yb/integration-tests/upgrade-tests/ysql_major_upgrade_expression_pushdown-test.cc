@@ -36,13 +36,10 @@ static constexpr auto kBoxColumn = "box_col";
 static constexpr auto kTidColumn = "tid_col";
 static constexpr auto kCircleColumn = "circle_col";
 static constexpr auto kCharColumn = "char_col";
+static constexpr auto kUuidColumn = "uuid_col";
 
 static constexpr auto kStorageFilter = "Storage (Index )?Filter: ";
 static constexpr auto kLocalFilter = "Filter: ";
-static constexpr auto kInvalidFunctionError = "does not exist";
-static constexpr auto kInvalidOperatorError =
-  "No operator matches the given name and argument types";
-static constexpr auto kOutofRangeError = "out of range";
 
 static constexpr auto kExplainArgs = "(ANALYZE, COSTS OFF, TIMING OFF)";
 
@@ -55,7 +52,8 @@ static constexpr auto kExplainArgs = "(ANALYZE, COSTS OFF, TIMING OFF)";
  * - kMMPushable: The expression is pushable in mixed mode and before / after upgrade.
  * - kOperatorError: The expression is an operator error.
  * - kFunctionError: The expression is a function error.
- * - kBadCastError: The expression fails because of a bad cast, e.g. smallint out of range
+ * - kOutOfRangeError: The expression fails because of a bad cast, e.g. smallint out of range
+ * - kBadCastError: The expression fails because the two types are incompatible
  *
  * For example, setting pg11_behaviour_ to kPushable and pg15_behaviour_ to kMMPushable means that
  * the expression is:
@@ -65,7 +63,7 @@ static constexpr auto kExplainArgs = "(ANALYZE, COSTS OFF, TIMING OFF)";
  * - pushable in PG15
  */
 YB_DEFINE_ENUM(Behaviour, (kNotPushable)(kPushable)(kMMPushable)
-                          (kOperatorError)(kFunctionError)(kBadCastError));
+                          (kOperatorError)(kFunctionError)(kOutOfRangeError)(kBadCastError));
 class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
  public:
   void SetUp() override {
@@ -75,11 +73,11 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
     const auto create_table_stmt = Format(
         "CREATE TABLE $0($1 INT2, $2 INT4, $3 INT8, $4 FLOAT4, $5 FLOAT8, $6 NUMERIC, " \
                         "$7 NAME, $8 TEXT, $9 POINT, $10 BOX, $11 TID, $12 CIRCLE, $13 BOOL, " \
-                        "$14 CHAR)",
+                        "$14 CHAR, $15 UUID)",
         kTableName,
         kInt2Column, kInt4Column, kInt8Column, kFloat4Column, kFloat8Column, kNumericColumn,
         kNameColumn, kTextColumn, kPointColumn, kBoxColumn, kTidColumn, kCircleColumn, kBoolColumn,
-        kCharColumn);
+        kCharColumn, kUuidColumn);
     LOG(INFO) << "Creating table: " << create_table_stmt;
     ASSERT_OK(conn.Execute(create_table_stmt));
 
@@ -96,7 +94,8 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
       "(2 ^ LEAST(31.0, $1) - 1)::int, " \
       "(2 ^ $1)::bigint, $1, $1, $1, '$1', '$1', " \
       "'($1, $1)'::point, '(1,1,1,1)'::box, ('(42, ' || round($1 % 40)::text || ')')::tid, " \
-      "'<($1, $1), 1>'::circle, round($1 % 2)::int::bool, '1')",
+      "'<($1, $1), 1>'::circle, round($1 % 2)::int::bool, '1', " \
+      "('12345679-1234-5678-1234-' || lpad(round($1)::text, 12, '0'))::uuid)",
       kTableName, i);
     LOG(INFO) << "Inserting row: " << stmt;
     return conn.Execute(stmt);
@@ -115,12 +114,21 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
     return Status::OK();
   }
 
+  /*
+   * Expression is a class designed to hold a condition and its expected behaviour in PG11 and PG15.
+   * There's an optional parameter match_regex that can be used to match the filter in the explain
+   * plan, for cases where the filter is difficult to get to exactly match the expression. If
+   * match_regex is unspecified, the filter in the explain plan must exactly match the expression.
+   */
   class Expression {
    public:
-    Expression(std::string expr, Behaviour pg11, Behaviour pg15)
-    : expr_(std::move(expr)), pg11_behaviour_(pg11), pg15_behaviour_(pg15) {}
+    Expression(std::string expr, Behaviour pg11, Behaviour pg15,
+               std::optional<std::string> match_regex = std::nullopt)
+    : expr_(std::move(expr)), match_regex_(match_regex),
+      pg11_behaviour_(pg11), pg15_behaviour_(pg15) {}
 
     std::string expr_;
+    std::optional<std::string> match_regex_;
 
 #define CREATE_CHECK_FUNCTION(type) bool Is##type(size_t ts_id) const { \
   return (ts_id == kMixedModeTserverPg15 ? pg15_behaviour_ == Behaviour::k##type \
@@ -131,27 +139,32 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
     CREATE_CHECK_FUNCTION(MMPushable)
     CREATE_CHECK_FUNCTION(OperatorError)
     CREATE_CHECK_FUNCTION(FunctionError)
+    CREATE_CHECK_FUNCTION(OutOfRangeError)
     CREATE_CHECK_FUNCTION(BadCastError)
 
     bool IsError(size_t ts_id) const {
       if (ts_id == kMixedModeTserverPg15) {
         return pg15_behaviour_ == Behaviour::kFunctionError
             || pg15_behaviour_ == Behaviour::kOperatorError
+            || pg15_behaviour_ == Behaviour::kOutOfRangeError
             || pg15_behaviour_ == Behaviour::kBadCastError;
       } else {
         return pg11_behaviour_ == Behaviour::kFunctionError
             || pg11_behaviour_ == Behaviour::kOperatorError
+            || pg11_behaviour_ == Behaviour::kOutOfRangeError
             || pg11_behaviour_ == Behaviour::kBadCastError;
       }
     }
 
     Result<std::string> GetExpectedError(size_t ts_id) const {
       if (IsOperatorError(ts_id)) {
-        return kInvalidOperatorError;
+        return "No operator matches the given name and argument types";
       } else if (IsFunctionError(ts_id)) {
-        return kInvalidFunctionError;
+        return "does not exist";
+      } else if (IsOutOfRangeError(ts_id)) {
+        return "out of range";
       } else if (IsBadCastError(ts_id)) {
-        return kOutofRangeError;
+        return "cannot cast type";
       }
       return STATUS_FORMAT(InternalError, "Expression $0 is not an error", expr_);
     }
@@ -182,14 +195,14 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 
     const auto check_filters = [this, prefix](pgwrapper::PGConn& conn,
                                               const std::string& filter_type,
-                                              const std::string& expr,
+                                              const Expression& expr,
                                               std::optional<size_t> ts_id = kAnyTserver) -> Status {
-      LOG(INFO) << "Running " << Format("$0 $1", prefix, expr) << " on "
+      LOG(INFO) << "Running " << Format("$0 $1", prefix, expr.expr_) << " on "
                 << (ts_id == std::nullopt ? "any"
                                           : (*ts_id == kMixedModeTserverPg11 ? "pg11" : "pg15"))
                 << " with mixed_mode_expression_pushdown: " << mixed_mode_expression_pushdown_;
       auto explain_result = VERIFY_RESULT(
-          conn.FetchAllAsString(Format("$0 $1", prefix, expr)));
+          conn.FetchAllAsString(Format("$0 $1", prefix, expr.expr_)));
       auto lines = strings::Split(explain_result, pgwrapper::DefaultRowSeparator(),
                                   strings::SkipEmpty());
       std::string found_filter;
@@ -203,14 +216,21 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
       }
       SCHECK_FORMAT(!found_filter.empty(), NotFound, "$0 not found in explain result: $1",
                     filter_type, explain_result);
-      SCHECK_EQ(found_filter, expr, InternalError,
-                Format("Expected filter to be $0 in explain plan $1", expr, explain_result));
+
+      if (expr.match_regex_.has_value())
+        SCHECK(regex_search(found_filter, std::regex(expr.match_regex_.value())) , InternalError,
+                  Format("Expected filter to match $0 in explain plan $1",
+                         expr.match_regex_.value(), explain_result));
+      else
+        SCHECK_EQ(found_filter, expr.expr_, InternalError,
+                  Format("Expected filter to equal $0 in explain plan $1",
+                         expr.expr_, explain_result));
       return Status::OK();
     };
 
     const auto check = [this, &exprs, &check_filters, &check_failure](size_t ts_id) -> Status {
       auto upgrade_compat = VERIFY_RESULT(ReadUpgradeCompatibilityGuc());
-      LOG(INFO) << "Running checks on "<< (ts_id == kMixedModeTserverPg11 ? "pg11" : "pg15")
+      LOG(INFO) << "Running checks on " << (ts_id == kMixedModeTserverPg11 ? "pg11" : "pg15")
                 << " with mixed_mode_expression_pushdown: " << mixed_mode_expression_pushdown_
                 << " and upgrade compatibility: " << upgrade_compat;
       auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
@@ -219,12 +239,12 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
           RETURN_NOT_OK(check_failure(conn, expr, ts_id));
         } else if (upgrade_compat == "0"
                    && (expr.IsPushable(ts_id) || expr.IsMMPushable(ts_id))) {
-          RETURN_NOT_OK(check_filters(conn, kStorageFilter, expr.expr_, ts_id));
+          RETURN_NOT_OK(check_filters(conn, kStorageFilter, expr, ts_id));
         } else if (upgrade_compat == "11" && mixed_mode_expression_pushdown_
                    && expr.IsMMPushable(ts_id)) {
-          RETURN_NOT_OK(check_filters(conn, kStorageFilter, expr.expr_, ts_id));
+          RETURN_NOT_OK(check_filters(conn, kStorageFilter, expr, ts_id));
         } else {
-          RETURN_NOT_OK(check_filters(conn, kLocalFilter, expr.expr_, ts_id));
+          RETURN_NOT_OK(check_filters(conn, kLocalFilter, expr, ts_id));
         }
       }
       return Status::OK();
@@ -406,6 +426,13 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
     exprs.push_back(Expression(Format("(NOT $0)", kBoolColumn),
                                Behaviour::kPushable, Behaviour::kMMPushable));
 
+    // Add UUID comparisons
+    for (auto op : comparison_operations) {
+      exprs.push_back(Expression(Format("($0 $1 '12345679-1234-5678-1234-123456789012'::uuid)",
+                                       kUuidColumn, op),
+                         Behaviour::kPushable, Behaviour::kMMPushable));
+    }
+
     return exprs;
   }
 };
@@ -462,7 +489,7 @@ TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestOutOfBoundsConversions) {
       auto cond = Format("($0 = ($1)::$2)", t1, t2, get_cast(t1));
       if (t1 < t2) {
         // casting t2 to a smaller type will cause an error
-        exprs.push_back(Expression(cond, Behaviour::kBadCastError, Behaviour::kBadCastError));
+        exprs.push_back(Expression(cond, Behaviour::kOutOfRangeError, Behaviour::kOutOfRangeError));
       } else {
         // casting t2 to a larger type is fine
         exprs.push_back(Expression(cond, Behaviour::kPushable, Behaviour::kMMPushable));
@@ -535,6 +562,98 @@ TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestNewPg15Functions) {
                       kCircleColumn),
                Behaviour::kOperatorError, Behaviour::kPushable),
   }));
+}
+
+TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestTimePushdowns) {
+  static const auto kTimeTable = "time_tbl";
+  static const auto kTimestampCol = "timestamp_col";
+  static const auto kTimestamptzCol = "timestamptz_col";
+  static const auto kDateCol = "date_col";
+  static const auto kTimeCol = "time_col";
+  static const auto kTimetzCol = "timetz_col";
+  static const auto kIntervalCol = "interval_col";
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1 timestamp, $2 timestamptz, $3 date, $4 time, $5 timetz, $6 interval)",
+        kTimeTable, kTimestampCol, kTimestamptzCol, kDateCol, kTimeCol, kTimetzCol, kIntervalCol));
+    for (int i = 1; i <= 12; i++) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 VALUES ('2022-$1-$1 00:00:00', '2022-$1-$1 00:00:00+00', " \
+          "'2022-$1-$1', '$1:00:00', '$1:00:00+00', '$1 days')",
+          kTimeTable, i));
+    }
+  }
+
+  const auto get_cast = [](const std::string& col) {
+    if (col == kTimestampCol) {
+        return "timestamp without time zone";
+    } else if (col == kTimestamptzCol) {
+        return "timestamp with time zone";
+    } else if (col == kDateCol) {
+        return "date";
+    } else if (col == kTimeCol) {
+        return "time without time zone";
+    } else if (col == kTimetzCol) {
+        return "time with time zone";
+    } else if (col == kIntervalCol) {
+        return "interval";
+    }
+    return "";
+  };
+
+  const std::vector<std::string> time_cols =
+      {kTimestampCol, kTimestamptzCol, kDateCol, kTimeCol, kTimetzCol};
+
+  std::vector<Expression> exprs;
+  for (const auto &op : {"=", "<>", "<", "<=", ">", ">="}) {
+    exprs.push_back(Expression(Format("($0 $1 '1 day'::interval)", kIntervalCol, op),
+                               Behaviour::kPushable, Behaviour::kMMPushable));
+
+    for (const auto& col : time_cols) {
+      exprs.push_back(Expression(
+          Format("($0 $1 '2022-01-01 00:00:00'::$2)", col, op, get_cast(col)),
+          Behaviour::kPushable, Behaviour::kMMPushable,
+          // The timezone is modified to use the server timezone, so omit the actual time value.
+          std::optional(Format("$0 $1 .*::$2", col, op, get_cast(col)))));
+    }
+  }
+
+  const auto has_date = [](const std::string& col) {
+    return col == kDateCol || col == kTimestampCol || col == kTimestamptzCol;
+  };
+  const auto has_tz = [](const std::string& col) {
+    return col == kTimestamptzCol || col == kTimetzCol;
+  };
+
+  // Try casting between all time types. Most must be done locally, but there are some exceptions.
+  for (const auto& from : time_cols) {
+    for (const auto& to : time_cols) {
+      if (from == to)
+        continue;
+
+      Behaviour behaviour = Behaviour::kNotPushable;
+      if (!has_tz(to) && from == kTimestampCol)
+        behaviour = Behaviour::kPushable;
+      else if (!has_date(to) && from == kDateCol)
+        behaviour = Behaviour::kBadCastError;
+      else if (has_date(to) && !has_date(from))
+        behaviour = Behaviour::kBadCastError;
+      else if (to == kTimeCol && from == kTimetzCol)
+        behaviour = Behaviour::kPushable;
+      else if (to == kTimestampCol && from == kDateCol)
+        behaviour = Behaviour::kPushable;
+      else if (to == kTimetzCol && from == kTimestampCol)
+        behaviour = Behaviour::kBadCastError;
+
+      exprs.push_back(Expression(Format("($0 = ($1)::$2)", to, from, get_cast(to)),
+                                 behaviour, behaviour));
+    }
+  }
+
+  ASSERT_OK(TestPushdowns(Format("EXPLAIN $0 SELECT * FROM $1 WHERE", kExplainArgs, kTimeTable),
+                          exprs));
 }
 
 }  // namespace yb

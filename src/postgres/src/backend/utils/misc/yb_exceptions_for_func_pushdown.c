@@ -186,6 +186,15 @@ const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
 
 	EQUALITY_OPS(TEXT),
 	INEQUALITY_OPS(TEXT_),
+
+	COMPARISON_OPS(UUID_),
+
+	COMPARISON_OPS(TIME_),
+	COMPARISON_OPS(TIMETZ_),
+	COMPARISON_OPS(TIMESTAMP_),
+	COMPARISON_OPS(TIMESTAMPTZ_),
+	COMPARISON_OPS(DATE_),
+	COMPARISON_OPS(INTERVAL_),
 };
 
 #define DEFINE_ARRAY_SIZE(array) const int array##_count = lengthof(array)
