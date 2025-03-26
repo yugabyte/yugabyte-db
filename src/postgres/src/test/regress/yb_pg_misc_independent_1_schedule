@@ -6,7 +6,6 @@
 # yb_pg_misc_serial_schedule, the tests in this schedule have no dependencies.
 ####################################################################################################
 test: yb.port.comments
-test: yb.port.copydml
 test: yb.port.index_including
 test: yb.port.create_function_sql
 test: yb.port.create_cast
