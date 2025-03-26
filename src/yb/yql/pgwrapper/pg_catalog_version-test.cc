@@ -1635,6 +1635,14 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn2.Execute("DELETE FROM demo WHERE a = 50"));
   row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM demo"));
   ASSERT_EQ(row_count, 99);
+
+  // Alter temp table should not increment catalog version.
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_demo (a INT, b INT)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version);
+  ASSERT_OK(conn.Execute("ALTER TABLE temp_demo ADD COLUMN c INT"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version);
 }
 
 TEST_F(PgCatalogVersionTest, SimulateRollingUpgrade) {
