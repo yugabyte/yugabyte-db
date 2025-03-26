@@ -1040,6 +1040,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTableStmt
 			| AlterTypeStmt
+			| AnalyzeStmt
 			| YbBackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
@@ -1122,7 +1123,6 @@ stmt:
 				parser_ybc_beta_feature(@1, "alter text search configuration", false);
 			  }
 			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
