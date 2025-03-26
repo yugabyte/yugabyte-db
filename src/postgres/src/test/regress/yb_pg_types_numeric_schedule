@@ -15,5 +15,6 @@ test: yb.port.float8
 test: yb.port.numeric
 test: yb.port.numeric_big
 test: yb.port.money
+test: numerology
 
 test: yb.orig.money
