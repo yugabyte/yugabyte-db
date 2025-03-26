@@ -167,8 +167,11 @@ void SetProxyAddresses() {
     LOG_IF(DFATAL, !status.ok())
     << "Bad pgsql_proxy_bind_address " << FLAGS_pgsql_proxy_bind_address << ": " << status;
     for (const auto& addr : bind_addresses) {
-      if (addr.port() == PgProcessConf::kDefaultPort && addr.port() == FLAGS_ysql_conn_mgr_port) {
-        uint16_t preferred_port = 6433;
+      // Flag validator PostgresAndYsqlConnMgrPortValidator ensures that the pg port and conn mgr
+      // port are either both PgProcessConf::kDefaultPort, or are different.
+      // Fixup the pg port so that the ports do not conflict.
+      if (addr.port() == FLAGS_ysql_conn_mgr_port) {
+        const auto preferred_port = PgProcessConf::kDefaultPortWithConnMgr;
         if (addr.port() != preferred_port) {
           LOG(INFO) << "The connection manager and backend db ports are conflicting on "
                 << addr.port() << ". Trying port " << preferred_port << " for backend db.";
