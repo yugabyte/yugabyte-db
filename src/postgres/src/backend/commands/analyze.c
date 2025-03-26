@@ -1459,8 +1459,26 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 		}
 
 		/* Check table type (MATVIEW can't happen, but might as well allow) */
-		if (childrel->rd_rel->relkind == RELKIND_RELATION ||
-			childrel->rd_rel->relkind == RELKIND_MATVIEW)
+		if (IsYBRelation(childrel))
+		{
+			/* Use the YB row acquisition function */
+			acquirefunc = yb_acquire_sample_rows;
+
+			/*
+			 * Unlike analyze_rel, we can't simply set relpages to 0 here
+			 * because it is used for dividing targrows according to the
+			 * partition sizes.  If we do that, no samples will be collected
+			 * for the partitions, resulting in no statistics being gathered at
+			 * the parent level.  Use reltuples instead until we add a
+			 * RelationGetNumberOfBlocks alternative DocDB API.  The actual
+			 * value of relpages for the parent is always set to -1 by
+			 * `do_analyze_rel`.
+			 */
+			relpages = (childrel->rd_rel->reltuples < 0?
+						YBC_DEFAULT_NUM_ROWS: childrel->rd_rel->reltuples);
+		}
+		else if (childrel->rd_rel->relkind == RELKIND_RELATION ||
+				 childrel->rd_rel->relkind == RELKIND_MATVIEW)
 		{
 			/* Regular table, so use the regular row acquisition function */
 			acquirefunc = acquire_sample_rows;
