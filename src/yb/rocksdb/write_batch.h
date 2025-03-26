@@ -49,6 +49,7 @@
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/write_batch_base.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/slice_parts.h"
 
@@ -287,6 +288,14 @@ class WriteBatch : public WriteBatchBase {
     handler_for_logging_ = handler_for_logging;
   }
 
+  yb::MonoDelta GetWriteGroupJoinDuration() const {
+    return write_group_join_duration_;
+  }
+
+  void SetWriteGroupJoinDuration(yb::MonoDelta write_group_join_duration) {
+    write_group_join_duration_ = write_group_join_duration;
+  }
+
  private:
   friend class WriteBatchInternal;
   std::unique_ptr<SavePoints> save_points_;
@@ -304,6 +313,9 @@ class WriteBatch : public WriteBatchBase {
   mutable size_t direct_entries_ = 0;
 
   Handler* handler_for_logging_ = nullptr;
+
+  // The field is set by rocksdb during the batch write.
+  yb::MonoDelta write_group_join_duration_ = yb::MonoDelta::kZero;
 };
 
 }  // namespace rocksdb

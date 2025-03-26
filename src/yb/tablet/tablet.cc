@@ -1737,6 +1737,13 @@ Status Tablet::WriteTransactionalBatch(
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
+  const auto duration = write_batch.GetWriteGroupJoinDuration();
+  if (duration > MonoDelta::kZero) {
+    // Track only if the duration is positive so we know how many write has non-zero duration.
+    metrics_->Increment(TabletEventStats::kIntentDbWriteThreadJoinDuration,
+                        duration.ToMicroseconds());
+  }
+
   last_batch_data.hybrid_time = hybrid_time;
   last_batch_data.next_write_id = writer.intra_txn_write_id();
   transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
@@ -2361,6 +2368,13 @@ Status Tablet::RemoveIntentsImpl(
       docdb::ConsensusFrontiers frontiers;
       InitFrontiers(data, frontiers);
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+
+      const auto duration = intents_write_batch.GetWriteGroupJoinDuration();
+      if (duration > MonoDelta::kZero) {
+        // Track only if the duration is positive so we know how many write has non-zero duration.
+        metrics_->Increment(TabletEventStats::kIntentDbRemoveThreadJoinDuration,
+                            duration.ToMicroseconds());
+      }
 
       if (!context.apply_state().active()) {
         break;

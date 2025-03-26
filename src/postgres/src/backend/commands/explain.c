@@ -687,6 +687,10 @@ const char *yb_metric_event_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_MULTIGET] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
+	[YB_STORAGE_EVENT_INTENTSDB_WRITE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_thread_join_group_micros"),
+	[YB_STORAGE_EVENT_INTENTSDB_REMOVE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_remove_thread_join_group_micros"),
 	[YB_STORAGE_EVENT_SNAPSHOT_READ_INFLIGHT_WAIT_DURATION] =
 	BUILD_METRIC_LABEL("snapshot_read_inflight_wait_duration"),
 	[YB_STORAGE_EVENT_QL_READ_LATENCY] =
