@@ -14829,10 +14829,17 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		return InvalidDumpId;
 
 	/*
-	 * YB_TODO: Fix with extension upgrade. pg_stat_statements_reset() gained
-	 * parameters between PG11 and PG15, so without this, the restore fails
-	 * with:
+	 * YB: pg_stat_statements is a built-in extension in YB (created during
+	 * initdb). PG doesn't dump built-in extensions, so pg_stat_statements is
+	 * not dumped. Therefore, pg_stat_statements_reset() is not explicitly
+	 * created. Moreover, the function no longer exists with that signature
+	 * in PG15 (it gained parameters). So keep this work-around for now,
+	 * otherwise the restore will fail with:
 	 * ERROR:  function pg_catalog.pg_stat_statements_reset() does not exist
+	 * In the future, we may want to follow the typical extension binary upgrade
+	 * path for pg_stat_statements (create an empty extension and manually
+	 * create extension objects), and then this work-around can be removed
+	 * (tracked in GH issue #26566).
 	 */
 	if (IsYugabyteEnabled && dopt->binary_upgrade &&
 		strcmp(name, "\"pg_stat_statements_reset\"()") == 0)
