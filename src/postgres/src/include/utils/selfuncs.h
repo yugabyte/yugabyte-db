@@ -210,6 +210,9 @@ extern void mergejoinscansel(PlannerInfo *root, Node *clause,
 extern double estimate_num_groups(PlannerInfo *root, List *groupExprs,
 					double input_rows, List **pgset);
 
+extern double yb_estimate_num_groups(PlannerInfo *root, List *groupExprs,
+									 double input_rows, List **pgset);
+
 extern void estimate_hash_bucket_stats(PlannerInfo *root,
 						   Node *hashkey, double nbuckets,
 						   Selectivity *mcv_freq,

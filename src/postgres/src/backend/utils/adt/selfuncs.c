@@ -3364,6 +3364,8 @@ add_unique_group_var(PlannerInfo *root, List *varinfos,
 	return varinfos;
 }
 
+
+
 /*
  * estimate_num_groups		- Estimate number of groups in a grouped query
  *
@@ -3723,6 +3725,281 @@ estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows,
 					(1 - pow((rel->tuples - rel->rows) / rel->tuples,
 							 rel->tuples / reldistinct));
 			}
+			reldistinct = clamp_row_est(reldistinct);
+
+			/*
+			 * Update estimate of total distinct groups.
+			 */
+			numdistinct *= reldistinct;
+		}
+
+		varinfos = newvarinfos;
+	} while (varinfos != NIL);
+
+	/* Now we can account for the effects of any SRFs */
+	numdistinct *= srf_multiplier;
+
+	/* Round off */
+	numdistinct = ceil(numdistinct);
+
+	/* Guard against out-of-range answers */
+	if (numdistinct > input_rows)
+		numdistinct = input_rows;
+	if (numdistinct < 1.0)
+		numdistinct = 1.0;
+
+	return numdistinct;
+}
+
+double
+yb_estimate_num_groups(PlannerInfo *root, List *groupExprs,
+					   double input_rows, List **pgset)
+{
+	List	   *varinfos = NIL;
+	double		srf_multiplier = 1.0;
+	double		numdistinct;
+	ListCell   *l;
+	int			i;
+
+	/*
+	 * We don't ever want to return an estimate of zero groups, as that tends
+	 * to lead to division-by-zero and other unpleasantness.  The input_rows
+	 * estimate is usually already at least 1, but clamp it just in case it
+	 * isn't.
+	 */
+	input_rows = clamp_row_est(input_rows);
+
+	/*
+	 * If no grouping columns, there's exactly one group.  (This can't happen
+	 * for normal cases with GROUP BY or DISTINCT, but it is possible for
+	 * corner cases with set operations.)
+	 */
+	if (groupExprs == NIL || (pgset && list_length(*pgset) < 1))
+		return 1.0;
+
+	/*
+	 * Count groups derived from boolean grouping expressions.  For other
+	 * expressions, find the unique Vars used, treating an expression as a Var
+	 * if we can find stats for it.  For each one, record the statistical
+	 * estimate of number of distinct values (total in its table, without
+	 * regard for filtering).
+	 */
+	numdistinct = 1.0;
+
+	i = 0;
+	foreach(l, groupExprs)
+	{
+		Node	   *groupexpr = (Node *) lfirst(l);
+		double		this_srf_multiplier;
+		VariableStatData vardata;
+		List	   *varshere;
+		ListCell   *l2;
+
+		/* is expression in this grouping set? */
+		if (pgset && !list_member_int(*pgset, i++))
+			continue;
+
+		/*
+		 * Set-returning functions in grouping columns are a bit problematic.
+		 * The code below will effectively ignore their SRF nature and come up
+		 * with a numdistinct estimate as though they were scalar functions.
+		 * We compensate by scaling up the end result by the largest SRF
+		 * rowcount estimate.  (This will be an overestimate if the SRF
+		 * produces multiple copies of any output value, but it seems best to
+		 * assume the SRF's outputs are distinct.  In any case, it's probably
+		 * pointless to worry too much about this without much better
+		 * estimates for SRF output rowcounts than we have today.)
+		 */
+		this_srf_multiplier = expression_returns_set_rows(groupexpr);
+		if (srf_multiplier < this_srf_multiplier)
+			srf_multiplier = this_srf_multiplier;
+
+		/* Short-circuit for expressions returning boolean */
+		if (exprType(groupexpr) == BOOLOID)
+		{
+			numdistinct *= 2.0;
+			continue;
+		}
+
+		/*
+		 * If examine_variable is able to deduce anything about the GROUP BY
+		 * expression, treat it as a single variable even if it's really more
+		 * complicated.
+		 */
+		examine_variable(root, groupexpr, 0, &vardata);
+		if (HeapTupleIsValid(vardata.statsTuple) || vardata.isunique)
+		{
+			varinfos = add_unique_group_var(root, varinfos,
+											groupexpr, &vardata);
+			ReleaseVariableStats(vardata);
+			continue;
+		}
+		ReleaseVariableStats(vardata);
+
+		/*
+		 * Else pull out the component Vars.  Handle PlaceHolderVars by
+		 * recursing into their arguments (effectively assuming that the
+		 * PlaceHolderVar doesn't change the number of groups, which boils
+		 * down to ignoring the possible addition of nulls to the result set).
+		 */
+		varshere = pull_var_clause(groupexpr,
+								   PVC_RECURSE_AGGREGATES |
+								   PVC_RECURSE_WINDOWFUNCS |
+								   PVC_RECURSE_PLACEHOLDERS);
+
+		/*
+		 * If we find any variable-free GROUP BY item, then either it is a
+		 * constant (and we can ignore it) or it contains a volatile function;
+		 * in the latter case we punt and assume that each input row will
+		 * yield a distinct group.
+		 */
+		if (varshere == NIL)
+		{
+			if (contain_volatile_functions(groupexpr))
+				return input_rows;
+			continue;
+		}
+
+		/*
+		 * Else add variables to varinfos list
+		 */
+		foreach(l2, varshere)
+		{
+			Node	   *var = (Node *) lfirst(l2);
+
+			examine_variable(root, var, 0, &vardata);
+			varinfos = add_unique_group_var(root, varinfos, var, &vardata);
+			ReleaseVariableStats(vardata);
+		}
+	}
+
+	/*
+	 * If now no Vars, we must have an all-constant or all-boolean GROUP BY
+	 * list.
+	 */
+	if (varinfos == NIL)
+	{
+		/* Apply SRF multiplier as we would do in the long path */
+		numdistinct *= srf_multiplier;
+		/* Round off */
+		numdistinct = ceil(numdistinct);
+		/* Guard against out-of-range answers */
+		if (numdistinct > input_rows)
+			numdistinct = input_rows;
+		if (numdistinct < 1.0)
+			numdistinct = 1.0;
+		return numdistinct;
+	}
+
+	/*
+	 * Group Vars by relation and estimate total numdistinct.
+	 *
+	 * For each iteration of the outer loop, we process the frontmost Var in
+	 * varinfos, plus all other Vars in the same relation.  We remove these
+	 * Vars from the newvarinfos list for the next iteration. This is the
+	 * easiest way to group Vars of same rel together.
+	 */
+	do
+	{
+		GroupVarInfo *varinfo1 = (GroupVarInfo *) linitial(varinfos);
+		RelOptInfo *rel = varinfo1->rel;
+		double		reldistinct = 1;
+		double		relmaxndistinct = reldistinct;
+		int			relvarcount = 0;
+		List	   *newvarinfos = NIL;
+		List	   *relvarinfos = NIL;
+
+		/*
+		 * Split the list of varinfos in two - one for the current rel, one
+		 * for remaining Vars on other rels.
+		 */
+		relvarinfos = lcons(varinfo1, relvarinfos);
+		for_each_cell(l, lnext(list_head(varinfos)))
+		{
+			GroupVarInfo *varinfo2 = (GroupVarInfo *) lfirst(l);
+
+			if (varinfo2->rel == varinfo1->rel)
+			{
+				/* varinfos on current rel */
+				relvarinfos = lcons(varinfo2, relvarinfos);
+			}
+			else
+			{
+				/* not time to process varinfo2 yet */
+				newvarinfos = lcons(varinfo2, newvarinfos);
+			}
+		}
+
+		/*
+		 * Get the numdistinct estimate for the Vars of this rel.  We
+		 * iteratively search for multivariate n-distinct with maximum number
+		 * of vars; assuming that each var group is independent of the others,
+		 * we multiply them together.  Any remaining relvarinfos after no more
+		 * multivariate matches are found are assumed independent too, so
+		 * their individual ndistinct estimates are multiplied also.
+		 *
+		 * While iterating, count how many separate numdistinct values we
+		 * apply.  We apply a fudge factor below, but only if we multiplied
+		 * more than one such values.
+		 */
+		while (relvarinfos)
+		{
+			double		mvndistinct;
+
+			if (estimate_multivariate_ndistinct(root, rel, &relvarinfos,
+												&mvndistinct))
+			{
+				reldistinct *= mvndistinct;
+				if (relmaxndistinct < mvndistinct)
+					relmaxndistinct = mvndistinct;
+				relvarcount++;
+			}
+			else
+			{
+				foreach(l, relvarinfos)
+				{
+					GroupVarInfo *varinfo2 = (GroupVarInfo *) lfirst(l);
+
+					reldistinct *= varinfo2->ndistinct;
+					if (relmaxndistinct < varinfo2->ndistinct)
+						relmaxndistinct = varinfo2->ndistinct;
+					relvarcount++;
+				}
+
+				/* we're done with this relation */
+				relvarinfos = NIL;
+			}
+		}
+
+		/*
+		 * Sanity check --- don't divide by zero if empty relation.
+		 */
+		Assert(IS_SIMPLE_REL(rel));
+		if (rel->tuples > 0)
+		{
+			/*
+			 * Clamp to size of rel, or size of rel / 10 if multiple Vars. The
+			 * fudge factor is because the Vars are probably correlated but we
+			 * don't know by how much.  We should never clamp to less than the
+			 * largest ndistinct value for any of the Vars, though, since
+			 * there will surely be at least that many groups.
+			 */
+			double		clamp = rel->tuples;
+
+			if (relvarcount > 1)
+			{
+				clamp *= 0.1;
+				if (clamp < relmaxndistinct)
+				{
+					clamp = relmaxndistinct;
+					/* for sanity in case some ndistinct is too large: */
+					if (clamp > rel->tuples)
+						clamp = rel->tuples;
+				}
+			}
+			if (reldistinct > clamp)
+				reldistinct = clamp;
+
 			reldistinct = clamp_row_est(reldistinct);
 
 			/*
