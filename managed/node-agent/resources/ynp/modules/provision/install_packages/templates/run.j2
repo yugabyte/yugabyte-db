@@ -67,4 +67,11 @@ else
       install_packages "$pkg_mgr" "${aarch64_packages[@]}"
     fi
   fi
+
+  if [[ "{{ os_family }}" == "RedHat" ]]; then
+    if [[ "{{ cloud_type }}" == "gcp" || "{{ cloud_type }}" == "azu" ]]; then
+      # Required for GCP/Azure AMIs
+      dnf install -y tuned
+    fi
+  fi
 fi

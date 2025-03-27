@@ -81,17 +81,22 @@ if [[ "$is_cloud" == "False" ]]; then
     verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}"
 fi
 
-if [[ "$is_cloud" == "False" ]]; then
-    # Verify kernel core pattern
-    kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
-    if [ "$kernel_core_pattern_value" == "{{ kernel_core_pattern }}" ]; then
-        echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
-        add_result "kernel.core_pattern" "PASS" "kernel.core_pattern is set to $kernel_core_pattern_value"
-    else
-        echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
-            (expected: {{ kernel_core_pattern }})"
-        add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
-    fi
+# Verify kernel core pattern
+kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
+kernel_core_pattern={{ kernel_core_pattern }}
+if [[ "$is_cloud" == "True" ]]; then
+    kernel_core_pattern="|/usr/local/bin/compress_core.sh /home/yugabyte/cores/core_%p_%t_%E"
+fi
+if [ "$kernel_core_pattern_value" == "$kernel_core_pattern" ]; then
+    echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
+    add_result "kernel.core_pattern" "PASS" \
+        "kernel.core_pattern is set to $kernel_core_pattern_value"
+else
+    echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
+        (expected: $kernel_core_pattern)"
+    add_result "kernel.core_pattern" "FAIL" \
+        "kernel.core_pattern is set to $kernel_core_pattern_value \
+        (expected: $kernel_core_pattern)"
 fi
 
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
