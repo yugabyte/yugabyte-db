@@ -1647,7 +1647,7 @@ If you have to take the snapshot, you’ll need to add 2 other configuration pro
 }
 ```
 
-For information on parallel streaming configuration properties, refer to [Advanced connector properties](../using-logical-replication/yugabytedb-connector-properties/#streaming-mode)
+For information on parallel streaming configuration properties, refer to [Advanced connector properties](../using-logical-replication/yugabytedb-connector-properties/#streaming-mode).
 
 {{< warning title="Warning" >}}
 
