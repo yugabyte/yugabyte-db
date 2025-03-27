@@ -65,6 +65,7 @@ public class RollbackYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServ
       }
 
       state = getYsqlMajorCatalogUpgradeState();
+      log.info("Current state: {}", state);
       if (!state.equals(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
         log.error("YSQL major version catalog upgrade rollback did not complete successfully.");
         throw new RuntimeException(
