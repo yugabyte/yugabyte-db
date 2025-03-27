@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { useQuery, useQueryClient } from 'react-query';
+import { useQuery } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import moment from 'moment';
 import { Box, useTheme } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
-import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
 import {
@@ -29,8 +28,7 @@ import {
   MetricName,
   XClusterModalName,
   XClusterTableStatus,
-  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
 } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
@@ -85,17 +83,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
 
   const dispatch = useDispatch();
   const { visibleModal } = useSelector((state: any) => state.modal);
-  const queryClient = useQueryClient();
   const theme = useTheme();
-
-  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
-    () =>
-      fetchTablesInUniverse(
-        xClusterConfig.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data)
-  );
 
   const sourceUniverseQuery = useQuery(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
@@ -134,19 +122,12 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     }
   );
 
-  if (
-    sourceUniverseTablesQuery.isLoading ||
-    sourceUniverseTablesQuery.isIdle ||
-    sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle
-  ) {
+  if (sourceUniverseQuery.isLoading || sourceUniverseQuery.isIdle) {
     return <YBLoading />;
   }
-  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
+  if (sourceUniverseQuery.isError) {
     const sourceUniverseTerm = props.isDrInterface ? 'DR primary universe' : 'source universe';
-    const errorMessage = sourceUniverseTablesQuery.isError
-      ? `Failed to fetch ${sourceUniverseTerm} table details.`
-      : `Failed to fetch ${sourceUniverseTerm} details.`;
+    const errorMessage = `Failed to fetch ${sourceUniverseTerm} details.`;
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
