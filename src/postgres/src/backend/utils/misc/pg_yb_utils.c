@@ -48,6 +48,7 @@
 #include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
@@ -3342,7 +3343,27 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			}
 
 		case T_AlterTableStmt:
+			/* We rely on table schema version mismatch to abort transactions that touch the table. */
 			is_breaking_change = false;
+
+			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
+
+			Oid relid = RangeVarGetRelidExtended(stmt->relation, NoLock,
+				RVR_MISSING_OK, /* callback */ NULL, /* callback_arg */ NULL);
+			if (OidIsValid(relid))
+			{
+				Relation	rel;
+				rel = relation_open(relid, NoLock);
+				bool is_temp_table = rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
+				relation_close(rel, NoLock);
+
+				if (is_temp_table)
+				{
+					is_version_increment = false;
+					break;
+				}
+			}
+
 			/*
 			 * Must increment catalog version when creating table with foreign
 			 * key reference and refresh PG cache on ongoing transactions.
@@ -3352,7 +3373,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				ddl_transaction_state.original_node_tag == T_CreateStmt &&
 				node_tag == T_AlterTableStmt)
 			{
-				AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
 				ListCell   *lcmd;
 
 				foreach(lcmd, stmt->cmds)
