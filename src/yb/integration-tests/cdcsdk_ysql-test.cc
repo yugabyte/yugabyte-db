@@ -7033,7 +7033,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnStreamedColoca
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
   }
 
-  auto req_table_id = GetColocatedTableId("test1");
+  std::string req_table_id;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        req_table_id = GetColocatedTableId("test1");
+        return !req_table_id.empty();
+      },
+      MonoDelta::FromSeconds(5), "Waiting for colocated table ID to be available"));
   ASSERT_NE(req_table_id, "");
   auto change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
   while (true) {
