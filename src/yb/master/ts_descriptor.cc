@@ -59,6 +59,8 @@ DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 10 * 1000,
                       "through the YSQL API.");
 TAG_FLAG(master_ysql_operation_lease_ttl_ms, advanced);
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 namespace yb {
 namespace master {
 
@@ -238,6 +240,17 @@ bool TSDescriptor::has_tablet_report() const {
 void TSDescriptor::set_has_tablet_report(bool has_report) {
   std::lock_guard l(mutex_);
   has_tablet_report_ = has_report;
+  receiving_full_report_seq_no_ = 0;
+}
+
+int32_t TSDescriptor::receiving_full_report_seq_no() const {
+  SharedLock lock(mutex_);
+  return receiving_full_report_seq_no_;
+}
+
+void TSDescriptor::set_receiving_full_report_seq_no(int32_t value) {
+  std::lock_guard lock(mutex_);
+  receiving_full_report_seq_no_ = value;
 }
 
 bool TSDescriptor::has_faulty_drive() const {
@@ -506,7 +519,8 @@ TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     updated = true;
   }
-  if (GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease) &&
+  if ((GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
+       GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) &&
       proto_lock->pb.live_client_operation_lease() &&
       last_ysql_lease_refresh_ + MonoDelta::FromMilliseconds(
                                      GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms)) <

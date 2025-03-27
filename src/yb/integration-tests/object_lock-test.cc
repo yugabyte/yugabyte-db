@@ -58,7 +58,6 @@ DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
-DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_double(TEST_tserver_ysql_lease_refresh_failure_prob);
 DECLARE_bool(enable_load_balancing);
 
@@ -89,12 +88,10 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
         kDefaultMasterYSQLLeaseTTLMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_lease_refresher_interval_ms) =
         kDefaultYSQLLeaseRefreshIntervalMilli;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     MiniClusterTestWithClient::SetUp();
     MiniClusterOptions opts;
@@ -1314,13 +1311,12 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
   opts.extra_master_flags = {
-      "--TEST_enable_object_locking_for_table_locks", "--TEST_enable_ysql_operation_lease",
+      "--TEST_enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       "--enable_load_balancing=false"};
   opts.extra_tserver_flags = {
-      "--TEST_enable_object_locking_for_table_locks", "--TEST_enable_ysql_operation_lease",
-      Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
-      Format("--$0", kTServerYsqlLeaseRefreshFlagName)};
+      "--TEST_enable_object_locking_for_table_locks",
+      Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli)};
   return opts;
 }
 

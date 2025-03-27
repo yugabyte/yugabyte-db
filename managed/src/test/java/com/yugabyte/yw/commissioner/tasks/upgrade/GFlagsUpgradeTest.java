@@ -1089,6 +1089,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         TaskType.GFlagsUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

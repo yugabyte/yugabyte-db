@@ -1,4 +1,5 @@
 is_cloud={{ is_cloud | default(false) }}
+bin_path="/usr/local/bin"
 
 # Set system limits
 # Append limits to /etc/security/limits.conf if they don't already exist
@@ -70,17 +71,17 @@ if [[ "$is_cloud" == "False" ]]; then
   sysctl -w vm.max_map_count={{ vm_max_map_count }}
 fi
 
-if [[ "$is_cloud" == true ]]; then
+if [[ "$is_cloud" == "True" ]]; then
   # Define paths and directories
   DUMP_DIR="{{ yb_home_dir }}/cores/"
 
   # Ensure the cores directory exists with proper permissions
   mkdir -p "$DUMP_DIR"
   chmod 0755 "$DUMP_DIR"
-  chown "{{ user_name }}:{{ user_name }}" "$DUMP_DIR"
+  chown "{{ yb_user }}:{{ yb_user }}" "$DUMP_DIR"
 
   # Create core dump compression script
-  cat << 'EOF' > "{{ bin_path }}/compress_core.sh"
+  cat << 'EOF' > "$bin_path/compress_core.sh"
 #!/bin/bash
 DUMP_DIR="/home/yugabyte/cores/"
 CORE_FILE="$DUMP_DIR/$(basename $1).$$.gz"
@@ -94,50 +95,45 @@ chmod 644 "$CORE_FILE"
 EOF
 
   # Create core dump kernel pattern
-  sysctl -w kernel.core_pattern="|{{ bin_path }}/compress_core.sh {{ yb_home_dir }}/cores/core_%%p_%%t_%%E"
+  CORE_SCRIPT="$bin_path/compress_core.sh"
+  CORE_DIR="{{ yb_home_dir }}/cores"
+  CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_%p_%t_%E"
 
-  # Persist the kernel core dump pattern
-  grep -q "^kernel.core_pattern=" /etc/sysctl.conf && \
-  sed -i "s|^kernel.core_pattern=.*|kernel.core_pattern=|$CORE_SCRIPT {{ yb_home_dir }}/cores/core_%%p_%%t_%%E|" /etc/sysctl.conf || \
-  echo "kernel.core_pattern=|$CORE_SCRIPT {{ yb_home_dir }}/cores/core_%%p_%%t_%%E" >> /etc/sysctl.conf
+  # Apply the core pattern temporarily
+  sysctl -w kernel.core_pattern="$CORE_PATTERN"
+
+  # Update or append kernel.core_pattern in /etc/sysctl.conf
+  if grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
+      sed -i "s#^kernel.core_pattern=.*#kernel.core_pattern=$CORE_PATTERN#" /etc/sysctl.conf
+  else
+      echo "kernel.core_pattern=$CORE_PATTERN" | tee -a /etc/sysctl.conf > /dev/null
+  fi
 
   # Set max map count
   sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
 
-  # Ensure mount paths exist
-  mount_points="{{ mount_points | default('') | trim }}"
-  IFS=' ' read -ra mount_points_array <<< "$mount_points"
-  # Verify each mount point
-  for mount_point in "${mount_points_array[@]}"; do
-    mkdir -p "{{ mount_path }}"
-    chown -R "{{ user_name }}:{{ user_name }}" "${mount_path}"
-    chmod -R 755 "{{ mount_path }}"
-  done
+  # Apply the changes system-wide
+  sysctl --system
 
   # Ensure metrics directory exists
-  mkdir -p "{{ yb_metrics_dir }}"
-  chown -R "{{ user_name }}:{{ user_name }}" "{{ yb_metrics_dir }}"
-  chmod -R 755 "{{ yb_metrics_dir }}"
+  yb_metrics_dir="{{ yb_home_dir }}/metrics"
+  mkdir -p "$yb_metrics_dir"
+  chown -R "{{ yb_user }}:{{ yb_user }}" "$yb_metrics_dir"
+  chmod -R 755 "$yb_metrics_dir"
 
-  install_node_exporter="{{ install_node_exporter | default('false') }}"
-  if [[ "$install_node_exporter" == "true" ]] || \
-   [[ ("{{ os_family }}" == "RedHat" && "{{ os_version }}" == "7") || \
-      ("{{ os_distribution }}" == "Amazon" && "{{ os_version }}" == "2") ]]; then
-    chmod 0750 {{ yb_home_dir }}
-  fi
-
-  sudoers_file="/etc/sudoers.d/yugabyte-metrics"
-  sudo_entry="yugabyte ALL=(ALL:ALL) NOPASSWD: /usr/bin/journalctl -k --since 10min\\ ago"
-
-  # Add the sudo entry for yugabyte
-  if [[ ! -f "$sudoers_file" ]] || ! grep -Fxq "$sudo_entry" "$sudoers_file"; then
-    echo "$sudo_entry" | sudo tee "$sudoers_file" > /dev/null
-    sudo chmod 0440 "$sudoers_file"
-    
-    # Validate the sudoers file
-    if ! sudo visudo -cf "$sudoers_file"; then
-      echo "Error: Invalid sudoers file syntax in $sudoers_file" >&2
-      exit 1
+  if [[ "{{ os_family }}" == "RedHat" ]]; then
+    # Check if tuned is installed
+    if command -v tuned-adm &> /dev/null; then
+        echo "Tuned is installed. Enabling and starting the service..."
+        systemctl enable --now tuned
+        # Ensure tuned service is running before applying a profile
+        if systemctl is-active --quiet tuned; then
+            tuned-adm profile latency-performance
+        else
+            echo "Error: Tuned service is not running. Skipping tuning configuration."
+        fi
+    else
+        echo "Tuned is not installed. Skipping tuning configuration."
     fi
   fi
 
@@ -163,18 +159,24 @@ EOF
   fi
 fi
 
-echo "Kernel settings configured."
-echo "OS Configuration applied successfully."
-
-cat <<EOF >> /etc/systemd/journald.conf
-
-##### ADDED BY YUGABYTE #####
-Storage=persistent
+JOURNALD_CONF="/etc/systemd/journald.conf"
+CONFIG_BLOCK="##### ADDED BY YUGABYTE #####"
+SETTINGS="Storage=persistent
 MaxRetentionSec=30days
-SystemMaxUse=400M
-##### ADDED BY YUGABYTE #####
-EOF
+SystemMaxUse=400M"
+
+# Check if the block already exists
+if ! grep -q "$CONFIG_BLOCK" "$JOURNALD_CONF"; then
+    echo -e "\n$CONFIG_BLOCK" | sudo tee -a "$JOURNALD_CONF" > /dev/null
+    echo "$SETTINGS" | sudo tee -a "$JOURNALD_CONF" > /dev/null
+    echo "$CONFIG_BLOCK" | sudo tee -a "$JOURNALD_CONF" > /dev/null
+    echo "Updated $JOURNALD_CONF with journald settings."
+else
+    echo "Settings already present in $JOURNALD_CONF. No changes made."
+fi
 
 systemctl restart systemd-journald
+echo "systemd-journald restarted successfully."
 
-echo "Journald settings configured."
+echo "Kernel settings configured."
+echo "OS Configuration applied successfully."

@@ -325,7 +325,7 @@ class YBClient::Data {
   void CreateXClusterStream(
       YBClient* client, const TableId& table_id,
       const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
-      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+      master::SysCDCStreamEntryPB_State state, cdc::StreamModeTransactional transactional,
       CoarseTimePoint deadline, CreateCDCStreamCallback callback);
 
   void DeleteCDCStream(

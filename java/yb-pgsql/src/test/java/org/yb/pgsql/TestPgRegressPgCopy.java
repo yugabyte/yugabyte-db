@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,8 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressAggregates extends BasePgRegressTestPorted {
-
+public class TestPgRegressPgCopy extends BasePgRegressTestPorted {
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";
 
@@ -35,13 +34,12 @@ public class TestPgRegressAggregates extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_enable_inheritance", "true");
     appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
     return flags;
   }
 
   @Test
-  public void testPgRegressAggregates() throws Exception {
-    runPgRegressTest("yb_pg_aggregates_schedule");
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_pg_copy_schedule");
   }
 }

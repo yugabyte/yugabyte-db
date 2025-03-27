@@ -44,7 +44,6 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/dockv/partition.h"
 
@@ -1784,9 +1783,6 @@ class PgClientServiceImpl::Impl {
   }
 
   void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
-    if (!GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
-      return;
-    }
     std::vector<SessionInfoPtr> sessions;
     {
       std::lock_guard lock(mutex_);

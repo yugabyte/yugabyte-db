@@ -31,6 +31,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_string(tmp_dir);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_string(pgsql_proxy_bind_address);
@@ -416,6 +417,10 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
     if (!FLAGS_pgsql_proxy_bind_address.empty()) {
       closest_ts_hp.set_host(pg_conf.listen_addresses);
     }
+    if (FLAGS_enable_ysql_conn_mgr) {
+      closest_ts_hp.set_port(pgwrapper::PgProcessConf::kDefaultPortWithConnMgr);
+    }
+
     pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
   } else {
     // Remote tserver.

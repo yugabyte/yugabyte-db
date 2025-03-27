@@ -317,9 +317,9 @@ yb_can_pushdown_func(Oid funcid)
 		}
 		return false;
 	}
-	else if (yb_major_version_upgrade_compatibility > 0)
+	else if (result && yb_major_version_upgrade_compatibility > 0)
 	{
-	/* YB_UPGRADE: Handle this case for each new PG version. */
+		/* YB_UPGRADE: Handle this case for each new PG version. */
 		Assert(false);
 	}
 

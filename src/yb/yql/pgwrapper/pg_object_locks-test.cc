@@ -30,11 +30,9 @@
 
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
-DECLARE_bool(TEST_enable_ysql_operation_lease);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
-DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 
 using namespace std::literals;
 
@@ -47,8 +45,6 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     PgMiniTestBase::SetUp();
     lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();

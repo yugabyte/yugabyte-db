@@ -7458,8 +7458,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 
 					int			in_expr_array_length;
 					in_expr_array_length = yb_batch_expr_size(root,
-																baserel->relid,
-																other_operand);
+															  baserel->relid,
+															  other_operand);
 
 					if (*strictest_in_expr_array_length > in_expr_array_length)
 					{

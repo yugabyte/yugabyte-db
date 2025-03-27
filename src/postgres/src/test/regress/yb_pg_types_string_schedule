@@ -8,10 +8,12 @@ test: yb.port.char
 test: yb.port.name
 test: yb.port.varchar
 test: yb.port.text
-test: yb.port.bit
+test: bit
 test: yb.port.uuid
 test: yb.port.strings
 test: yb.port.tstypes
+
+test: unicode
 
 test: yb.port.collate
 test: yb.port.collate.icu.utf8

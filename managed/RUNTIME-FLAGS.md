@@ -315,3 +315,6 @@
 | "Allow users to disable DB APIs" | "yb.configure_db_api.allow_disable" | "UNIVERSE" | "Allow users to disable DB APIs" | "Boolean" |
 | "Enable Clockbound synchronization check" | "yb.checks.clockbound.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Clockbound synchronization check timeout" | "yb.checks.clockbound.timeout" | "UNIVERSE" | "Clockbound synchronization check timeout" | "Duration" |
+| "Delay between failed create tablespaces operation retry" | "yb.task.create_tablespaces.retry_delay" | "UNIVERSE" | "Delay between failed create tablespaces operation retry" | "Duration" |
+| "Timeout for create tablespaces task retries" | "yb.task.create_tablespaces.retry_timeout" | "UNIVERSE" | "Timeout for create tablespaces task retries" | "Duration" |
+| "Minimal number of retries for create tablespaces task" | "yb.task.create_tablespaces.min_retries" | "UNIVERSE" | "Minimal number of retries for create tablespaces task" | "Integer" |

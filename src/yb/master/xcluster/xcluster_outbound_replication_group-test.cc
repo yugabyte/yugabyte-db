@@ -16,12 +16,16 @@
 #include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client_mock.h"
+
 #include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"

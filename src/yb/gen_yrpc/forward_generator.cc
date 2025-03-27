@@ -20,7 +20,15 @@ namespace gen_yrpc {
 
 namespace {
 
+void EnumForward(YBPrinter printer, const google::protobuf::Descriptor* message) {
+  for (int i = 0; i != message->enum_type_count(); ++i) {
+    ScopedSubstituter enum_substituter(printer, message->enum_type(i));
+    printer("enum $enum_name$ : int;\n");
+  }
+}
+
 void MessageForward(YBPrinter printer, const google::protobuf::Descriptor* message, bool need_lw) {
+  EnumForward(printer, message);
   for (auto i = 0; i != message->nested_type_count(); ++i) {
     MessageForward(printer, message->nested_type(i), need_lw);
   }
@@ -60,6 +68,12 @@ void ForwardGenerator::Header(YBPrinter printer, const google::protobuf::FileDes
 
   for (int i = 0; i != file->message_type_count(); ++i) {
     MessageForward(printer, file->message_type(i), need_lw_);
+
+  }
+
+  for (int i = 0; i < file->enum_type_count(); ++i) {
+    ScopedSubstituter enum_substituter(printer, file->enum_type(i));
+    printer("enum $enum_name$ : int;\n");
   }
 
   printer(

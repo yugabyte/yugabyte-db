@@ -1186,4 +1186,34 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
     }
   }
+
+  @Test
+  public void test26463IntegerOverflowInSeekEstimationforBNL() throws Exception {
+    /*
+     * #26463 : Negative cost estimates for BNL due to integer overflow
+     *
+     * This test checks that seek and next estimations do not overflow when
+     * joining large tables using Batched Nested Loop Join.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t1_26463 (k INT, PRIMARY KEY (k ASC))");
+      stmt.execute("CREATE TABLE t2_26463 (k INT)");
+      /* Simluate a large table by setting reltuples in pg_class */
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
+      stmt.execute("UPDATE pg_class SET reltuples=1000000000 WHERE relname='t1_26463'");
+      stmt.execute("UPDATE pg_class SET reltuples=100000000000 WHERE relname='t2_26463'");
+      stmt.execute("UPDATE pg_yb_catalog_version SET current_version=current_version+1 "
+        + "WHERE db_oid=1");
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
+
+      stmt.execute("SET yb_enable_base_scans_cost_model=on");
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ Leading((t2_26463 t1_26463)) YbBatchedNL(t1_26463 t2_26463) */ SELECT t1_26463.k "
+        + "FROM t1_26463, t2_26463 WHERE t1_26463.k = t2_26463.k;",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t2_26463", NODE_SEQ_SCAN, 97656248.0, 100097654198.0,
+        "t1_26463", NODE_INDEX_SCAN, 1024.0, 2048.0);
+    }
+  }
 }

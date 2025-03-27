@@ -1546,4 +1546,31 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Clockbound synchronization check timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryDelay =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_delay",
+          ScopeType.UNIVERSE,
+          "Delay between failed create tablespaces operation retry",
+          "Delay between failed create tablespaces operation retry",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryTimeout =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for create tablespaces task retries",
+          "Timeout for create tablespaces task retries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> createTablespacesMinRetries =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.min_retries",
+          ScopeType.UNIVERSE,
+          "Minimal number of retries for create tablespaces task",
+          "Minimal number of retries for create tablespaces task",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

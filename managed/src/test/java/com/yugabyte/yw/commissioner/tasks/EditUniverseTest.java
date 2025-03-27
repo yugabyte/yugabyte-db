@@ -393,6 +393,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     taskParams = performShrink(universe);
     // It may not be a master but works as long as it in the universe.
@@ -411,6 +412,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

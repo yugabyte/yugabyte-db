@@ -2528,19 +2528,28 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Status CDCSDKYsqlTest::StepDownLeader(size_t new_leader_index, const TabletId tablet_id) {
-    Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
-    if (!status.ok()) {
-      return status;
-    }
+    std::string error_message;
 
-    status = yb_admin_client_->LeaderStepDownWithNewLeader(
-        tablet_id,
-        test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
-    if (!status.ok()) {
-      return status;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(500));
-    return Status::OK();
+    return WaitFor(
+        [&]() -> Result<bool> {
+          Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
+          if (!status.ok()) {
+            error_message = status.ToString();
+            return false;
+          }
+
+          status = yb_admin_client_->LeaderStepDownWithNewLeader(
+              tablet_id,
+              test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
+          if (!status.ok()) {
+            error_message = status.ToString();
+            return false;
+          }
+
+          SleepFor(MonoDelta::FromMilliseconds(500));
+          return true;
+        },
+        MonoDelta::FromSeconds(60), error_message);
   }
 
   Status CDCSDKYsqlTest::CreateSnapshot(const NamespaceName& ns) {

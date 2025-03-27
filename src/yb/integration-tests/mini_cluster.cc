@@ -39,7 +39,6 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -109,6 +108,7 @@ DECLARE_string(use_private_ip);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 namespace yb {
 
@@ -771,7 +771,7 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
               auto it = mini_cluster_tservers.find(desc->permanent_uuid());
               return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
                      desc->has_tablet_report() && (!live_only || desc->IsLive()) &&
-                     (!FLAGS_TEST_enable_ysql_operation_lease ||
+                     (!FLAGS_TEST_enable_object_locking_for_table_locks ||
                       desc->HasLiveYsqlOperationLease());
             });
 

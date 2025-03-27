@@ -16,6 +16,7 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
 
 namespace yb {
 

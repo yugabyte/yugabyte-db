@@ -143,6 +143,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
         TaskType.RebootUniverse,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

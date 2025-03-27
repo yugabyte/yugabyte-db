@@ -7,6 +7,6 @@
 test: yb.port.test_setup
 test: yb.depd.create_index
 
-test: yb.port.create_aggregate
+test: create_aggregate
 test: yb.port.aggregates
 test: yb.orig.aggregates
