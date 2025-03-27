@@ -699,19 +699,30 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
            10039 |                 10038
 (1 row)
 
--- The next GRANT SELECT will increment current_version due to evt_ddl_start.
+-- The next GRANT SELECT used to increment current_version due to evt_ddl_start
+-- which causes an insert into evt_trig_table table. However, evt_trig_table is
+-- not a catalog table. It is a user table and writing to a user table does not
+-- change catalog state so should not need to increment catalog version. As of
+-- 2024-10-15, we simply detect whether there is any write under DDL mode and
+-- when we make the write to evt_trig_table, the GRANT SELECT DDL execution is
+-- in progress. An improvement is to detect we write to catalog table under DDL
+-- mode.
+-- With invalidation messages, we detect that the GRANT SELECT DDL statement
+-- does not generate any invalidation messages at all, which implies no catalog
+-- cache entries need to be invalidated. Therefore this GRANT SELECT no longer
+-- increments current_version.
 GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10040 |                 10038
+           10039 |                 10038
 (1 row)
 
 DROP EVENT TRIGGER evt_ddl_start;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10041 |                 10038
+           10040 |                 10038
 (1 row)
 
 -- The next GRANT SELECT should not cause any catalog version change.
@@ -719,7 +730,7 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10041 |                 10038
+           10040 |                 10038
 (1 row)
 
 -- Verify REFRESH MATERIALIZED VIEW is not a breaking change.
@@ -729,7 +740,7 @@ CREATE UNIQUE INDEX ON mv(t);
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10044 |                 10038
+           10043 |                 10038
 (1 row)
 
 -- nonconcurrent refreshes should bump catalog version.
@@ -737,7 +748,7 @@ REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10045 |                 10038
+           10044 |                 10038
 (1 row)
 
 -- concurrent refreshes should not bump catalog version.
@@ -745,7 +756,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10045 |                 10038
+           10044 |                 10038
 (1 row)
 
 -- Verify ANALYZE increments catalog version and is not a breaking change.
@@ -780,12 +791,15 @@ SELECT min(t), max(t) FROM analyze_table2;
 (1 row)
 
 -- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version only bumps once.
+-- Verify catalog version bumps more than once because ANALYZE internally
+-- has more than one transactions committed. Each committed transaction
+-- needs to cause catalog version to increment by 1 if it has generated
+-- some cache invalidation messages.
 ANALYZE;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10047 |                 10038
+           10119 |                 10038
 (1 row)
 
 -- Verify no-op ALTER ROLE
@@ -793,7 +807,7 @@ CREATE ROLE test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10047 |                 10038
+           10119 |                 10038
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -801,7 +815,7 @@ ALTER ROLE test_role CONNECTION LIMIT 1;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10048 |                 10048
+           10120 |                 10120
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -809,7 +823,7 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10049 |                 10049
+           10121 |                 10121
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -817,7 +831,7 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10049 |                 10049
+           10121 |                 10121
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -827,7 +841,7 @@ ALTER ROLE test_role PASSWORD '123';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10049 |                 10049
+           10121 |                 10121
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -835,7 +849,7 @@ ALTER ROLE test_role PASSWORD NULL;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10049 |                 10049
+           10121 |                 10121
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -843,7 +857,7 @@ ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10050 |                 10050
+           10122 |                 10122
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -851,7 +865,7 @@ ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10050 |                 10050
+           10122 |                 10122
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -859,7 +873,7 @@ ALTER ROLE test_role VALID UNTIL 'infinity';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10051 |                 10051
+           10123 |                 10123
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -867,7 +881,7 @@ ALTER ROLE test_role VALID UNTIL 'infinity';
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10051 |                 10051
+           10123 |                 10123
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -875,7 +889,7 @@ ALTER ROLE test_role CREATEROLE;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10052 |                 10052
+           10124 |                 10124
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -883,7 +897,7 @@ ALTER ROLE test_role CREATEDB;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10053 |                 10053
+           10125 |                 10125
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -891,7 +905,7 @@ ALTER ROLE test_role CREATEROLE CREATEDB;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10053 |                 10053
+           10125 |                 10125
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -899,10 +913,14 @@ ALTER ROLE test_role;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10053 |                 10053
+           10125 |                 10125
 (1 row)
 
 -- Sanity test yb_increment_db_catalog_version_with_inval_messages
+-- Clear pg_yb_invalidation_messages for any left over messages from previous DDLs.
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
+DELETE FROM pg_yb_invalidation_messages;
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 \set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
 SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 SET yb_disable_catalog_version_check TO on;
@@ -910,7 +928,7 @@ SET yb_disable_catalog_version_check TO on;
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10054
+                                               10126
 (1 row)
 
 :display_all;
@@ -919,20 +937,20 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 1
       1 |              14 |                    14
       4 |              14 |                    14
       5 |              14 |                    14
-  13515 |           10054 |                 10053
+  13515 |           10126 |                 10125
   13516 |              14 |                    14
   16389 |              11 |                    11
 (6 rows)
 
  db_oid | current_version | messages 
 --------+-----------------+----------
-  13515 |           10054 | \x
+  13515 |           10126 | \x
 (1 row)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null, 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10055
+                                               10127
 (1 row)
 
 :display_all;
@@ -941,21 +959,21 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null,
       1 |              14 |                    14
       4 |              14 |                    14
       5 |              14 |                    14
-  13515 |           10055 |                 10053
+  13515 |           10127 |                 10125
   13516 |              14 |                    14
   16389 |              11 |                    11
 (6 rows)
 
  db_oid | current_version | messages 
 --------+-----------------+----------
-  13515 |           10054 | \x
-  13515 |           10055 | 
+  13515 |           10126 | \x
+  13515 |           10127 | 
 (2 rows)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10056
+                                               10128
 (1 row)
 
 :display_all;
@@ -964,22 +982,22 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10
       1 |              14 |                    14
       4 |              14 |                    14
       5 |              14 |                    14
-  13515 |           10056 |                 10056
+  13515 |           10128 |                 10128
   13516 |              14 |                    14
   16389 |              11 |                    11
 (6 rows)
 
  db_oid | current_version | messages 
 --------+-----------------+----------
-  13515 |           10054 | \x
-  13515 |           10055 | 
-  13515 |           10056 | \x
+  13515 |           10126 | \x
+  13515 |           10127 | 
+  13515 |           10128 | \x
 (3 rows)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10057
+                                               10129
 (1 row)
 
 :display_all;
@@ -988,17 +1006,17 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 
       1 |              14 |                    14
       4 |              14 |                    14
       5 |              14 |                    14
-  13515 |           10057 |                 10057
+  13515 |           10129 |                 10129
   13516 |              14 |                    14
   16389 |              11 |                    11
 (6 rows)
 
  db_oid | current_version | messages 
 --------+-----------------+----------
-  13515 |           10054 | \x
-  13515 |           10055 | 
-  13515 |           10056 | \x
-  13515 |           10057 | 
+  13515 |           10126 | \x
+  13515 |           10127 | 
+  13515 |           10128 | \x
+  13515 |           10129 | 
 (4 rows)
 
 -- Wait for the old message row to expire.
@@ -1011,7 +1029,7 @@ SELECT pg_sleep(15);
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10058
+                                               10130
 (1 row)
 
 :display_all;
@@ -1020,20 +1038,20 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 1
       1 |              14 |                    14
       4 |              14 |                    14
       5 |              14 |                    14
-  13515 |           10058 |                 10057
+  13515 |           10130 |                 10129
   13516 |              14 |                    14
   16389 |              11 |                    11
 (6 rows)
 
  db_oid | current_version | messages 
 --------+-----------------+----------
-  13515 |           10058 | \x
+  13515 |           10130 | \x
 (1 row)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_db_catalog_version_with_inval_messages 
 -----------------------------------------------------
-                                               10059
+                                               10131
 (1 row)
 
 :display_all;
@@ -1042,15 +1060,15 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10
       1 |              14 |                    14
       4 |              14 |                    14
       5 |              14 |                    14
-  13515 |           10059 |                 10059
+  13515 |           10131 |                 10131
   13516 |              14 |                    14
   16389 |              11 |                    11
 (6 rows)
 
  db_oid | current_version | messages 
 --------+-----------------+----------
-  13515 |           10058 | \x
-  13515 |           10059 | \x
+  13515 |           10130 | \x
+  13515 |           10131 | \x
 (2 rows)
 
 -- Wait for the old message row to expire.
@@ -1064,7 +1082,7 @@ SELECT pg_sleep(15);
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10060
+                                                    10132
 (1 row)
 
 :display_all;
@@ -1073,7 +1091,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
       1 |              15 |                    14
       4 |              15 |                    14
       5 |              15 |                    14
-  13515 |           10060 |                 10059
+  13515 |           10132 |                 10131
   13516 |              15 |                    14
   16389 |              12 |                    11
 (6 rows)
@@ -1083,7 +1101,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
       1 |              15 | \x
       4 |              15 | \x
       5 |              15 | \x
-  13515 |           10060 | \x
+  13515 |           10132 | \x
   13516 |              15 | \x
   16389 |              12 | \x
 (6 rows)
@@ -1091,7 +1109,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, null, 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10061
+                                                    10133
 (1 row)
 
 :display_all;
@@ -1100,7 +1118,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
       1 |              16 |                    14
       4 |              16 |                    14
       5 |              16 |                    14
-  13515 |           10061 |                 10059
+  13515 |           10133 |                 10131
   13516 |              16 |                    14
   16389 |              13 |                    11
 (6 rows)
@@ -1113,8 +1131,8 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
       4 |              16 | 
       5 |              15 | \x
       5 |              16 | 
-  13515 |           10060 | \x
-  13515 |           10061 | 
+  13515 |           10132 | \x
+  13515 |           10133 | 
   13516 |              15 | \x
   13516 |              16 | 
   16389 |              12 | \x
@@ -1124,7 +1142,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10062
+                                                    10134
 (1 row)
 
 :display_all;
@@ -1133,7 +1151,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
       1 |              17 |                    17
       4 |              17 |                    17
       5 |              17 |                    17
-  13515 |           10062 |                 10062
+  13515 |           10134 |                 10134
   13516 |              17 |                    17
   16389 |              14 |                    14
 (6 rows)
@@ -1149,9 +1167,9 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
       5 |              15 | \x
       5 |              16 | 
       5 |              17 | \x
-  13515 |           10060 | \x
-  13515 |           10061 | 
-  13515 |           10062 | \x
+  13515 |           10132 | \x
+  13515 |           10133 | 
+  13515 |           10134 | \x
   13516 |              15 | \x
   13516 |              16 | 
   13516 |              17 | \x
@@ -1163,7 +1181,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, null, 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10063
+                                                    10135
 (1 row)
 
 :display_all;
@@ -1172,7 +1190,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, n
       1 |              18 |                    18
       4 |              18 |                    18
       5 |              18 |                    18
-  13515 |           10063 |                 10063
+  13515 |           10135 |                 10135
   13516 |              18 |                    18
   16389 |              15 |                    15
 (6 rows)
@@ -1191,10 +1209,10 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, n
       5 |              16 | 
       5 |              17 | \x
       5 |              18 | 
-  13515 |           10060 | \x
-  13515 |           10061 | 
-  13515 |           10062 | \x
-  13515 |           10063 | 
+  13515 |           10132 | \x
+  13515 |           10133 | 
+  13515 |           10134 | \x
+  13515 |           10135 | 
   13516 |              15 | \x
   13516 |              16 | 
   13516 |              17 | \x
@@ -1215,7 +1233,7 @@ SELECT pg_sleep(15);
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10064
+                                                    10136
 (1 row)
 
 :display_all;
@@ -1224,7 +1242,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
       1 |              19 |                    18
       4 |              19 |                    18
       5 |              19 |                    18
-  13515 |           10064 |                 10063
+  13515 |           10136 |                 10135
   13516 |              19 |                    18
   16389 |              16 |                    15
 (6 rows)
@@ -1234,7 +1252,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
       1 |              19 | \x
       4 |              19 | \x
       5 |              19 | \x
-  13515 |           10064 | \x
+  13515 |           10136 | \x
   13516 |              19 | \x
   16389 |              16 | \x
 (6 rows)
@@ -1242,7 +1260,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
  yb_increment_all_db_catalog_versions_with_inval_messages 
 ----------------------------------------------------------
-                                                    10065
+                                                    10137
 (1 row)
 
 :display_all;
@@ -1251,7 +1269,7 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
       1 |              20 |                    20
       4 |              20 |                    20
       5 |              20 |                    20
-  13515 |           10065 |                 10065
+  13515 |           10137 |                 10137
   13516 |              20 |                    20
   16389 |              17 |                    17
 (6 rows)
@@ -1264,8 +1282,8 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
       4 |              20 | \x
       5 |              19 | \x
       5 |              20 | \x
-  13515 |           10064 | \x
-  13515 |           10065 | \x
+  13515 |           10136 | \x
+  13515 |           10137 | \x
   13516 |              19 | \x
   13516 |              20 | \x
   16389 |              16 | \x

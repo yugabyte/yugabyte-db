@@ -2051,7 +2051,7 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_enable_advisory_locks = false;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
-bool		yb_enable_invalidation_messages = false;
+bool		yb_enable_invalidation_messages = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
 
