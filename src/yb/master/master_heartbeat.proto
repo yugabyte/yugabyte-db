@@ -86,6 +86,10 @@ message TabletReportPB {
   // Number of tablets that could not be included in this heartbeat.
   // If 0, then all tablets have been reported to the master.
   optional int32 remaining_tablet_count = 5;
+
+  // When we send full report via multiple RPCs, this field will contain sequence_number of the
+  // first RPC.
+  optional int32 full_report_seq_no = 6;
 }
 
 message TabletForSplitPB {

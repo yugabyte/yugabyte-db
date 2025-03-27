@@ -11096,15 +11096,18 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
     // again unless the tablet/table creation is cancelled.
-    LOG(INFO) << "Selecting replicas for tablet " << tablet->id();
     s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
     if (!s.ok()) {
+      LOG(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while selecting replicas for tablet $0: $1",
           tablet->tablet_id(), s.ToString()));
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
     } else {
+      LOG(INFO)
+          << "Selected replicas for tablet " << tablet->id() << ": "
+          << AsString(tablet->mutable_metadata()->mutable_dirty()->pb.committed_consensus_state());
       ok_status_tables.emplace(tablet->table().get());
     }
   }
@@ -11769,7 +11772,10 @@ Status CatalogManager::BuildLocationsForTablet(
           SplitChildTabletIdsData(split_tablet_ids));
     }
     if (PREDICT_FALSE(!l_tablet->is_running())) {
-      return STATUS_FORMAT(ServiceUnavailable, "Tablet $0 not running", tablet->id());
+      return STATUS_FORMAT(
+          ServiceUnavailable, "Tablet $0 not running ($1/$2)",
+          tablet->id(), SysTabletsEntryPB_State_Name(l_tablet->pb.state()),
+          l_tablet->pb.state_msg());
     }
     InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
     locs = tablet->GetReplicaLocations();
