@@ -1529,25 +1529,25 @@ The following table lists the streaming metrics that are available.
 
 ## Advanced
 
-### Using parallel streaming
+### Parallel streaming
 
-YugabyteDB also supports parallel streaming of a single table using logical replication - this essentially means that you can start the replication for the table using parallel tasks where each of them will be polling on specific tablets.
+{{<tags/feature/tp idea="1549">}}YugabyteDB also supports parallel streaming of a single table using logical replication. This means that you can start the replication for the table using parallel tasks, where each task polls on specific tablets.
 
 {{< note title="Important" >}}
 
-To enable parallel streaming, you will need to enable the Technical Preview flags [ysql_enable_pg_export_snapshot](#) and [ysql_yb_enable_consistent_replication_from_hash_range](#).
+Parallel streaming is {{<tags/feature/tp idea="1549">}}. To enable the feature, set the `ysql_enable_pg_export_snapshot` and `ysql_yb_enable_consistent_replication_from_hash_range` flags to true.
 
 {{< /note >}}
 
-Follow these steps to configure parallel streaming using the YugabyteDB Connector:
+Use the following steps to configure parallel streaming using the YugabyteDB Connector.
 
-**Step 1: Decide on the number of tasks**
+#### Step 1: Decide on the number of tasks
 
-This will be crucial as we will need to create the same number of replication slots and publications. Note that the number of tasks cannot be greater than the number of tablets you have in the table to be streamed.
+This is important, as you need to create the same number of replication slots and publications. Note that the number of tasks cannot be greater than the number of tablets you have in the table to be streamed.
 
-For example, if we have a table `test` with 3 tablets then we will create 3 tablets.
+For example, if you have a table `test` with 3 tablets, you will create 3 tasks.
 
-**Step 2: Create publication and replication slots**
+#### Step 2: Create publication and replication slots
 
 If you are creating a slot and publication yourself, ensure that a publication is created before you create the replication slot.
 
@@ -1563,9 +1563,9 @@ CREATE_REPLICATION_SLOT rs2 LOGICAL yboutput;
 CREATE_REPLICATION_SLOT rs3 LOGICAL yboutput;
 ```
 
-**Step 3: Get hash ranges**
+#### Step 3: Get hash ranges
 
-Execute the following query in YSQL for a `table_name` and number of tasks to get the ranges. Please modify the below query for `num_ranges` and `table_name`.
+Execute the following query in YSQL for a `table_name` and number of tasks to get the ranges. Replace `num_ranges` and `table_name` as appropriate.
 
 ```sql
 WITH params AS (
@@ -1607,7 +1607,7 @@ SELECT STRING_AGG(partition_range, ';' ORDER BY bucket_start) AS concatenated_ra
 FROM distinct_ranges;
 ```
 
-The output will be in format that can be added as ranges in the connector config:
+The output is in a format that can be added as ranges in the connector configuration:
 
 ```output
        concatenated_ranges
@@ -1615,11 +1615,11 @@ The output will be in format that can be added as ranges in the connector config
  0,21845;21845,43690;43690,65536
 ```
 
-Copy the output somewhere as it will be needed later on.
+Copy the output as you will need it later on.
 
-**Step 4: Build connector configuration**
+#### Step 4: Build connector configuration
 
-Using the above set of obtained values, we will add the following additional configuration properties to the connector and deploy it:
+Using the output from the preceding step, add the following additional configuration properties to the connector and deploy it:
 
 ```json
 {
@@ -1632,7 +1632,7 @@ Using the above set of obtained values, we will add the following additional con
 }
 ```
 
-If you have to take the snapshot, you’ll need to add 2 other configuration properties:
+If you have to take the snapshot, you'll need to add 2 other configuration properties:
 
 ```json
 {
@@ -1643,19 +1643,19 @@ If you have to take the snapshot, you’ll need to add 2 other configuration pro
 }
 ```
 
-To learn more about the above configuration properties, visit [YugabyteDB connector properties](../using-logical-replication/yugabytedb-connector-properties)
+For information on parallel streaming configuration properties, refer to [Advanced connector properties](../yugabytedb-connector-properties/#streaming-mode).
 
 {{< warning title="Warning" >}}
 
-Note that the order of slot names, publication names and slot ranges is important since the assignment of ranges to slots is sequential and we want that the same range gets assigned to the same slot across restarts.
+The order of slot names, publication names, and slot ranges is important as the assignment of ranges to slots is sequential, and you want the same range assigned to the same slot across restarts.
 
-The configuration for the connector shouldn’t change on restart.
+The configuration for the connector shouldn't change on restart.
 
 {{< /warning >}}
 
 {{< note title="Important" >}}
 
-Adding the configuration value for `primary.key.hash.columns` is important as we will need the columns which form the hash part of the primary key as the connector relies on the column names to figure out the appropriate range each task should be polling.
+Adding the configuration value for `primary.key.hash.columns` is important, as you will need the columns that form the hash part of the primary key. The connector relies on the column names to figure out the appropriate range each task should be polling.
 
 {{< /note >}}
 

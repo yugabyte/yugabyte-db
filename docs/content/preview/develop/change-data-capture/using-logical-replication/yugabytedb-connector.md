@@ -1539,19 +1539,19 @@ The following table lists the streaming metrics that are available.
 
 {{< note title="Important" >}}
 
-Parallel streaming is {{<tags/feature/tp idea="1549">}}. To enable the feature, set the [ysql_enable_pg_export_snapshot](#) and [ysql_yb_enable_consistent_replication_from_hash_range](#) flags to true.
+Parallel streaming is {{<tags/feature/tp idea="1549">}}. To enable the feature, set the `ysql_enable_pg_export_snapshot` and `ysql_yb_enable_consistent_replication_from_hash_range` flags to true.
 
 {{< /note >}}
 
 Use the following steps to configure parallel streaming using the YugabyteDB Connector.
 
-**Step 1: Decide on the number of tasks**
+#### Step 1: Decide on the number of tasks
 
 This is important, as you need to create the same number of replication slots and publications. Note that the number of tasks cannot be greater than the number of tablets you have in the table to be streamed.
 
 For example, if you have a table `test` with 3 tablets, you will create 3 tasks.
 
-**Step 2: Create publication and replication slots**
+#### Step 2: Create publication and replication slots
 
 If you are creating a slot and publication yourself, ensure that a publication is created before you create the replication slot.
 
@@ -1567,7 +1567,7 @@ CREATE_REPLICATION_SLOT rs2 LOGICAL yboutput;
 CREATE_REPLICATION_SLOT rs3 LOGICAL yboutput;
 ```
 
-**Step 3: Get hash ranges**
+#### Step 3: Get hash ranges
 
 Execute the following query in YSQL for a `table_name` and number of tasks to get the ranges. Replace `num_ranges` and `table_name` as appropriate.
 
@@ -1621,7 +1621,7 @@ The output is in a format that can be added as ranges in the connector configura
 
 Copy the output as you will need it later on.
 
-**Step 4: Build connector configuration**
+#### Step 4: Build connector configuration
 
 Using the output from the preceding step, add the following additional configuration properties to the connector and deploy it:
 
@@ -1636,7 +1636,7 @@ Using the output from the preceding step, add the following additional configura
 }
 ```
 
-If you have to take the snapshot, you’ll need to add 2 other configuration properties:
+If you have to take the snapshot, you'll need to add 2 other configuration properties:
 
 ```json
 {
@@ -1647,13 +1647,13 @@ If you have to take the snapshot, you’ll need to add 2 other configuration pro
 }
 ```
 
-For information on parallel streaming configuration properties, refer to [Advanced connector properties](../using-logical-replication/yugabytedb-connector-properties/#streaming-mode).
+For information on parallel streaming configuration properties, refer to [Advanced connector properties](../yugabytedb-connector-properties/#streaming-mode).
 
 {{< warning title="Warning" >}}
 
 The order of slot names, publication names, and slot ranges is important as the assignment of ranges to slots is sequential, and you want the same range assigned to the same slot across restarts.
 
-The configuration for the connector shouldn’t change on restart.
+The configuration for the connector shouldn't change on restart.
 
 {{< /warning >}}
 

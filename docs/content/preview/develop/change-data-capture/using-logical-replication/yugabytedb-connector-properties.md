@@ -693,7 +693,7 @@ Default: 60
 
 The type of LSN to use for the specified replication slot:
 
-* SEQUENCE - A monotonic increasing number that determines the record in global order within the context of a slot.
+* SEQUENCE - A monotonic increasing number that determines the record in global order in the context of a slot.
 * HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
 
 ##### streaming.mode
@@ -737,7 +737,7 @@ For example, suppose you have a table with 3 tablets where the tablets have hash
 
 ##### primary.key.hash.columns
 
-The columns of the table which consitute the hash part of the primary key. This property is only valid when `streaming.mode` is set to `parallel`.
+The columns of the table which constitute the hash part of the primary key. This property is only valid when `streaming.mode` is set to `parallel`.
 
 ## Pass-through configuration properties
 
