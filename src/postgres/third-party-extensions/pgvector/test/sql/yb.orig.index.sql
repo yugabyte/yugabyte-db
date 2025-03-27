@@ -115,5 +115,7 @@ CREATE TABLE vec2 (embedding vector(3));
 INSERT INTO vec2 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 2);
 EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
 SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
+EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
 DROP TABLE vec2;
 DROP TABLE vec1;

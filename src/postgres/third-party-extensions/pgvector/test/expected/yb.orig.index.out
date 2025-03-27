@@ -371,5 +371,21 @@ SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LI
  [1,1,1]
 (3 rows)
 
+EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+               QUERY PLAN                
+-----------------------------------------
+ Limit
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Seq Scan on vec2
+   ->  Index Scan using vec1_idx on vec1
+         Order By: (embedding <-> $0)
+(6 rows)
+
+SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+ embedding 
+-----------
+(0 rows)
+
 DROP TABLE vec2;
 DROP TABLE vec1;
