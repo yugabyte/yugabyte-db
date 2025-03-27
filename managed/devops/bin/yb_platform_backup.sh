@@ -232,7 +232,6 @@ restore_postgres_backup() {
   pgrestore_path="$7"
   skip_dump_check="$8"
   skip_dump_file_delete="$9"
-  data_dir="${10}"
   pg_restore="pg_restore"
   psql="psql"
 
@@ -250,9 +249,9 @@ restore_postgres_backup() {
 
   if grep -iq "COPY.*customer" "${backup_path}" || [[ "${skip_dump_check}" = true ]]; then
     if ([[ "${INSIDE_K8S_POD}" = true ]] && [[ "${skip_dump_file_delete}" = true ]]); then
-      # Copy sql file to new location
+      # Copy sql file to new location( data dir is hardcoded for K8S )
       echo "Will restore Platform DB backup on restart"
-      new_dump_path="${data_dir}/${PLATFORM_DUMP_SKIP_DELETE_FNAME}"
+      new_dump_path="/opt/yugabyte/yugaware/data/${PLATFORM_DUMP_SKIP_DELETE_FNAME}"
       echo "Copying SQL dump file to ${new_dump_path}"
       run_sudo_cmd "cp ${backup_path} ${new_dump_path}"
     else
@@ -716,7 +715,7 @@ restore_backup() {
     # do we need set +e?
     restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
       "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}" \
-      "${skip_dump_file_delete}" "${data_dir}"
+      "${skip_dump_file_delete}"
   fi
 
   # Restore prometheus swamper targets on migration always

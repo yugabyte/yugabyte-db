@@ -230,7 +230,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     if (isCreate) {
       backupManager.createBackup();
     } else {
-      backupManager.restoreBackup(inputPath);
+      backupManager.restoreBackup(inputPath, true);
     }
 
     verify(shellProcessHandler, times(1)).run(expectedCommandArgs, expectedEnvVars, false);
