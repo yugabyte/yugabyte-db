@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressAggregates extends BasePgRegressTest {
+public class TestPgRegressAggregates extends BasePgRegressTestPorted {
 
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";
@@ -35,6 +35,7 @@ public class TestPgRegressAggregates extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_enable_inheritance", "true");
     appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
     return flags;
   }

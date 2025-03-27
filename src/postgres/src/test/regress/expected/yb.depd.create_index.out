@@ -32,7 +32,7 @@ NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY rix ON road USING btree (name text_ops ASC);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY iix ON ihighway USING btree (name text_ops ASC);
-ERROR:  relation "ihighway" does not exist
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 --
 -- BTREE partial indices
 --
