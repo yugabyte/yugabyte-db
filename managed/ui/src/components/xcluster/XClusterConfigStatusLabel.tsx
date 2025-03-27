@@ -96,7 +96,7 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
       break;
     }
     case XClusterConfigStatus.DRAINED_DATA:
-        statusLabel.push(DRAINED_DATA_LABEL);
+      statusLabel.push(DRAINED_DATA_LABEL);
       break;
     default:
       return assertUnreachableCase(xClusterConfig.status);

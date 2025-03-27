@@ -18,7 +18,6 @@ import {
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
 import {
-  fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
   fetchXClusterConfig,
   restartXClusterConfig
@@ -26,13 +25,17 @@ import {
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import { XClusterConfig } from '../dtos';
-import { AllowedTasks, TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import {
+  AllowedTasks,
+  TableType,
+  Universe,
+  UniverseNamespace
+} from '../../../redesign/helpers/dtos';
 import { DrConfig } from '../disasterRecovery/dtos';
 import {
   SOURCE_MISSING_XCLUSTER_TABLE_STATUSES,
   XClusterConfigStatus,
-  XClusterTableStatus,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  XClusterTableStatus
 } from '../constants';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { getXClusterConfigTableType } from '../ReplicationUtils';
@@ -111,17 +114,9 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     { enabled: !!xClusterConfigFullQuery.data }
   );
 
-  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(
-      xClusterConfigFullQuery.data?.sourceUniverseUUID,
-      XCLUSTER_UNIVERSE_TABLE_FILTERS
-    ),
-    () =>
-      fetchTablesInUniverse(
-        xClusterConfigFullQuery.data?.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data),
-    { enabled: !!xClusterConfigFullQuery.data }
+  const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
+    universeQueryKey.namespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverseNamespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID)
   );
 
   const restartConfigMutation = useMutation(
@@ -205,8 +200,8 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     xClusterConfigFullQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
-    sourceUniverseTablesQuery.isLoading ||
-    sourceUniverseTablesQuery.isIdle
+    sourceUniverseNamespaceQuery.isLoading ||
+    sourceUniverseNamespaceQuery.isIdle
   ) {
     return (
       <YBModal
@@ -242,10 +237,23 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   }
 
   const xClusterConfig = xClusterConfigFullQuery.data;
+  // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
+  // Allowing partial restarts when the xCluster config is in initialized status is not expected behavior.
+  // Thus, we skip table selection for the xCluster config setup failed scenario.
+  const isTableSelectionAllowed = !(
+    xClusterConfig.status === XClusterConfigStatus.FAILED ||
+    xClusterConfig.status === XClusterConfigStatus.INITIALIZED
+  );
+  const firstFormStep = !isTableSelectionAllowed
+    ? FormStep.CONFIGURE_BOOTSTRAP
+    : FormStep.SELECT_TABLES;
+  if (currentFormStep === FormStep.UNINITIALIZED) {
+    setCurrentFormStep(firstFormStep);
+  }
   const configTableType = getXClusterConfigTableType(xClusterConfig);
   if (
     sourceUniverseQuery.isError ||
-    sourceUniverseTablesQuery.isError ||
+    (sourceUniverseNamespaceQuery.isError && isTableSelectionAllowed) ||
     configTableType === null
   ) {
     const errorMessage = sourceUniverseQuery.isError
@@ -258,13 +266,13 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
             keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
             universeUuid: xClusterConfig.sourceUniverseUUID
           })
-      : sourceUniverseTablesQuery.isError
+      : sourceUniverseNamespaceQuery.isError
       ? props.isDrInterface
-        ? t('failedToFetchDrPrimaryTables', {
+        ? t('failedToFetchDrPrimaryNamespaces', {
             keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
             universeUuid: xClusterConfig.sourceUniverseUUID
           })
-        : t('failedToFetchSourceUniverseTables', {
+        : t('failedToFetchSourceUniverseNamespaces', {
             keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
             universeUuid: xClusterConfig.sourceUniverseUUID
           })
@@ -283,19 +291,6 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
         <YBErrorIndicator customErrorMessage={errorMessage} />
       </YBModal>
     );
-  }
-  // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
-  // Allowing partial restarts when the xCluster config is in initialized status is not expected behavior.
-  // Thus, we skip table selection for the xCluster config setup failed scenario.
-  const isTableSelectionAllowed = !(
-    xClusterConfig.status === XClusterConfigStatus.FAILED ||
-    xClusterConfig.status === XClusterConfigStatus.INITIALIZED
-  );
-  const firstFormStep = !isTableSelectionAllowed
-    ? FormStep.CONFIGURE_BOOTSTRAP
-    : FormStep.SELECT_TABLES;
-  if (currentFormStep === FormStep.UNINITIALIZED) {
-    setCurrentFormStep(firstFormStep);
   }
 
   const handleFormSubmit = async (
@@ -321,12 +316,20 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     xClusterConfig,
     configTableType
   );
-  const initialValues: Partial<RestartXClusterConfigFormValues> = {
-    // Preselect all the tables in `ERROR` status, because in most cases these are the
-    // tables that the user wants to restart.
-    tableUuids: defaultTableUuids,
-    namespaceUuids: defaultNamespaces
-  };
+  const namespaceToNamespaceUuid = Object.fromEntries(
+    sourceUniverseNamespaceQuery.data?.map((namespace) => [
+      namespace.name,
+      namespace.namespaceUUID
+    ]) ?? []
+  );
+  const initialValues: Partial<RestartXClusterConfigFormValues> = isTableSelectionAllowed
+    ? {
+        // Preselect all the tables in `ERROR` status, because in most cases these are the
+        // tables that the user wants to restart.
+        tableUuids: defaultTableUuids,
+        namespaceUuids: defaultNamespaces.map((namespace) => namespaceToNamespaceUuid[namespace])
+      }
+    : { tableUuids: [], namespaceUuids: [] };
 
   const isButtonDisabled = props.isDrInterface
     ? isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.RESTART_DR)
