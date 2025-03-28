@@ -51,7 +51,7 @@ try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
@@ -61,6 +61,7 @@ TSERVER = "yb-tserver"
 POSTMASTER = "yb-postmaster"
 POSTGRES = "postgres"
 OTEL_COLLECTOR = "otelcol-contrib"
+OTEL_COLLECTOR_HEALTH_ENDPOINT = "http://localhost:13133/health"
 YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
@@ -1973,6 +1974,78 @@ class NodeChecker():
                 return e.ignore_check()
         return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
 
+    def check_otel_container_health_k8s(self):
+        """Checks the health status of the OpenTelemetry Collector running in the pod."""
+        logging.info("Checking uptime for Otel-collector for {}".format(self.node))
+
+        e = self._new_entry("Uptime", OTEL_COLLECTOR)
+        try:
+            # Sample out -
+            # {"status":"Server available",
+            #  "upSince":"2025-03-26T16:54:47.936558866Z",
+            #  "uptime":"13h33m15.557940292s"}
+            output = self.http_request(OTEL_COLLECTOR_HEALTH_ENDPOINT)
+            if not output:
+                return e.fill_and_return_entry(
+                    ["OpenTelemetry health check failed: empty response"], has_error=True
+                )
+
+            if check_for_errors(output):
+                return e.fill_and_return_entry(
+                    ["OpenTelemetry health check failed: {}".format(output)], has_error=True
+                )
+
+            health_json = json.loads(output)
+            status = health_json.get("status", "")
+            up_since = health_json.get("upSince", "")
+
+            if status != "Server available" or not up_since:
+                return e.fill_and_return_entry(
+                    ["OpenTelemetry health check failed: {}".format(output)], has_error=True
+                )
+
+            # Parse timestamp, ignoring nanoseconds
+            TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
+            boot_time_in_epoch = int(
+                datetime.strptime(up_since[:26], TIMESTAMP_FORMAT)
+                .replace(tzinfo=timezone.utc)
+                .timestamp()
+            )
+
+            hc_metric = Metric.from_definition(
+                HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
+            ).add_value(boot_time_in_epoch)
+            node_metric = Metric.from_definition(YB_NODE_BOOT_TIME).add_value(
+                boot_time_in_epoch, [Label("process", OTEL_COLLECTOR)]
+            )
+            metrics = [hc_metric, node_metric]
+
+            current_time = int(time.time())
+            uptime = current_time - boot_time_in_epoch
+            recent_operation = self.start_time_ms and (
+                current_time - self.start_time_ms / 1000 <= RECENT_FAILURE_THRESHOLD_SEC
+            )
+
+            has_error = uptime <= RECENT_FAILURE_THRESHOLD_SEC and not recent_operation
+            uptime_msg = "Uptime: {} seconds ({})".format(
+                uptime, self.get_uptime_in_dhms(uptime)
+            )
+
+            return e.fill_and_return_entry(
+                [uptime_msg], has_error=has_error, metrics=metrics
+            )
+
+        except json.JSONDecodeError:
+            return e.fill_and_return_entry(
+                ["OpenTelemetry health check failed: Invalid JSON response"], has_error=True
+            )
+        except Exception as ex:
+            logging.exception("Unexpected error during OpenTelemetry health check")
+            return e.fill_and_return_entry(
+                ["OpenTelemetry health check failed: {}".format(ex)], has_error=True
+            )
+
+
     def _check_unit_for_preexec(self, service, user=True):
         cmd = ""
         if user:
@@ -2552,8 +2625,11 @@ def main():
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
 
-    if n.otel_enabled and not n.is_k8s:
-        coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
+    if n.otel_enabled and n.tserver_index >= 0:
+        if n.is_k8s:
+            coordinator.add_check(checker, "check_otel_container_health_k8s")
+        else:
+            coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")
