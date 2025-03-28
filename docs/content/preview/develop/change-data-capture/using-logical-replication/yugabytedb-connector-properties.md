@@ -693,8 +693,51 @@ Default: 60
 
 The type of LSN to use for the specified replication slot:
 
-* SEQUENCE - A monotonic increasing number that determines the record in global order within the context of a slot.
+* SEQUENCE - A monotonic increasing number that determines the record in global order in the context of a slot.
 * HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
+
+##### streaming.mode
+
+Specifies whether the connector should stream changes using a single slot or multiple slots in parallel.
+
+* `default` uses a single task to stream all changes.
+* `parallel` uses multi task mode and streams changes using the number of specified replication slots.
+
+{{< note title="Important" >}}
+
+When deploying the connector using `parallel` streaming mode, you need to ensure that the `table.include.list` only contains one table for which the streaming is supposed to happen in parallel.
+
+{{< /note >}}
+
+{{< note title="Usage with snapshot" >}}
+
+If `snapshot.mode` is set to `initial` or `initial_only`, you need to ensure that the configuration also contains a valid value for the configuration property `primary.key.hash.columns`.
+
+{{< /note >}}
+
+##### slot.names
+
+A list of slot names, provided as comma-separated values, to be used by each task when using `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
+
+No default.
+
+##### publication.names
+
+A list of publication names, provided as comma-separated values, to be used by each task when using `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
+
+No default.
+
+##### slot.ranges
+
+A range of slots to be used by each task when using `streaming.mode=parallel`, provided as tablet hash code ranges separated by semi colons. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
+
+No default.
+
+For example, suppose you have a table with 3 tablets where the tablets have hash ranges of `[0,21845)`, `[21845,43690)`, and `[43690,65536)`. The value for this configuration would be `slot.ranges=0,21845;21845,43690;43690,65536`.
+
+##### primary.key.hash.columns
+
+The columns of the table which constitute the hash part of the primary key. This property is only valid when `streaming.mode` is set to `parallel`.
 
 ## Pass-through configuration properties
 
