@@ -33,6 +33,8 @@
 
 #include "yb/yql/pggate/util/ybc_guc.h"
 
+DEFINE_test_flag(bool, refresh_partitions_after_fetched_sample_blocks, false,
+    "Force table partitions refresh after sample blocks are fetched.");
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
@@ -55,6 +57,11 @@ class SampleRowsPickerIf {
 };
 
 namespace {
+
+std::string AsDebugHexString(const LWPgsqlSampleBlockPB& sample_block_pb) {
+  return AsDebugHexString(
+      std::make_pair(sample_block_pb.lower_bound(), sample_block_pb.upper_bound()));
+}
 
 class PgDocSampleOp : public PgDocReadOp {
  public:
@@ -80,13 +87,14 @@ class PgDocSampleOp : public PgDocReadOp {
         template_read_req.has_sampling_state(), IllegalState,
         "PgDocSampleOp is expected to have sampling state");
     SCHECK(
-        sample_blocks_.empty() || !template_read_req.sampling_state().is_blocks_sampling_stage(),
+        sorted_sample_blocks_.empty() ||
+            !template_read_req.sampling_state().is_blocks_sampling_stage(),
         IllegalState, "Sample blocks are not expected to be set for blocks sampling stage");
 
     // Sample blocks will be distributed across tablets/table partitions below.
     std::optional<SampleBlocksFeed> sample_blocks_feed;
-    if (!sample_blocks_.empty()) {
-      sample_blocks_feed.emplace(sample_blocks_);
+    if (!sorted_sample_blocks_.empty()) {
+      sample_blocks_feed.emplace(sorted_sample_blocks_);
     }
 
     // Create one PgsqlOp per partition
@@ -114,6 +122,9 @@ class PgDocSampleOp : public PgDocReadOp {
             VERIFY_RESULT(AssignSampleBlocks(
                 &read_req, partition_keys, partition, &sample_blocks_feed.value()))) {
           pgsql_ops_[partition]->set_active(true);
+          VLOG_WITH_PREFIX_AND_FUNC(3)
+              << "Request #" << partition << " of " << partition_keys.size()
+              << " for partition: " << Slice(partition_keys[partition]).ToDebugHexString();
           ++active_op_count_;
         }
       }
@@ -174,8 +185,41 @@ class PgDocSampleOp : public PgDocReadOp {
   const SamplingStats& GetSamplingStats() const { return sampling_stats_; }
 
   Status SetSampleBlocksBounds(std::vector<std::pair<KeyBuffer, KeyBuffer>>&& sample_blocks) {
-    sample_blocks_ = std::move(sample_blocks);
-    SCHECK(!sample_blocks_.empty(), IllegalState, "Sample blocks list should not be empty.");
+    sorted_sample_blocks_ = std::move(sample_blocks);
+    SCHECK(!sorted_sample_blocks_.empty(), IllegalState, "Sample blocks list should not be empty.");
+
+    std::sort(
+        sorted_sample_blocks_.begin(), sorted_sample_blocks_.end(),
+        [](const std::pair<KeyBuffer, KeyBuffer>& b1, const std::pair<KeyBuffer, KeyBuffer>& b2) {
+          return b1.first < b2.first;
+        });
+
+    if (VLOG_IS_ON(3)) {
+      size_t idx = 0;
+      for (const auto& sample_block : sorted_sample_blocks_) {
+        VLOG_WITH_FUNC(3) << "Sorted sample block #" << idx << ": "
+                          << AsDebugHexString(sample_block);
+        ++idx;
+      }
+    }
+
+    Slice prev_upper_bound;
+    size_t idx = 0;
+    for (const auto& sample_block : sorted_sample_blocks_) {
+      if (sample_block.first.AsSlice() < prev_upper_bound) {
+        return STATUS_FORMAT(
+            InternalError, "Sorted sample block #$0: $1 starts before prev_upper_bound: $2", idx,
+            AsDebugHexString(sample_block), AsDebugHexString(prev_upper_bound));
+      }
+      prev_upper_bound = sample_block.second.AsSlice();
+      ++idx;
+    }
+
+    if (FLAGS_TEST_refresh_partitions_after_fetched_sample_blocks) {
+      const auto pg_table_id = table_->pg_table_id();
+      pg_session_->InvalidateTableCache(pg_table_id, InvalidateOnPgClient::kTrue);
+      table_ = PgTable(CHECK_RESULT(pg_session_->LoadTable(pg_table_id)));
+    }
     return Status::OK();
   }
 
@@ -184,10 +228,11 @@ class PgDocSampleOp : public PgDocReadOp {
   class SampleBlocksFeed {
    public:
     // Transfers all sample blocks from `other` list into internal storage.
-    explicit SampleBlocksFeed(const std::vector<std::pair<KeyBuffer, KeyBuffer>>& sample_blocks)
-        : sample_blocks_(sample_blocks) {
-      sample_block_iter_ = sample_blocks_.cbegin();
-      is_single_unbounded_block_ = sample_block_iter_ != sample_blocks_.cend() &&
+    explicit SampleBlocksFeed(
+        const std::vector<std::pair<KeyBuffer, KeyBuffer>>& sorted_sample_blocks)
+        : sorted_sample_blocks_(sorted_sample_blocks) {
+      sample_block_iter_ = sorted_sample_blocks_.cbegin();
+      is_single_unbounded_block_ = sample_block_iter_ != sorted_sample_blocks_.cend() &&
                                    sample_block_iter_->first.empty() &&
                                    sample_block_iter_->second.empty();
     }
@@ -195,7 +240,7 @@ class PgDocSampleOp : public PgDocReadOp {
     // Fetches sample block boundaries from internal storage until `exclusive_upper_bound` and
     // assigns them to `dst`.
     Status FetchTo(
-        ::yb::ArenaList<::yb::LWPgsqlSampleBlockPB>* dst, std::string exclusive_upper_bound) {
+        ::yb::ArenaList<LWPgsqlSampleBlockPB>* dst, const std::string& exclusive_upper_bound) {
       if (is_single_unbounded_block_) {
         // We should fully sample all tablets.
         auto& sample_block_pb = *dst->Add();
@@ -204,37 +249,92 @@ class PgDocSampleOp : public PgDocReadOp {
         return Status::OK();
       }
 
-      for (; sample_block_iter_ != sample_blocks_.cend() &&
+      for (; sample_block_iter_ != sorted_sample_blocks_.cend() &&
              (exclusive_upper_bound.empty() ||
-              sample_block_iter_->first.AsSlice() < exclusive_upper_bound);
+              (!sample_block_iter_->second.empty() &&
+               sample_block_iter_->second.AsSlice() <= exclusive_upper_bound));
            sample_block_iter_++) {
+        LWPgsqlSampleBlockPB* sample_block_pb;
 
-        const auto cmp = sample_block_iter_->first.AsSlice().compare(prev_upper_bound);
-        if (cmp < 0) {
-          return STATUS_FORMAT(
-              InternalError, "Sample block: $0 starts before prev_upper_bound: $1",
-              AsDebugHexString(*sample_block_iter_), AsDebugHexString(prev_upper_bound));
-        }
-        if (cmp == 0 && !dst->empty()) {
-          // Combine with the previous block.
-          *dst->back().mutable_upper_bound() = sample_block_iter_->second.AsSlice();
+        if (!override_next_block_lower_bound_.empty()) {
+          SCHECK(
+              dst->empty(), InternalError,
+              Format(
+                  "Expected dst (has $0 blocks) to be empty when override_next_block_lower_bound_ "
+                  "is set "
+                  "($1)",
+                  dst->size(), AsDebugHexString(override_next_block_lower_bound_)));
+          sample_block_pb = dst->Add();
+          sample_block_pb->dup_lower_bound(override_next_block_lower_bound_.AsSlice());
+          override_next_block_lower_bound_.clear();
         } else {
-          auto& sample_block_pb = *dst->Add();
-          *sample_block_pb.mutable_lower_bound() = sample_block_iter_->first.AsSlice();
-          *sample_block_pb.mutable_upper_bound() = sample_block_iter_->second.AsSlice();
+          sample_block_pb = AddOrUpdateBlock(dst, sample_block_iter_->first.AsSlice());
         }
 
-        prev_upper_bound = sample_block_iter_->second.AsSlice();
+        *sample_block_pb->mutable_upper_bound() = sample_block_iter_->second.AsSlice();
+        RETURN_NOT_OK(OnLatestBlockBoundsSet(dst));
       }
+
+      SCHECK(
+          !exclusive_upper_bound.empty() || sample_block_iter_ == sorted_sample_blocks_.cend(),
+          InternalError,
+          Format(
+              "Unexpected stop at sorted sample block $0 while exclusive_upper_bound is empty",
+              AsDebugHexString(*sample_block_iter_)));
+
+      if (sample_block_iter_ == sorted_sample_blocks_.cend() ||
+          sample_block_iter_->first.AsSlice() >= exclusive_upper_bound) {
+        return Status::OK();
+      }
+
+      // Sample block might cross exclusive_upper_bound due to tablet has been split since
+      // block boundaries were calculated - split the block in this case.
+      VLOG_WITH_FUNC(1)
+          << "Splitting the sample block: " << AsDebugHexString(*sample_block_iter_)
+          << " exclusive_upper_bound: " << AsDebugHexString(Slice(exclusive_upper_bound));
+
+      auto* sample_block_pb = AddOrUpdateBlock(dst, sample_block_iter_->first.AsSlice());
+      sample_block_pb->dup_upper_bound(exclusive_upper_bound);
+      RETURN_NOT_OK(OnLatestBlockBoundsSet(dst));
+
+      override_next_block_lower_bound_ = exclusive_upper_bound;
 
       return Status::OK();
     }
 
    private:
-    const std::vector<std::pair<KeyBuffer, KeyBuffer>>& sample_blocks_;
+    LWPgsqlSampleBlockPB* AddOrUpdateBlock(
+        ::yb::ArenaList<LWPgsqlSampleBlockPB>* dst, Slice lower_bound) {
+      if (!dst->empty() && dst->back().upper_bound() == sample_block_iter_->first.AsSlice()) {
+        // Update previous block to combine with the current one.
+        return &dst->back();
+      }
+      auto* block = dst->Add();
+      *block->mutable_lower_bound() = lower_bound;
+      return block;
+    }
+
+    Status OnLatestBlockBoundsSet(::yb::ArenaList<LWPgsqlSampleBlockPB>* dst) {
+      auto* sample_block_pb = &dst->back();
+      VLOG_WITH_FUNC(2) << "Sample block at dst[" << dst->size() - 1 << "]: "
+                        << AsDebugHexString(*sample_block_pb);
+      SCHECK(
+          sample_block_pb->upper_bound().empty() ||
+              sample_block_pb->lower_bound() < sample_block_pb->upper_bound(),
+          InternalError,
+          Format(
+              "Wrong bounds order for sample block: $0",
+              AsDebugHexString(*sample_block_pb)));
+      return Status::OK();
+    }
+
+    const std::vector<std::pair<KeyBuffer, KeyBuffer>>& sorted_sample_blocks_;
     std::vector<std::pair<KeyBuffer, KeyBuffer>>::const_iterator sample_block_iter_;
-    Slice prev_upper_bound;
     bool is_single_unbounded_block_;
+    // Not empty iff we've split sample block at sample_block_iter_ during previous FetchTo call.
+    // In this case we use the rest of this block starting with override_next_block_lower_bound_
+    // for the next FetchTo call.
+    KeyBuffer override_next_block_lower_bound_;
   };
 
   Result<bool> AssignSampleBlocks(
@@ -262,7 +362,7 @@ class PgDocSampleOp : public PgDocReadOp {
 
   const std::string LogPrefix() const { return log_prefix_; }
 
-  std::vector<std::pair<KeyBuffer, KeyBuffer>> sample_blocks_;
+  std::vector<std::pair<KeyBuffer, KeyBuffer>> sorted_sample_blocks_;
   SamplingStats sampling_stats_;
   std::string log_prefix_;
 };
@@ -387,20 +487,6 @@ class SampleBlocksPicker : public SamplePickerBase {
       return Status::OK();
     }
 
-    std::sort(
-        blocks_reservoir_.begin(), blocks_reservoir_.end(),
-        [](const std::pair<KeyBuffer, KeyBuffer>& b1, const std::pair<KeyBuffer, KeyBuffer>& b2) {
-          return b1.first < b2.first;
-        });
-
-    if (VLOG_IS_ON(3)) {
-      size_t idx = 0;
-      for (const auto& sample_block : blocks_reservoir_) {
-        VLOG_WITH_FUNC(3) << "Sorted sample block #" << idx << ": "
-                          << AsDebugHexString(sample_block);
-        ++idx;
-      }
-    }
     return Status::OK();
   }
 

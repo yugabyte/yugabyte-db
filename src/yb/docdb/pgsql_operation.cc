@@ -2319,7 +2319,7 @@ Status SampleRowsFromBlocks(
   bool fetch_next_needed = false;
 
   size_t sample_block_idx = 0;
-  size_t num_blocks_present = 0;
+  size_t num_blocks_with_rows = 0;
   for (const auto& sample_block : sample_blocks) {
     const auto[lower_bound_key_inclusive, upper_bound_key_exclusive] =
         GetSampleBlockBounds(sample_block);
@@ -2385,20 +2385,21 @@ Status SampleRowsFromBlocks(
     }
 
     if (found_row) {
-      ++num_blocks_present;
+      ++num_blocks_with_rows;
     }
 
-    VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows)
-            << ", ybctid after the sample block #" << sample_block_idx << ": "
-            << DebugKeySliceToString(table_iter->GetTupleId())
-            << " row_key: " << DebugKeySliceToString(row_key);
+    VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows) << ", ybctid after the sample block #"
+            << sample_block_idx << ": " << DebugKeySliceToString(table_iter->GetTupleId())
+            << " row_key: " << DebugKeySliceToString(row_key)
+            << " found_row: " << found_row
+            << " num_blocks_with_rows: " << num_blocks_with_rows;
     if (reached_end_of_tablet) {
       break;
     }
     ++sample_block_idx;
   }
 
-  VLOG(2) << "num_blocks_present: " << num_blocks_present;
+  VLOG(2) << "num_blocks_with_rows: " << num_blocks_with_rows;
   sampling_state->set_samplerows(num_sample_rows);
   sampling_state->set_rowstoskip(rows_to_skip);
   sampling_state->set_numrows(num_rows_collected);

@@ -243,7 +243,6 @@ void AsyncRpc::Finished(const Status& status) {
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
-
   }
   if (tablet_invoker_.Done(&new_status)) {
     if (tablet().is_split() ||
@@ -841,6 +840,7 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   tablet_invoker_.proxy()->ReadAsync(
     req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -918,6 +918,7 @@ Status ReadRpc::SwapResponses() {
 }
 
 void ReadRpc::NotifyBatcher(const Status& status) {
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
   batcher_->ProcessReadResponse(*this, status);
 }
 
