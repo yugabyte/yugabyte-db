@@ -129,7 +129,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
 | CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
 | IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| WaitingOnTServer | Network| \<RPC&#8209;name> | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
+| WaitingOnTServer | Network| RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
 
 #### YSQLQuery class
 
@@ -179,10 +179,10 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 | Wait Event | Type | Aux | Description |
 | :--------- | :--- |:--- | :---------- |
-| WAL_Append | DiskIO | \<tablet&#8209;id>| A write RPC is persisting WAL edits. |
-| WAL_Sync | DiskIO | \<tablet-id>| A write RPC is synchronizing WAL edits. |
-| Raft_WaitingForReplication | Network | \<tablet-id>| A write RPC is waiting for Raft replication. |
-| Raft_ApplyingEdits | WaitOnCondition/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
+| WAL_Append | DiskIO | Tablet&nbsp;ID | A write RPC is persisting WAL edits. |
+| WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
+| Raft_WaitingForReplication | Network | Tablet ID | A write RPC is waiting for Raft replication. |
+| Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
 | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
 | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
 
@@ -208,8 +208,8 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | Wait Event | Type | Aux | Description |
 | :--------- | :--- |:--- | :---------- |
 | YCQL_Parse | CPU  | | YCQL is parsing a query. |
-| YCQL_Read | CPU | \<table&#8209;id> | YCQL is processing a read query.|
-| YCQL_Write | CPU | \<table-id> | YCQL is processing a write query.  |
+| YCQL_Read | CPU | Table&nbsp;ID | YCQL is processing a read query.|
+| YCQL_Write | CPU | Table ID | YCQL is processing a write query.  |
 | YCQL_Analyze | CPU |  | YCQL is analyzing a query. |
 | YCQL_Execute | CPU |  | YCQL is executing a query. |
 
