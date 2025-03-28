@@ -2349,14 +2349,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupYNPTask(Universe universe, Collection<NodeDetails> nodes) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
-    SubTaskGroup subTaskGroup = createSubTaskGroup(SetupYNP.class.getSimpleName());
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(SetupYNP.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
     if (!new File(installPath).isAbsolute()) {
       String errMsg = String.format("Node agent installation path %s is invalid", installPath);
       log.error(errMsg);
       throw new IllegalArgumentException(errMsg);
     }
-    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Customer customer = Customer.get(universe.getCustomerId());
     nodes.forEach(
         n -> {
@@ -2375,7 +2375,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
-          params.nodeAgentPort = serverPort;
           params.sudoAccess = true;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
@@ -2397,7 +2396,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
-    SubTaskGroup subTaskGroup = createSubTaskGroup(YNPProvisioning.class.getSimpleName());
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
     if (!new File(installPath).isAbsolute()) {
       String errMsg = String.format("Node agent installation path %s is invalid", installPath);
@@ -2424,6 +2424,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.nodeName = n.nodeName;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
+          params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
