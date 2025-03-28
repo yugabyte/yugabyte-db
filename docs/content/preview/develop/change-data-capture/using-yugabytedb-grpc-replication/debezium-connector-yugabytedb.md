@@ -1044,7 +1044,7 @@ The following properties are _required_ unless a default value is available:
 
 {{< note title="TLS v1.2 only" >}}
 
-The APIs used to fetch the changes are set up to work with TLS v1.2 only. Make sure you're using the proper environment properties for Kafka Connect!
+The APIs used to fetch the changes are set up to work only with TLS v1.2. Make sure you're using the proper environment properties for Kafka Connect.
 
 {{< /note >}}
 
