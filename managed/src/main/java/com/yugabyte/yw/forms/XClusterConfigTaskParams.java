@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -197,7 +198,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   /** It is used in the delete method. */
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig, boolean isForced) {
-    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    this.setUniverseUUID(
+        Optional.ofNullable(xClusterConfig.getTargetUniverseUUID())
+            .orElseGet(() -> xClusterConfig.getSourceUniverseUUID()));
     this.xClusterConfig = xClusterConfig;
     this.isForced = isForced;
   }
