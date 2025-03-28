@@ -1128,6 +1128,13 @@ typedef struct
 
 } YbCatalogModificationAspects;
 
+typedef struct YbCatalogMessageList
+{
+	SharedInvalidationMessage *msgs;
+	size_t		nmsgs;
+	struct YbCatalogMessageList *next;
+} YbCatalogMessageList;
+
 typedef struct
 {
 	int			nesting_level;
@@ -1170,6 +1177,8 @@ typedef struct
 	 * ddl_transaction_state is reset.
 	 */
 	List	   *altered_table_ids;
+
+	YbCatalogMessageList *committed_pg_txn_messages;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2487,7 +2496,7 @@ YbIsInvalidationMessageEnabled()
 }
 
 bool
-YbCheckPgTxnCommitForAnalyze(bool *increment_done)
+YbTrackPgTxnInvalMessagesForAnalyze()
 {
 	/*
 	 * In some cases, PG can commit when the outer DDL statement isn't complete yet.
@@ -2537,8 +2546,9 @@ YbCheckPgTxnCommitForAnalyze(bool *increment_done)
 												 YB_CATCACHE_MSGS);
 	numRelCacheMsgs = YbGetSubGroupInvalMessages(&relCacheInvalMessages,
 												 YB_RELCACHE_MSGS);
+	Assert(ddl_transaction_state.mem_context);
 	currentInvalMessages = (SharedInvalidationMessage *)
-		MemoryContextAlloc(CurTransactionContext,
+		MemoryContextAlloc(ddl_transaction_state.mem_context,
 						   nmsgs * sizeof(SharedInvalidationMessage));
 	if (numCatCacheMsgs > 0)
 		memcpy(currentInvalMessages,
@@ -2550,20 +2560,19 @@ YbCheckPgTxnCommitForAnalyze(bool *increment_done)
 			   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
 	if (log_min_messages <= DEBUG1)
 		YbLogInvalidationMessages(currentInvalMessages, nmsgs);
-	elog(DEBUG1, "incrementing catalog version in nested PG commit");
-	*increment_done =
-		YbIncrementMasterCatalogVersionTableEntry(false /* is_breaking_change */ ,
-												  ddl_transaction_state.is_global_ddl,
-												  ddl_transaction_state.original_ddl_command_tag,
-												  currentInvalMessages, nmsgs);
-	pfree(currentInvalMessages);
+	YbCatalogMessageList *current = (YbCatalogMessageList *)
+		MemoryContextAlloc(ddl_transaction_state.mem_context,
+						   sizeof(YbCatalogMessageList));
+	current->msgs = currentInvalMessages;
+	current->nmsgs = nmsgs;
 	/*
-	 * If we have failed to incremented the catalog version and inserted
-	 * the inval messages, we need to count this PG commit so that when
-	 * this ANALYZE DDL finishes we skip the incremental cache refresh
-	 * because we have lost the inval messages for this PG commit here.
+	 * Here we track committed pg txn messages in reverse order. Later
+	 * we reverse it again when copying.
 	 */
-	return !(*increment_done);
+	current->next = ddl_transaction_state.committed_pg_txn_messages;
+	ddl_transaction_state.committed_pg_txn_messages = current;
+	elog(DEBUG1, "tracking catalog version in nested PG commit");
+	return false;
 }
 
 void
@@ -2629,6 +2638,53 @@ YbCheckNewLocalCatalogVersionOptimization()
 		 * to x + 2.
 		 */
 		YbWaitForSharedCatalogVersionToCatchup(new_version);
+	}
+}
+
+static int
+YbTotalCommittedPgTxnMessages()
+{
+	if (!CheckIsAnalyzeDDL())
+	{
+		/* For now we only track committed pg txn for ANALYZE */
+		Assert(ddl_transaction_state.committed_pg_txn_messages == NULL);
+		return 0;
+	}
+	int total = 0;
+	for (YbCatalogMessageList *current = ddl_transaction_state.committed_pg_txn_messages;
+		 current != NULL; current = current->next)
+		total += current->nmsgs;
+	return total;
+}
+
+static void
+YbCopyCommittedPgTxnMessages(SharedInvalidationMessage *currentInvalMessages)
+{
+	YbCatalogMessageList *current;
+	int num_pg_txn_commits = 0;
+	for (current = ddl_transaction_state.committed_pg_txn_messages;
+		 current != NULL; current = current->next)
+		++num_pg_txn_commits;
+	YbCatalogMessageList *temp = (YbCatalogMessageList *)
+		MemoryContextAlloc(ddl_transaction_state.mem_context,
+						   sizeof(YbCatalogMessageList) * num_pg_txn_commits);
+	/*
+	 * Copy the list in reverse order to get back the original order of committed
+	 * pg txns.
+	 */
+	int count = num_pg_txn_commits;
+	for (current = ddl_transaction_state.committed_pg_txn_messages;
+		 current != NULL; current = current->next)
+		temp[--count] = *current;
+	Assert(count == 0);
+	int total = 0;
+	/* Copy the messages of committed pg txns into currentInvalMessages. */
+	for (count = 0; count < num_pg_txn_commits; ++count)
+	{
+		current = &temp[count];
+		memcpy(currentInvalMessages + total, current->msgs,
+			   current->nmsgs * sizeof(SharedInvalidationMessage));
+		total += current->nmsgs;
 	}
 }
 
@@ -2700,6 +2756,11 @@ YBCommitTransactionContainingDDL()
 			int numExistingRelCacheMsgs = YbGetNumInvalMessagesInTxn(YB_RELCACHE_MSGS);
 			Assert(numCatCacheMsgs >= numExistingCatCacheMsgs);
 			Assert(numRelCacheMsgs >= numExistingRelCacheMsgs);
+
+			int total = YbTotalCommittedPgTxnMessages();
+
+			/* We can not have committed pg txns in ANALYZE within a transaction block. */
+			Assert(total == 0 || (numExistingCatCacheMsgs == 0 && numExistingRelCacheMsgs == 0));
 			/*
 			 * Adjust currentCatCacheInvalMessages pointers to the catcache messages
 			 * generated by the current DDL. E.g., if numExistingCatCacheMsgs == 20,
@@ -2721,7 +2782,7 @@ YBCommitTransactionContainingDDL()
 			numRelCacheMsgs -= numExistingRelCacheMsgs;
 			YbAddNumInvalMessagesInTxn(YB_RELCACHE_MSGS, numRelCacheMsgs);
 
-			nmsgs = numCatCacheMsgs + numRelCacheMsgs;
+			nmsgs = numCatCacheMsgs + numRelCacheMsgs + total;
 			if (nmsgs > 0)
 			{
 				int max_allowed = yb_max_num_invalidation_messages;
@@ -2737,24 +2798,23 @@ YBCommitTransactionContainingDDL()
 				else
 				{
 					currentInvalMessages = (SharedInvalidationMessage *)
-						MemoryContextAlloc(CurTransactionContext,
+						MemoryContextAlloc(ddl_transaction_state.mem_context,
 										   nmsgs * sizeof(SharedInvalidationMessage));
+					if (total > 0)
+						YbCopyCommittedPgTxnMessages(currentInvalMessages);
+
 					if (numCatCacheMsgs > 0)
-						memcpy(currentInvalMessages,
+						memcpy(currentInvalMessages + total,
 							   currentCatCacheInvalMessages,
 							   numCatCacheMsgs * sizeof(SharedInvalidationMessage));
 					if (numRelCacheMsgs > 0)
-						memcpy(currentInvalMessages + numCatCacheMsgs,
+						memcpy(currentInvalMessages + total + numCatCacheMsgs,
 							   currentRelCacheInvalMessages,
 							   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
 				}
 			}
 			else
 				Assert(nmsgs == 0);
-			if (catCacheInvalMessages)
-				pfree(catCacheInvalMessages);
-			if (relCacheInvalMessages)
-				pfree(relCacheInvalMessages);
 			YBC_LOG_INFO("currentInvalMessages=%p, nmsgs=%d", currentInvalMessages, nmsgs);
 		}
 		else if (ddl_transaction_state.num_committed_pg_txns > 0)
@@ -2783,9 +2843,6 @@ YBCommitTransactionContainingDDL()
 													  currentInvalMessages, nmsgs);
 
 		is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
-
-		if (currentInvalMessages)
-			pfree(currentInvalMessages);
 	}
 
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();

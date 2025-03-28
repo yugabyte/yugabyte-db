@@ -818,7 +818,7 @@ extern NodeTag YBGetDdlOriginalNodeTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
-extern bool YbCheckPgTxnCommitForAnalyze(bool *increment_done);
+extern bool YbTrackPgTxnInvalMessagesForAnalyze();
 extern void YbCheckNewLocalCatalogVersionOptimization();
 extern void YbTrackAlteredTableId(Oid relid);
 extern void YbInvalidateTableCacheForAlteredTables();

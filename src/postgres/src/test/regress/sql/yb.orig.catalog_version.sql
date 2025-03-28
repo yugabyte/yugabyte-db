@@ -413,10 +413,7 @@ SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relna
 SELECT min(t), max(t) FROM analyze_table;
 SELECT min(t), max(t) FROM analyze_table2;
 -- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version bumps more than once because ANALYZE internally
--- has more than one transactions committed. Each committed transaction
--- needs to cause catalog version to increment by 1 if it has generated
--- some cache invalidation messages.
+-- Verify catalog version only bumps once.
 ANALYZE;
 :display_catalog_version;
 

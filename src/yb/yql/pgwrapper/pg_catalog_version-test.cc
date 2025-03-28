@@ -2182,7 +2182,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeTwoTables) {
   auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
-  const string expected = Format("$0, 2, 792; $0, 3, 624", yugabyte_db_oid);
+  const string expected = Format("$0, 2, 1416", yugabyte_db_oid);
   ASSERT_EQ(result, expected);
 }
 
@@ -2193,21 +2193,9 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
   ASSERT_OK(conn_yugabyte.Execute("ANALYZE"));
   auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
-  string expected =
-    "13515, 2, 120; 13515, 3, 768; 13515, 4, 624; 13515, 5, 720; "
-    "13515, 6, 792; 13515, 7, 504; 13515, 8, 96; 13515, 9, 600; 13515, 10, 216; "
-    "13515, 11, 528; 13515, 12, 96; 13515, 13, 216; 13515, 14, 144; 13515, 15, 144; "
-    "13515, 16, 624; 13515, 17, 192; 13515, 18, 168; 13515, 19, 96; 13515, 20, 504; "
-    "13515, 21, 216; 13515, 22, 96; 13515, 23, 216; 13515, 24, 360; 13515, 25, 192; "
-    "13515, 26, 120; 13515, 27, 192; 13515, 28, 120; 13515, 29, 264; 13515, 30, 168; "
-    "13515, 31, 144; 13515, 32, 192; 13515, 33, 120; 13515, 34, 96; 13515, 35, 120; "
-    "13515, 36, 216; 13515, 37, 96; 13515, 38, 192; 13515, 39, 240; 13515, 40, 168; "
-    "13515, 41, 120; 13515, 42, 120; 13515, 43, 96";
-  const string yugabyte_db_oid_str = Format("$0, ", yugabyte_db_oid);
-  // Replace 13515 with the real yugabyte_db_oid.
-  GlobalReplaceSubstring("13515, ", yugabyte_db_oid_str, &expected);
-  ASSERT_EQ(result, expected);
   LOG(INFO) << "result:\n" << result;
+  const string expected = Format("$0, 2, 10776", yugabyte_db_oid);
+  ASSERT_EQ(result, expected);
 }
 
 TEST_F(PgCatalogVersionTest, AnalyzeInsideDdlEventTrigger) {

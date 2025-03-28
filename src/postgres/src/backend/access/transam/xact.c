@@ -2394,8 +2394,7 @@ CommitTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		bool increment_done = false;
-		bool increment_pg_txns = YbCheckPgTxnCommitForAnalyze(&increment_done);
+		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
 		/*
 		 * Firing the triggers may abort current transaction.
 		 * At this point all the them has been fired already.
@@ -2405,12 +2404,7 @@ CommitTransaction(void)
 		 */
 		YBCCommitTransaction();
 		if (increment_pg_txns)
-		{
-			Assert(!increment_done);
 			YbIncrementPgTxnsCommitted();
-		}
-		else if (increment_done)
-			YbCheckNewLocalCatalogVersionOptimization();
 	}
 
 
