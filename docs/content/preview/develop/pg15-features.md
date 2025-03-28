@@ -199,7 +199,7 @@ The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to u
 
 ### TLS minimum version
 
-The default value for `ssl_min_protocol_version` is updated from TLS v1 to TLS v1.2. Ensure your client supports TLS v1.2; clients that do not support it will get a connection error.
+The default value for `ssl_min_protocol_version` is updated from TLS v1 to TLS v1.2. Ensure that client applications, including the driver, support TLS v1.2 before upgrading YugabyteDB to 2.25.0 or higher.
 
 You can use the version column of the `pg_stat_ssl` view to determine what version of SSL is used in each connection, as follows:
 
