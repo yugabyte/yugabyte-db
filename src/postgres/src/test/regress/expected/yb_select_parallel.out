@@ -673,10 +673,10 @@ explain (costs off)
     (select two from tenk1 b where stringu1 like '%AAAA' limit 3);
                            QUERY PLAN
 -----------------------------------------------------------------
- Nested Loop Semi Join
-   Join Filter: (a.two = b.two)
+ Hash Semi Join
+   Hash Cond: (a.two = b.two)
    ->  Seq Scan on tenk1 a
-   ->  Materialize
+   ->  Hash
          ->  Limit
                ->  Seq Scan on tenk1 b
                      Storage Filter: (stringu1 ~~ '%AAAA'::text)

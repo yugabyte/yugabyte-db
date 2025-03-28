@@ -27,6 +27,11 @@ set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
 set enable_bitmapscan = false;
 
+-- encourage use of parallel plans for the remaining tests by gucs
+-- since the "hard" option of Parallel hint is broken. (#26181)
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+
 -- Parallel sequential scan
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';

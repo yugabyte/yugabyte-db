@@ -22,6 +22,10 @@ set yb_enable_base_scans_cost_model to true;
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
 set enable_bitmapscan = false;
+-- encourage use of parallel plans for the remaining tests by gucs
+-- since the "hard" option of Parallel hint is broken. (#26181)
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
 -- Parallel sequential scan
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
@@ -436,17 +440,17 @@ set enable_hashjoin to false;
 EXPLAIN (costs off)
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                          QUERY PLAN
----------------------------------------------------------------
- Merge Join
-   Merge Cond: (pctest1.k = pctest2.k)
-   ->  Gather Merge
-         Workers Planned: 2
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  YB Batched Nested Loop Join
+         Join Filter: (pctest1.k = pctest2.k)
+         Sort Keys: pctest1.k
          ->  Parallel Index Scan using pctest1_pkey on pctest1
                Storage Filter: (c = 42)
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Parallel Index Scan using pctest2_pkey on pctest2
+         ->  Index Scan using pctest2_pkey on pctest2
+               Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
 (9 rows)
 
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
@@ -502,26 +506,24 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
-                                          QUERY PLAN
-----------------------------------------------------------------------------------------------
- Nested Loop
-   Join Filter: (pctest1.b = pctest2_1.c)
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Hash Join
-               Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
-               ->  Parallel Index Scan using pctest1_pkey on pctest1
-               ->  Parallel Hash
-                     ->  Parallel Index Scan using pctest2_pkey on pctest2
-   ->  Materialize
-         ->  Gather
-               Workers Planned: 2
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Hash Join
+         Hash Cond: ((pctest1_1.k = pctest2_1.k) AND (pctest1_1.b = pctest2_1.b))
+         ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest1_1
+         ->  Parallel Hash
                ->  Parallel Hash Join
-                     Hash Cond: ((pctest1_1.k = pctest2_1.k) AND (pctest1_1.b = pctest2_1.b))
-                     ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest1_1
+                     Hash Cond: (pctest2_1.c = pctest1.b)
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest2_1
                      ->  Parallel Hash
-                           ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest2_1
-(17 rows)
+                           ->  Parallel Hash Join
+                                 Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
+                                 ->  Parallel Index Scan using pctest1_pkey on pctest1
+                                 ->  Parallel Hash
+                                       ->  Parallel Index Scan using pctest2_pkey on pctest2
+(15 rows)
 
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2
@@ -606,25 +608,23 @@ SELECT * from pctest2
     AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
                           QUERY PLAN
 --------------------------------------------------------------
- Nested Loop Semi Join
-   Join Filter: (pctest2.c = pctest1.b)
+ Gather
+   Workers Planned: 2
+   Params Evaluated: $1
    InitPlan 1 (returns $1)
      ->  Aggregate
            ->  Gather
                  Workers Planned: 2
                  ->  Parallel Seq Scan on pctest1 pctest1_1
                        Storage Filter: (d ~~ 'Value_9'::text)
-   ->  Gather
-         Workers Planned: 2
-         Params Evaluated: $1
+   ->  Parallel Hash Semi Join
+         Hash Cond: (pctest2.c = pctest1.b)
          ->  Parallel Seq Scan on pctest2
                Storage Filter: ((b)::numeric < $1)
-   ->  Materialize
-         ->  Gather
-               Workers Planned: 2
+         ->  Parallel Hash
                ->  Parallel Seq Scan on pctest1
                      Storage Filter: (d ~~ 'Value_9'::text)
-(18 rows)
+(16 rows)
 
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')

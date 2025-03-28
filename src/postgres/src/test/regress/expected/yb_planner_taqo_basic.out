@@ -73,30 +73,30 @@ SET pg_hint_plan.message_level = debug;
 SET temp_file_limit="8182MB";
 set yb_bnl_batch_size = 1024; set yb_enable_base_scans_cost_model = true;
 SET yb_enable_optimizer_statistics = true;
--- Query Hash: 4a5906c534d0263f3485b086c801ee16
+-- Query Hash: 4a5906c534d0263f3485b086c801ee16 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT count(*) from t1;
-                   QUERY PLAN
-------------------------------------------------
+           QUERY PLAN
+---------------------------------
  Finalize Aggregate
-   ->  Index Only Scan using t1_v1_k2_idx on t1
+   ->  Seq Scan on t1
          Partial Aggregate: true
 (3 rows)
 
 -- Query Hash: 6112acf82b05dfa95b3ea6f68b13656c
 EXPLAIN (COSTS OFF) SELECT sum(v1) from t1;
-                   QUERY PLAN
-------------------------------------------------
+           QUERY PLAN
+---------------------------------
  Finalize Aggregate
-   ->  Index Only Scan using t1_v1_k2_idx on t1
+   ->  Seq Scan on t1
          Partial Aggregate: true
 (3 rows)
 
 -- Query Hash: a0dc787d836a7ce894503b2002842f5f
 EXPLAIN (COSTS OFF) SELECT avg(v1) from t1;
-                   QUERY PLAN
-------------------------------------------------
+           QUERY PLAN
+---------------------------------
  Finalize Aggregate
-   ->  Index Only Scan using t1_v1_k2_idx on t1
+   ->  Seq Scan on t1
          Partial Aggregate: true
 (3 rows)
 
@@ -271,22 +271,24 @@ EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.v1 =
                            Index Cond: ((k1 >= 8180) AND (k1 < 8190))
 (11 rows)
 
--- Query Hash: 6b3227d85138adae74589ec93fc2cec0
+-- Query Hash: 6b3227d85138adae74589ec93fc2cec0 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 >= 8100 AND t1.k1 < 8190 AND t2.k1 >= 8180 AND t2.k1 < 8400 GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                              QUERY PLAN
-----------------------------------------------------------------------
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  Hash Join
-               Hash Cond: (t2.v1 = t1.v1)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: ((k1 >= 8180) AND (k1 < 8400))
-               ->  Hash
-                     ->  Index Scan using t1_pkey on t1
-                           Index Cond: ((k1 >= 8100) AND (k1 < 8190))
-(11 rows)
+         Presorted Key: t1.k1, t1.k2
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t1.v1 = t2.v1)
+               Sort Keys: t1.k1, t1.k2
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: ((k1 >= 8100) AND (k1 < 8190))
+               ->  Index Scan using t2_v1_k2_idx on t2
+                     Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+                     Storage Filter: ((k1 >= 8180) AND (k1 < 8400))
+(13 rows)
 
 -- Query Hash: ad263ed3286b608f8d74dd1f9467b5b9
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON ts2.v1 = ts3.v1 WHERE ts2.k1 >= 17180 AND ts2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2190 GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
@@ -322,22 +324,20 @@ EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON t
                            Index Cond: ((k1 >= 17100) AND (k1 < 17190))
 (11 rows)
 
--- Query Hash: 003c6b48b04c7bbba054d136373d2af5
+-- Query Hash: 003c6b48b04c7bbba054d136373d2af5 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= 2500 AND t1.k1 < 25100 AND t2.k1 >= 2500 AND t2.k1 < 25100 GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                              QUERY PLAN
------------------------------------------------------------------------
- Group
+                                                 QUERY PLAN
+-------------------------------------------------------------------------------------------------------------
+ HashAggregate
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
-   ->  Sort
-         Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  Merge Join
-               Merge Cond: (t1.k1 = t2.k1)
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((k1 >= 2500) AND (k1 < 25100))
-               ->  Materialize
-                     ->  Index Scan using t2_pkey on t2
-                           Index Cond: ((k1 >= 2500) AND (k1 < 25100))
-(11 rows)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.k1 = t2.k1)
+         Sort Keys: t1.k1, t1.k2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((k1 >= 2500) AND (k1 < 25100))
+         ->  Index Scan using t2_pkey on t2
+               Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 >= 2500) AND (k1 < 25100))
+(9 rows)
 
 -- Query Hash: f4c3ae5936d8b44d6edb8f71bdce9a6a
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= 24800 AND t1.k1 < 25100 AND t2.k1 >= 2500 AND t2.k1 < 25300 GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
@@ -345,77 +345,88 @@ EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 on t1.k1 =
 -------------------------------------------------------------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
+         Presorted Key: t1.k1, t1.k2
          ->  YB Batched Nested Loop Join
                Join Filter: (t1.k1 = t2.k1)
+               Sort Keys: t1.k1, t1.k2
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 >= 24800) AND (k1 < 25100))
                ->  Index Scan using t2_pkey on t2
                      Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 >= 2500) AND (k1 < 25300))
-(10 rows)
+(12 rows)
 
--- Query Hash: c30abbe30bbcbde00c04cbb9db1ef7b3
+-- Query Hash: c30abbe30bbcbde00c04cbb9db1ef7b3 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= 300 AND ts2.k1 < 3100 AND ts3.k1 >= 300 AND ts3.k1 < 3100 GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
                           QUERY PLAN
 ---------------------------------------------------------------
  Group
    Group Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
+         Presorted Key: ts2.k1, ts2.k2
          ->  Merge Join
                Merge Cond: (ts2.k1 = ts3.k1)
                ->  Index Scan using ts2_pkey on ts2
                      Index Cond: ((k1 >= 300) AND (k1 < 3100))
                ->  Index Scan using ts3_pkey on ts3
                      Index Cond: ((k1 >= 300) AND (k1 < 3100))
-(10 rows)
+(11 rows)
 
--- Query Hash: c6a0f9c3bd5faca02ba41d3bf617ac9c
+-- Query Hash: c6a0f9c3bd5faca02ba41d3bf617ac9c , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= 2800 AND ts2.k1 < 3100 AND ts3.k1 >= 300 AND ts3.k1 < 3300 GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
-                           QUERY PLAN
-----------------------------------------------------------------
+                                                    QUERY PLAN
+------------------------------------------------------------------------------------------------------------------
  Group
    Group Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-         ->  Merge Join
-               Merge Cond: (ts2.k1 = ts3.k1)
+         Presorted Key: ts2.k1, ts2.k2
+         ->  YB Batched Nested Loop Join
+               Join Filter: (ts2.k1 = ts3.k1)
+               Sort Keys: ts2.k1, ts2.k2
                ->  Index Scan using ts2_pkey on ts2
                      Index Cond: ((k1 >= 2800) AND (k1 < 3100))
                ->  Index Scan using ts3_pkey on ts3
-                     Index Cond: ((k1 >= 300) AND (k1 < 3300))
-(10 rows)
+                     Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3300))
+(12 rows)
 
--- Query Hash: dc3c2df1562817b1fafc0a7cc376fcf6 , !BEST_PLAN_FOUND
+-- Query Hash: dc3c2df1562817b1fafc0a7cc376fcf6
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > 1200 AND t1.k1 <= 1300 GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                           QUERY PLAN
------------------------------------------------------------------
+                                                               QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  Nested Loop
+         Presorted Key: t1.k1, t1.k2
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
+               Sort Keys: t1.k1, t1.k2
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 > 1200) AND (k1 <= 1300))
                ->  Index Scan using t2_pkey on t2
-                     Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
-(9 rows)
+                     Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(12 rows)
 
 -- Query Hash: bc879331c1ee03f256aafc652c14f30e , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > 1200 AND t1.k1 <= 1500 GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                           QUERY PLAN
------------------------------------------------------------------
+                                                               QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  Nested Loop
+         Presorted Key: t1.k1, t1.k2
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
+               Sort Keys: t1.k1, t1.k2
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 > 1200) AND (k1 <= 1500))
                ->  Index Scan using t2_pkey on t2
-                     Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
-(9 rows)
+                     Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(12 rows)
 
 -- Query Hash: 367e0329c7727d2ee80f971d494e55a0 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > 1200 AND ts2.k1 <= 1300 GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
@@ -423,30 +434,31 @@ EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON t
 ----------------------------------------------------------------
  Group
    Group Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
+         Presorted Key: ts2.k1, ts2.k2
          ->  Nested Loop
                ->  Index Scan using ts2_pkey on ts2
                      Index Cond: ((k1 > 1200) AND (k1 <= 1300))
                ->  Index Scan using ts3_pkey on ts3
                      Index Cond: (k1 = ts2.k1)
                      Filter: (ts2.k2 = k2)
-(10 rows)
+(11 rows)
 
 -- Query Hash: 683dc9814885f4a372d11b3dfb03e24a , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > 1200 AND ts2.k1 <= 1400 GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
-                           QUERY PLAN
-----------------------------------------------------------------
+                              QUERY PLAN
+----------------------------------------------------------------------
  Group
    Group Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
    ->  Sort
          Sort Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-         ->  Nested Loop
-               ->  Index Scan using ts2_pkey on ts2
-                     Index Cond: ((k1 > 1200) AND (k1 <= 1400))
-               ->  Index Scan using ts3_pkey on ts3
-                     Index Cond: (k1 = ts2.k1)
-                     Filter: (ts2.k2 = k2)
+         ->  Hash Join
+               Hash Cond: ((ts3.k1 = ts2.k1) AND (ts3.k2 = ts2.k2))
+               ->  Seq Scan on ts3
+               ->  Hash
+                     ->  Index Scan using ts2_pkey on ts2
+                           Index Cond: ((k1 > 1200) AND (k1 <= 1400))
 (10 rows)
 
 -- Query Hash: d39c18d49b1c5c1c4d6fcce572ffd3bd
@@ -541,52 +553,44 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE k1 > 3000 ORDER BY k1 ASC LIMIT 1000
 
 -- Query Hash: 81b97b96b163d22e1bdac55ef7c12f99
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM t1 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 100000;
-                      QUERY PLAN
-------------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1 DESC
-         ->  Index Only Scan using t1_v1_k2_idx on t1
-               Index Cond: (v1 <= 3500)
-(5 rows)
+   ->  Index Only Scan Backward using t1_v1_k2_idx on t1
+         Index Cond: (v1 <= 3500)
+(3 rows)
 
 -- Query Hash: 52623faae1159230583eeb7976a50d6f
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM t1 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 1000000;
-                      QUERY PLAN
-------------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1 DESC
-         ->  Index Only Scan using t1_v1_k2_idx on t1
-               Index Cond: (v1 <= 3500)
-(5 rows)
+   ->  Index Only Scan Backward using t1_v1_k2_idx on t1
+         Index Cond: (v1 <= 3500)
+(3 rows)
 
 -- Query Hash: 7a976d90f7986c76a836a53cd3f481a4
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM t2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 100000;
-                      QUERY PLAN
-------------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1 DESC
-         ->  Index Only Scan using t2_v1_k2_idx on t2
-               Index Cond: (v1 <= 3500)
-(5 rows)
+   ->  Index Only Scan Backward using t2_v1_k2_idx on t2
+         Index Cond: (v1 <= 3500)
+(3 rows)
 
 -- Query Hash: b301100377d1be5a47d992b8ed8814d2
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM t2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 1000000;
-                      QUERY PLAN
-------------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1 DESC
-         ->  Index Only Scan using t2_v1_k2_idx on t2
-               Index Cond: (v1 <= 3500)
-(5 rows)
+   ->  Index Only Scan Backward using t2_v1_k2_idx on t2
+         Index Cond: (v1 <= 3500)
+(3 rows)
 
 -- Query Hash: 7e441de94ee0a5964f47d1eb6848ceed
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 100000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1 DESC
@@ -596,8 +600,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
 
 -- Query Hash: dfc8d19fba8ce1c2a633dc7b9b04aa53
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 1000000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1 DESC
@@ -607,8 +611,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
 
 -- Query Hash: cd8713c2b96c824e12fad567b743df19
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 100000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1 DESC
@@ -618,8 +622,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
 
 -- Query Hash: a53e46e8c2bebddc3f66505ef0fa0772
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 <= 3500 ORDER BY v1 DESC LIMIT 1000000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1 DESC
@@ -629,8 +633,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 <= 3500 ORDER BY v1 DESC LIMI
 
 -- Query Hash: 8c7db34f0f1ab387f6a467cb3e05ddc8
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t1_pkey on t1
          Storage Filter: (v1 IS NOT NULL)
@@ -638,8 +642,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 
 -- Query Hash: d6becef8d1d6fff246dab709c776a43c
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 1000000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t1_pkey on t1
          Storage Filter: (v1 IS NOT NULL)
@@ -647,8 +651,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 
 -- Query Hash: 037bfe342e9a36d6e78fdc6193b2cd7d
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t2_pkey on t2
          Storage Filter: (v1 IS NOT NULL)
@@ -656,8 +660,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 
 -- Query Hash: f4448e3c7a70d66028288e6f6e3f0078
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 1000000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t2_pkey on t2
          Storage Filter: (v1 IS NOT NULL)
@@ -665,17 +669,17 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 
 -- Query Hash: 412d5b94165936cf16bbce483cd9fa4e
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t3_pkey on t3
          Storage Filter: (v1 IS NOT NULL)
 (3 rows)
 
--- Query Hash: e1f0758a638322dc28632de93745f51b , !BEST_PLAN_FOUND
+-- Query Hash: e1f0758a638322dc28632de93745f51b
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 1000000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t3_pkey on t3
          Storage Filter: (v1 IS NOT NULL)
@@ -683,8 +687,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 
 
 -- Query Hash: e29f8f19d78b4f70f162d5553fa8ba49
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Storage Filter: (v1 IS NOT NULL)
@@ -692,8 +696,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 
 -- Query Hash: 9588b7dca850aced58785e8d67f24cc4
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 1000000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Storage Filter: (v1 IS NOT NULL)
@@ -701,8 +705,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 
 -- Query Hash: 3dc708fc9d1a0ed2da91efc48f9786d0
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Storage Filter: (v1 IS NOT NULL)
@@ -710,8 +714,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 
 -- Query Hash: 6e2dfb787296b406aea09f8042bfce4c
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT 1000000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Storage Filter: (v1 IS NOT NULL)
@@ -719,8 +723,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL ORDER BY k1 ASC LIMIT
 
 -- Query Hash: e3b0e01c35cc884a1ac724c10757559d
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 10000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 >= 5500)
@@ -729,8 +733,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
 
 -- Query Hash: 24e4eac69f2d69337d45c64fc1dce2b1
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 >= 5500)
@@ -739,8 +743,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
 
 -- Query Hash: 9bf335ab1c1b49d8424d831ceb1e1a4a
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 10000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 >= 5500)
@@ -749,8 +753,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
 
 -- Query Hash: 4df77b96b30cdf5649b598e873fc4692
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 >= 5500)
@@ -759,8 +763,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
 
 -- Query Hash: 279dbb8f084e7a20225a538742d4f019
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 10000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t3_pkey on t3
          Index Cond: (k1 >= 5500)
@@ -769,8 +773,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
 
 -- Query Hash: f6cb277d6981446aee92ea4c5ee49f9e
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using t3_pkey on t3
          Index Cond: (k1 >= 5500)
@@ -779,8 +783,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER B
 
 -- Query Hash: 09415831b703b660d9149fe296810637
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 10000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 >= 5500)
@@ -789,8 +793,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
 
 -- Query Hash: c30740c81d5508b13e89df15fdb15350
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 >= 5500)
@@ -799,8 +803,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
 
 -- Query Hash: b810961ef96b98093a82e76f29a2988a
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 10000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: (k1 >= 5500)
@@ -809,8 +813,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER 
 
 -- Query Hash: 97be296075a63ead79f8932f44676451
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 IS NOT NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 100000;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Limit
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: (k1 >= 5500)
@@ -943,7 +947,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1
                Storage Filter: (k1 >= 5500)
 (6 rows)
 
--- Query Hash: 034e10caeafa420f62d5945808a6c2d6 , !BEST_PLAN_FOUND
+-- Query Hash: 034e10caeafa420f62d5945808a6c2d6
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 IS NULL AND k1 >= 5500 ORDER BY k1 ASC LIMIT 10000;
                    QUERY PLAN
 -------------------------------------------------
@@ -1044,30 +1048,30 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 >= 818
                Index Cond: ((k1 >= 8180) AND (k1 < 8190))
 (7 rows)
 
--- Query Hash: 015d08a75cfa11b27675cd3a2cadd29f
+-- Query Hash: 015d08a75cfa11b27675cd3a2cadd29f , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 >= 8100 AND t1.k1 < 8190 AND t2.k1 >= 8180 AND t2.k1 < 8400;
-                        QUERY PLAN
-----------------------------------------------------------
- Hash Join
-   Hash Cond: (t2.v1 = t1.v1)
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 >= 8180) AND (k1 < 8400))
-   ->  Hash
-         ->  Index Scan using t1_pkey on t1
-               Index Cond: ((k1 >= 8100) AND (k1 < 8190))
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.v1 = t2.v1)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((k1 >= 8100) AND (k1 < 8190))
+   ->  Index Scan using t2_v1_k2_idx on t2
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+         Storage Filter: ((k1 >= 8180) AND (k1 < 8400))
 (7 rows)
 
 -- Query Hash: c482874e326ef98bec47d576e455a79a
 EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts2 ON t2.v1 = ts2.v1 WHERE t2.k1 >= 17180 AND t2.k1 < 17190 AND ts2.k1 >= 2180 AND ts2.k1 < 2190;
-                         QUERY PLAN
-------------------------------------------------------------
+                        QUERY PLAN
+----------------------------------------------------------
  Hash Join
-   Hash Cond: (ts2.v1 = t2.v1)
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 >= 2180) AND (k1 < 2190))
+   Hash Cond: (t2.v1 = ts2.v1)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: ((k1 >= 17180) AND (k1 < 17190))
    ->  Hash
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: ((k1 >= 17180) AND (k1 < 17190))
+         ->  Index Scan using ts2_pkey on ts2
+               Index Cond: ((k1 >= 2180) AND (k1 < 2190))
 (7 rows)
 
 -- Query Hash: 66a36eb29f98792f2f8da81c854acf70
@@ -1085,15 +1089,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts2 ON t2.v1 = ts2.v1 WHERE t2.k1 >= 1
 
 -- Query Hash: d42e62f13cecefe8f84b385f54d996d1
 EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts3 ON t2.v1 = ts3.v1 WHERE t2.k1 >= 17180 AND t2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2190;
-                         QUERY PLAN
-------------------------------------------------------------
+                        QUERY PLAN
+----------------------------------------------------------
  Hash Join
-   Hash Cond: (ts3.v1 = t2.v1)
-   ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 >= 2180) AND (k1 < 2190))
+   Hash Cond: (t2.v1 = ts3.v1)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: ((k1 >= 17180) AND (k1 < 17190))
    ->  Hash
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: ((k1 >= 17180) AND (k1 < 17190))
+         ->  Index Scan using ts3_pkey on ts3
+               Index Cond: ((k1 >= 2180) AND (k1 < 2190))
 (7 rows)
 
 -- Query Hash: bb497bb136e46ac7baa17aea71ef02e2
@@ -1135,31 +1139,29 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.v1 = ts3.v1 WHERE ts2.k1 >
                Index Cond: ((k1 >= 17100) AND (k1 < 17190))
 (7 rows)
 
--- Query Hash: 67a398d13515828ca75aafd9ef4f0cd6
+-- Query Hash: 67a398d13515828ca75aafd9ef4f0cd6 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 >= 8180 AND t1.k1 < 8190 AND t2.k1 >= 8180 AND t2.k1 < 8190;
-                        QUERY PLAN
-----------------------------------------------------------
- Merge Join
-   Merge Cond: (t1.k1 = t2.k1)
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.k1 = t2.k1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 >= 8180) AND (k1 < 8190))
-   ->  Materialize
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: ((k1 >= 8180) AND (k1 < 8190))
-(7 rows)
-
--- Query Hash: a5d05b739f8b208c1acd623e5b1007a0
-EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 >= 8100 AND t1.k1 < 8190 AND t2.k1 >= 8180 AND t2.k1 < 8400;
-                        QUERY PLAN
-----------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.k1 = t1.k1)
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 >= 8180) AND (k1 < 8400))
-   ->  Materialize
-         ->  Index Scan using t1_pkey on t1
-               Index Cond: ((k1 >= 8100) AND (k1 < 8190))
-(7 rows)
+         Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 >= 8180) AND (k1 < 8190))
+(6 rows)
+
+-- Query Hash: a5d05b739f8b208c1acd623e5b1007a0 , !BEST_PLAN_FOUND
+EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 >= 8100 AND t1.k1 < 8190 AND t2.k1 >= 8180 AND t2.k1 < 8400;
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.k1 = t2.k1)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((k1 >= 8100) AND (k1 < 8190))
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 >= 8180) AND (k1 < 8400))
+(6 rows)
 
 -- Query Hash: 6a06d52011db1ae005dedac6c865783e
 EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts2 ON t2.k1 = ts2.k1 WHERE t2.k1 >= 17180 AND t2.k1 < 17190 AND ts2.k1 >= 2180 AND ts2.k1 < 2190;
@@ -1189,64 +1191,63 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts2 ON t2.k1 = ts2.k1 WHERE t2.k1 >= 1
 
 -- Query Hash: af1b015a4028d88a05532292760e9eb0 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 >= 17180 AND t2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2190;
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t2.k1 = ts3.k1)
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 >= 17180) AND (k1 < 17190))
-   ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 >= 2180) AND (k1 < 2190))
-(6 rows)
-
--- Query Hash: bdda96c8e8353aea4e11dad3fe771ca5 , !BEST_PLAN_FOUND
-EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 >= 17100 AND t2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2400;
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t2.k1 = ts3.k1)
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 >= 17100) AND (k1 < 17190))
-   ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 >= 2180) AND (k1 < 2400))
-(6 rows)
-
--- Query Hash: 831826be5a1c72675d586f8c89d82a3e , !BEST_PLAN_FOUND
-EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 >= 17180 AND ts2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2190;
-                                              QUERY PLAN
--------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (ts2.k1 = ts3.k1)
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 >= 17180) AND (k1 < 17190))
-   ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 2180) AND (k1 < 2190))
-(6 rows)
-
--- Query Hash: e96e59d0ba7e168043c8b85dc7a892bc , !BEST_PLAN_FOUND
-EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 >= 17100 AND ts2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2400;
-                                              QUERY PLAN
--------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (ts2.k1 = ts3.k1)
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 >= 17100) AND (k1 < 17190))
-   ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 2180) AND (k1 < 2400))
-(6 rows)
-
--- Query Hash: 81773f0f120048d4f212f43388f5270b
-EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= 2500 AND t1.k1 < 25100 AND t2.k1 >= 2500 AND t2.k1 < 25100;
-                        QUERY PLAN
------------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Merge Join
-   Merge Cond: (t1.k1 = t2.k1)
+   Merge Cond: (t2.k1 = ts3.k1)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: ((k1 >= 17180) AND (k1 < 17190))
+   ->  Index Scan using ts3_pkey on ts3
+         Index Cond: ((k1 >= 2180) AND (k1 < 2190))
+(6 rows)
+
+-- Query Hash: bdda96c8e8353aea4e11dad3fe771ca5
+EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 >= 17100 AND t2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2400;
+                      QUERY PLAN
+------------------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = ts3.k1)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: ((k1 >= 17100) AND (k1 < 17190))
+   ->  Index Scan using ts3_pkey on ts3
+         Index Cond: ((k1 >= 2180) AND (k1 < 2400))
+(6 rows)
+
+-- Query Hash: 831826be5a1c72675d586f8c89d82a3e
+EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 >= 17180 AND ts2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2190;
+                      QUERY PLAN
+------------------------------------------------------
+ Merge Join
+   Merge Cond: (ts2.k1 = ts3.k1)
+   ->  Index Scan using ts2_pkey on ts2
+         Index Cond: ((k1 >= 17180) AND (k1 < 17190))
+   ->  Index Scan using ts3_pkey on ts3
+         Index Cond: ((k1 >= 2180) AND (k1 < 2190))
+(6 rows)
+
+-- Query Hash: e96e59d0ba7e168043c8b85dc7a892bc
+EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 >= 17100 AND ts2.k1 < 17190 AND ts3.k1 >= 2180 AND ts3.k1 < 2400;
+                      QUERY PLAN
+------------------------------------------------------
+ Merge Join
+   Merge Cond: (ts2.k1 = ts3.k1)
+   ->  Index Scan using ts2_pkey on ts2
+         Index Cond: ((k1 >= 17100) AND (k1 < 17190))
+   ->  Index Scan using ts3_pkey on ts3
+         Index Cond: ((k1 >= 2180) AND (k1 < 2400))
+(6 rows)
+
+-- Query Hash: 81773f0f120048d4f212f43388f5270b , !BEST_PLAN_FOUND
+EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= 2500 AND t1.k1 < 25100 AND t2.k1 >= 2500 AND t2.k1 < 25100;
+                                              QUERY PLAN
+-------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.k1 = t2.k1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 >= 2500) AND (k1 < 25100))
-   ->  Materialize
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: ((k1 >= 2500) AND (k1 < 25100))
-(7 rows)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 >= 2500) AND (k1 < 25100))
+(6 rows)
 
 -- Query Hash: 0603d5bafa72561c9846b17453cc7632
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= 24800 AND t1.k1 < 25100 AND t2.k1 >= 2500 AND t2.k1 < 25300;
@@ -1260,28 +1261,28 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= 248
          Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 >= 2500) AND (k1 < 25300))
 (6 rows)
 
--- Query Hash: 2348afbf16c55deb01ddb021bfea1c58
+-- Query Hash: 2348afbf16c55deb01ddb021bfea1c58 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= 300 AND ts2.k1 < 3100 AND ts3.k1 >= 300 AND ts3.k1 < 3100;
-                    QUERY PLAN
----------------------------------------------------
- Merge Join
-   Merge Cond: (ts2.k1 = ts3.k1)
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 >= 300) AND (k1 < 3100))
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (ts2.k1 = ts3.k1)
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: ((k1 >= 300) AND (k1 < 3100))
+   ->  Index Scan using ts2_pkey on ts2
+         Index Cond: ((k1 = ANY (ARRAY[ts3.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3100))
 (6 rows)
 
--- Query Hash: e398453804fdc748d347f1b45978cf28
+-- Query Hash: e398453804fdc748d347f1b45978cf28 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= 2800 AND ts2.k1 < 3100 AND ts3.k1 >= 300 AND ts3.k1 < 3300;
-                     QUERY PLAN
-----------------------------------------------------
- Merge Join
-   Merge Cond: (ts2.k1 = ts3.k1)
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (ts2.k1 = ts3.k1)
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: ((k1 >= 2800) AND (k1 < 3100))
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 >= 300) AND (k1 < 3300))
+         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3300))
 (6 rows)
 
 -- Query Hash: 74a078943d92682a90dfe344a6302d66
@@ -1860,27 +1861,29 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2
          Index Cond: (k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023]))
 (6 rows)
 
--- Query Hash: 4811fe69eff77a61861cf9f9eb8d3ea2 , !BEST_PLAN_FOUND
+-- Query Hash: 4811fe69eff77a61861cf9f9eb8d3ea2
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > 1200 AND t1.k1 <= 1300;
-                     QUERY PLAN
------------------------------------------------------
- Nested Loop
+                                                         QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 > 1200) AND (k1 <= 1300))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
-(5 rows)
+         Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(6 rows)
 
 -- Query Hash: f06194cd76e3205918b30fb25f25c329 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > 1200 AND t1.k1 <= 1500;
-                     QUERY PLAN
------------------------------------------------------
- Nested Loop
+                                                         QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 > 1200) AND (k1 <= 1500))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
-(5 rows)
+         Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(6 rows)
 
 -- Query Hash: 3caedb16a67c51810f4fffa43b2af89e , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > 1200 AND ts2.k1 <= 1300;
@@ -1896,37 +1899,39 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = t
 
 -- Query Hash: fbf32083154c72c473fa63d5682f1487 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > 1200 AND ts2.k1 <= 1400;
-                     QUERY PLAN
-----------------------------------------------------
- Nested Loop
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 > 1200) AND (k1 <= 1400))
-   ->  Index Scan using ts3_pkey on ts3
-         Index Cond: (k1 = ts2.k1)
-         Filter: (ts2.k2 = k2)
+                        QUERY PLAN
+----------------------------------------------------------
+ Hash Join
+   Hash Cond: ((ts3.k1 = ts2.k1) AND (ts3.k2 = ts2.k2))
+   ->  Seq Scan on ts3
+   ->  Hash
+         ->  Index Scan using ts2_pkey on ts2
+               Index Cond: ((k1 > 1200) AND (k1 <= 1400))
 (6 rows)
 
 -- Query Hash: 1b6b8c0c5065d45901aec1603925d55c
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8180;
-                QUERY PLAN
--------------------------------------------
- Nested Loop
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8180)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (v1 = t1.v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: 059e6b9aaa0c6be34df2727629e23ed8
 EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8100;
-                QUERY PLAN
--------------------------------------------
- Nested Loop
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8100)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (v1 = t1.v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: 848bfeca980b6a8bd379d3da0f5bb51c
 EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts3 ON t2.v1 = ts3.v1 WHERE t2.k1 = 17100;
@@ -1978,25 +1983,27 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.v1 = ts3.v1 WHERE ts2.k1 =
 
 -- Query Hash: 5e54c1a76b511cf2706bc372d5da03cd
 EXPLAIN (COSTS OFF) SELECT * FROM t1 LEFT JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8180;
-                QUERY PLAN
--------------------------------------------
- Nested Loop Left Join
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8180)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (t1.v1 = v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: 6635511867fc479c40d46c069a67b614
 EXPLAIN (COSTS OFF) SELECT * FROM t1 LEFT JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8100;
-                QUERY PLAN
--------------------------------------------
- Nested Loop Left Join
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8100)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (t1.v1 = v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: f1d58feb349907f7217b0a9362d4f45d
 EXPLAIN (COSTS OFF) SELECT * FROM t2 LEFT JOIN ts3 ON t2.v1 = ts3.v1 WHERE t2.k1 = 17100;
@@ -2048,25 +2055,27 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 LEFT JOIN ts3 ON ts2.v1 = ts3.v1 WHERE ts2
 
 -- Query Hash: 135fbc6de237d7311ffb15f85b2b307e
 EXPLAIN (COSTS OFF) SELECT * FROM t1 RIGHT JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8180;
-                QUERY PLAN
--------------------------------------------
- Nested Loop
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8180)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (v1 = t1.v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: d250439f351d6e772ee98ca87ea7a85a
 EXPLAIN (COSTS OFF) SELECT * FROM t1 RIGHT JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8100;
-                QUERY PLAN
--------------------------------------------
- Nested Loop
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8100)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (v1 = t1.v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: 17f44fabc85088993cc3e21f3dce3bf1
 EXPLAIN (COSTS OFF) SELECT * FROM t2 RIGHT JOIN ts3 ON t2.v1 = ts3.v1 WHERE t2.k1 = 17100;
@@ -2118,25 +2127,27 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 RIGHT JOIN ts3 ON ts2.v1 = ts3.v1 WHERE ts
 
 -- Query Hash: 1cf9154be7e0318da7bc16e66a713bb3
 EXPLAIN (COSTS OFF) SELECT * FROM t1 FULL JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 8180;
-                QUERY PLAN
--------------------------------------------
- Nested Loop Left Join
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 8180)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (t1.v1 = v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: c44660cd5e4ea336ca45804c92a4fac0
 EXPLAIN (COSTS OFF) SELECT * FROM t1 FULL JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 = 810;
-                QUERY PLAN
--------------------------------------------
- Nested Loop Left Join
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t1.v1 = t2.v1)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (k1 = 810)
    ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (t1.v1 = v1)
-(5 rows)
+         Index Cond: (v1 = ANY (ARRAY[t1.v1, $1, $2, ..., $1023]))
+(6 rows)
 
 -- Query Hash: 6bfe2d4dca0bdf0f598fee4e73c410c7
 EXPLAIN (COSTS OFF) SELECT * FROM t2 FULL JOIN ts3 ON t2.v1 = ts3.v1 WHERE t2.k1 = 17100;
@@ -2230,7 +2241,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = 17
          Index Cond: (k1 = 17190)
 (5 rows)
 
--- Query Hash: a2df06408c6693370e9496385d484e43
+-- Query Hash: a2df06408c6693370e9496385d484e43 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = 17100;
                QUERY PLAN
 ----------------------------------------
@@ -2276,52 +2287,52 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 LEFT JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 =
          Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 = 8100))
 (6 rows)
 
--- Query Hash: 8796234e6953bb18190ccc4dce6cdaf4 , !BEST_PLAN_FOUND
+-- Query Hash: 8796234e6953bb18190ccc4dce6cdaf4
 EXPLAIN (COSTS OFF) SELECT * FROM t2 LEFT JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = 17100;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = 17100)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 = 17100))
+         Index Cond: (k1 = 17100)
 (6 rows)
 
--- Query Hash: e81cec91a1a34edd7d8b00b63a514a80 , !BEST_PLAN_FOUND
+-- Query Hash: e81cec91a1a34edd7d8b00b63a514a80
 EXPLAIN (COSTS OFF) SELECT * FROM t2 LEFT JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = 17190;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = 17190)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 = 17190))
+         Index Cond: (k1 = 17190)
 (6 rows)
 
--- Query Hash: eaaf59e47289b237352b7b5d95cce501 , !BEST_PLAN_FOUND
+-- Query Hash: eaaf59e47289b237352b7b5d95cce501
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 LEFT JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = 17100;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 = 17100)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 = 17100))
+         Index Cond: (k1 = 17100)
 (6 rows)
 
--- Query Hash: 008f41cdc4376563f66cf9396a182e59 , !BEST_PLAN_FOUND
+-- Query Hash: 008f41cdc4376563f66cf9396a182e59
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 LEFT JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = 17190;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 = 17190)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 = 17190))
+         Index Cond: (k1 = 17190)
 (6 rows)
 
 -- Query Hash: 811818fbca78f78be2f3a5652a100e59
@@ -2414,253 +2425,273 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 FULL JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 =
          Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 = 8100))
 (6 rows)
 
--- Query Hash: 5d288c216cfdb064f2dc76c3e79294c8 , !BEST_PLAN_FOUND
+-- Query Hash: 5d288c216cfdb064f2dc76c3e79294c8
 EXPLAIN (COSTS OFF) SELECT * FROM t2 FULL JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = 17100;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = 17100)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 = 17100))
+         Index Cond: (k1 = 17100)
 (6 rows)
 
--- Query Hash: 901bffa08215b84cea2c3bfa31ac8b87 , !BEST_PLAN_FOUND
+-- Query Hash: 901bffa08215b84cea2c3bfa31ac8b87
 EXPLAIN (COSTS OFF) SELECT * FROM t2 FULL JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = 17190;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (k1 = 17190)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 = 17190))
+         Index Cond: (k1 = 17190)
 (6 rows)
 
--- Query Hash: fbfe3e52254ee6c2f4bd267ff86bfaba , !BEST_PLAN_FOUND
+-- Query Hash: fbfe3e52254ee6c2f4bd267ff86bfaba
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = 17100;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 = 17100)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 = 17100))
+         Index Cond: (k1 = 17100)
 (6 rows)
 
--- Query Hash: 9bf2a9dbbeedc0548f40bd06a3692e67 , !BEST_PLAN_FOUND
+-- Query Hash: 9bf2a9dbbeedc0548f40bd06a3692e67
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = 17190;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+               QUERY PLAN
+----------------------------------------
+ Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
    ->  Index Scan using ts2_pkey on ts2
          Index Cond: (k1 = 17190)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 = 17190))
+         Index Cond: (k1 = 17190)
 (6 rows)
 
 -- Query Hash: a2e07bed780be8bac48f9fd4c6555748
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t1.v1, t1.v2 FROM t1 ORDER BY t1.k1, t1.v1 LIMIT 100000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on t1
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t1_pkey on t1
+(5 rows)
 
 -- Query Hash: 84acbeb7a13c5f1e35015643390f5a38
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t1.v1, t1.v2 FROM t1 ORDER BY t1.k1, t1.v1 LIMIT 1000000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on t1
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t1_pkey on t1
+(5 rows)
 
 -- Query Hash: bcb2bfdf0d4c06a119c75d7b2b2340cc
 EXPLAIN (COSTS OFF) SELECT t2.k1, t2.k2, t2.v1, t2.v2 FROM t2 ORDER BY t2.k1, t2.v1 LIMIT 100000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on t2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
 
 -- Query Hash: baa81093b3a2f02c0232e76005265d4d
 EXPLAIN (COSTS OFF) SELECT t2.k1, t2.k2, t2.v1, t2.v2 FROM t2 ORDER BY t2.k1, t2.v1 LIMIT 1000000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on t2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
 
 -- Query Hash: f0b489a94c8cfb0bb78bffd4574d7626
 EXPLAIN (COSTS OFF) SELECT t3.k1, t3.k2, t3.v1, t3.v2 FROM t3 ORDER BY t3.k1, t3.v1 LIMIT 100000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on t3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t3_pkey on t3
+(5 rows)
 
 -- Query Hash: 1ad6fbf6842f34e01130ceca01460055
 EXPLAIN (COSTS OFF) SELECT t3.k1, t3.k2, t3.v1, t3.v2 FROM t3 ORDER BY t3.k1, t3.v1 LIMIT 1000000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on t3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t3_pkey on t3
+(5 rows)
 
 -- Query Hash: fde5629fc0c578f5a233f9c5c3a45826
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts2.v1, ts2.v2 FROM ts2 ORDER BY ts2.k1, ts2.v1 LIMIT 100000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on ts2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts2_pkey on ts2
+(5 rows)
 
 -- Query Hash: 62cc6e648ed30d0f06e081abf029e58d
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts2.v1, ts2.v2 FROM ts2 ORDER BY ts2.k1, ts2.v1 LIMIT 1000000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on ts2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts2_pkey on ts2
+(5 rows)
 
 -- Query Hash: 5505c9050a5c3641ad5eb7c05defc4b8
 EXPLAIN (COSTS OFF) SELECT ts3.k1, ts3.k2, ts3.v1, ts3.v2 FROM ts3 ORDER BY ts3.k1, ts3.v1 LIMIT 100000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on ts3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts3_pkey on ts3
+(5 rows)
 
 -- Query Hash: 32d1561cd9ca01b05b872d1a82d56081
 EXPLAIN (COSTS OFF) SELECT ts3.k1, ts3.k2, ts3.v1, ts3.v2 FROM ts3 ORDER BY ts3.k1, ts3.v1 LIMIT 1000000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v1
-         ->  Seq Scan on ts3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts3_pkey on ts3
+(5 rows)
 
 -- Query Hash: 8704f09be8413b3d369920b82ec3396c
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t1.v1, t1.v2 FROM t1 ORDER BY t1.k1, t1.v2 LIMIT 100000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on t1
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t1_pkey on t1
+(5 rows)
 
 -- Query Hash: a08b799e4beb65abcdab5b4f4c939d3a
 EXPLAIN (COSTS OFF) SELECT t1.k1, t1.k2, t1.v1, t1.v2 FROM t1 ORDER BY t1.k1, t1.v2 LIMIT 1000000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on t1
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t1_pkey on t1
+(5 rows)
 
 -- Query Hash: daef80a2f0bc075497471eaaf4142476
 EXPLAIN (COSTS OFF) SELECT t2.k1, t2.k2, t2.v1, t2.v2 FROM t2 ORDER BY t2.k1, t2.v2 LIMIT 100000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on t2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
 
 -- Query Hash: 3676b698dd18210e86d0f37fe80f01eb
 EXPLAIN (COSTS OFF) SELECT t2.k1, t2.k2, t2.v1, t2.v2 FROM t2 ORDER BY t2.k1, t2.v2 LIMIT 1000000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on t2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
 
 -- Query Hash: 0e0af8e3fcf1ec9cc7d9ae9bc60f652c
 EXPLAIN (COSTS OFF) SELECT t3.k1, t3.k2, t3.v1, t3.v2 FROM t3 ORDER BY t3.k1, t3.v2 LIMIT 100000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on t3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t3_pkey on t3
+(5 rows)
 
 -- Query Hash: bd793d4acdd79d2ca93de6a3a2ccd239
 EXPLAIN (COSTS OFF) SELECT t3.k1, t3.k2, t3.v1, t3.v2 FROM t3 ORDER BY t3.k1, t3.v2 LIMIT 1000000;
-         QUERY PLAN
-----------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on t3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using t3_pkey on t3
+(5 rows)
 
 -- Query Hash: bcfe4c1f58e67e0d2279d4671a3f0bb0
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts2.v1, ts2.v2 FROM ts2 ORDER BY ts2.k1, ts2.v2 LIMIT 100000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on ts2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts2_pkey on ts2
+(5 rows)
 
 -- Query Hash: c24615893b439a3554d8d40d6b752250
 EXPLAIN (COSTS OFF) SELECT ts2.k1, ts2.k2, ts2.v1, ts2.v2 FROM ts2 ORDER BY ts2.k1, ts2.v2 LIMIT 1000000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on ts2
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts2_pkey on ts2
+(5 rows)
 
 -- Query Hash: 7c56cfcafcb7bc2b1ae8c85ab8cbf1ce
 EXPLAIN (COSTS OFF) SELECT ts3.k1, ts3.k2, ts3.v1, ts3.v2 FROM ts3 ORDER BY ts3.k1, ts3.v2 LIMIT 100000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on ts3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts3_pkey on ts3
+(5 rows)
 
 -- Query Hash: 5a19db389122b4d9e268170a1d6f3b5d
 EXPLAIN (COSTS OFF) SELECT ts3.k1, ts3.k2, ts3.v1, ts3.v2 FROM ts3 ORDER BY ts3.k1, ts3.v2 LIMIT 1000000;
-         QUERY PLAN
------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Limit
-   ->  Sort
+   ->  Incremental Sort
          Sort Key: k1, v2
-         ->  Seq Scan on ts3
-(4 rows)
+         Presorted Key: k1
+         ->  Index Scan using ts3_pkey on ts3
+(5 rows)
 
 -- Query Hash: 8d57f403cc2930d7992d727668152c3b
 EXPLAIN (COSTS OFF) SELECT t / 100 FROM generate_series(1, 1000000) AS t ORDER BY  t % 100;
@@ -2686,54 +2717,46 @@ EXPLAIN (COSTS OFF) SELECT |/ t, 'foo ' || t, now() FROM generate_series(1, 1000
  Function Scan on generate_series t
 (1 row)
 
--- Query Hash: 01edcc6ec683ece25b885d57c339cd39 , !BEST_PLAN_FOUND
+-- Query Hash: 01edcc6ec683ece25b885d57c339cd39
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100000;
                 QUERY PLAN
 -------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1
-         ->  Seq Scan on t1
-               Storage Filter: (v1 > 20000)
-(5 rows)
+   ->  Index Scan using t1_v1_k2_idx on t1
+         Index Cond: (v1 > 20000)
+(3 rows)
 
--- Query Hash: 6704caccd64f9bb3e810f632c9316173
+-- Query Hash: 6704caccd64f9bb3e810f632c9316173 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000000;
                 QUERY PLAN
 -------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1
-         ->  Seq Scan on t1
-               Storage Filter: (v1 > 20000)
-(5 rows)
+   ->  Index Scan using t1_v1_k2_idx on t1
+         Index Cond: (v1 > 20000)
+(3 rows)
 
--- Query Hash: cb5b7bd89976d810fb85e3d66c41d063 , !BEST_PLAN_FOUND
+-- Query Hash: cb5b7bd89976d810fb85e3d66c41d063
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100000;
                 QUERY PLAN
 -------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1
-         ->  Seq Scan on t2
-               Storage Filter: (v1 > 20000)
-(5 rows)
+   ->  Index Scan using t2_v1_k2_idx on t2
+         Index Cond: (v1 > 20000)
+(3 rows)
 
--- Query Hash: 1262567af96df3c19c65ce883b2adad9
+-- Query Hash: 1262567af96df3c19c65ce883b2adad9 , !BEST_PLAN_FOUND
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000000;
                 QUERY PLAN
 -------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: v1
-         ->  Seq Scan on t2
-               Storage Filter: (v1 > 20000)
-(5 rows)
+   ->  Index Scan using t2_v1_k2_idx on t2
+         Index Cond: (v1 > 20000)
+(3 rows)
 
 -- Query Hash: f62c7ba49634af52f3014a3ee936a2ce
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2743,8 +2766,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
 
 -- Query Hash: 54b5d1b16cf580191b24ccaa81077df3
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2754,8 +2777,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
 
 -- Query Hash: 1153a8cb67ed0459e4549f2369f9cd98
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2765,8 +2788,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100
 
 -- Query Hash: 48b9419316384834e29ee9ebb8e18d0b
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2812,8 +2835,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM t2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 
 
 -- Query Hash: 10315870433affc0b2381550bce1579d
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2823,8 +2846,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
 
 -- Query Hash: 9460e9485046094d5cdb86cb01d66aa0
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2834,8 +2857,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts2 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
 
 -- Query Hash: c25491960a5e5f56f9e3d0b06259d82d
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 100000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2845,8 +2868,8 @@ EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT
 
 -- Query Hash: e13c0cdc238cfc314c1beb13e6d53a03
 EXPLAIN (COSTS OFF) SELECT v1,k2 FROM ts3 WHERE v1 > 20000 ORDER BY v1 ASC LIMIT 1000000;
-                QUERY PLAN
--------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Limit
    ->  Sort
          Sort Key: v1
@@ -2894,7 +2917,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM t3 LIMIT 100000;
    ->  Seq Scan on t3
 (2 rows)
 
--- Query Hash: dcc81c5d4a9389796fbe4288511d92f6 , !BEST_PLAN_FOUND
+-- Query Hash: dcc81c5d4a9389796fbe4288511d92f6
 EXPLAIN (COSTS OFF) SELECT * FROM t3 LIMIT 1000000;
       QUERY PLAN
 ----------------------
@@ -2993,7 +3016,7 @@ EXPLAIN (COSTS OFF) SELECT k1,k2 FROM ts2 WHERE k1 = 4231  AND k2 = 'k2-042';
 -- Query Hash: e5acd8a0a32d7ece1b8b9cd6b0182bbf
 EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 = 4231  AND k2 = 'k2-042';
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Seq Scan on ts2
    Storage Filter: ((v1 = 4231) AND (k2 = 'k2-042'::text))
 (2 rows)
@@ -3001,7 +3024,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM ts2 WHERE v1 = 4231  AND k2 = 'k2-042';
 -- Query Hash: 039dbc1361cf4c8531378ec6d1acd6c6
 EXPLAIN (COSTS OFF) SELECT k1,k2 FROM ts3 WHERE k1 = 4231  AND k2 = 'k2-042';
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Index Scan using ts3_pkey on ts3
    Index Cond: (k1 = 4231)
    Storage Filter: (k2 = 'k2-042'::text)
@@ -3010,7 +3033,7 @@ EXPLAIN (COSTS OFF) SELECT k1,k2 FROM ts3 WHERE k1 = 4231  AND k2 = 'k2-042';
 -- Query Hash: 3dd03b51847c025f75ea2fe2f92072e0
 EXPLAIN (COSTS OFF) SELECT * FROM ts3 WHERE v1 = 4231  AND k2 = 'k2-042';
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Seq Scan on ts3
    Storage Filter: ((v1 = 4231) AND (k2 = 'k2-042'::text))
 (2 rows)
