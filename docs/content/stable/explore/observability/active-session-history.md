@@ -33,8 +33,8 @@ To use ASH, enable and configure the following flags for each node of your clust
 | Flag | Description |
 | :--- | :---------- |
 | allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
-| ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a VM restart. |
-| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
+| ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a TServer restart. |
+| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a TServer restart. |
 
 ### Additional flags
 
@@ -42,9 +42,9 @@ You can also use the following flags based on your requirements.
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
-| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
-| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a VM restart. |
+| ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a TServer restart. |
+| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a TServer restart. |
+| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a TServer restart. |
 
 ## Limitations
 
@@ -111,82 +111,113 @@ These fixed constants are used to identify various YugabyteDB background activit
 
 ## Wait events
 
-List of wait events by the wait event components.
+The following describes the wait events available in the [active session history](#yb-active-session-history), along with their type and, where applicable, the auxiliary information (`wait_event_aux`) provided with that type. The events are categorized by wait event class.
 
 ### YSQL
 
 These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/11/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
-| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
-| :--------------- |:---------- | :-------------- |:--- | :---------- |
-| TServerWait | TableRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
-| TServerWait | CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
-| TServerWait | IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
-| TServerWait | StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
-| TServerWait | TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
-| TServerWait | CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
-| TServerWait | IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| YSQLQuery | QueryProcessing| CPU |  | A YSQL backend is doing CPU work.|
-| TServerWait | WaitingOnTServer | Network| \<RPC-name> | A YSQL backend is waiting for on tserver for an RPC. The RPC name is present on the wait event aux column.|
-| YSQLQuery | yb_ash_metadata | LWLock |  | A YSQL backend is waiting to update ASH metadata for a query. |
-| YSQLQuery | YBParallelScanEmpty| IPC |  | A YSQL backend is waiting on an empty queue while fetching parallel range keys. |
-| YSQLQuery | CopyCommandStreamRead| IO |  | A YSQL backend is waiting for a read from a file or program during COPY. |
-| YSQLQuery | CopyCommandStreamWrite| IO |  | A YSQL backend is waiting for a write to a file or program during COPY. |
-| YSQLQuery | YbAshMain| Activity |  | The YugabyteDB ASH collector background worker is waiting in the main loop. |
-| YSQLQuery | YbAshCircularBuffer| LWLock |  | A YSQL backend is waiting for YugabyteDB ASH circular buffer memory access. |
-| YSQLQuery | QueryDiagnosticsMain| Activity |  | The YugabyteDB query diagnostics background worker is waiting in the main loop. |
-| YSQLQuery | YbQueryDiagnostics| LWLock |  | A YSQL backend is waiting for YugabyteDB query diagnostics hash table memory access. |
-| YSQLQuery | YbQueryDiagnosticsCircularBuffer| LWLock |  | A YSQL backend is waiting for YugabyteDB query diagnostics circular buffer memory access. |
-| YSQLQuery | YBTxnConflictBackoff | Timeout |  | A YSQL backend is waiting for transaction conflict resolution with an exponential backoff. |
+#### TServerWait class
+
+| Wait Event | Type | Aux | Description |
+| :--------- | :--- |:--- | :---------- |
+| TableRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
+| CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
+| IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
+| StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
+| TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
+| CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
+| IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
+| WaitingOnTServer | Network| RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
+
+#### YSQLQuery class
+
+| Wait Event | Type |  Description |
+| :--------- | :--- | :---------- |
+| QueryProcessing| CPU | A YSQL backend is doing CPU work.|
+| yb_ash_metadata | LWLock | A YSQL backend is waiting to update ASH metadata for a query. |
+| YBParallelScanEmpty| IPC | A YSQL backend is waiting on an empty queue while fetching parallel range keys. |
+| CopyCommandStreamRead| IO | A YSQL backend is waiting for a read from a file or program during COPY. |
+| CopyCommandStreamWrite| IO | A YSQL backend is waiting for a write to a file or program during COPY. |
+| YbAshMain| Activity | The YugabyteDB ASH collector background worker is waiting in the main loop. |
+| YbAshCircularBuffer| LWLock | A YSQL backend is waiting for YugabyteDB ASH circular buffer memory access. |
+| QueryDiagnosticsMain| Activity | The YugabyteDB query diagnostics background worker is waiting in the main loop. |
+| YbQueryDiagnostics| LWLock | A YSQL backend is waiting for YugabyteDB query diagnostics hash table memory access. |
+| YbQueryDiagnosticsCircularBuffer| LWLock | A YSQL backend is waiting for YugabyteDB query diagnostics circular buffer memory access. |
+| YBTxnConflictBackoff | Timeout | A YSQL backend is waiting for transaction conflict resolution with an exponential backoff. |
 
 ### YB-TServer
 
-| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
-|:---------------- | :--------- |:--------------- | :--- | :---------- |
-| Common | OnCpu_Passive | CPU | | An RPC or task is waiting for a thread to pick it up. |
-| Common | OnCpu_Active | CPU |  | An RPC or task is being actively processed on a thread. |
-| Common | Idle | WaitOnCondition | | The Raft log appender/sync thread is idle. |
-| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL/YCQL backend. |
-| Common | RetryableRequests_SaveToDisk | DiskIO | | The in-memory state of the retryable requests is being saved to the disk. |
-| TabletWait | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
-| TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row-level lock. |
-| TabletWait | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
-| TabletWait | CreatingNewTablet | DiskIO | | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
-| TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
-| TabletWait | TransactionStatusCache_DoGetCommitData | Network | | An RPC needs to look up the commit status of a particular transaction. |
-| TabletWait | WaitForYSQLBackendsCatalogVersion | WaitOnCondition | | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
-| TabletWait | WriteSysCatalogSnapshotToDisk | DiskIO | | Writing initial system catalog snapshot during initdb.|
-| TabletWait | DumpRunningRpc_WaitOnReactor | WaitOnCondition | | DumpRunningRpcs is waiting on reactor threads. |
-| TabletWait | ConflictResolution_ResolveConficts | Network | | A read/write RPC is waiting to identify conflicting transactions. |
-| TabletWait | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  | A read/write RPC is waiting for conflicting transactions to complete. |
-| Consensus | WAL_Append | DiskIO | \<tablet-id>| A write RPC is persisting WAL edits. |
-| Consensus | WAL_Sync | DiskIO | \<tablet-id>| A write RPC is synchronizing WAL edits. |
-| Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| A write RPC is waiting for Raft replication. |
-| Consensus | Raft_ApplyingEdits | WaitOnCondition/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
-| Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
-| Consensus | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
-| RocksDB | RocksDB_ReadBlockFromFile | DiskIO  | | RocksDB is reading a block from a file. |
-| RocksDB | RocksDB_OpenFile | DiskIO | | RocksDB is opening a file. |
-| RocksDB | RocksDB_WriteToFile | DiskIO | | RocksDB is writing to a file. |
-| RocksDB | RocksDB_Flush | CPU | | RocksDB is doing a flush. |
-| RocksDB | RocksDB_Compaction | CPU | | RocksDB is doing a compaction. |
-| RocksDB | RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | | RocksDB pauses a flush or compaction task for another flush or compaction task with a higher priority. |
-| RocksDB | RocksDB_CloseFile | DiskIO | | RocksDB is closing a file. |
-| RocksDB | RocksDB_RateLimiter | WaitOnCondition | | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
-| RocksDB | RocksDB_WaitForSubcompaction | WaitOnCondition | | RocksDB is waiting for a compaction to complete. |
-| RocksDB | RocksDB_NewIterator | DiskIO | | RocksDB is waiting for a new iterator to be created. |
+#### Common class
+
+| Wait Event | Type |  Description |
+| :--------- | :--- | :---------- |
+| OnCpu_Passive | CPU | An RPC or task is waiting for a thread to pick it up. |
+| OnCpu_Active | CPU | An RPC or task is being actively processed on a thread. |
+| Idle | WaitOnCondition | The Raft log appender/sync thread is idle. |
+| Rpc_Done | WaitOnCondition | An RPC is done and waiting for the reactor to send the response to a YSQL/YCQL backend. |
+| RetryableRequests_SaveToDisk | DiskIO | The in-memory state of the retryable requests is being saved to the disk. |
+
+#### TabletWait class
+
+| Wait Event | Type |  Description |
+| :--------- | :--- | :---------- |
+| MVCC_WaitForSafeTime | WaitOnCondition | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
+| LockedBatchEntry_Lock | WaitOnCondition | A read/write RPC is waiting for a DocDB row-level lock. |
+| BackfillIndex_WaitForAFreeSlot | WaitOnCondition | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
+| CreatingNewTablet | DiskIO | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
+| SaveRaftGroupMetadataToDisk | DiskIO | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
+| TransactionStatusCache_DoGetCommitData | Network | An RPC needs to look up the commit status of a particular transaction. |
+| WaitForYSQLBackendsCatalogVersion | WaitOnCondition | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
+| WriteSysCatalogSnapshotToDisk | DiskIO | Writing initial system catalog snapshot during initdb.|
+| DumpRunningRpc_WaitOnReactor | WaitOnCondition | DumpRunningRpcs is waiting on reactor threads. |
+| ConflictResolution_ResolveConficts | Network | A read/write RPC is waiting to identify conflicting transactions. |
+| ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | A read/write RPC is waiting for conflicting transactions to complete. |
+
+#### Consensus class
+
+| Wait Event | Type | Aux | Description |
+| :--------- | :--- |:--- | :---------- |
+| WAL_Append | DiskIO | Tablet&nbsp;ID | A write RPC is persisting WAL edits. |
+| WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
+| Raft_WaitingForReplication | Network | Tablet ID | A write RPC is waiting for Raft replication. |
+| Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
+| ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
+| ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
+
+#### RocksDB class
+
+| Wait Event | Type |  Description |
+| :--------- | :--- | :---------- |
+| RocksDB_ReadBlockFromFile | DiskIO | RocksDB is reading a block from a file. |
+| RocksDB_OpenFile | DiskIO | RocksDB is opening a file. |
+| RocksDB_WriteToFile | DiskIO | RocksDB is writing to a file. |
+| RocksDB_Flush | CPU | RocksDB is doing a flush. |
+| RocksDB_Compaction | CPU | RocksDB is doing a compaction. |
+| RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | RocksDB pauses a flush or compaction task for another flush or compaction task with a higher priority. |
+| RocksDB_CloseFile | DiskIO | RocksDB is closing a file. |
+| RocksDB_RateLimiter | WaitOnCondition | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
+| RocksDB_WaitForSubcompaction | WaitOnCondition | RocksDB is waiting for a compaction to complete. |
+| RocksDB_NewIterator | DiskIO | RocksDB is waiting for a new iterator to be created. |
 
 ### YCQL
 
-| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
-| :--------------- |:---------- | :-------------- |:--- | :---------- |
-| YCQLQuery | YCQL_Parse | CPU  | | YCQL is parsing a query. |
-| YCQLQuery | YCQL_Read | CPU | \<table&#8209;id> | YCQL is processing a read query.|
-| YCQLQuery | YCQL_Write | CPU | \<table-id> | YCQL is processing a write query.  |
-| YCQLQuery | YCQL_Analyze | CPU |  | YCQL is analyzing a query. |
-| YCQLQuery | YCQL_Execute | CPU |  | YCQL is executing a query. |
-| Client | YBClient_WaitingOnDocDB | Network | | YB Client is waiting on DocDB to return a response. |
-| Client | YBClient_LookingUpTablet | Network | | YB Client is looking up tablet information from the master. |
+#### YCQLQuery class
+
+| Wait Event | Type | Aux | Description |
+| :--------- | :--- |:--- | :---------- |
+| YCQL_Parse | CPU  | | YCQL is parsing a query. |
+| YCQL_Read | CPU | Table&nbsp;ID | YCQL is processing a read query.|
+| YCQL_Write | CPU | Table ID | YCQL is processing a write query.  |
+| YCQL_Analyze | CPU |  | YCQL is analyzing a query. |
+| YCQL_Execute | CPU |  | YCQL is executing a query. |
+
+#### Client class
+
+| Wait Event | Type | Description |
+| :--------- | :--- | :---------- |
+| YBClient_WaitingOnDocDB | Network | YB Client is waiting on DocDB to return a response. |
+| YBClient_LookingUpTablet | Network | YB Client is looking up tablet information from the master. |
 
 ## Examples
 
