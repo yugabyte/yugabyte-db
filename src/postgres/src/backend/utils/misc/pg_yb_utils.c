@@ -2413,16 +2413,38 @@ void
 YBSetDdlState(YbDdlMode mode)
 {
 	Assert(*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
-	Assert(!ddl_transaction_state.use_regular_txn_block ||
-		   ddl_transaction_state.nesting_level == 0);
 
-	if (ddl_transaction_state.nesting_level > 0 ||
-		ddl_transaction_state.use_regular_txn_block)
+	/*
+	 * If we have already executed a DDL in the current transaction block, then
+	 * just add the new mode to the existing transaction state.
+	 */
+	if (ddl_transaction_state.use_regular_txn_block)
 	{
+		/*
+		 * We can arrive here in two cases:
+		 * 1. When there has been a DDL statement before in the transaction
+		 *    block. Example: BEGIN; DDL1; DDL2; COMMIT; In this case, when
+		 *    executing DDL2, we will arrive at this function with
+		 *    ddl_transaction_state.use_regular_txn_block already true.
+		 *
+		 * 2. When a DDL statement executes another statement internally.
+		 *    Example: CREATE TABLE test (a int primary key, b int);
+		 *    In this case, the statement also executes a CREATE INDEX
+		 *    internally. So we will arrive at this point with
+		 *    ddl_transaction_state.use_regular_txn_block as true.
+		 */
 		ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 		return;
 	}
 
+	/*
+	 * This is the first DDL statement in the transaction block. We need to set
+	 * the DDL state in the PGGate and also initialize ddl_transaction_state.
+	 *
+	 * Restart counting the number of committed PG transactions during
+	 * this YB DDL transaction.
+	 */
+	ddl_transaction_state.num_committed_pg_txns = 0;
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(CurrentMemoryContext,
 							  "aux ddl memory context",

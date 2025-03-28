@@ -4307,9 +4307,14 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectId = tempNamespaceId;
 	object.objectSubId = 0;
 
+	bool yb_use_regular_txn_block =
+		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
 	if (IsYugaByteEnabled())
 	{
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
+		if (yb_use_regular_txn_block)
+			YBSetDdlState(YB_DDL_MODE_SILENT_ALTERING);
+		else
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 		YBCDdlEnableForceCatalogModification();
 	}
 	performDeletion(&object, DROP_CASCADE,
@@ -4317,7 +4322,7 @@ RemoveTempRelations(Oid tempNamespaceId)
 					PERFORM_DELETION_QUIETLY |
 					PERFORM_DELETION_SKIP_ORIGINAL |
 					PERFORM_DELETION_SKIP_EXTENSIONS);
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
 		YBDecrementDdlNestingLevel();
 }
 

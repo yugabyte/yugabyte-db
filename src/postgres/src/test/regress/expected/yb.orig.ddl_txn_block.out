@@ -34,7 +34,7 @@ SELECT * FROM test2;
 -- Test rollback of a block with multiple DDLs
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 CREATE TABLE test3 (id int);
-CREATE TABLE test4 (id int);
+CREATE TABLE test4 (id int PRIMARY KEY, b int);
 ALTER TABLE test1 ADD COLUMN value text;
 INSERT INTO test1 VALUES (3, 'text');
 ROLLBACK;
