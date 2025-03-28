@@ -46,6 +46,9 @@ class SnapshotTestUtil {
   SnapshotTestUtil() = default;
   ~SnapshotTestUtil() = default;
 
+  SnapshotTestUtil(MiniClusterBase& cluster, rpc::ProxyCache& proxy_cache)
+      : proxy_cache_(&proxy_cache), cluster_(&cluster) {}
+
   Result<std::unique_ptr<YBClient>> InitWithCluster(MiniClusterBase* cluster) {
     SetCluster(cluster);
     auto result = VERIFY_RESULT(cluster->CreateClient());

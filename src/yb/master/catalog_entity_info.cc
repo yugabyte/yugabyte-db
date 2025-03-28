@@ -709,7 +709,7 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
         "Two tablets $0, $1 with the same partition key start and split depth: $2 and $3",
         tablet->id(), old_tablet->tablet_id(),
         tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
-    LOG(DFATAL) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     return STATUS(IllegalState, msg);
   }
   return Status::OK();
