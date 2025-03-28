@@ -282,6 +282,7 @@ CREATE UNIQUE INDEX ON t(v);
 -- should fail, non unique primary key
 COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_pkey"
+CONTEXT:  COPY t, line 5: ""
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
@@ -292,6 +293,7 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
 -- should fail, non unique index
 COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_v_idx"
+CONTEXT:  COPY t, line 5: ""
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
@@ -454,6 +456,7 @@ copy u (b) from stdin;
 -- should fail, a duplicates
 copy u from stdin;
 ERROR:  duplicate key value violates unique constraint "u1_a_idx"
+CONTEXT:  COPY u, line 2: ""
 select * from u ORDER BY a,b;
  a | b 
 ---+---
@@ -479,6 +482,7 @@ NOTICE:  a: 10
 -- should fail, duplicate key (1, 5)
 copy v (b) from stdin;
 ERROR:  duplicate key value violates unique constraint "v1_a_b_idx"
+CONTEXT:  COPY v, line 2: ""
 select * from v ORDER BY a,b;
  a | b  
 ---+----

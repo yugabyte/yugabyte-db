@@ -714,6 +714,14 @@ extern int yb_test_delay_after_applying_inval_message_ms;
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
 */
 extern bool yb_enable_ddl_atomicity_infra;
+
+/*
+ * Allow to return to the client SQL status codes defined by YugabyteDB (YBxxx).
+ * Those codes are used internally to determine if transparent retry is
+ * possible. If disabled, they are replaced with similar Postgres defined codes.
+ */
+extern bool yb_enable_extended_sql_codes;
+
 extern bool yb_ddl_rollback_enabled;
 static inline bool
 YbDdlRollbackEnabled()
@@ -1145,8 +1153,7 @@ LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 
 const char *yb_fetch_current_transaction_priority(void);
 
-void		GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
-										   uint16_t txn_err_code, YbcStatus s,
+void		GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
 										   const char **msg_buf, size_t *msg_nargs,
 										   const char ***msg_args,
 										   const char **detail_buf,
@@ -1187,7 +1194,6 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 		{ \
 			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
 			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t txn_err_code = YBCStatusTransactionError(_status); \
 			const char *filename = YBCStatusFilename(_status); \
 			int lineno = YBCStatusLineNumber(_status); \
 			const char *funcname = YBCStatusFuncname(_status); \
@@ -1197,7 +1203,7 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 			size_t detail_nargs = 0; \
 			const char **msg_args = NULL; \
 			const char **detail_args = NULL; \
-			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
@@ -1210,7 +1216,6 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
 				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
-				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
 				errfinish(NULL, \
 						  lineno > 0 ? lineno : __LINE__, \

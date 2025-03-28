@@ -426,8 +426,7 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     StatusToPB(
         STATUS_EC_FORMAT(
             Expired, TransactionError(TransactionErrorCode::kDeadlock),
-            err_msg).CloneAndAddErrorCode(
-                PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED)),
+            err_msg).CloneAndAddErrorCode(PgsqlError(YBPgErrorCode::YB_PG_YB_DEADLOCK)),
         req.mutable_deadlock_reason());
     rpcs_->RegisterAndStart(
         AbortTransaction(
@@ -460,8 +459,7 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     StatusToPB(
         STATUS_EC_FORMAT(
             Expired, TransactionError(TransactionErrorCode::kDeadlock),
-            err_msg).CloneAndAddErrorCode(
-                PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED)),
+            err_msg).CloneAndAddErrorCode(PgsqlError(YBPgErrorCode::YB_PG_YB_DEADLOCK)),
         state->mutable_deadlock_reason());
     state->set_pg_session_req_version(pg_session_req_version + 1);
     rpcs_->RegisterAndStart(

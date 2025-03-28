@@ -3287,6 +3287,20 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_extended_sql_codes", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allow to return to the client SQL status codes "
+						 "defined by YugabyteDB (YBxxx). Those codes are used "
+						 "internally to determine if transparent retry is "
+						 "possible. If disabled, they are replaced with "
+						 "similar Postgres defined codes."),
+			NULL
+		},
+		&yb_enable_extended_sql_codes,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
