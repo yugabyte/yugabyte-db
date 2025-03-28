@@ -126,7 +126,8 @@ yb-admin \
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master server.
-  * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
+
+  After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the yb-admin [dump_masters_state](#dump-masters-state) command.
 * *ip-addr*: The IP address of the server node.
 * *port*: The port of the server node.
 * *uuid*: The UUID for the server that is being added/removed.
@@ -954,7 +955,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *restoration-id*: the snapshot restoration's unique identifier. The ID is optional; omit the ID to return all restorations in the system.
+* *restoration-id*: The snapshot restoration's unique identifier. Optional; omit the ID to return all restorations in the system.
 
 **Example**
 
@@ -1187,7 +1188,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *schedule-id*: the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
+* *schedule-id*: The snapshot schedule's unique identifier. Optional; omit the ID to return all schedules in the system.
 
 **Example**
 
@@ -1298,7 +1299,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *schedule-id*: the snapshot schedule's unique identifier.
+* *schedule-id*: The snapshot schedule's unique identifier.
 
 **Example**
 
@@ -1336,9 +1337,9 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, we can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
+* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, you can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, if you specify a placement multiple times, the total count from all mentions is taken.
 * *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement-info*.
-* *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional. If not set, a randomly-generated ID will be used.
+* *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional; if not set, a randomly-generated ID is used.
 
 **Example**
 
@@ -1803,7 +1804,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *namespace-name*: Optional. The namespace name for which the streams are to be listed, if not provided it would list all the streams without filtering.
+* *namespace-name*: (Optional) The namespace name for which to list the streams. If not specified, all streams are listed without filtering.
 
 **Example:**
 
