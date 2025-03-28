@@ -25,6 +25,12 @@ type: docs
       Prisma
     </a>
   </li>
+  <li >
+    <a href="../typeorm/" class="nav-link ">
+      <i class="fa-brands fa-node-js" aria-hidden="true"></i>
+      TypeORM
+    </a>
+  </li>
 </ul>
 
 [Prisma](https://prisma.io/) is an open-source Object Relational Mapping (ORM) tool for Node.js or TypeScript applications. Prisma has various components including **Prisma Client** , which is used as a query builder to communicate with databases, **Prisma Migrate**, which acts as a migration tool, and **Prisma Studio**, which is a GUI-based tool to manage data in the database.
@@ -265,4 +271,5 @@ Open [http://localhost:5555](http://localhost:5555) in your browser to see the t
 ## Learn more
 
 - Build Node.js applications using [Sequelize ORM](../sequelize/)
+- Build Node.js applications using [TypeORM](../typeorm/)
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
