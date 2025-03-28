@@ -981,6 +981,25 @@ std::unordered_set<string> ListActiveTabletIdsForTable(
   return tablet_ids;
 }
 
+bool PeerMatchesFilter(const tablet::TabletPeerPtr& peer, ListPeersFilter filter) {
+  switch (filter) {
+    case ListPeersFilter::kAll:
+      return true;
+    case ListPeersFilter::kLeaders: {
+      auto consensus_result = peer->GetConsensus();
+      return consensus_result &&
+             consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+    }
+    case ListPeersFilter::kNonLeaders: {
+      auto consensus_result = peer->GetConsensus();
+      return consensus_result &&
+             consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+    }
+  }
+
+  FATAL_INVALID_ENUM_VALUE(ListPeersFilter, filter);
+}
+
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter,
     IncludeTransactionStatusTablets include_transaction_status_tablets) {
@@ -992,32 +1011,9 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     return tablet && tablet->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE;
   };
 
-  switch (filter) {
-    case ListPeersFilter::kAll:
-      return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
-        return filter_transaction_status_tablets(peer);
-      });
-    case ListPeersFilter::kLeaders:
-      return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
-        if (!filter_transaction_status_tablets(peer)) {
-          return false;
-        }
-        auto consensus_result = peer->GetConsensus();
-        return consensus_result &&
-               consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-      });
-    case ListPeersFilter::kNonLeaders:
-      return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
-        if (!filter_transaction_status_tablets(peer)) {
-          return false;
-        }
-        auto consensus_result = peer->GetConsensus();
-        return consensus_result &&
-               consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
-      });
-  }
-
-  FATAL_INVALID_ENUM_VALUE(ListPeersFilter, filter);
+  return ListTabletPeers(cluster, [filter, &filter_transaction_status_tablets](const auto& peer) {
+    return filter_transaction_status_tablets(peer) && PeerMatchesFilter(peer, filter);
+  });
 }
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
@@ -1094,20 +1090,21 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
-      MiniCluster* cluster, const TableId& table_id) {
-  return ListTabletPeers(cluster, [&table_id](const tablet::TabletPeerPtr& peer) {
-    return IsForTable(*peer, table_id);
+      MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter) {
+  return ListTabletPeers(cluster, [&table_id, filter](const tablet::TabletPeerPtr& peer) {
+    return IsForTable(*peer, table_id) && PeerMatchesFilter(peer, filter);
   });
 }
 
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
-    MiniCluster* cluster, const std::string& table_name) {
-  return ListTableTabletPeers(cluster, VERIFY_RESULT(FindTableId(cluster, table_name)));
+    MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter) {
+  return ListTableTabletPeers(
+      cluster, VERIFY_RESULT(FindTableId(cluster, table_name)), filter);
 }
 
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
-    MiniCluster* cluster, const std::string& table_name) {
-  return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name)));
+    MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter) {
+  return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter)));
 }
 
 std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers) {

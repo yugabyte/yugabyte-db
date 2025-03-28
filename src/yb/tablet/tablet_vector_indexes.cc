@@ -221,7 +221,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
     } else {
       frontiers.Largest().SetBackfillPosition(next_ybctid);
     }
-    RETURN_NOT_OK_PREPEND(index.Insert(entries_, &frontiers), "Insert entries");
+    RETURN_NOT_OK_PREPEND(index.Insert(entries_, frontiers), "Insert entries");
     if (!next_ybctid.empty()) {
       entries_.clear();
       ybctids_.clear();

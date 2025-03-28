@@ -1057,7 +1057,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1327,6 +1327,10 @@ void CompactionJob::LogCompaction() {
            << "input_data_size" << compaction->CalculateTotalInputSize()
            << "is_full_compaction" << compaction->is_full_compaction();
   }
+}
+
+const std::string& CompactionJob::LogPrefix() const {
+  return db_options_.info_log->Prefix();
 }
 
 }  // namespace rocksdb
