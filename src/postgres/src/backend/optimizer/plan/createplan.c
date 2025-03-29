@@ -3732,7 +3732,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 		clause = (Expr *) lfirst(values);
 		expr = (Expr *) get_rightop(clause);
-		var = castNode(Var, get_leftop(clause));
+
+		/* Check if leftop is a Var. */
+		Node *leftop = get_leftop(clause);
+		if (!IsA(leftop, Var))
+		{
+			RelationClose(relation);
+			return false;
+		}
+		var = castNode(Var, leftop);
 
 		/*
 		 * If const expression has a different type than the column (var), wrap in a relabel

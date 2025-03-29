@@ -1,6 +1,7 @@
 -- Regression tests for UPDATE/DELETE single row operations.
 -- Expression pushdown is disabled.
 SET yb_enable_expression_pushdown to off;
+SET yb_explain_hide_non_deterministic_fields = 1;
 
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
@@ -153,6 +154,11 @@ WITH temp AS (UPDATE single_row SET v1 = 2 WHERE k = 2)
   UPDATE single_row SET v1 = 2 WHERE k = 2;
 
 SELECT * FROM single_row;
+
+-- Test for case when leftop is non-Var (GH#26536)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE yb_hash_code(k) = yb_hash_code(1); -- not single row path
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE k = 1 AND yb_hash_code(k) = yb_hash_code(1); -- not single row path
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE 1 = k; -- single row path
 
 -- Adding secondary index should force re-planning, which would
 -- then not choose single-row plan due to the secondary index.
