@@ -1340,4 +1340,6 @@ extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
 
 extern bool YbIsInvalidationMessageEnabled();
 
+extern bool YbRefreshMatviewInPlace();
+
 #endif							/* PG_YB_UTILS_H */

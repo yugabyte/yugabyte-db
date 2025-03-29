@@ -3470,12 +3470,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				RefreshMatViewStmt *stmt = castNode(RefreshMatViewStmt, parsetree);
 
 				is_breaking_change = false;
-				if (stmt->concurrent)
+				if (stmt->concurrent || YbRefreshMatviewInPlace())
 				{
 					/*
 					 * REFRESH MATERIALIZED VIEW CONCURRENTLY does not need
 					 * a catalog version increment as it does not alter any
 					 * metadata. The command only performs data changes.
+					 *
+					 * In-place refresh forces the refresh to happen in a
+					 * similar way.
 					 */
 					is_version_increment = false;
 					/*
@@ -7272,4 +7275,11 @@ YbGetPotentiallyHiddenOidText(Oid oid)
 		 */
 		return oid_text;
 	}
+}
+
+bool
+YbRefreshMatviewInPlace()
+{
+	return yb_refresh_matview_in_place ||
+		   YBCPgYsqlMajorVersionUpgradeInProgress();
 }

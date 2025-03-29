@@ -80,7 +80,6 @@ static bool is_usable_unique_index(Relation indexRel);
 static void OpenMatViewIncrementalMaintenance(void);
 static void CloseMatViewIncrementalMaintenance(void);
 
-static bool yb_needs_in_place_refresh();
 static void yb_refresh_in_place_update(Relation matviewRel, Oid tempOid);
 
 /*
@@ -176,7 +175,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	int			save_sec_context;
 	int			save_nestlevel;
 	ObjectAddress address;
-	bool yb_in_place_refresh = yb_needs_in_place_refresh();
+	bool yb_in_place_refresh = YbRefreshMatviewInPlace();
 
 	/* Determine strength of lock needed. */
 	concurrent = stmt->concurrent;
@@ -1073,13 +1072,6 @@ CloseMatViewIncrementalMaintenance(void)
 {
 	matview_maintenance_depth--;
 	Assert(matview_maintenance_depth >= 0);
-}
-
-static bool
-yb_needs_in_place_refresh()
-{
-	return yb_refresh_matview_in_place ||
-		   YBCPgYsqlMajorVersionUpgradeInProgress();
 }
 
 /*
