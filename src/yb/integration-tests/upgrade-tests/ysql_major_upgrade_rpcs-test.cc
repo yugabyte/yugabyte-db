@@ -274,7 +274,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
 // Disabling in debug builds since this test times out on it.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDuringUpgrade)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 

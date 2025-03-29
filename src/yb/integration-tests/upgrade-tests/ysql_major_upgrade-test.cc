@@ -360,7 +360,7 @@ TEST_F(YsqlMajorUpgradeTest, Schemas) {
   }
 }
 
-TEST_F(YsqlMajorUpgradeTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MultipleDatabases)) {
+TEST_F(YsqlMajorUpgradeTest, YB_RELEASE_ONLY_TEST(MultipleDatabases)) {
   /* Cases:
    * - We support creating / altering databases to disallow connections - but neither YB nor PG
    *   support upgrading those databases. That is tested by DatabaseWithDisallowedConnections below.

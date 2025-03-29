@@ -3619,7 +3619,7 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
 // Conn2: CREATE TABLE danger (k INT, v INT);
 // Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
 // This test will fail in DEBUG builds because table ID reuse will trigger certain DCHECK failure.
-TEST_P(PgOidCollisionTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MetaCachePgOidCollisionFromTservers)) {
+TEST_P(PgOidCollisionTest, YB_RELEASE_ONLY_TEST(MetaCachePgOidCollisionFromTservers)) {
   const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
   RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
   const string dbname = "db2";

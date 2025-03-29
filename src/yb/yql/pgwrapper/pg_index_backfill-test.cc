@@ -1171,7 +1171,7 @@ class PgIndexBackfillGinStress : public PgIndexBackfillTest {
 };
 
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_EXCEPT_RELEASE(GinStress),
+          YB_LINUX_RELEASE_ONLY_TEST(GinStress),
           PgIndexBackfillGinStress) {
   // Note: too high numbers error with issue #13825 or #21114.
   constexpr auto kNumIndexRowsPerTableRow = 10000;
