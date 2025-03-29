@@ -4509,12 +4509,51 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   // Turn off restore simulation and run regular "ALTER TABLE" operation.
   ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
-  ASSERT_OK(conn.Execute("SET yb_ignore_relfilenode_ids = true"));
 
   // This DDL used to show "Duplicate table" error due to OID collision because the OID
   // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
   // during table rewrite.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
+}
+
+TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t(k int, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c1_idx ON base_t(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c2_idx ON base_t(c2)"));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  ASSERT_OK(conn.Execute("ALTER TABLE base_t ADD PRIMARY KEY (k)"));
+  result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  std::string tmpname = std::tmpnam(nullptr);
+  auto hostport = cluster_->ysql_hostport(0);
+  std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
+  std::string ysql_dump_cmd = Format(
+    "$0 --include-yb-metadata --serializable-deferrable --create --schema-only "
+    "--dbname db1 --file $1 -h $2 -p $3",
+    ysql_dump_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("DROP DATABASE db1"));
+  std::string ysqlsh_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysqlsh"));
+  std::string ysqlsh_cmd = Format(
+    "$0 -f $1 -h $2 -p $3", ysqlsh_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysqlsh_cmd;
+  ASSERT_EQ(system(ysqlsh_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_dummy1(k INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_faulty(k INT, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c1_idx ON base_t_faulty(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c2_idx ON base_t_faulty(c2)"));
+  std::string rm_cmd = Format("rm -f $0", tmpname);
+  LOG(INFO) << "Executing " << rm_cmd;
+  ASSERT_EQ(system(rm_cmd.c_str()), 0);
 }
 
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {

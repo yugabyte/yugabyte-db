@@ -40,6 +40,10 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   @Test
   public void testMetrics() throws Exception {
     Statement statement = connection.createStatement();
+    // The first DDL that requires table oid allocation will build a hash table
+    // by executing a query SELECT relfilenode FROM pg_class where relfilenode >= 16384.
+    // To avoid this internal query to affect metrics, create a dummy table first.
+    statement.execute("CREATE TABLE dummy_table(id int)");
 
     // DDL is non-txn.
     // With Ysql Connection Manager, extra SET stmts are being executed which are counted under
