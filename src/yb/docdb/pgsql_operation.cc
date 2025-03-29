@@ -848,7 +848,6 @@ class VectorIndexKeyProvider {
   }
 
   void AddedKeyToResultSet() {
-    // TODO(vector_index) Support universal distance
     response_.add_vector_index_distances(search_result_[index_ - 1].encoded_distance);
     response_.add_vector_index_ends(result_buffer_.size());
   }
@@ -877,28 +876,44 @@ class VectorIndexKeyProvider {
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
-    LOG_IF(INFO, FLAGS_vector_index_dump_stats && search_result_.size() != old_size)
-        << "VI_STATS: VectorIndexKeyProvider, found in intents: "
-        << (search_result_.size() - old_size);
+    found_intents_ = search_result_.size() - old_size;
+    prefetch_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
 
-    // Remove duplicates, so sort by key
-    std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+    auto cmp_keys = [](const auto& lhs, const auto& rhs) {
       return lhs.key < rhs.key;
-    });
-    auto range = std::ranges::unique(search_result_, [](const auto& lhs, const auto& rhs) {
-      return lhs.key == rhs.key;
-    });
-    search_result_.erase(range.begin(), range.end());
+    };
+    std::ranges::sort(search_result_, cmp_keys);
 
-    std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
-      return lhs.encoded_distance < rhs.encoded_distance;
-    });
+    if (found_intents_) {
+      auto range = std::ranges::unique(search_result_, [](const auto& lhs, const auto& rhs) {
+        return lhs.key == rhs.key;
+      });
+      search_result_.erase(range.begin(), range.end());
 
-    if (search_result_.size() > max_results_) {
-      search_result_.resize(max_results_);
+      if (search_result_.size() > max_results_) {
+        std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+          return lhs.encoded_distance < rhs.encoded_distance;
+        });
+        search_result_.resize(max_results_);
+        std::ranges::sort(search_result_, cmp_keys);
+      }
     }
 
+    merge_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+
     return Status::OK();
+  }
+
+  size_t found_intents() const {
+    return found_intents_;
+  }
+
+  MonoTime prefetch_done_time() const {
+    return prefetch_done_time_;
+  }
+
+  MonoTime merge_done_time() const {
+    return merge_done_time_;
   }
 
  private:
@@ -909,6 +924,9 @@ class VectorIndexKeyProvider {
   const size_t max_results_;
   WriteBuffer& result_buffer_;
   size_t index_ = 0;
+  size_t found_intents_ = 0;
+  MonoTime prefetch_done_time_;
+  MonoTime merge_done_time_;
 };
 
 // NotReached - iteration finished at the upper bound or the end of the tablet
@@ -2714,9 +2732,20 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   ));
 
   // TODO(vector_index) Order keys by ybctid for fetching.
+  auto dump_stats = FLAGS_vector_index_dump_stats;
+  auto read_start_time = MonoTime::NowIf(dump_stats);
   VectorIndexKeyProvider key_provider(
       result, response_, *data_.vector_index, vector_slice, max_results, *result_buffer_);
-  return ExecuteBatchKeys(key_provider);
+  auto res = ExecuteBatchKeys(key_provider);
+  LOG_IF(INFO, dump_stats)
+      << "VI_STATS: Read rows data time: "
+      << (MonoTime::Now() - key_provider.merge_done_time()).ToPrettyString()
+      << ", read intents time: "
+      << (key_provider.prefetch_done_time() - read_start_time).ToPrettyString()
+      << ", merge with intents time: "
+      << (key_provider.merge_done_time() - key_provider.prefetch_done_time()).ToPrettyString()
+      << ", found intents: " << key_provider.found_intents() << ", size: " << res;
+  return res;
 }
 
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {

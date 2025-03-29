@@ -682,8 +682,7 @@ TEST_F(AutoFlagsMiniClusterTest, AddTserverBeforeApplyDelay) {
   ASSERT_GT(after_tserver_started, config_apply_ht);
 
   // We should have waited for some time atleast.
-  ASSERT_GT(
-      after_tserver_started.PhysicalDiff(before_add_tserver), MonoTime::kMicrosecondsPerSecond);
+  ASSERT_GT(after_tserver_started.PhysicalDiff(before_add_tserver), 1s);
 
   // Validate it got the right config.
   ASSERT_OK(cluster_->WaitForAllTabletServers());
@@ -1239,9 +1238,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, DelayedApplyFlags) {
   ASSERT_OK(config_apply_ht.FromUint64(config.config_apply_time()));
   LOG(INFO) << "config_apply_ht: " << config_apply_ht;
   ASSERT_GT(config_apply_ht, before_promote_ht);
-  ASSERT_GT(
-      config_apply_ht.PhysicalDiff(before_promote_ht),
-      apply_delay_ms * MonoTime::kMicrosecondsPerMillisecond);
+  ASSERT_GT(config_apply_ht.PhysicalDiff(before_promote_ht), apply_delay_ms * 1ms);
 
   auto after_promote_and_validate_ht = ASSERT_RESULT(leader_master->GetServerTime());
   LOG(INFO) << "after_promote_and_validate_ht: " << after_promote_and_validate_ht;
@@ -1257,10 +1254,10 @@ TEST_F(AutoFlagsExternalMiniClusterTest, DelayedApplyFlags) {
   }
 
   // Wait for config to be applied plus a buffer of 1s.
-  const auto sleep_time_us = config_apply_ht.PhysicalDiff(after_promote_and_validate_ht) +
-                             (MonoTime::kMicrosecondsPerSecond * kTimeMultiplier);
-  LOG(WARNING) << "Sleeping for " << sleep_time_us << "us";
-  SleepFor(MonoDelta::FromMicroseconds(sleep_time_us));
+  const auto sleep_time =
+      config_apply_ht.PhysicalDiff(after_promote_and_validate_ht) + 1s * kTimeMultiplier;
+  LOG(WARNING) << "Sleeping for " << sleep_time.ToPrettyString();
+  SleepFor(sleep_time);
 
   for (auto& daemon : cluster_->daemons()) {
     ASSERT_EQ(ASSERT_RESULT(daemon->GetFlag(kVolatileAutoFlagName)), "true");

@@ -139,17 +139,18 @@ DEFINE_RUNTIME_uint64(ysql_cdc_active_replication_slot_window_ms, 60000,
                       "actively used. ReplicationSlots which haven't been used in this interval are"
                       "considered to be inactive.");
 TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
-DECLARE_uint64(cdc_intent_retention_ms);
 
+DEFINE_RUNTIME_int32(
+    check_pg_object_id_allocators_interval_secs, 3600 * 3,
+    "Interval at which pg object id allocators are checked for dropped databases.");
+TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
+
+DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
-DEFINE_RUNTIME_int32(
-    check_pg_object_id_allocators_interval_secs, 3600 * 3,
-    "Interval at which pg object id allocators are checked for dropped databases.");
-TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
 METRIC_DEFINE_event_stats(
     server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",

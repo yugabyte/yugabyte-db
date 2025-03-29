@@ -101,6 +101,7 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
+DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -224,9 +225,11 @@ TransactionErrorCode GetTransactionErrorCode(const Status& status) {
 
 struct PgClientSessionOperation {
   std::shared_ptr<client::YBPgsqlOp> op;
-  // TODO(vector_index) Support multiple reads in a single perform.
-  std::unique_ptr<rpc::Sidecars> vector_index_sidecars;
   std::unique_ptr<PgsqlReadRequestPB> vector_index_read_request;
+
+  // TODO(vector_index) Support multiple reads in a single perform.
+  std::unique_ptr<rpc::Sidecars> vector_index_sidecars{};
+  MonoTime vector_index_fetch_start{};
 };
 
 using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
@@ -450,11 +453,13 @@ Result<PgClientSessionOperations> PrepareOperations(
               table, *vector_index_sidecars, new_read.get());
           ops.push_back(PgClientSessionOperation {
             .op = std::move(read_op),
-            .vector_index_sidecars = nullptr,
             .vector_index_read_request = std::move(new_read),
           });
         }
         ops[first_idx].vector_index_sidecars = std::move(vector_index_sidecars);
+        if (FLAGS_vector_index_dump_stats) {
+          ops[first_idx].vector_index_fetch_start = MonoTime::Now();
+        }
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {
@@ -462,7 +467,6 @@ Result<PgClientSessionOperations> PrepareOperations(
         }
         ops.push_back(PgClientSessionOperation {
           .op = std::move(read_op),
-          .vector_index_sidecars = nullptr,
           .vector_index_read_request = nullptr,
         });
       }
@@ -475,7 +479,6 @@ Result<PgClientSessionOperations> PrepareOperations(
       }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
-        .vector_index_sidecars = nullptr,
         .vector_index_read_request = nullptr,
       });
     }
@@ -510,42 +513,6 @@ std::byte* SerializeWithCachedSizesToArray(
     const google::protobuf::MessageLite& msg, std::byte* out) {
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
-
-class VectorIndexPartitionResult {
- public:
-  VectorIndexPartitionResult(
-      std::reference_wrapper<const PgsqlResponsePB> response, const RefCntSlice& sidecars)
-      : response_(response), sidecars_(sidecars) {}
-
-  uint64_t Distance() const {
-    return response_.vector_index_distances()[index_];
-  }
-
-  bool Finished() const {
-    return index_ >= response_.vector_index_distances().size();
-  }
-
-  bool Consume(PgsqlResponsePB& out, WriteBuffer& sidecars) {
-    out.mutable_vector_index_distances()->Add(response_.vector_index_distances()[index_]);
-    auto new_offset = response_.vector_index_ends()[index_];
-    sidecars.Append(Slice(sidecars_.data() + sidecar_offset_, new_offset - sidecar_offset_));
-    sidecar_offset_ = new_offset;
-    ++index_;
-    return !Finished();
-  }
-
- private:
-  int index_ = 0;
-  const PgsqlResponsePB& response_;
-  RefCntSlice sidecars_;
-  size_t sidecar_offset_ = 8;
-};
-
-struct CompareVectorIndexPartitionResult {
-  bool operator()(VectorIndexPartitionResult* lhs, VectorIndexPartitionResult* rhs) const {
-    return lhs->Distance() > rhs->Distance();
-  }
-};
 
 struct PerformData {
   uint64_t session_id;
@@ -711,51 +678,59 @@ struct PerformData {
 
   Status ProcessVectorIndexResponse(TabletReadTime* used_read_time) {
     auto& front = ops.front();
+    auto dump_stats = front.vector_index_fetch_start != MonoTime();
+    auto process_start_time = MonoTime::NowIf(dump_stats);
     const auto& read = *front.vector_index_read_request;
     auto& responses = *resp.mutable_responses();
 
-    std::vector<VectorIndexPartitionResult> results;
-    results.reserve(ops.size());
+    std::vector<RefCntSlice> all_sidecars;
+    all_sidecars.reserve(ops.size());
+    std::vector<std::pair<uint64_t, Slice>> vectors;
 
     for (const auto& op : ops) {
-      // TODO(vector_index) Implement paging.
-      results.emplace_back(
-          op.op->response(), front.vector_index_sidecars->Extract(*op.op->sidecar_index()));
-    }
-
-    // TODO(vector_index) Use heap with sift up functionality.
-    std::priority_queue<
-        VectorIndexPartitionResult*, std::vector<VectorIndexPartitionResult*>,
-        CompareVectorIndexPartitionResult> queue;
-    for (auto& part : results) {
-      if (!part.Finished()) {
-        queue.push(&part);
+      auto op_sidecars = front.vector_index_sidecars->Extract(*op.op->sidecar_index());
+      all_sidecars.push_back(op_sidecars);
+      auto sidecars_data = op_sidecars.data();
+      auto& op_resp = op.op->response();
+      auto& distances = op_resp.vector_index_distances();
+      auto& ends = op_resp.vector_index_ends();
+      size_t sidecar_offset = 8;
+      for (int index = 0; index != distances.size(); ++index) {
+        auto new_offset = ends[index];
+        vectors.emplace_back(
+            distances[index], Slice(sidecars_data + sidecar_offset, sidecars_data + new_offset));
+        sidecar_offset = new_offset;
       }
     }
+
+    auto reduce_start_time = MonoTime::NowIf(dump_stats);
+
+    std::ranges::sort(vectors, [](const auto& lhs, const auto& rhs) {
+      return lhs.first < rhs.first;
+    });
 
     auto& out_resp = *responses.Add();
     auto& write_buffer = sidecars.Start();
-    auto num_rows_pos = write_buffer.Position();
-    pggate::PgWire::WriteInt64(0, &write_buffer);
     auto prefetch_size = read.index_request().vector_idx_options().prefetch_size();
-    if (prefetch_size == -1) {
-      prefetch_size = std::numeric_limits<decltype(prefetch_size)>::max();
+    if (prefetch_size >= 0 && vectors.size() > make_unsigned(prefetch_size)) {
+      vectors.resize(prefetch_size);
     }
 
-    while (!queue.empty() && out_resp.vector_index_distances().size() < prefetch_size) {
-      auto& top = *queue.top();
-      queue.pop();
-      if (top.Consume(out_resp, write_buffer)) {
-        queue.push(&top);
-      }
+    pggate::PgWire::WriteInt64(vectors.size(), &write_buffer);
+    for (const auto& [distance, data] : vectors) {
+      out_resp.mutable_vector_index_distances()->Add(distance);
+      write_buffer.Append(data);
     }
-
-    RETURN_NOT_OK(pggate::PgWire::WriteInt64(
-        out_resp.vector_index_distances().size(), &write_buffer, num_rows_pos));
 
     out_resp.set_status(front.op->response().status());
     out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
     out_resp.set_partition_list_version(front.op->table()->GetPartitionListVersion());
+
+    LOG_IF(INFO, dump_stats)
+        << "VI_STATS: Fetch time: "
+        << (process_start_time - front.vector_index_fetch_start).ToPrettyString()
+        << ", collect time: " << (reduce_start_time - process_start_time).ToPrettyString()
+        << ", reduce time: " << (MonoTime::Now() - reduce_start_time).ToPrettyString();
 
     return Status::OK();
   }

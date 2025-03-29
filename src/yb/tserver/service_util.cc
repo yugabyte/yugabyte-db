@@ -339,17 +339,16 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
         // TODO(hector): This safe time could be reused by the read operation.
         auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-        auto safe_time_micros = tablet->mvcc_manager()->SafeTimeForFollower(
-            HybridTime::kMin, CoarseTimePoint::min()).GetPhysicalValueMicros();
-        auto now_micros = tablet_peer->clock_ptr()->Now().GetPhysicalValueMicros();
-        auto follower_staleness_us = now_micros - safe_time_micros;
-        if (follower_staleness_us > FLAGS_max_stale_read_bound_time_ms * 1000) {
-          VLOG(1) << "Rejecting stale read with staleness "
-                     << follower_staleness_us << "us";
+        auto safe_time = tablet->mvcc_manager()->SafeTimeForFollower(
+            HybridTime::kMin, CoarseTimePoint::min());
+        auto now = tablet_peer->clock_ptr()->Now();
+        auto follower_staleness = now.PhysicalDiff(safe_time);
+        if (follower_staleness > MonoDelta::FromMilliseconds(FLAGS_max_stale_read_bound_time_ms)) {
+          VLOG(1) << "Rejecting stale read with staleness " << follower_staleness.ToPrettyString();
           return STATUS_EC_FORMAT(
               IllegalState, TabletServerError(TabletServerErrorPB::STALE_FOLLOWER),
-              "Stale follower $0 with staleness $1 us", tablet_peer->LogPrefix(),
-              follower_staleness_us);
+              "Stale follower $0 with staleness $1", tablet_peer->LogPrefix(),
+              follower_staleness.ToPrettyString());
         }
         if (PREDICT_FALSE(
             FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
@@ -357,9 +356,10 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
                      << " but peer " << tablet_peer->permanent_uuid()
                      << " for tablet: " << tablet_id
                      << " is not stale. Time since last update from leader: "
-                     << follower_staleness_us << "us";
+                     << follower_staleness.ToPrettyString();
         } else {
-          VLOG(3) << "Reading from follower with staleness: " << follower_staleness_us << "us";
+          VLOG(3)
+              << "Reading from follower with staleness: " << follower_staleness.ToPrettyString();
         }
       }
     } else {

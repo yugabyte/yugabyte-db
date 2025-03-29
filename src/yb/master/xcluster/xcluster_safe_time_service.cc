@@ -169,7 +169,7 @@ Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
       // Very rare case that could happen since clocks are not synced.
       entry->set_safe_time_skew(0);
     } else {
-      entry->set_safe_time_skew(max_safe_time.PhysicalDiff(safe_time));
+      entry->set_safe_time_skew(max_safe_time.PhysicalDiff(safe_time).ToMicroseconds());
     }
   }
 
@@ -229,7 +229,7 @@ XClusterSafeTimeService::GetEstimatedDataLossMicroSec(const LeaderEpoch& epoch) 
       // Very rare case that could happen since clocks are not synced.
       safe_time_diff_map[namespace_id] = 0;
     } else {
-      safe_time_diff_map[namespace_id] = max_safe_time.PhysicalDiff(safe_time);
+      safe_time_diff_map[namespace_id] = max_safe_time.PhysicalDiff(safe_time).ToMicroseconds();
     }
   }
 
@@ -418,9 +418,8 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
     for (const auto& [namespace_id, tablet_ids] : slow_tablets_map) {
       LOG(WARNING) << "xcluster safe time for namespace " << namespace_id << " is held up by "
                    << namespace_max_safe_time[namespace_id].PhysicalDiff(
-                          namespace_min_safe_time[namespace_id]) /
-                          MonoTime::kMicrosecondsPerSecond
-                   << "s due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
+                          namespace_min_safe_time[namespace_id]).ToPrettyString()
+                   << " due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
     }
   }
 
@@ -707,8 +706,7 @@ void XClusterSafeTimeService::UpdateMetrics(
         const auto& max_safe_time = std::max(it->second, safe_time);
 
         // Compute the metrics, note conversion to milliseconds.
-        consumer_safe_time_skew_ms = max_safe_time.PhysicalDiff(safe_time) /
-            MonoTime::kMicrosecondsPerMillisecond;
+        consumer_safe_time_skew_ms = max_safe_time.PhysicalDiff(safe_time).ToMilliseconds();
         DCHECK_GE(consumer_safe_time_skew_ms, 0);
 
         const auto log_every_n =

@@ -5369,13 +5369,13 @@ void CDCServiceImpl::UpdatePublicationTableList(
 void CDCServiceImpl::LogGetChangesLagForCDCSDK(
     const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp) {
   auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
-  int64_t getchanges_call_lag_in_ms = -1;
+  MonoDelta getchanges_call_lag;
   if (resp.safe_hybrid_time() != -1) {
-    getchanges_call_lag_in_ms =
-        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time())) / 1000;
+    getchanges_call_lag =
+        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time()));
   }
 
-  int64_t commit_time_lag_in_ms = -1;
+  MonoDelta commit_time_lag;
   uint64_t commit_record_ct = 0;
   uint64_t safepoint_ct = 0;
   // If there are no commit records in the response, we take the safepoint record's commit_time.
@@ -5390,17 +5390,14 @@ void CDCServiceImpl::LogGetChangesLagForCDCSDK(
   }
 
   if (commit_record_ct > 0) {
-    commit_time_lag_in_ms =
-        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct))) / 1000;
+    commit_time_lag = current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct));
   } else if (safepoint_ct > 0) {
-    commit_time_lag_in_ms =
-        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct))) / 1000;
+    commit_time_lag = current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct));
   }
 
   VLOG(3) << "stream_id: " << stream_id << ", GetChanges call lag: "
-          << ((getchanges_call_lag_in_ms != -1) ? Format("$0 ms", getchanges_call_lag_in_ms) : "-1")
-          << ", Commit time lag: "
-          << ((commit_time_lag_in_ms != -1) ? Format("$0 ms", commit_time_lag_in_ms) : "-1");
+          << getchanges_call_lag.ToPrettyString()
+          << ", Commit time lag: " << commit_time_lag.ToPrettyString();
 }
 }  // namespace cdc
 }  // namespace yb

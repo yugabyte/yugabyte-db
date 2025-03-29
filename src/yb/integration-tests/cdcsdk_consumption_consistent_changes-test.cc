@@ -2214,7 +2214,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   // Calculate the difference between commit time and consistent snapshot time. We need to set out
   // refresh interval equal to this difference so as to create commit time ties of special record
   // with txn 2
-  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time);
+  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time).ToMicroseconds();
 
   ASSERT_OK(DestroyVirtualWAL());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
