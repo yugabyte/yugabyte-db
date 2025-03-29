@@ -1,6 +1,7 @@
 -- Regression tests for UPDATE/DELETE single row operations.
 -- Expression pushdown is disabled.
 SET yb_enable_expression_pushdown to off;
+SET yb_explain_hide_non_deterministic_fields = 1;
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
 --
@@ -505,6 +506,49 @@ SELECT * FROM single_row;
 ---+----+----
  1 |  2 |  1
 (1 row)
+
+-- Test for case when leftop is non-Var (GH#26536)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE yb_hash_code(k) = yb_hash_code(1); -- not single row path
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on single_row (actual rows=0 loops=1)
+   ->  Index Scan using single_row_pkey on single_row (actual rows=1 loops=1)
+         Index Cond: (yb_hash_code(k) = 4624)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE k = 1 AND yb_hash_code(k) = yb_hash_code(1); -- not single row path
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on single_row (actual rows=0 loops=1)
+   ->  Index Scan using single_row_pkey on single_row (actual rows=1 loops=1)
+         Index Cond: ((k = 1) AND (yb_hash_code(k) = 4624))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(10 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE 1 = k; -- single row path
+                  QUERY PLAN                  
+----------------------------------------------
+ Update on single_row (actual rows=0 loops=1)
+   ->  Result (actual rows=1 loops=1)
+         Storage Table Write Requests: 1
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 1
+ Storage Flush Requests: 0
+(7 rows)
 
 -- Adding secondary index should force re-planning, which would
 -- then not choose single-row plan due to the secondary index.
