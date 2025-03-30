@@ -73,7 +73,7 @@ class WriteQuery {
   void AdjustYsqlQueryTransactionality(size_t ysql_batch_size);
 
   HybridTime restart_read_ht() const {
-    return restart_read_ht_;
+    return read_restart_data_.restart_time;
   }
 
   CoarseTimePoint deadline() const {
@@ -224,7 +224,7 @@ class WriteQuery {
   // this transaction's start time
   MonoTime start_time_;
 
-  HybridTime restart_read_ht_;
+  ReadRestartData read_restart_data_;
 
   bool schema_version_mismatch_ = false;
 
