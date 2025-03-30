@@ -13,21 +13,12 @@
 
 #pragma once
 
-#include "yb/util/metrics_fwd.h"
-#include "yb/tserver/tserver_fwd.h"
+#include <cstdint>
 
-namespace yb::tserver {
-
-// This class updates disk size metrics at the database level, accounting for hardlinks.
-class TsDataSizeMetrics {
- public:
-  explicit TsDataSizeMetrics(TSTabletManager* tablet_manager);
-  void Update();
-
- private:
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_data_size_metric_;
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_active_data_size_metric_;
-  TSTabletManager* tablet_manager_;
+namespace yb::master {
+struct PgTypeInfo {
+  char typtype;
+  uint32_t typbasetype;
+  PgTypeInfo(char typtype_, uint32_t typbasetype_) : typtype(typtype_), typbasetype(typbasetype_) {}
 };
-
-} // namespace yb::tserver
+} // namespace yb::master

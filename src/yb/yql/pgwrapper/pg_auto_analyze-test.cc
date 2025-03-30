@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
 
 #include "yb/client/session.h"
@@ -897,7 +898,7 @@ TEST_F(PgAutoAnalyzeTest, DisableAndReEnableAutoAnalyze) {
   const std::string table_creation_stmt =
       "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
-  
+
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 1) AS s",
                                table_name));
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 1));

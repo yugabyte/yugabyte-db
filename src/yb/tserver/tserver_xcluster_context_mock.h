@@ -15,7 +15,10 @@
 
 #include <gmock/gmock.h>
 
-#include "yb/common/pg_types.h"
+#include "yb/common/hybrid_time.h"
+
+#include "yb/util/result.h"
+
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 namespace yb {

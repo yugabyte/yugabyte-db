@@ -25,6 +25,7 @@
 
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/util/multi_drive_test_env.h"
 

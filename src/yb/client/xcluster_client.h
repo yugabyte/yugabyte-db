@@ -16,6 +16,7 @@
 #include <string>
 #include <google/protobuf/repeated_field.h>
 
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"

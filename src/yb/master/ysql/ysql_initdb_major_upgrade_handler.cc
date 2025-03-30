@@ -13,9 +13,13 @@
 
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
+#include "yb/common/version_info.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -26,7 +30,6 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/common/version_info.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 

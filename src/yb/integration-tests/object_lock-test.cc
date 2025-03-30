@@ -32,7 +32,9 @@
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 

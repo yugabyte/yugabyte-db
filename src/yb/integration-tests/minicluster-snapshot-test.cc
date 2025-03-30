@@ -61,6 +61,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"

@@ -62,6 +62,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 

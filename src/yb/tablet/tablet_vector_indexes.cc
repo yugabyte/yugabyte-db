@@ -38,6 +38,7 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/operation_counter.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 

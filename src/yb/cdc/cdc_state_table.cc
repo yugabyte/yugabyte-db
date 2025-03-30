@@ -29,6 +29,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 

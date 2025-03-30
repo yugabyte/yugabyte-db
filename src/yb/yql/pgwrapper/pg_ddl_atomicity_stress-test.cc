@@ -28,6 +28,8 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/strings/join.h"
+
 #include "yb/master/master_client.pb.h"
 
 #include "yb/util/async_util.h"

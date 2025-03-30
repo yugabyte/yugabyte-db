@@ -42,7 +42,6 @@
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
-#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"

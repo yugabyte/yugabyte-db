@@ -40,49 +40,35 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/cdc_service.fwd.h"
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_types_util.h"
 #include "yb/common/constants.h"
-#include "yb/common/transaction.h"
+#include "yb/common/ql_protocol.fwd.h"
 
-#include "yb/dockv/partition.h"
+#include "yb/docdb/docdb_compaction_context.h"
 
-#include "yb/fs/fs_manager.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/thread_annotations.h"
-
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_admin.pb.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
-#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.h"
-#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_initialization.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/system_tablet.h"
-#include "yb/master/table_index.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/ysql_tablespace_manager.h"
+
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/rpc/scheduler.h"
 
@@ -92,11 +78,9 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/rw_mutex.h"
-#include "yb/util/status_callback.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/version_tracker.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 
@@ -1163,9 +1147,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
-  PitrCount pitr_count() const override {
-    return sys_catalog_->pitr_count();
-  }
+  PitrCount pitr_count() const override;
 
   // Returns the current valid LeaderEpoch.
   // This function should generally be avoided. RPC handlers that require the LeaderEpoch
@@ -1595,8 +1577,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetCompactionStatus(
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
 
-  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
-      tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1677,7 +1658,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status WriteToSysCatalog(
       SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
-      QLWriteRequestPB::QLStmtType op_type);
+      QLWriteRequestPB_QLStmtType op_type);
 
   Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const override;
 

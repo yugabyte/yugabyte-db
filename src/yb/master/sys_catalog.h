@@ -48,6 +48,7 @@
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
@@ -80,12 +81,6 @@ class MasterOptions;
 // Forward declaration from internal header file.
 class VisitorBase;
 class SysCatalogWriter;
-
-struct PgTypeInfo {
-  char typtype;
-  uint32_t typbasetype;
-  PgTypeInfo(char typtype_, uint32_t typbasetype_) : typtype(typtype_), typbasetype(typbasetype_) {}
-};
 
 struct PgTableReadData {
   TableId table_id;

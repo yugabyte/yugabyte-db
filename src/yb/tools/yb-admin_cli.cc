@@ -47,6 +47,7 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"

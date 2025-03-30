@@ -36,6 +36,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 
 namespace rocksdb {

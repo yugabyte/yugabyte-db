@@ -31,6 +31,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/rpc_context.h"
 

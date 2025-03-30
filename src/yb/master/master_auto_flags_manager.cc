@@ -16,6 +16,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"

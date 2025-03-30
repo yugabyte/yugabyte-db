@@ -22,6 +22,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/tsan_util.h"
 

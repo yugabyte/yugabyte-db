@@ -25,6 +25,7 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 

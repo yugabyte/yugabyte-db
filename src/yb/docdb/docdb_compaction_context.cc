@@ -31,6 +31,7 @@
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
