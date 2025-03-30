@@ -403,7 +403,7 @@ void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const 
 }
 
 TEST_F(CqlTabletSplitTest, SecondaryIndex) {
-  const auto kNumSplits = RegularBuildVsSanitizers(10, 3);
+  const auto kNumSplits = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 3, 3, 3);
 
   ASSERT_NO_FATALS(StartSecondaryIndexTest());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) = 0.5;
