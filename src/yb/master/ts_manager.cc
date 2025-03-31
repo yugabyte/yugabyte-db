@@ -37,7 +37,6 @@
 
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -249,17 +248,6 @@ Result<TSDescriptorPtr> TSManager::RegisterFromHeartbeat(
       std::cref(heartbeat_request), std::move(local_cloud_info), epoch, proxy_cache);
 }
 
-Result<YsqlLeaseUpdate> TSManager::RefreshYsqlLease(
-    const LeaderEpoch& epoch, const NodeInstancePB& instance) {
-  auto ts_desc = VERIFY_RESULT(LookupTS(instance));
-  auto [lease_update, lock_opt] = ts_desc->RefreshYsqlLease();
-  if (lock_opt) {
-    RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, ts_desc));
-    lock_opt->Commit();
-  }
-  return lease_update;
-}
-
 Result<TSDescriptorPtr> TSManager::RegisterInternal(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
     std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
@@ -365,12 +353,6 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
                    -> bool { return ts->IsLive() && ts->has_tablet_report(); }, descs);
 }
 
-TSDescriptorVector TSManager::GetAllDescriptorsWithALiveLease() const {
-  TSDescriptorVector descs;
-  GetDescriptors([](const auto& ts) -> bool { return ts->HasLiveYsqlOperationLease(); }, &descs);
-  return descs;
-}
-
 bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, const std::string& cluster_uuid) {
   return ts->placement_uuid() == cluster_uuid;
 }
@@ -413,11 +395,6 @@ void TSManager::SetTSCountCallback(int min_count, TSCountCallback callback) {
   ts_count_callback_min_count_ = min_count;
 }
 
-void TSManager::SetLeaseExpiredCallback(LeaseExpiredCallback callback) {
-  std::lock_guard l(registration_lock_);
-  lease_expired_callback_ = std::move(callback);
-}
-
 size_t TSManager::NumDescriptors() const {
   SharedLock<decltype(map_lock_)> l(map_lock_);
   return NumDescriptorsUnlocked();
@@ -431,39 +408,22 @@ size_t TSManager::NumLiveDescriptors() const {
 }
 
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
-  std::unordered_map<std::string, uint64_t> uuid_to_expired_lease_epoch;
   auto current_time = MonoTime::Now();
   {
     SharedLock<decltype(map_lock_)> l(map_lock_);
     std::vector<TSDescriptor*> updated_descs;
     std::vector<TSDescriptor::WriteLock> cow_locks;
     for (const auto& [id, desc] : servers_by_id_) {
-      auto update_opt = desc->MaybeUpdateLiveness(current_time);
-      if (update_opt) {
-        auto [lock, expired_lease_opt] = std::move(update_opt).value();
+      auto lock_opt = desc->MaybeUpdateLiveness(current_time);
+      if (lock_opt) {
         updated_descs.push_back(desc.get());
-        cow_locks.push_back(std::move(lock));
-        if (expired_lease_opt) {
-          uuid_to_expired_lease_epoch[id] = *expired_lease_opt;
-        }
+        cow_locks.push_back(std::move(lock_opt).value());
       }
     }
     RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, updated_descs));
     for (auto& l : cow_locks) {
       l.Commit();
     }
-  }
-  if (uuid_to_expired_lease_epoch.empty()) {
-    return Status::OK();
-  }
-  LeaseExpiredCallback local_lease_expired_callback;
-  {
-    std::lock_guard l(registration_lock_);
-    local_lease_expired_callback = lease_expired_callback_;
-  }
-  for (const auto& [uuid, lease_epoch] : uuid_to_expired_lease_epoch) {
-    // TODO(zdrudi): We should spawn a task here instead of making a one-off call.
-    local_lease_expired_callback(uuid, lease_epoch, epoch);
   }
   return Status::OK();
 }

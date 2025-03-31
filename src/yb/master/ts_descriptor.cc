@@ -53,14 +53,6 @@
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
-DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 10 * 1000,
-                      "The lifetime of ysql operation lease extensions. The ysql operation lease "
-                      "allows tservers to host pg sessions and serve reads and writes to user data "
-                      "through the YSQL API.");
-TAG_FLAG(master_ysql_operation_lease_ttl_ms, advanced);
-
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
-
 namespace yb {
 namespace master {
 
@@ -112,9 +104,6 @@ TSDescriptorPtr TSDescriptor::LoadFromEntry(
   desc->Load(metadata);
   std::lock_guard spinlock(desc->mutex_);
   desc->placement_id_ = generate_placement_id(metadata.registration().cloud_info());
-  if (metadata.live_client_operation_lease()) {
-    desc->last_ysql_lease_refresh_ = load_time;
-  }
   return desc;
 }
 
@@ -155,13 +144,6 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
-  // The new incarnation heartbeating does not have a live lease. If the previous incarnation did,
-  // set live_client_operation_lease to false.
-  if (instance.instance_seqno() != latest_seqno && l->pb.live_client_operation_lease()) {
-    // todo(zdrudi): kick off an async task to clear out all locks held by the previous incarnation.
-    last_ysql_lease_refresh_ = MonoTime();
-    l.mutable_data()->pb.set_live_client_operation_lease(false);
-  }
   return std::move(l);
 }
 
@@ -507,56 +489,16 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
   return !placement_uuid().empty();
 }
 
-std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>>
-TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
+std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   auto proto_lock = LockForWrite();
-  bool updated = false;
   SharedLock<decltype(mutex_)> transient_lock(mutex_);
-  std::optional<uint64_t> expired_lease_epoch;
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
           GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
-    updated = true;
-  }
-  if ((GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
-       GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) &&
-      proto_lock->pb.live_client_operation_lease() &&
-      last_ysql_lease_refresh_ + MonoDelta::FromMilliseconds(
-                                     GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms)) <
-          time) {
-    proto_lock.mutable_data()->pb.set_live_client_operation_lease(false);
-    updated = true;
-    expired_lease_epoch = proto_lock->pb.lease_epoch();
-  }
-  if (updated) {
-    return std::make_pair(std::move(proto_lock), expired_lease_epoch);
+    return std::move(proto_lock);
   }
   return std::nullopt;
-}
-
-std::pair<YsqlLeaseUpdate, std::optional<TSDescriptor::WriteLock>>
-TSDescriptor::RefreshYsqlLease() {
-  YsqlLeaseUpdate lease_update;
-  auto l = LockForWrite();
-  {
-    std::lock_guard spinlock(mutex_);
-    last_ysql_lease_refresh_ = MonoTime::Now();
-  }
-  if (l->pb.live_client_operation_lease()) {
-    lease_update.lease_epoch = l.data().pb.lease_epoch();
-    return std::make_pair(lease_update, std::nullopt);
-  }
-  l.mutable_data()->pb.set_live_client_operation_lease(true);
-  uint64_t new_lease_epoch = l.mutable_data()->pb.lease_epoch() + 1;
-  l.mutable_data()->pb.set_lease_epoch(new_lease_epoch);
-  lease_update.new_lease = true;
-  lease_update.lease_epoch = new_lease_epoch;
-  return std::make_pair(lease_update, std::move(l));
-}
-
-bool TSDescriptor::HasLiveYsqlOperationLease() const {
-  return LockForRead()->pb.live_client_operation_lease();
 }
 
 RefreshYsqlLeaseInfoPB YsqlLeaseUpdate::ToPB() {

@@ -610,36 +610,10 @@ void RetryingTSRpcTask::DoRpcCallback() {
   auto target_ts = target_ts_desc();
 
   if (!rpc_.status().ok()) {
-    // TODO: Move this implementation-specific handling out of the base class.
-    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts->id() << ": "
-                             << type_name() << " RPC failed for tablet "
-                             << tablet_id() << ": " << rpc_.status().ToString();
-    if (type() == MonitoredTaskType::kBackendsCatalogVersionTs && rpc_.status().IsRemoteError() &&
-        rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
-      LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts->id() << " is on an older version that doesn't"
-          << " support backends catalog version RPC. Ignoring.";
-      TransitionToCompleteState();
-    } else if (type() == MonitoredTaskType::kDeleteReplica && !target_ts->IsLive()) {
-      LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts->id() << ": delete failed for tablet "
-          << tablet_id() << ". TS is DEAD. No further retry.";
-      TransitionToCompleteState();
-    } else if (type() == MonitoredTaskType::kBackendsCatalogVersionTs &&
-               !target_ts->HasYsqlCatalogLease()) {
-      // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
-      // when this RPC failed and tserver's lease expired.  That check is hit when this RPC
-      // succeeded and tserver's lease is expired.
-      LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts->id() << " catalog lease expired. Assume backends"
-          << " on that TS will be resolved to sufficient catalog version";
-      TransitionToCompleteState();
-    } else if (
-        type() == MonitoredTaskType::kObjectLock &&
-        !target_ts->HasLiveYsqlOperationLease()) {
-      LOG(WARNING) << "TS " << target_ts->id()
-                   << " no longer has a live lease. Ignoring this tserver for object lock task "
-                   << description() << ", rpc status: " << rpc_.status();
+    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc() << ": " << type_name()
+                             << " RPC failed for tablet " << tablet_id() << ": "
+                             << rpc_.status().ToString();
+    if (!RetryTaskAfterRPCFailure(rpc_.status())) {
       TransitionToCompleteState();
     }
   } else if (state() != MonitoredTaskState::kAborted) {
@@ -654,6 +628,10 @@ void RetryingTSRpcTask::DoRpcCallback() {
   }
 
   UnregisterAsyncTask();  // May call 'delete this'.
+}
+
+bool RetryingTSRpcTask::RetryTaskAfterRPCFailure(const Status& status) {
+  return true;
 }
 
 Status RetryingTSRpcTask::ResetProxies() {
@@ -1152,6 +1130,16 @@ void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
     master_->catalog_manager()->NotifyTabletDeleteFinished(
         permanent_uuid_, tablet_id_, table(), epoch(), state());
   }
+}
+
+bool AsyncDeleteReplica::RetryTaskAfterRPCFailure(const Status& status) {
+  auto target_ts = target_ts_desc();
+  if (!target_ts->IsLive()) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts->id() << ": delete failed for tablet "
+                             << tablet_id() << ". TS is DEAD. No further retry.";
+    return false;
+  }
+  return true;
 }
 
 // ============================================================================

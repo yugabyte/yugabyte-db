@@ -314,6 +314,8 @@ class RetryingTSRpcTask : public RetryingRpcTask {
   TSDescriptorPtr target_ts_desc() const;
   TabletServerId permanent_uuid() const;
 
+  virtual bool RetryTaskAfterRPCFailure(const Status& status);
+
   const std::unique_ptr<TSPicker> replica_picker_;
   mutable simple_spinlock target_ts_mutex_;
   TSDescriptorPtr target_ts_desc_ GUARDED_BY(target_ts_mutex_) = nullptr;
@@ -608,6 +610,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void UnregisterAsyncTaskCallback() override;
+  bool RetryTaskAfterRPCFailure(const Status& status) override;
 
   const TabletId tablet_id_;
   const tablet::TabletDataState delete_type_;

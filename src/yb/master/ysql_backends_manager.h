@@ -396,6 +396,9 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
 
   std::string LogPrefix() const;
 
+ protected:
+  bool RetryTaskAfterRPCFailure(const Status& status) override;
+
  private:
   // Use a weak ptr because this doesn't own job and job can be destroyed at any moment.
   std::weak_ptr<BackendsCatalogVersionJob> job_;

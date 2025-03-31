@@ -21,6 +21,7 @@
 
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -33,11 +34,13 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 
+#include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -45,7 +48,22 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 10 * 1000,
+                      "The lifetime of ysql operation lease extensions. The ysql operation lease "
+                      "allows tservers to host pg sessions and serve reads and writes to user data "
+                      "through the YSQL API.");
+TAG_FLAG(master_ysql_operation_lease_ttl_ms, advanced);
+
+DEFINE_NON_RUNTIME_uint64(object_lock_cleanup_interval_ms, 5000,
+                          "The interval between runs of the background cleanup task for "
+                          "table-level locks held by unresponsive TServers.");
+
+DEFINE_RUNTIME_uint64(object_lock_cleanup_rpc_timeout_ms, 60000,
+                      "The timeout for tasks to release locks held by unresponsive tservers.");
+
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 namespace yb {
 namespace master {
 
@@ -77,7 +95,7 @@ Status ValidateLockRequest(
   return Status::OK();
 }
 
-} // namespace
+}  // namespace
 
 class ObjectLockInfoManager::Impl {
  public:
@@ -86,7 +104,14 @@ class ObjectLockInfoManager::Impl {
         catalog_manager_(catalog_manager),
         clock_(master->clock()),
         local_lock_manager_(
-            std::make_shared<tserver::TSLocalLockManager>(clock_, master_->tablet_server())) {}
+            std::make_shared<tserver::TSLocalLockManager>(clock_, master_->tablet_server())),
+        poller_(std::bind(&Impl::CleanupExpiredLeaseEpochs, this)) {}
+
+  void Start() {
+    poller_.Start(
+        &catalog_manager_->Scheduler(),
+        MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms));
+  }
 
   void LockObject(
       AcquireObjectLockRequestPB req, AcquireObjectLocksGlobalResponsePB* resp,
@@ -102,24 +127,30 @@ class ObjectLockInfoManager::Impl {
   void UnlockObject(
       const tserver::ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
       std::optional<LeaderEpoch> leader_epoch, StdStatusCallback callback,
-      bool remove_lease_epoch_entry = false);
+      std::optional<CoarseTimePoint> deadline);
   void UnlockObject(const TransactionId& txn_id);
 
-  void ReleaseLocksHeldByExpiredLeaseEpoch(
-      const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait,
-      std::optional<LeaderEpoch> leader_epoch);
+  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp,
+                          rpc::RpcContext& rpc,
+                          const LeaderEpoch& epoch);
+
+  std::shared_ptr<CountDownLatch> ReleaseLocksHeldByExpiredLeaseEpoch(
+      const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
+      std::optional<LeaderEpoch> leader_epoch,
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
+
+  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> GetLeaseInfos() const
+      EXCLUDES(mutex_);
 
   void BootstrapLocksPostLoad();
 
   Status PersistRequest(LeaderEpoch epoch, const AcquireObjectLockRequestPB& req) EXCLUDES(mutex_);
   Status PersistRequest(
-      LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req, bool remove_lease_epoch_entry)
+      LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req)
       EXCLUDES(mutex_);
 
   tserver::DdlLockEntriesPB ExportObjectLockInfo() EXCLUDES(mutex_);
-  void BootstrapLocalLocks() EXCLUDES(mutex_);
-  void UpdateTabletServerLeaseEpoch(const std::string& tserver_uuid, uint64_t current_lease_epoch)
-      EXCLUDES(mutex_);
+  tserver::DdlLockEntriesPB ExportObjectLockInfoUnlocked() REQUIRES(mutex_);
 
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info)
       EXCLUDES(mutex_);
@@ -129,8 +160,9 @@ class ObjectLockInfoManager::Impl {
     return clock_;
   }
 
-  std::shared_ptr<ObjectLockInfo> GetOrCreateObjectLockInfo(const std::string& key)
+  std::shared_ptr<ObjectLockInfo> GetOrCreateObjectLockInfo(const std::string& ts_uuid)
       EXCLUDES(mutex_);
+  bool TabletServerHasLiveLease(const std::string& ts_uuid) const EXCLUDES(mutex_);
   void UpdateTxnHostSessionMap(
       const TransactionId& txn_id, const std::string& host_session_uuid, uint64_t lease_epoch)
       EXCLUDES(mutex_);
@@ -155,6 +187,8 @@ class ObjectLockInfoManager::Impl {
     return local_lock_manager_;
   }
 
+  TSDescriptorVector GetAllTSDescriptorsWithALiveLease() const;
+
  private:
   std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_during_catalog_loading()
       EXCLUDES(mutex_) {
@@ -164,6 +198,11 @@ class ObjectLockInfoManager::Impl {
   }
 
   std::optional<uint64_t> GetLeaseEpoch(const std::string& ts_uuid) EXCLUDES(mutex_);
+
+  // Called by the poller to mark leases as expired and clean up locks held by expired lease epochs.
+  // This should only be called by the poller as it accesses cleanup task state without
+  // synchronization.
+  void CleanupExpiredLeaseEpochs() EXCLUDES(mutex_);
 
   Master* master_;
   CatalogManager* catalog_manager_;
@@ -178,11 +217,13 @@ class ObjectLockInfoManager::Impl {
     std::string host_session_uuid;
     uint64_t lease_epoch;
   };
-  std::unordered_map<TransactionId, TxnHostInfo> txn_host_info_map_ GUARDED_BY(mutex_);
-  // The latest lease epoch for each tserver.
-  std::unordered_map<std::string, uint64_t> current_lease_epochs_ GUARDED_BY(mutex_);
 
+  std::unordered_map<TransactionId, TxnHostInfo> txn_host_info_map_ GUARDED_BY(mutex_);
   std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager_ GUARDED_BY(mutex_);
+  // Only accessed from a single thread for now, so no need for synchronization.
+  std::unordered_map<TabletServerId, std::shared_ptr<CountDownLatch>>
+      expired_lease_epoch_cleanup_tasks_;
+  rpc::Poller poller_;
 };
 
 template <class Req>
@@ -192,6 +233,7 @@ class UpdateAll {
   virtual ~UpdateAll() = default;
   virtual const Req& request() const = 0;
   virtual CoarseTimePoint GetClientDeadline() const = 0;
+  virtual bool TabletServerHasLiveLease(const std::string& uuid) = 0;
 };
 
 template <class Req, class Resp>
@@ -203,7 +245,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
       ObjectLockInfoManager::Impl* object_lock_info_manager, const Req& req,
       StdStatusCallback callback, std::optional<rpc::RpcContext> context,
       std::optional<LeaderEpoch> epoch, std::optional<uint64_t> requestor_latest_lease_epoch,
-      bool remove_lease_epoch_entry = false);
+      std::optional<CoarseTimePoint> deadline);
 
   void Launch();
   const Req& request() const override {
@@ -211,7 +253,17 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   }
 
   CoarseTimePoint GetClientDeadline() const override {
-    return context_ ? context_->GetClientDeadline() : CoarseTimePoint::max();
+    if (deadline_) {
+      return *deadline_;
+    } else if (context_) {
+      return context_->GetClientDeadline();
+    } else {
+      return CoarseTimePoint::max();
+    }
+  }
+
+  bool TabletServerHasLiveLease(const std::string& uuid) override {
+    return object_lock_info_manager_->TabletServerHasLiveLease(uuid);
   }
 
   Trace *trace() const {
@@ -243,7 +295,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   StdStatusCallback callback_;
   std::optional<rpc::RpcContext> context_;
   std::optional<uint64_t> requestor_latest_lease_epoch_;
-  bool remove_lease_epoch_entry_;
+  std::optional<CoarseTimePoint> deadline_;
   const TracePtr trace_;
 };
 
@@ -265,9 +317,9 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
  protected:
   void Finished(const Status& status) override;
 
-  const Req& request() const {
-    return shared_all_tservers_->request();
-  }
+  const Req& request() const { return shared_all_tservers_->request(); }
+
+  bool RetryTaskAfterRPCFailure(const Status& status) override;
 
  private:
   TabletId tablet_id() const override { return TabletId(); }
@@ -343,6 +395,10 @@ ObjectLockInfoManager::ObjectLockInfoManager(Master* master, CatalogManager* cat
 
 ObjectLockInfoManager::~ObjectLockInfoManager() = default;
 
+void ObjectLockInfoManager::Start() {
+  impl_->Start();
+}
+
 void ObjectLockInfoManager::LockObject(
     const AcquireObjectLocksGlobalRequestPB& req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
@@ -359,20 +415,26 @@ void ObjectLockInfoManager::ReleaseLocksForTxn(const TransactionId& txn_id) {
   impl_->UnlockObject(txn_id);
 }
 
+Status ObjectLockInfoManager::RefreshYsqlLease(
+    const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
+    const LeaderEpoch& epoch) {
+  return impl_->RefreshYsqlLease(req, resp, rpc, epoch);
+}
+
 tserver::DdlLockEntriesPB ObjectLockInfoManager::ExportObjectLockInfo() {
   return impl_->ExportObjectLockInfo();
 }
 
-void ObjectLockInfoManager::UpdateTabletServerLeaseEpoch(
-    const std::string& tserver_uuid, uint64_t current_lease_epoch) {
-  impl_->UpdateTabletServerLeaseEpoch(tserver_uuid, current_lease_epoch);
+std::shared_ptr<CountDownLatch> ObjectLockInfoManager::ReleaseLocksHeldByExpiredLeaseEpoch(
+    const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
+    std::optional<LeaderEpoch> leader_epoch) {
+  return impl_->ReleaseLocksHeldByExpiredLeaseEpoch(
+      tserver_uuid, max_lease_epoch_to_release, leader_epoch);
 }
 
-void ObjectLockInfoManager::ReleaseLocksHeldByExpiredLeaseEpoch(
-    const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait,
-    std::optional<LeaderEpoch> leader_epoch) {
-  impl_->ReleaseLocksHeldByExpiredLeaseEpoch(
-      tserver_uuid, max_lease_epoch_to_release, wait, leader_epoch);
+std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfoManager::GetLeaseInfos() const {
+  return impl_->GetLeaseInfos();
 }
 
 void ObjectLockInfoManager::BootstrapLocksPostLoad() {
@@ -395,16 +457,25 @@ std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_loca
 }
 
 std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLockInfo(
-    const std::string& key) {
+    const std::string& ts_uuid) {
   LockGuard lock(mutex_);
-  auto it = object_lock_infos_map_.find(key);
+  auto it = object_lock_infos_map_.find(ts_uuid);
   if (it != object_lock_infos_map_.end()) {
     return it->second;
   } else {
-    std::shared_ptr<ObjectLockInfo> info = std::make_shared<ObjectLockInfo>(key);
-    object_lock_infos_map_.insert({key, info});
+    std::shared_ptr<ObjectLockInfo> info = std::make_shared<ObjectLockInfo>(ts_uuid);
+    object_lock_infos_map_.insert({ts_uuid, info});
     return info;
   }
+}
+
+bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
+  LockGuard lock(mutex_);
+  auto it = object_lock_infos_map_.find(ts_uuid);
+  if (it == object_lock_infos_map_.end()) {
+    return false;
+  }
+  return it->second->LockForRead()->pb.lease_info().live_lease();
 }
 
 void ObjectLockInfoManager::Impl::UpdateTxnHostSessionMap(
@@ -416,6 +487,19 @@ void ObjectLockInfoManager::Impl::UpdateTxnHostSessionMap(
 void ObjectLockInfoManager::Impl::RemoveTxnFromHostSessionMap(const TransactionId& txn_id) {
   LockGuard lock(mutex_);
   txn_host_info_map_.erase(txn_id);
+}
+
+TSDescriptorVector ObjectLockInfoManager::Impl::GetAllTSDescriptorsWithALiveLease() const {
+  auto descriptors = master_->ts_manager()->GetAllDescriptors();
+  LockGuard lock(mutex_);
+  std::erase_if(descriptors, [this](const auto& desc) NO_THREAD_SAFETY_ANALYSIS {
+    auto it = object_lock_infos_map_.find(desc->id());
+    if (it == object_lock_infos_map_.end()) {
+      return true;
+    }
+    return !it->second->LockForRead()->pb.lease_info().live_lease();
+  });
+  return descriptors;
 }
 
 Status ObjectLockInfoManager::Impl::PersistRequest(
@@ -446,7 +530,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
 }
 
 Status ObjectLockInfoManager::Impl::PersistRequest(
-    LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req, bool remove_lease_epoch_entry) {
+    LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req) {
   TRACE_FUNC();
   VLOG(3) << __PRETTY_FUNCTION__ << req.ShortDebugString();
   const auto& session_host_uuid = req.session_host_uuid();
@@ -465,7 +549,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
     auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
     subtxns_map.mutable_subtxns()->erase(req.subtxn_id());
   }
-  if (remove_lease_epoch_entry && txns_map.transactions().empty()) {
+  if (txns_map.transactions().empty()) {
     lock.mutable_data()->pb.mutable_lease_epochs()->erase(lease_epoch);
   }
 
@@ -504,36 +588,32 @@ void FillErrorIfRequired(const Status& status, Resp* resp) {
 
 }  // namespace
 
-void ObjectLockInfoManager::Impl::BootstrapLocalLocks() {
-  CHECK_OK(ts_local_lock_manager_during_catalog_loading()->BootstrapDdlObjectLocks(
-      ExportObjectLockInfo()));
+tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfo() {
+  LockGuard lock(mutex_);
+  return ExportObjectLockInfoUnlocked();
 }
 
-tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfo() {
+tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnlocked() {
   VLOG(2) << __PRETTY_FUNCTION__;
   tserver::DdlLockEntriesPB entries;
-  {
-    LockGuard lock(mutex_);
-    for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
-      auto l = per_host_entry->LockForRead();
-      auto lease_epoch_it = current_lease_epochs_.find(host_uuid);
-      if (lease_epoch_it == current_lease_epochs_.end()) {
-        continue;
-      }
-      auto txns_map_it = l->pb.lease_epochs().find(lease_epoch_it->second);
-      if (txns_map_it == l->pb.lease_epochs().end()) {
-        continue;
-      }
-      for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
-        auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
-        const auto db_id = subtxns_map.db_id();
-        for (const auto& [subtxn_id, objects_map] : subtxns_map.subtxns()) {
-          auto* lock_entries_pb = entries.add_lock_entries();
-          lock_entries_pb->set_session_host_uuid(host_uuid);
-          lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
-          lock_entries_pb->set_subtxn_id(subtxn_id);
-          ExportObjectLocksForTxn(db_id, objects_map, lock_entries_pb);
-        }
+  for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
+    auto l = per_host_entry->LockForRead();
+    if (!l->pb.lease_info().has_lease_epoch() || !l->pb.lease_info().live_lease()) {
+      continue;
+    }
+    auto txns_map_it = l->pb.lease_epochs().find(l->pb.lease_info().lease_epoch());
+    if (txns_map_it == l->pb.lease_epochs().end()) {
+      continue;
+    }
+    for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
+      auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+      const auto db_id = subtxns_map.db_id();
+      for (const auto& [subtxn_id, objects_map] : subtxns_map.subtxns()) {
+        auto* lock_entries_pb = entries.add_lock_entries();
+        lock_entries_pb->set_session_host_uuid(host_uuid);
+        lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
+        lock_entries_pb->set_subtxn_id(subtxn_id);
+        ExportObjectLocksForTxn(db_id, objects_map, lock_entries_pb);
       }
     }
   }
@@ -600,7 +680,7 @@ void ObjectLockInfoManager::Impl::LockObject(
   auto lock_objects = std::make_shared<
       UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB>>(
       master_, catalog_manager_, this, req, std::move(callback), std::move(context), std::nullopt,
-      GetLeaseEpoch(req.session_host_uuid()));
+      GetLeaseEpoch(req.session_host_uuid()), std::nullopt);
   lock_objects->Launch();
 }
 
@@ -636,18 +716,18 @@ void ObjectLockInfoManager::Impl::UnlockObject(
   UnlockObject(req, std::move(context), std::nullopt, [resp, clock = clock_](const Status& s) {
     resp->set_propagated_hybrid_time(clock->Now().ToUint64());
     FillErrorIfRequired(s, resp);
-  });
+  }, std::nullopt);
 }
 
 void ObjectLockInfoManager::Impl::UnlockObject(
     const ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
     std::optional<LeaderEpoch> leader_epoch, StdStatusCallback callback,
-    bool remove_lease_epoch_entry) {
+    std::optional<CoarseTimePoint> deadline) {
   VLOG(3) << __PRETTY_FUNCTION__;
   auto unlock_objects = std::make_shared<
       UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>>(
       master_, catalog_manager_, this, req, std::move(callback), std::move(context), leader_epoch,
-      /* requestor_latest_lease_epoch */ std::nullopt, remove_lease_epoch_entry);
+      /* requestor_latest_lease_epoch */ std::nullopt, deadline);
   unlock_objects->Launch();
 }
 
@@ -666,15 +746,43 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
 
   PopulateDbCatalogVersionCache(req);
   return UnlockObject(
-      std::move(req), std::nullopt /* context */, std::nullopt /* leader epoch */,
+      std::move(req), /* context */ std::nullopt,
+      /* leader epoch */ std::nullopt,
       [txn_id](Status s) {
         LOG_IF(WARNING, !s.ok()) << "Releasing exclusive object locks failed for txn " << txn_id;
-      });
+      },
+      /* deadline */ std::nullopt);
 }
 
-void ObjectLockInfoManager::Impl::ReleaseLocksHeldByExpiredLeaseEpoch(
-    const std::string& tserver_uuid, uint64 max_lease_epoch_to_release, bool wait,
-    std::optional<LeaderEpoch> leader_epoch) {
+Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
+    const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
+    const LeaderEpoch& epoch) {
+  if (!FLAGS_TEST_enable_ysql_operation_lease &&
+      !FLAGS_TEST_enable_object_locking_for_table_locks) {
+    return STATUS(NotSupported, "The ysql lease is currently a test feature.");
+  }
+  // Sanity check that the tserver has already registered with the same instance_seqno.
+  RETURN_NOT_OK(master_->ts_manager()->LookupTS(req.instance()));
+  auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
+  auto lock_opt = object_lock_info->RefreshYsqlOperationLease(req.instance());
+  if (!lock_opt) {
+    resp.mutable_info()->set_new_lease(false);
+    if (req.needs_bootstrap()) {
+      *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfo();
+    }
+    return Status::OK();
+  }
+  RETURN_NOT_OK(catalog_manager_->sys_catalog()->Upsert(epoch, object_lock_info));
+  resp.mutable_info()->set_new_lease(true);
+  resp.mutable_info()->set_lease_epoch(lock_opt->mutable_data()->pb.lease_info().lease_epoch());
+  lock_opt->Commit();
+  *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfo();
+  return Status::OK();
+}
+
+std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByExpiredLeaseEpoch(
+    const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
+    std::optional<LeaderEpoch> leader_epoch, std::optional<CoarseTimePoint> deadline) {
   std::vector<std::shared_ptr<ReleaseObjectLockRequestPB>> requests_per_txn;
   VLOG_WITH_FUNC(2) << "Releasing locks for " << tserver_uuid << " up to lease epoch "
                     << max_lease_epoch_to_release;
@@ -701,13 +809,12 @@ void ObjectLockInfoManager::Impl::ReleaseLocksHeldByExpiredLeaseEpoch(
       }
     }
   }
-  // Do we want to wait for this? Or just let it go?
   VLOG_WITH_FUNC(2) << "Unlocking " << requests_per_txn.size() << " txns";
-  std::shared_ptr<CountDownLatch> latch =
-      std::make_shared<CountDownLatch>(requests_per_txn.size());
+  auto latch =
+    std::make_shared<CountDownLatch>(requests_per_txn.size());
   for (const auto& request : requests_per_txn) {
     UnlockObject(
-        *request, std::optional<rpc::RpcContext>(), leader_epoch,
+        *request, std::nullopt, leader_epoch,
         [latch, request](const Status& s) {
           WARN_NOT_OK(
               s, yb::Format(
@@ -715,27 +822,24 @@ void ObjectLockInfoManager::Impl::ReleaseLocksHeldByExpiredLeaseEpoch(
                      request->txn_id()));
           latch->CountDown();
         },
-        /* remove_lease_epoch_entry */ true);
+        deadline);
   }
-  if (wait) {
-    latch->Wait();
+  return latch;
+}
+
+std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfoManager::Impl::GetLeaseInfos() const {
+  LockGuard lock(mutex_);
+  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> result;
+  for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+    result[uuid] = object_info->LockForRead()->pb.lease_info();
   }
+  return result;
 }
 
 void ObjectLockInfoManager::Impl::BootstrapLocksPostLoad() {
-  // We just bootstrap locks for tservers with a live lease at catalog load time.
-  // todo(zdrudi): spawn tasks here to release all locks held by expired lease epochs.
-  auto ts_descs = master_->ts_manager()->GetAllDescriptorsWithALiveLease();
-  std::unordered_map<std::string, uint64_t> current_lease_epochs;
-  for (const auto& ts_desc : ts_descs) {
-    current_lease_epochs.insert({ts_desc->id(), ts_desc->LockForRead()->pb.lease_epoch()});
-  }
-  {
-    LockGuard lock(mutex_);
-    current_lease_epochs_.clear();
-    current_lease_epochs_ = std::move(current_lease_epochs);
-  }
-  BootstrapLocalLocks();
+  CHECK_OK(ts_local_lock_manager_during_catalog_loading()->BootstrapDdlObjectLocks(
+      ExportObjectLockInfo()));
 }
 
 void ObjectLockInfoManager::Impl::UpdateObjectLocks(
@@ -765,19 +869,107 @@ void ObjectLockInfoManager::Impl::Clear() {
   local_lock_manager_.reset(new tserver::TSLocalLockManager(clock_, master_->tablet_server()));
 }
 
-void ObjectLockInfoManager::Impl::UpdateTabletServerLeaseEpoch(
-    const std::string& tserver_uuid, uint64_t current_lease_epoch) {
-  LockGuard lock(mutex_);
-  current_lease_epochs_[tserver_uuid] = current_lease_epoch;
-}
-
 std::optional<uint64_t> ObjectLockInfoManager::Impl::GetLeaseEpoch(const std::string& ts_uuid) {
   LockGuard lock(mutex_);
-  const auto it = current_lease_epochs_.find(ts_uuid);
-  if (it == current_lease_epochs_.end()) {
+  auto it = object_lock_infos_map_.find(ts_uuid);
+  if (it == object_lock_infos_map_.end()) {
     return std::nullopt;
   }
-  return it->second;
+  return it->second->LockForRead()->pb.lease_info().lease_epoch();
+}
+
+void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs() {
+  auto current_time = MonoTime::Now();
+  LeaderEpoch leader_epoch;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+    if (!l.IsInitializedAndIsLeader()) {
+      return;
+    }
+    leader_epoch = l.epoch();
+  }
+  std::vector<std::shared_ptr<ObjectLockInfo>> expiring_leases;
+  std::vector<std::shared_ptr<ObjectLockInfo>>
+      infos_with_expired_lease_epochs;
+  {
+    LockGuard lock(mutex_);
+    auto lease_ttl =
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
+    for (const auto& [_, object_info] : object_lock_infos_map_) {
+      auto object_info_lock = object_info->LockForRead();
+      if (object_info_lock->pb.lease_info().live_lease() &&
+          current_time.GetDeltaSince(object_info->last_ysql_lease_refresh()) > lease_ttl) {
+        expiring_leases.push_back(object_info);
+      } else {
+        for (const auto& [lease_epoch, _] : object_info_lock->pb.lease_epochs()) {
+          if (lease_epoch != object_info_lock->pb.lease_info().lease_epoch() ||
+              !object_info_lock->pb.lease_info().live_lease()) {
+            infos_with_expired_lease_epochs.push_back(object_info);
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (expiring_leases.empty() && infos_with_expired_lease_epochs.empty()) {
+    return;
+  }
+  // Loop again through the expiring leases to confirm mutations by acquiring the write locks.
+  std::vector<ObjectLockInfo*> object_infos_to_write;
+  std::vector<ObjectLockInfo::WriteLock> write_locks;
+  for (const auto& object_info : expiring_leases) {
+    auto object_info_lock = object_info->LockForWrite();
+    if (object_info_lock->pb.lease_info().live_lease() &&
+        current_time.GetDeltaSince(object_info->last_ysql_lease_refresh()) >
+            MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms))) {
+      object_info_lock.mutable_data()->pb.mutable_lease_info()->set_live_lease(false);
+      object_infos_to_write.push_back(object_info.get());
+      if (object_info_lock->pb.lease_epochs_size() > 0) {
+        infos_with_expired_lease_epochs.push_back(object_info);
+      }
+      write_locks.push_back(std::move(object_info_lock));
+    }
+  }
+  auto write_status = catalog_manager_->sys_catalog()->Upsert(leader_epoch, object_infos_to_write);
+  if (!write_status.ok()) {
+    LOG(WARNING) << Format(
+        "Object lock cleanup task failed to mark leases for tservers $0 as expired, got error: $1",
+        yb::ToString(std::ranges::views::transform(
+            object_infos_to_write, [](const auto& object_lock) { return object_lock->id(); })),
+        write_status);
+    return;
+  }
+  for (auto& lock : write_locks) {
+    lock.Commit();
+  }
+  auto deadline = ToCoarse(
+      MonoTime::Now() +
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_object_lock_cleanup_rpc_timeout_ms)));
+  for (const auto& object_info : infos_with_expired_lease_epochs) {
+    auto it = expired_lease_epoch_cleanup_tasks_.find(object_info->id());
+    if (it != expired_lease_epoch_cleanup_tasks_.end() && it->second->count() > 0) {
+      // Already a task in progress to clean this up.
+      continue;
+    }
+    std::optional<uint64_t> max_lease_epoch_to_clean;
+    auto object_info_lock = object_info->LockForRead();
+    uint64_t min_lease_epoch_to_keep = object_info_lock->pb.lease_info().live_lease()
+                                           ? object_info_lock->pb.lease_info().lease_epoch()
+                                           : std::numeric_limits<uint64_t>::max();
+    for (const auto& [lease_epoch, _] : object_info_lock->pb.lease_epochs()) {
+      if (lease_epoch >= min_lease_epoch_to_keep) {
+        continue;
+      }
+      max_lease_epoch_to_clean =
+          max_lease_epoch_to_clean ? std::max(*max_lease_epoch_to_clean, lease_epoch) : lease_epoch;
+    }
+    if (!max_lease_epoch_to_clean) {
+      continue;
+    }
+    expired_lease_epoch_cleanup_tasks_[object_info->id()] = ReleaseLocksHeldByExpiredLeaseEpoch(
+        object_info->id(), *max_lease_epoch_to_clean, leader_epoch, deadline);
+  }
+  // todo(zdrudi): GC tasks which have finished. maybe do that first in this function.
 }
 
 template <class Req, class Resp>
@@ -785,7 +977,7 @@ UpdateAllTServers<Req, Resp>::UpdateAllTServers(
     Master* master, CatalogManager* catalog_manager, ObjectLockInfoManager::Impl* olm,
     const Req& req, StdStatusCallback callback, std::optional<rpc::RpcContext> context,
     std::optional<LeaderEpoch> epoch, std::optional<uint64_t> requestor_latest_lease_epoch,
-    bool remove_lease_epoch_entry)
+    std::optional<CoarseTimePoint> deadline)
     : epoch_(epoch),
       master_(master),
       catalog_manager_(catalog_manager),
@@ -794,16 +986,16 @@ UpdateAllTServers<Req, Resp>::UpdateAllTServers(
       callback_(callback),
       context_(std::move(context)),
       requestor_latest_lease_epoch_(requestor_latest_lease_epoch),
-      remove_lease_epoch_entry_(remove_lease_epoch_entry),
       trace_(Trace::CurrentTrace()) {
   VLOG(3) << __PRETTY_FUNCTION__;
 }
 
 template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::Done(size_t i, const Status& s) {
-  if (ts_descriptors_[i]->HasLiveYsqlOperationLease()) {
+  if (s.ok() || object_lock_info_manager_->TabletServerHasLiveLease(ts_descriptors_[i]->id())) {
     statuses_[i] = s;
   } else {
+    // If the tablet server does not have a live lease then ignore it.
     statuses_[i] = Status::OK();
   }
   TRACE_TO(
@@ -842,7 +1034,7 @@ void UpdateAllTServers<Req, Resp>::Launch() {
   }
 
   // todo(zdrudi): special case for 0 tservers with a live lease. This doesn't work.
-  ts_descriptors_ = master_->ts_manager()->GetAllDescriptorsWithALiveLease();
+  ts_descriptors_ = object_lock_info_manager_->GetAllTSDescriptorsWithALiveLease();
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
   LaunchFrom(0);
 }
@@ -953,7 +1145,7 @@ UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB
   SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
   RETURN_NOT_OK(CheckLeaderLockStatus(l, epoch_));
   // Persist the request.
-  auto s = object_lock_info_manager_->PersistRequest(*epoch_, req_, remove_lease_epoch_entry_);
+  auto s = object_lock_info_manager_->PersistRequest(*epoch_, req_);
   if (!s.ok()) {
     LOG(WARNING) << "Failed to update object lock " << s;
     return s.CloneAndReplaceCode(Status::kRemoteError);
@@ -986,7 +1178,7 @@ bool UpdateAllTServers<
     ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>::RelaunchIfNecessary() {
   TRACE_TO(trace(), "Relaunching");
   auto old_size = ts_descriptors_.size();
-  auto current_ts_descriptors = master_->ts_manager()->GetAllDescriptorsWithALiveLease();
+  auto current_ts_descriptors = object_lock_info_manager_->GetAllTSDescriptorsWithALiveLease();
   for (const auto& ts_descriptor : current_ts_descriptors) {
     if (std::find(ts_descriptors_.begin(), ts_descriptors_.end(), ts_descriptor) ==
         ts_descriptors_.end()) {
@@ -1062,6 +1254,17 @@ template <class Req, class Resp>
 void UpdateTServer<Req, Resp>::Finished(const Status& status) {
   VLOG(3) << ToString() << __func__ << " (" << status << ")";
   callback_(status);
+}
+
+template <class Req, class Resp>
+bool UpdateTServer<Req, Resp>::RetryTaskAfterRPCFailure(const Status& status) {
+  if (!shared_all_tservers_->TabletServerHasLiveLease(permanent_uuid_)) {
+    LOG(WARNING) << "TS " << permanent_uuid_
+                 << " no longer has a live lease. Ignoring this tserver for object lock task "
+                 << description() << ", rpc status: " << rpc_.status();
+    return false;
+  }
+  return true;
 }
 
 }  // namespace master

@@ -945,5 +945,22 @@ std::string BackendsCatalogVersionTS::LogPrefix() const {
   }
 }
 
+bool BackendsCatalogVersionTS::RetryTaskAfterRPCFailure(const Status& status) {
+  auto ts = target_ts_desc();
+  if (status.IsRemoteError() &&
+      rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " is on an older version that doesn't"
+                             << " support backends catalog version RPC. Ignoring.";
+    return false;
+  } else if (!ts->HasYsqlCatalogLease()) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " catalog lease expired. Assume backends"
+                             << " on that TS will be resolved to sufficient catalog version";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace master
 }  // namespace yb

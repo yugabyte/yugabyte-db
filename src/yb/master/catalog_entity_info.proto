@@ -426,6 +426,17 @@ message SysObjectLockEntryPB {
 
   // lease_epoch -> Transaction ...
   map<uint64, TransactionSubtxnMapPB> lease_epochs = 1;
+
+  message LeaseInfoPB {
+    // Whether the lease is currently live.
+    optional bool live_lease = 1;
+
+    optional uint64 lease_epoch = 2;
+
+    // The instance_seqno of the tserver process to which this lease was granted.
+    optional int64 instance_seqno = 3;
+  }
+  optional LeaseInfoPB lease_info = 2;
 }
 
 message SysXClusterConfigEntryPB {
@@ -1005,10 +1016,6 @@ message SysTabletServerEntryPB {
   // registered in memory before persistence was enabled to re-register and have their entry
   // persisted.
   optional bool persisted = 6;
-
-  optional bool live_client_operation_lease = 7;
-
-  optional uint64 lease_epoch = 8;
 
   optional VersionInfoPB version_info = 9;
 }

@@ -1351,6 +1351,41 @@ std::string DdlLogEntry::id() const {
 }
 
 // ================================================================================================
+// ObjectLockInfo
+// ================================================================================================
+
+std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
+    const NodeInstancePB& instance) {
+  auto l = LockForWrite();
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+  if (l->pb.lease_info().live_lease() &&
+      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+    return std::nullopt;
+  }
+  auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
+  lease_info.set_live_lease(true);
+  lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
+  lease_info.set_instance_seqno(instance.instance_seqno());
+  return std::move(l);
+}
+
+void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
+  MetadataCowWrapper<PersistentObjectLockInfo>::Load(metadata);
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+}
+
+MonoTime ObjectLockInfo::last_ysql_lease_refresh() const {
+  std::lock_guard l(mutex_);
+  return last_ysql_lease_refresh_;
+}
+
+// ================================================================================================
 // CDCStreamInfo
 // ================================================================================================
 

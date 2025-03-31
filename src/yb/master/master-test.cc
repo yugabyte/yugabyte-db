@@ -98,6 +98,7 @@ DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -2858,6 +2859,8 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
 }
 
 TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+
   const char* kTsUUID = "my-ts-uuid";
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
   auto result = ddl_client.RefreshYsqlLease(kTsUUID, 1);
@@ -2866,6 +2869,7 @@ TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
 }
 
 TEST_F(MasterTest, RefreshYsqlLease) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
   const char *kTsUUID = "my-ts-uuid";
 
   SysClusterConfigEntryPB config =

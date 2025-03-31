@@ -1664,6 +1664,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<TSDescriptorPtr> LookupTSByUUID(const TabletServerId& tserver_uuid);
 
+  rpc::Scheduler& Scheduler() override;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2691,8 +2693,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void RemoveHiddenColocatedTableFromTablet(
       const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
       const LeaderEpoch& epoch);
-
-  rpc::Scheduler& Scheduler() override;
 
   int64_t LeaderTerm() override;
 

@@ -56,6 +56,7 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
 
@@ -762,17 +763,25 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       auto descs = (*leader)->ts_manager().GetAllDescriptors();
+      auto leases = (*leader)->catalog_manager_impl().object_lock_info_manager()->GetLeaseInfos();
       if (live_only || descs.size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-        size_t match_count =
-            std::ranges::count_if(descs, [&mini_cluster_tservers, &live_only](const auto& desc) {
+        size_t match_count = std::ranges::count_if(
+            descs, [&mini_cluster_tservers, &live_only, &leases](const auto& desc) {
               auto it = mini_cluster_tservers.find(desc->permanent_uuid());
-              return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
-                     desc->has_tablet_report() && (!live_only || desc->IsLive()) &&
-                     (!FLAGS_TEST_enable_object_locking_for_table_locks ||
-                      desc->HasLiveYsqlOperationLease());
+              bool present_and_live = it != mini_cluster_tservers.end() &&
+                                      it->second == desc->latest_seqno() &&
+                                      desc->has_tablet_report() && (!live_only || desc->IsLive());
+              if (!present_and_live || !FLAGS_TEST_enable_object_locking_for_table_locks) {
+                return present_and_live;
+              }
+              auto leases_it = leases.find(desc->permanent_uuid());
+              if (leases_it == leases.end()) {
+                return false;
+              }
+              return leases_it->second.live_lease();
             });
 
         if (match_count == count) {

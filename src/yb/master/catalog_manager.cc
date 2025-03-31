@@ -1001,12 +1001,10 @@ Status CatalogManager::Init() {
 
   RETURN_NOT_OK(xcluster_manager_->Init());
 
-  master_->ts_manager()->SetLeaseExpiredCallback(std::bind(
-      &ObjectLockInfoManager::ReleaseLocksHeldByExpiredLeaseEpoch, object_lock_info_manager_.get(),
-      _1, _2, false, _3));
-
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
+
+  object_lock_info_manager_->Start();
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs > 0)) {
     LOG_WITH_PREFIX(INFO) << "Simulating slow system tablet bootstrap";
@@ -5843,18 +5841,7 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
                                         RefreshYsqlLeaseResponsePB* resp,
                                         rpc::RpcContext* rpc,
                                         const LeaderEpoch& epoch) {
-  auto lease_update =
-      VERIFY_RESULT(master_->ts_manager()->RefreshYsqlLease(epoch, req->instance()));
-  *resp->mutable_info() = lease_update.ToPB();
-  if (resp->info().new_lease()) {
-    object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
-        req->instance().permanent_uuid(), resp->info().lease_epoch());
-  }
-  if (req->needs_bootstrap() || resp->info().new_lease()) {
-    *resp->mutable_info()->mutable_ddl_lock_entries() =
-        object_lock_info_manager()->ExportObjectLockInfo();
-  }
-  return Status::OK();
+  return object_lock_info_manager_->RefreshYsqlLease(*req, *resp, *rpc, epoch);
 }
 
 Status CatalogManager::TruncateTable(const TableId& table_id,
