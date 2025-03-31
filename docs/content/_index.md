@@ -11,9 +11,9 @@ showRightNav: true
 unversioned: true
 ---
 
-YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
+<!--YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
 
-YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.
+YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.-->
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
@@ -33,40 +33,61 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 {{< /sections/2-boxes >}}
 
-### Explore
+{{< sections/3-boxes-top-image >}}
+  {{< sections/3-box-card
+    title="Run a real world global app"
+    description="Explore core features of YugabyteDB using a globally distributed application in real time."
+    buttonText="Product Lab"
+    buttonUrl="/preview/yugabyte-cloud/managed-labs/"
+    imageAlt="Run a real world demo app"
+    imageUrl="/images/homepage/run-real-world-demo-app.svg"
+  >}}
 
+  {{< sections/3-box-card
+    title="Build a Hello World application"
+    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
+    buttonText="Hello World"
+    buttonUrl="/preview/tutorials/build-apps/"
+    imageAlt="Build a Hello world application"
+    imageUrl="/images/homepage/build-hello-world-application.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="Learn the essentials"
+    description="Learn YugabyteDB essential features by building a scalable and fault-tolerant streaming application."
+    buttonText="Build and Learn"
+    buttonUrl="/preview/tutorials/build-and-learn/"
+    imageAlt="Explore Distributed SQL capabilities"
+    imageUrl="/images/homepage/explore-distributed-sql-capabilities.svg"
+  >}}
+{{< /sections/3-boxes-top-image >}}
+
+<!--
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="New to YugabyteDB"
-    description="Why YugabyteDB should power your next cloud-native application."
-    linkText1="Key benefits"
-    linkUrl1="/preview/features/"
-    linkText2="Quick start"
-    linkUrl2="/preview/quick-start-yugabytedb-managed"
     linkText3="Explore YugabyteDB"
     linkUrl3="/preview/explore/"
   >}}
 
   {{< sections/3-box-card
-    title="For Developers"
-    description="Get instantly productive with familiar APIs and drivers."
-    linkText1="Build a Hello world application"
-    linkUrl1="/preview/develop/build-apps/"
-    linkText2="Connect using drivers and ORMs"
+    title="Develop"
+    linkText1="Hello world"
+    linkUrl1="/preview/tutorials/build-apps/"
+    linkText2="Drivers and ORMs"
     linkUrl2="/preview/drivers-orms/"
     linkText3="Distributed SQL APIs"
     linkUrl3="/preview/api/"
   >}}
 
   {{< sections/3-box-card
-    title="For DevOps"
-    description="Get flexible deployment and maintenance without downtime."
-    linkText1="Hybrid and multi-cloud deployment"
-    linkUrl1="/preview/develop/multi-cloud/"
-    linkText2="Built-in resilience and availability"
+    title="Why YugabyteDB"
+    linkText2="Resilience and availability"
     linkUrl2="/preview/explore/fault-tolerance/"
-    linkText3="Effortless horizontal scaling"
+    linkText3="Horizontal scaling"
     linkUrl3="/preview/explore/linear-scalability/"
+    linkText1="Flexible deployment"
+    linkUrl1="/preview/explore/multi-region-deployments/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -111,7 +132,6 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 {{< /sections/3-boxes >}}
 
-<!--
 ### New to YugabyteDB?
 
 {{< sections/3-boxes >}}
@@ -248,7 +268,6 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     imageUrl="/icons/geo.svg"
   >}}
 {{< /sections/3-boxes >}}
--->
 
 ### More resources
 
@@ -276,7 +295,6 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     linkUrl3="https://www.yugabyte.com/blog/"
   >}}
 
-<!--
   {{< sections/3-box-card
     title="Distributed SQL APIs"
     linkText1="YSQL"
@@ -284,10 +302,8 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     linkText2="YCQL"
     linkUrl2="/preview/api/ycql/"
   >}}
--->
 {{< /sections/3-boxes >}}
 
-<!--
 ## Introduction to YugabyteDB
 
 ##### Video: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
