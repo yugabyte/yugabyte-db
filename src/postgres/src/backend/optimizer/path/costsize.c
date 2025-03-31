@@ -6135,9 +6135,9 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 				{
 					ybctid_width += get_attavgwidth(index->indexoid, i + 1) + 1;
 
-					Relation 	baserel = index_open(index->indexoid, NoLock);
+					Relation indexrel = index_open(index->indexoid, NoLock);
 					Form_pg_attribute att =
-						TupleDescAttr(baserel->rd_att, i + 1);
+						TupleDescAttr(indexrel->rd_att, i + 1);
 					if (att->attlen < 0)
 					{
 						/* 
@@ -6147,6 +6147,8 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						 */
 						++ybctid_width;
 					}
+
+					index_close(indexrel, NoLock);
 				}
 				else if (index->indexkeys[i] > 0) /* Index key is user column */
 				{
