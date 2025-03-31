@@ -2420,6 +2420,16 @@ void TabletServiceAdminImpl::UpdateTransactionTablesVersion(
   server_->TransactionManager().UpdateTransactionTablesVersion(req->version(), callback);
 }
 
+void TabletServiceAdminImpl::GetPgSocketDir(
+    const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp, rpc::RpcContext context) {
+  auto result = GetLocalPgHostPort();
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  HostPortToPB(*result, resp->mutable_pg_socket_dir());
+  context.RespondSuccess();
+}
 
 bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
   return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();

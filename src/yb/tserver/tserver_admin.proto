@@ -36,6 +36,7 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
 import "yb/consensus/metadata.proto";
@@ -372,6 +373,13 @@ message EnableDbConnsResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message GetPgSocketDirRequestPB {}
+
+message GetPgSocketDirResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional HostPortPB pg_socket_dir = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -426,4 +434,7 @@ service TabletServerAdminService {
 
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
+
+  rpc GetPgSocketDir(GetPgSocketDirRequestPB)
+      returns (GetPgSocketDirResponsePB);
 }
