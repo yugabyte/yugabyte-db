@@ -2434,6 +2434,98 @@ yb_active_session_history| SELECT yb_active_session_history.sample_time,
     yb_active_session_history.wait_event_type,
     yb_active_session_history.ysql_dbid
    FROM yb_active_session_history() yb_active_session_history(sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, top_level_node_id, query_id, pid, client_node_ip, wait_event_aux, sample_weight, wait_event_type, ysql_dbid);
+yb_int_pg_stats_v11| SELECT n.nspname AS schemaname,
+    c.relname AS tablename,
+    a.attname,
+    s.stainherit AS inherited,
+    s.stanullfrac AS null_frac,
+    s.stawidth AS avg_width,
+    s.stadistinct AS n_distinct,
+        CASE
+            WHEN (s.stakind1 = 1) THEN s.stavalues1
+            WHEN (s.stakind2 = 1) THEN s.stavalues2
+            WHEN (s.stakind3 = 1) THEN s.stavalues3
+            WHEN (s.stakind4 = 1) THEN s.stavalues4
+            WHEN (s.stakind5 = 1) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS most_common_vals,
+        CASE
+            WHEN (s.stakind1 = 1) THEN s.stanumbers1
+            WHEN (s.stakind2 = 1) THEN s.stanumbers2
+            WHEN (s.stakind3 = 1) THEN s.stanumbers3
+            WHEN (s.stakind4 = 1) THEN s.stanumbers4
+            WHEN (s.stakind5 = 1) THEN s.stanumbers5
+            ELSE NULL::real[]
+        END AS most_common_freqs,
+        CASE
+            WHEN (s.stakind1 = 2) THEN s.stavalues1
+            WHEN (s.stakind2 = 2) THEN s.stavalues2
+            WHEN (s.stakind3 = 2) THEN s.stavalues3
+            WHEN (s.stakind4 = 2) THEN s.stavalues4
+            WHEN (s.stakind5 = 2) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS histogram_bounds,
+        CASE
+            WHEN (s.stakind1 = 3) THEN s.stanumbers1[1]
+            WHEN (s.stakind2 = 3) THEN s.stanumbers2[1]
+            WHEN (s.stakind3 = 3) THEN s.stanumbers3[1]
+            WHEN (s.stakind4 = 3) THEN s.stanumbers4[1]
+            WHEN (s.stakind5 = 3) THEN s.stanumbers5[1]
+            ELSE NULL::real
+        END AS correlation,
+        CASE
+            WHEN (s.stakind1 = 4) THEN s.stavalues1
+            WHEN (s.stakind2 = 4) THEN s.stavalues2
+            WHEN (s.stakind3 = 4) THEN s.stavalues3
+            WHEN (s.stakind4 = 4) THEN s.stavalues4
+            WHEN (s.stakind5 = 4) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS most_common_elems,
+        CASE
+            WHEN (s.stakind1 = 4) THEN s.stanumbers1
+            WHEN (s.stakind2 = 4) THEN s.stanumbers2
+            WHEN (s.stakind3 = 4) THEN s.stanumbers3
+            WHEN (s.stakind4 = 4) THEN s.stanumbers4
+            WHEN (s.stakind5 = 4) THEN s.stanumbers5
+            ELSE NULL::real[]
+        END AS most_common_elem_freqs,
+        CASE
+            WHEN (s.stakind1 = 5) THEN s.stanumbers1
+            WHEN (s.stakind2 = 5) THEN s.stanumbers2
+            WHEN (s.stakind3 = 5) THEN s.stanumbers3
+            WHEN (s.stakind4 = 5) THEN s.stanumbers4
+            WHEN (s.stakind5 = 5) THEN s.stanumbers5
+            ELSE NULL::real[]
+        END AS elem_count_histogram,
+        CASE
+            WHEN (s.stakind1 = 6) THEN s.stavalues1
+            WHEN (s.stakind2 = 6) THEN s.stavalues2
+            WHEN (s.stakind3 = 6) THEN s.stavalues3
+            WHEN (s.stakind4 = 6) THEN s.stavalues4
+            WHEN (s.stakind5 = 6) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS range_length_histogram,
+        CASE
+            WHEN (s.stakind1 = 6) THEN s.stanumbers1[1]
+            WHEN (s.stakind2 = 6) THEN s.stanumbers2[1]
+            WHEN (s.stakind3 = 6) THEN s.stanumbers3[1]
+            WHEN (s.stakind4 = 6) THEN s.stanumbers4[1]
+            WHEN (s.stakind5 = 6) THEN s.stanumbers5[1]
+            ELSE NULL::real
+        END AS range_empty_frac,
+        CASE
+            WHEN (s.stakind1 = 7) THEN s.stavalues1
+            WHEN (s.stakind2 = 7) THEN s.stavalues2
+            WHEN (s.stakind3 = 7) THEN s.stavalues3
+            WHEN (s.stakind4 = 7) THEN s.stavalues4
+            WHEN (s.stakind5 = 7) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS range_bounds_histogram
+   FROM (((pg_statistic s
+     JOIN pg_class c ON ((c.oid = s.starelid)))
+     JOIN pg_attribute a ON (((c.oid = a.attrelid) AND (a.attnum = s.staattnum))))
+     LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
+  WHERE ((NOT a.attisdropped) AND has_column_privilege(c.oid, a.attnum, 'select'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 yb_local_tablets| SELECT yb_local_tablets.tablet_id,
     yb_local_tablets.table_id,
     yb_local_tablets.table_type,
