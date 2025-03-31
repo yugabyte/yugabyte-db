@@ -1,6 +1,7 @@
 <!--
 +++
 private = true
+block_indexing = true
 +++
 -->
 

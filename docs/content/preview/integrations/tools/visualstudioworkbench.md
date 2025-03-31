@@ -13,6 +13,7 @@ type: docs
 <!--
 +++
 private = true
+block_indexing = true
 +++
 -->
 
