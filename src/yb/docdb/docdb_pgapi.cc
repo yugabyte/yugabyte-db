@@ -124,7 +124,7 @@ Status DocPgAddVarRef(size_t column_idx,
                       int32_t collid,
                       std::map<int, const DocPgVarRef> *var_map) {
   if (var_map->find(attno) != var_map->end()) {
-    VLOG(1) << "Attribute " << attno << " is already processed";
+    VLOG(2) << "Attribute " << attno << " is already processed";
     return Status::OK();
   }
   var_map->emplace(std::piecewise_construct,
@@ -134,7 +134,7 @@ Status DocPgAddVarRef(size_t column_idx,
                      .var_type = DocPgGetTypeEntity({typid, typmod}),
                      .var_type_attrs = {typmod},
                    }));
-  VLOG(1) << "Attribute " << attno << " has been processed";
+  VLOG(2) << "Attribute " << attno << " has been processed";
   return Status::OK();
 }
 
@@ -165,7 +165,7 @@ Status DocPgPrepareExpr(const std::string& expr_str,
       .var_type = DocPgGetTypeEntity({typid, typmod}),
       .var_type_attrs = {typmod},
     };
-    VLOG(1) << "Processed expression return type";
+    VLOG(2) << "Processed expression return type";
   }
   return Status::OK();
 }
@@ -179,7 +179,7 @@ Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
   int32_t min_attno = var_map.begin()->first;
   int32_t max_attno = var_map.rbegin()->first;
 
-  VLOG(2) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
+  VLOG(3) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
   PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, expr_ctx));
   return Status::OK();
 }
@@ -215,7 +215,7 @@ Status DocPgPrepareExprCtx(const dockv::PgTableRow& table_row,
       PG_RETURN_NOT_OK(PgValueToDatumHelper(
           arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum));
     }
-    VLOG(1) << "Adding value for attno " << attno;
+    VLOG(2) << "Adding value for attno " << attno;
     PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }
   return Status::OK();
@@ -1546,7 +1546,7 @@ Status SetValueFromQLBinaryHelper(
       string label = "";
       if (enum_oid_label_map.find((uint32_t)enum_oid) != enum_oid_label_map.end()) {
         label = enum_oid_label_map.at((uint32_t)enum_oid);
-        VLOG(1) << "For enum oid: " << enum_oid << " found label" << label;
+        VLOG(2) << "For enum oid: " << enum_oid << " found label" << label;
       } else {
         LOG(INFO) << "For enum oid: " << enum_oid << " no label found in cache";
         return STATUS_SUBSTITUTE(CacheMissError, "enum");  // Do not change the message.

@@ -48,6 +48,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/var.h"
+#include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/sampling.h"
@@ -215,7 +216,9 @@ ybcGetForeignPlan(PlannerInfo *root,
 	{
 		List *colrefs = NIL;
 		Expr *expr = (Expr *) lfirst(lc);
-		if (YbCanPushdownExpr(expr, &colrefs))
+
+		if (YbCanPushdownExpr(expr, &colrefs,
+							  planner_rt_fetch(scan_relid, root)->relid))
 		{
 			remote_quals = lappend(remote_quals, expr);
 			remote_colrefs = list_concat(remote_colrefs, colrefs);

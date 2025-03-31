@@ -24,6 +24,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_proc.h"
@@ -282,6 +283,26 @@ bool yb_can_pushdown_func(Oid funcid)
 		}
 	}
 	ReleaseSysCache(tuple);
+
+	/*
+	 * Check for mixed mode whitelist at the end, in case we accidentally
+	 * whitelisted something that is disallowed for a reason above.
+	 */
+	if (result && yb_major_version_upgrade_compatibility == 11)
+	{
+		for (int i = 0; i < yb_funcs_safe_for_mixed_mode_pushdown_count; ++i)
+		{
+			if (funcid == yb_funcs_safe_for_mixed_mode_pushdown[i])
+				return true;
+		}
+		return false;
+	}
+	else if (result && yb_major_version_upgrade_compatibility > 0)
+	{
+		/* YB_UPGRADE: Handle this case for each new PG version. */
+		Assert(false);
+	}
+
 	return result;
 }
 
@@ -311,6 +332,7 @@ yb_check_collation(Oid collation)
 	 */
 	if (!YBIsDbLocaleDefault())
 		return false;
+
 	return true;
 }
 
@@ -332,6 +354,19 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			/* DocDB is not aware of Postgres virtual attributes */
 			if (!AttrNumberIsForUserDefinedAttr(attno))
 				return true;
+
+			/* Collation values changed between PG11 and PG15 */
+			if (yb_major_version_upgrade_compatibility == 11)
+			{
+				if (var_expr->vartype == NAMEOID)
+					return true;
+			}
+			else if (yb_major_version_upgrade_compatibility > 0)
+			{
+				/* YB_UPGRADE: Handle this case for each new PG version. */
+				Assert(false);
+			}
+
 			/* Need to convert values between DocDB and Postgres formats */
 			if (!YBCPgFindTypeEntity(var_expr->vartype))
 				return true;
@@ -392,6 +427,14 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			ScalarArrayOpExpr *saop_expr = castNode(ScalarArrayOpExpr, node);
 			if (!yb_enable_saop_pushdown)
 				return true;
+
+			/* ScalarArrayOpExprs changed serialization in PG15. */
+			if (yb_major_version_upgrade_compatibility == 11)
+				return true;
+			else if (yb_major_version_upgrade_compatibility > 0)
+				/* YB_UPGRADE: Handle this case for each new PG version. */
+				Assert(false);
+
 			if (!yb_check_collation(saop_expr->inputcollid))
 				return true;
 			if (!yb_can_pushdown_func(saop_expr->opfuncid))
@@ -399,10 +442,10 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			if (list_length(saop_expr->args) == 2)
 			{
 				/* Check if DocDB can deconstruct the array */
-				Oid elmtype = get_element_type(exprType(lsecond(saop_expr->args)));
-				int16_t elmlen;
-				bool elmbyval;
-				char elmalign;
+				Oid	elmtype = get_element_type(exprType(lsecond(saop_expr->args)));
+				int16_t	elmlen;
+				bool	elmbyval;
+				char	elmalign;
 				if (!YbTypeDetails(elmtype, &elmlen, &elmbyval, &elmalign))
 					return true;
 			}
@@ -413,6 +456,14 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 		case T_CaseExpr:
 		{
 			CaseExpr *case_expr = castNode(CaseExpr, node);
+
+			/* CaseExprs changed serialization in PG15 */
+			if (yb_major_version_upgrade_compatibility == 11)
+				return true;
+			else if (yb_major_version_upgrade_compatibility > 0)
+				/* YB_UPGRADE: Handle this case for each new PG version. */
+				Assert(false);
+
 			/*
 			 * Support for implicit equality comparison would require catalog
 			 * lookup to find equality operation for the argument data type.
@@ -474,15 +525,30 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
  *	  pushability, and implement evaluation of that node type instance in the
  *	  evalExpr() function.
  */
-bool YbCanPushdownExpr(Expr *pg_expr, List **colrefs)
+bool
+YbCanPushdownExpr(Expr *pg_expr, List **colrefs, Oid relid)
 {
-	/*
-	 * Respond with false if pushdown disabled in GUC, or during a YSQL major
-	 * upgrade.
-	 */
-	if (!yb_enable_expression_pushdown ||
-		yb_major_version_upgrade_compatibility > 0)
+	/* Respond with false if pushdown disabled in GUC. */
+	if (!yb_enable_expression_pushdown)
 		return false;
+
+	if (yb_major_version_upgrade_compatibility == 11)
+	{
+		if (!yb_mixed_mode_expression_pushdown)
+			return false;
+
+		/*
+		 * System attributes shifted by one in the PG11 -> PG15 upgrade. Until
+		 * we handle that, disable pushdown for all system tables.
+		 */
+		if (OidIsValid(relid) && IsCatalogClass(relid, NULL))
+			return false;
+	}
+	else if (yb_major_version_upgrade_compatibility > 0)
+	{
+		/* YB_UPGRADE: Handle this case for each new PG version. */
+		Assert(false);
+	}
 
 	return !yb_pushdown_walker((Node *) pg_expr, colrefs);
 }

@@ -327,6 +327,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
     "11.");
 DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDATOR(0, 11));
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_expression_pushdown, true,
+    "Enables expression pushdown for queries in mixed mode of a YSQL Major version upgrade.");
+
 DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;

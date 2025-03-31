@@ -301,6 +301,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
  *	  point to valid lists. The output parameters idx_remote_quals and
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
+ *    - relid is the OID of the relation being scanned.
  */
 void
 extract_pushdown_clauses(List *restrictinfo_list,
@@ -310,7 +311,8 @@ extract_pushdown_clauses(List *restrictinfo_list,
 						 List **rel_remote_quals,
 						 List **rel_colrefs,
 						 List **idx_remote_quals,
-						 List **idx_colrefs)
+						 List **idx_colrefs,
+						 Oid relid)
 {
 	ListCell *lc;
 	foreach(lc, restrictinfo_list)
@@ -329,7 +331,7 @@ extract_pushdown_clauses(List *restrictinfo_list,
 			 * Find column references. It has already been determined that
 			 * the expression is pushable.
 			 */
-			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
+			pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
 			Assert(pushable);
 
 			/*
@@ -744,7 +746,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	 * be updated.
 	 */
 	YbUpdateComputeIndexColumnReferences(rel, maybe_modified_cols, map,
-										 affected_entities, 
+										 affected_entities,
 										 modifyTable->yb_skip_entities,
 										 &nentities);
 
@@ -769,7 +771,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	qsort(affected_entities->col_info_list /* what to sort? */,
 		  nfields /* how many? */,
 		  sizeof(struct YbUpdateColInfo) /* how is it stored? */,
-		  YbQsortCompareColRefsList) /* how to sort? */; 
+		  YbQsortCompareColRefsList) /* how to sort? */;
 
 	/* Finally create the update matrix */
 	YbPopulateUpdateMatrix(affected_entities, nentities, nfields);

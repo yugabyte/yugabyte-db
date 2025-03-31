@@ -35,6 +35,8 @@ extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
 extern bool IsCatalogRelation(Relation relation);
 
+extern bool IsCatalogRelationOid(Oid relid); /* YB: copied from PG15 */
+
 extern bool IsSystemClass(Oid relid, Form_pg_class reltuple);
 extern bool IsToastClass(Form_pg_class reltuple);
 extern bool IsCatalogClass(Oid relid, Form_pg_class reltuple);

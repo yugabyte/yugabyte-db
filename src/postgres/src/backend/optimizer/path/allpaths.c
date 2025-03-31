@@ -213,7 +213,8 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 					foreach(lc, relation->baserestrictinfo)
 					{
 						RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
-						ri->yb_pushable = YbCanPushdownExpr(ri->clause, NULL);
+
+						ri->yb_pushable = YbCanPushdownExpr(ri->clause, NULL, rte->relid);
 					}
 				}
 			}
@@ -1145,7 +1146,7 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 					 * Hence re-evaluate pushability.
 					 */
 					childri->yb_pushable = rinfo->yb_pushable ||
-						YbCanPushdownExpr(childri->clause, NULL);
+						YbCanPushdownExpr(childri->clause, NULL, rte->relid);
 				}
 				childquals = lappend(childquals, childri);
 				/* track minimum security level among child quals */

@@ -203,6 +203,8 @@ extern bool yb_refresh_matview_in_place;
 
 extern int yb_major_version_upgrade_compatibility;
 
+extern bool yb_mixed_mode_expression_pushdown;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

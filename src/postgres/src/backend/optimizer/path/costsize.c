@@ -6122,7 +6122,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 		}
 		else
 		{
-			/* 
+			/*
 			 * Add 1 byte for null indicator and 8 bytes for size of the ybctid.
 			 */
 			ybctid_width += 9;
@@ -6140,10 +6140,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						TupleDescAttr(indexrel->rd_att, i + 1);
 					if (att->attlen < 0)
 					{
-						/* 
+						/*
 						 * attlen is negative if the attribute has variable
 						 * length. Add 1 byte because DocDB uses double
-						 * null termination. 
+						 * null termination.
 						 */
 						++ybctid_width;
 					}
@@ -6153,10 +6153,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 				else if (index->indexkeys[i] > 0) /* Index key is user column */
 				{
 					/*
-					 * For each key column, add 1 byte for value type and 
+					 * For each key column, add 1 byte for value type and
 					 * estimated average width of the column.
 					 */
-					ybctid_width += 
+					ybctid_width +=
 						get_attavgwidth(baserel_oid, index->indexkeys[i]) + 1;
 
 					Relation 	baserel = heap_open(baserel_oid, NoLock);
@@ -6164,10 +6164,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						TupleDescAttr(baserel->rd_att, index->indexkeys[i] - 1);
 					if (att->attlen < 0)
 					{
-						/* 
+						/*
 						 * attlen is negative if the attribute has variable
 						 * length. Add 1 byte because DocDB uses double
-						 * null termination. 
+						 * null termination.
 						 */
 						++ybctid_width;
 					}
@@ -6180,7 +6180,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 
 			if (index->nhashcolumns > 0)
 			{
-				/* 
+				/*
 				 * If there were hash and range keys, then the key is prefixed
 				 * with a 16 bit hash value of the hash columns. Add 1 byte
 				 * for the hash value type and 2 bytes for the hash value. Also
@@ -6191,7 +6191,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 
 			if (!is_primary_index)
 			{
-				/* 
+				/*
 				 * In the secondary index, the ybctid of the base table is part of
 				 * the secondary index key. It is stored in string encoded format.
 				 */
@@ -7009,7 +7009,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 							 need_remote_index_filters ? index : NULL,
 							 false /* bitmapindex */,
 							 &local_clauses, &base_table_pushed_down_filters, &base_table_colrefs,
-							 &index_pushed_down_filters, &index_colrefs);
+							 &index_pushed_down_filters, &index_colrefs,
+							 planner_rt_fetch(index->rel->relid, root)->relid);
 
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
@@ -7698,7 +7699,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 							 false /* bitmapindex */, &local_quals,
 							 &rel_remote_quals, &rel_colrefs,
 							 NULL /* idx_remote_quals */,
-							 NULL /* idx_colrefs */);
+							 NULL /* idx_colrefs */,
+							 planner_rt_fetch(baserel->relid, root)->relid);
 
 	tuples_scanned = clamp_row_est(adjusted_baserel_tuples *
 								   clauselist_selectivity(root, indexquals,

@@ -40,6 +40,7 @@
 #include "optimizer/var.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
+#include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
@@ -144,7 +145,8 @@ static double adjust_rowcount_for_semijoins(PlannerInfo *root,
 							  Index outer_relid,
 							  double rowcount);
 static double approximate_joinrel_size(PlannerInfo *root, Relids relids);
-static void match_restriction_clauses_to_index(RelOptInfo *rel,
+static void match_restriction_clauses_to_index(PlannerInfo *root,
+								   RelOptInfo *rel,
 								   IndexOptInfo *index,
 								   IndexClauseSet *clauseset);
 static void match_join_clauses_to_index(PlannerInfo *root,
@@ -154,11 +156,13 @@ static void match_join_clauses_to_index(PlannerInfo *root,
 static void match_eclass_clauses_to_index(PlannerInfo *root,
 							  IndexOptInfo *index,
 							  IndexClauseSet *clauseset);
-static void match_clauses_to_index(IndexOptInfo *index,
+static void match_clauses_to_index(PlannerInfo *root,
+					   IndexOptInfo *index,
 					   List *clauses,
 					   IndexClauseSet *clauseset,
 					   List **yb_bitmap_idx_pushdowns);
-static void match_clause_to_index(IndexOptInfo *index,
+static void match_clause_to_index(PlannerInfo *root,
+					  IndexOptInfo *index,
 					  RestrictInfo *rinfo,
 					  IndexClauseSet *clauseset,
 					  List **yb_bitmap_idx_pushdowns);
@@ -200,7 +204,7 @@ static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
 static bool is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
-static bool yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo);
+static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 
 /*
  * create_index_paths()
@@ -279,7 +283,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 		 * Identify the restriction clauses that can match the index.
 		 */
 		MemSet(&rclauseset, 0, sizeof(rclauseset));
-		match_restriction_clauses_to_index(rel, index, &rclauseset);
+		match_restriction_clauses_to_index(root, rel, index, &rclauseset);
 
 		/*
 		 * Build index paths from the restriction clauses.  These will be
@@ -1679,7 +1683,7 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 		 */
 		MemSet(&clauseset, 0, sizeof(clauseset));
 
-		match_clauses_to_index(index, clauses, &clauseset,
+		match_clauses_to_index(root, index, clauses, &clauseset,
 							   index->rel->is_yb_relation
 									? &yb_bitmap_idx_pushdowns : NULL);
 
@@ -1696,7 +1700,7 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 		 * here because those will be gathered from all clauses by
 		 * create_indexscan_plan.
 		 */
-		match_clauses_to_index(index, other_clauses, &clauseset, NULL);
+		match_clauses_to_index(root, index, other_clauses, &clauseset, NULL);
 
 		/*
 		 * Construct paths if possible.
@@ -2601,11 +2605,11 @@ approximate_joinrel_size(PlannerInfo *root, Relids relids)
  *	  Matching clauses are added to *clauseset.
  */
 static void
-match_restriction_clauses_to_index(RelOptInfo *rel, IndexOptInfo *index,
-								   IndexClauseSet *clauseset)
+match_restriction_clauses_to_index(PlannerInfo *root, RelOptInfo *rel,
+								   IndexOptInfo *index, IndexClauseSet *clauseset)
 {
 	/* We can ignore clauses that are implied by the index predicate */
-	match_clauses_to_index(index, index->indrestrictinfo, clauseset,
+	match_clauses_to_index(root, index, index->indrestrictinfo, clauseset,
 						   NULL /* yb_bitmap_idx_pushdowns */);
 }
 
@@ -2636,7 +2640,7 @@ match_join_clauses_to_index(PlannerInfo *root,
 		if (restriction_is_or_clause(rinfo))
 			*joinorclauses = lappend(*joinorclauses, rinfo);
 		else
-			match_clause_to_index(index, rinfo, clauseset,
+			match_clause_to_index(root, index, rinfo, clauseset,
 								  NULL /* yb_bitmap_idx_pushdowns */);
 	}
 }
@@ -2675,7 +2679,7 @@ match_eclass_clauses_to_index(PlannerInfo *root, IndexOptInfo *index,
 		 * since for non-btree indexes the EC's equality operators might not
 		 * be in the index opclass (cf ec_member_matches_indexcol).
 		 */
-		match_clauses_to_index(index, clauses, clauseset,
+		match_clauses_to_index(root, index, clauses, clauseset,
 							   NULL /* yb_bitmap_idx_pushdowns */);
 	}
 }
@@ -2686,7 +2690,8 @@ match_eclass_clauses_to_index(PlannerInfo *root, IndexOptInfo *index,
  *	  Matching clauses are added to *clauseset.
  */
 static void
-match_clauses_to_index(IndexOptInfo *index,
+match_clauses_to_index(PlannerInfo *root,
+					   IndexOptInfo *index,
 					   List *clauses,
 					   IndexClauseSet *clauseset,
 					   List **yb_bitmap_idx_pushdowns)
@@ -2697,7 +2702,7 @@ match_clauses_to_index(IndexOptInfo *index,
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 
-		match_clause_to_index(index, rinfo, clauseset,
+		match_clause_to_index(root, index, rinfo, clauseset,
 							  yb_bitmap_idx_pushdowns);
 	}
 }
@@ -2719,7 +2724,8 @@ match_clauses_to_index(IndexOptInfo *index,
  * same clause multiple times with different index columns.
  */
 static void
-match_clause_to_index(IndexOptInfo *index,
+match_clause_to_index(PlannerInfo *root,
+					  IndexOptInfo *index,
 					  RestrictInfo *rinfo,
 					  IndexClauseSet *clauseset,
 					  List **yb_bitmap_idx_pushdowns)
@@ -2758,7 +2764,7 @@ match_clause_to_index(IndexOptInfo *index,
 	}
 
 	if (IsYugaByteEnabled() && yb_bitmap_idx_pushdowns &&
-		yb_can_pushdown_as_filter(index, rinfo))
+		yb_can_pushdown_as_filter(root, index, rinfo))
 	{
 		rinfo->yb_pushable = true;
 		*yb_bitmap_idx_pushdowns = lappend(*yb_bitmap_idx_pushdowns, rinfo);
@@ -2772,7 +2778,9 @@ match_clause_to_index(IndexOptInfo *index,
  *	  operations aren't indexable but are valid as filters.
  */
 static bool
-yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
+yb_can_pushdown_as_filter(PlannerInfo *root,
+						  IndexOptInfo *index,
+						  RestrictInfo *rinfo)
 {
 	List   *colrefs = NIL;
 	int		required_relid;
@@ -2783,7 +2791,8 @@ yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
 		return false;
 
 	/* Can DocDB evaluate this operation? */
-	if (!YbCanPushdownExpr(rinfo->clause, &colrefs))
+	if (!YbCanPushdownExpr(rinfo->clause, &colrefs,
+						   planner_rt_fetch(index->rel->relid, root)->relid))
 		return false;
 
 	/* Do all of the clause's referenced attributes exist in the index? */

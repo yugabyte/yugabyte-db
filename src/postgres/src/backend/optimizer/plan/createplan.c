@@ -3025,7 +3025,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 */
 			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
-				!YbCanPushdownExpr(tle->expr, &colrefs))
+				!YbCanPushdownExpr(tle->expr, &colrefs, relid))
 			{
 				has_unpushable_exprs = true;
 			}
@@ -3559,7 +3559,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 		extract_pushdown_clauses(scan_clauses, NULL,
 								 false /* is_bitmap_index_scan */,
 								 &local_quals, &remote_quals, &colrefs,
-								 NULL, NULL);
+								 NULL, NULL,
+								 planner_rt_fetch(scan_relid, root)->relid);
 	else
 		local_quals = extract_actual_clauses(scan_clauses, false);
 
@@ -3876,14 +3877,16 @@ create_indexscan_plan(PlannerInfo *root,
 									 NULL /* local_quals */,
 									 NULL /* rel_remote_quals */,
 									 NULL /* rel_colrefs */,
-									 &idx_remote_quals, &idx_colrefs);
+									 &idx_remote_quals, &idx_colrefs,
+									 planner_rt_fetch(baserelid, root)->relid);
 
 		/* Then, look at all remaining clauses for pushdown-able filters */
 		extract_pushdown_clauses(qpqual,
 								 need_idx_remote ? best_path->indexinfo : NULL,
 								 bitmapindex,
 								 &local_quals, &rel_remote_quals, &rel_colrefs,
-								 &idx_remote_quals, &idx_colrefs);
+								 &idx_remote_quals, &idx_colrefs,
+								 planner_rt_fetch(baserelid, root)->relid);
 	}
 	else
 		local_quals = extract_actual_clauses(qpqual, false);
@@ -4212,7 +4215,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 							 false /* bitmapindex */, &local_quals,
 							 &rel_remote_quals, &rel_colrefs,
 							 NULL /* idx_remote_quals */,
-							 NULL /* idx_colrefs */);
+							 NULL /* idx_colrefs */,
+							 planner_rt_fetch(baserelid, root)->relid);
 
 	PushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
 
@@ -4237,7 +4241,9 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	{
 		List *colrefs = NIL;
 		Expr *clause = (Expr *) lfirst(lc);
-		if (YbCanPushdownExpr(clause, &colrefs))
+
+		if (YbCanPushdownExpr(clause, &colrefs,
+							  planner_rt_fetch(baserelid, root)->relid))
 		{
 			recheck_colrefs = list_concat(recheck_colrefs, colrefs);
 			recheck_remote_quals = lappend(recheck_remote_quals, clause);
@@ -4261,7 +4267,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 							 false /* bitmapindex */, &fallback_local_quals,
 							 &fallback_remote_quals, &fallback_colrefs,
 							 NULL /* idx_remote_quals */,
-							 NULL /* idx_colrefs */);
+							 NULL /* idx_colrefs */,
+							 planner_rt_fetch(baserelid, root)->relid);
 
 	PushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
 

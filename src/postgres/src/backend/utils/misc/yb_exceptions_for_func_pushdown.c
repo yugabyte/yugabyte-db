@@ -25,15 +25,12 @@
  */
 
 #include "c.h"
+#include "catalog/pg_operator_d.h"
 #include "utils/fmgroids.h"
 
 const uint32 yb_funcs_safe_for_pushdown[] = {
 	F_DRANDOM
 };
-
-const int yb_funcs_safe_for_pushdown_count =
-	sizeof(yb_funcs_safe_for_pushdown) /
-	sizeof(yb_funcs_safe_for_pushdown[0]);
 
 const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	/* to_tsany.c */
@@ -76,6 +73,119 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	F_TS_MATCH_TQ
 };
 
-const int yb_funcs_unsafe_for_pushdown_count =
-	sizeof(yb_funcs_unsafe_for_pushdown) /
-	sizeof(yb_funcs_unsafe_for_pushdown[0]);
+#define COMPARISON_AND_ARITHMETIC_OPS(prefix) \
+	COMPARISON_OPS(prefix), \
+	ARITHMETIC_OPS(prefix)
+
+#define COMPARISON_OPS(prefix) \
+	EQUALITY_OPS(prefix), \
+	INEQUALITY_OPS(prefix)
+
+#define EQUALITY_OPS(prefix) \
+	F_##prefix##EQ, \
+	F_##prefix##NE
+
+#define INEQUALITY_OPS(prefix) \
+	F_##prefix##LT, \
+	F_##prefix##LE, \
+	F_##prefix##GE, \
+	F_##prefix##GT
+
+#define ARITHMETIC_OPS(prefix) \
+	F_##prefix##MUL, \
+	F_##prefix##DIV, \
+	F_##prefix##PL, \
+	F_##prefix##MI
+
+#define UNARY_MINUS_AND_ABS(prefix) \
+	F_##prefix##UM, \
+	F_##prefix##ABS
+
+const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
+	COMPARISON_AND_ARITHMETIC_OPS(INT2),
+	UNARY_MINUS_AND_ABS(INT2),
+	COMPARISON_AND_ARITHMETIC_OPS(INT24),
+	COMPARISON_AND_ARITHMETIC_OPS(INT28),
+	COMPARISON_AND_ARITHMETIC_OPS(INT4),
+	UNARY_MINUS_AND_ABS(INT4),
+	COMPARISON_AND_ARITHMETIC_OPS(INT42),
+	COMPARISON_AND_ARITHMETIC_OPS(INT48),
+	COMPARISON_AND_ARITHMETIC_OPS(INT8),
+	UNARY_MINUS_AND_ABS(INT8),
+	COMPARISON_AND_ARITHMETIC_OPS(INT82),
+	COMPARISON_AND_ARITHMETIC_OPS(INT84),
+
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT4),
+	UNARY_MINUS_AND_ABS(FLOAT4),
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT48),
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT8),
+	UNARY_MINUS_AND_ABS(FLOAT8),
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT84),
+
+	F_I4TOI2,
+	F_INT82,
+	F_FTOI2,
+	F_DTOI2,
+	F_NUMERIC_INT2,
+	F_I2TOI4,
+	F_INT84,
+	F_FTOI4,
+	F_DTOI4,
+	F_NUMERIC_INT4,
+	F_INT28,
+	F_INT48,
+	F_FTOI8,
+	F_DTOI8,
+	F_NUMERIC_INT8,
+	F_I2TOF,
+	F_I4TOF,
+	F_I8TOF,
+	F_DTOF,
+	F_NUMERIC_FLOAT4,
+	F_I2TOD,
+	F_I4TOD,
+	F_I8TOD,
+	F_FTOD,
+	F_NUMERIC_FLOAT8,
+	F_INT2_NUMERIC,
+	F_INT4_NUMERIC,
+	F_INT8_NUMERIC,
+	F_FLOAT4_NUMERIC,
+	F_FLOAT8_NUMERIC,
+
+	F_TEXT_CHAR,
+	F_CHAR_TEXT,
+	F_RTRIM1,
+	F_BPCHAR,
+
+	COMPARISON_OPS(BPCHAR),
+
+	F_INT4_BOOL,
+	F_BOOL_INT4,
+
+	COMPARISON_OPS(BOOL),
+
+	COMPARISON_OPS(NUMERIC_),
+	F_NUMERIC_ADD,
+	F_NUMERIC_SUB,
+	F_NUMERIC_MUL,
+	F_NUMERIC_DIV,
+	F_NUMERIC_UMINUS,
+	F_NUMERIC_ABS,
+	1705 /* numeric_abs */,
+
+	EQUALITY_OPS(TEXT),
+	INEQUALITY_OPS(TEXT_),
+
+	1398 /* int2abs */,
+	1397 /* int4abs */,
+	1396 /* int8abs */,
+	1395 /* float8abs */,
+	1394 /* float4abs */,
+};
+
+#define DEFINE_ARRAY_SIZE(array) const int array##_count = lengthof(array)
+
+DEFINE_ARRAY_SIZE(yb_funcs_safe_for_pushdown);
+DEFINE_ARRAY_SIZE(yb_funcs_unsafe_for_pushdown);
+DEFINE_ARRAY_SIZE(yb_funcs_safe_for_mixed_mode_pushdown);

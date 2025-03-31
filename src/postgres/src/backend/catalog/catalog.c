@@ -114,14 +114,17 @@ IsCatalogRelation(Relation relation)
 bool
 IsCatalogClass(Oid relid, Form_pg_class reltuple)
 {
-	Oid			relnamespace = reltuple->relnamespace;
+	if (!IsYugaByteEnabled() || reltuple)
+	{
+		Oid			relnamespace = reltuple->relnamespace;
 
-	/*
-	 * Never consider relations outside pg_catalog/pg_toast to be catalog
-	 * relations.
-	 */
-	if (!IsSystemNamespace(relnamespace) && !IsToastNamespace(relnamespace))
-		return false;
+		/*
+		* Never consider relations outside pg_catalog/pg_toast to be catalog
+		* relations.
+		*/
+		if (!IsSystemNamespace(relnamespace) && !IsToastNamespace(relnamespace))
+			return false;
+	}
 
 	/* ----
 	 * Check whether the oid was assigned during initdb, when creating the

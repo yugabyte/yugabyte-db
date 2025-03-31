@@ -53,7 +53,7 @@ extern Expr *YbExprInstantiateParams(Expr* expr, EState *estate);
 extern PushdownExprs *YbInstantiatePushdownParams(PushdownExprs *pushdown,
 												  EState *estate);
 
-extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
+extern bool YbCanPushdownExpr(Expr *pg_expr, List **params, Oid relid);
 
 extern bool YbIsTransactionalExpr(Node *pg_expr);
 

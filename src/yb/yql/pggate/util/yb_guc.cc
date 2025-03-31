@@ -88,3 +88,5 @@ int yb_read_after_commit_visibility = 0;
 bool yb_refresh_matview_in_place = false;
 
 int yb_major_version_upgrade_compatibility = 0;
+
+bool yb_mixed_mode_expression_pushdown = true;

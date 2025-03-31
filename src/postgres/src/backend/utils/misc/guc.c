@@ -2765,6 +2765,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_mixed_mode_expression_pushdown", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables expression pushdown for queries in mixed "
+						 "mode of a YSQL Major version upgrade."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_mixed_mode_expression_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
