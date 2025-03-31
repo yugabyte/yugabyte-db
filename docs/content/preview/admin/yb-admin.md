@@ -465,7 +465,7 @@ yb-admin \
     compact_table tableid.<table-id> [<timeout-in-seconds>] [ADD_INDEXES]
 ```
 
-* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: The unique UUID associated with the table.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
 * ADD_INDEXES: Whether to compact the secondary indexes associated with the table. Default is `false`.
