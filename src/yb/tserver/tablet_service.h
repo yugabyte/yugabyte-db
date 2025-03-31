@@ -353,6 +353,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
+  void GetPgSocketDir(
+      const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp,
+      rpc::RpcContext context) override;
+
  private:
   TabletServer* const server_;
 
