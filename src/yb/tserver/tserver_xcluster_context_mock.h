@@ -16,6 +16,7 @@
 #include <gmock/gmock.h>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/util/result.h"
 
