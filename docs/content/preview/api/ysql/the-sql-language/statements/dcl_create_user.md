@@ -57,6 +57,20 @@ yugabyte=# GRANT ALL ON DATABASE yugabyte TO John;
 yugabyte=# REVOKE ALL ON DATABASE yugabyte FROM John;
 ```
 
+- Create a user with a password that expires in 4 hours.
+
+```plpgsql
+yugabyte=# DO $$
+DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
+BEGIN 
+  EXECUTE format(
+    'CREATE USER John WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
+    time
+  ); 
+END
+$$;
+```
+
 ## See also
 
 - [CREATE ROLE](../dcl_create_role)

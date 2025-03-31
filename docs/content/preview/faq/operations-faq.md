@@ -104,3 +104,36 @@ You should see output like the following:
 {{<lead link="https://yugabytedb.tips/display-ysql-database-size/">}}
 For more information, see [Display YSQL Database size](https://yugabytedb.tips/display-ysql-database-size/)
 {{</lead>}}
+
+## How can I create a YSQL user with a password that expires after a specific time interval?
+
+To can create a user in YugabyteDB with a password that expires after a set time using the `VALID UNTIL` clause. Here’s an example that sets the expiration time 4 hours from now:
+
+```plpgsql
+DO $$
+DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
+BEGIN 
+  EXECUTE format(
+    'CREATE USER John WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
+    time
+  ); 
+END
+$$;
+```
+
+To verify the password expiration time, run the following query:
+
+```plpgsql
+SELECT now(), valuntil, valuntil - now() AS diff 
+FROM pg_user 
+WHERE usename = 'John';
+```
+
+```output
+             now              |        valuntil        |      diff       
+------------------------------+------------------------+----------------
+ 2025-01-23 17:16:22.82708+00 | 2025-01-23 21:16:21+00 | 03:59:58.17292
+(1 row)
+```
+
+This confirms that the password for `John` will expire in approximately 4 hours.
