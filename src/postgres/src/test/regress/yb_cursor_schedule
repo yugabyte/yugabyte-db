@@ -14,7 +14,7 @@ test: yb.depd.onek2
 
 # Run portals tests.
 test: yb.port.portals
-test: yb.port.portals_p2
+test: portals_p2
 
 # Test on cursor for temp table.
 test: yb.port.combocid

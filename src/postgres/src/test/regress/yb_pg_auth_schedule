@@ -4,9 +4,9 @@
 # Dependency for yb.port.privileges
 test: yb.port.test_setup
 
-test: yb.port.roleattributes
+test: roleattributes
 test: yb.port.privileges
-test: yb.port.init_privs
+test: init_privs
 test: yb.port.rowsecurity
-test: yb.port.password
+test: password
 test: yb.port.create_role
