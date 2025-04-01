@@ -16,13 +16,13 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 - Hybrid Transactional/Analytical Processing (HTAP) (also known as Translytical) applications needing real-time analytics on transactional data. For example, user personalization, fraud detection, machine learning.
 - Streaming applications needing to efficiently ingest, analyze, and store ever-growing data. For example, IoT sensor analytics, time series metrics, real-time monitoring.
 
-## 
+## Database for cloud-native applications
 
-YugabyteDB provides essential capabilities that make it suitable for cloud-native applications:
+YugabyteDB provides the following essential capabilities for cloud-native applications:
 
-- PostgreSQL compatibility
-- Resilience and continuous availability
-- Scalability
+- PostgreSQL compatible
+- Resilient
+- Scalable
 - Geo-distributed
 - Hybrid and multi-cloud
 
