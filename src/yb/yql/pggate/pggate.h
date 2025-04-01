@@ -607,6 +607,8 @@ class PgApiImpl {
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
+  Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
+
 
   //------------------------------------------------------------------------------------------------
   // Functions.

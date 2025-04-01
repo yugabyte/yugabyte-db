@@ -431,6 +431,11 @@ Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
   return Status::OK();
 }
 
+Status PgDmlRead::HnswSetReadOptions(int ef_search) {
+  read_req_->mutable_vector_idx_options()->mutable_hnsw_options()->set_ef_search(ef_search);
+  return Status::OK();
+}
+
 Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   RSTATUS_DCHECK(
       !pg_exec_params_ || pg_exec_params_ == exec_params,

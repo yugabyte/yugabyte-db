@@ -42,18 +42,25 @@
 #define YBHNSW_MIN_EF_CONSTRUCTION 50
 #define YBHNSW_MAX_EF_CONSTRUCTION 1000
 
+/* Imported from pgvector defaults as of v0.8.0. */
+#define YBHNSW_DEFAULT_EF_SEARCH 40
+#define YBHNSW_MIN_EF_SEARCH 1
+#define YBHNSW_MAX_EF_SEARCH 1000
+
 static relopt_kind ybhnsw_relopt_kind;
+
+int			ybhnsw_ef_search;
 
 /* 
  * Copied from pgvector's HnswInit (as of pgvector v0.8.0).
  */
-typedef struct YbHnswOptions
+typedef struct YbHnswCreateOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			m;				/* number of connections per node */
 	int			m0;				/* number of connections per node in base level */
 	int			ef_construction;	/* size of dynamic candidate list */
-}			YbHnswOptions;
+}			YbHnswCreateOptions;
 
 void
 YbHnswInit(void)
@@ -71,6 +78,11 @@ YbHnswInit(void)
 					  YBHNSW_DEFAULT_EF_CONSTRUCTION,
 					  YBHNSW_MIN_EF_CONSTRUCTION, YBHNSW_MAX_EF_CONSTRUCTION,
 					  AccessExclusiveLock);
+	
+	DefineCustomIntVariable("ybhnsw.ef_search", "Sets the size of the dynamic candidate list for search",
+							"Valid range is 1..1000.", &ybhnsw_ef_search,
+							YBHNSW_DEFAULT_EF_SEARCH, YBHNSW_MIN_EF_SEARCH, YBHNSW_MAX_EF_SEARCH, PGC_USERSET, 0, NULL, NULL, NULL);
+	MarkGUCPrefixReserved("ybhnsw");
 }
 
 /*
@@ -83,22 +95,22 @@ ybhnswoptions(Datum reloptions, bool validate)
  	 * Copied from pgvector's hnswoptions (as of pgvector v0.8.0).
  	 */
 	static const relopt_parse_elt tab[] = {
-		{"m", RELOPT_TYPE_INT, offsetof(YbHnswOptions, m)},
-		{"m0", RELOPT_TYPE_INT, offsetof(YbHnswOptions, m0)},
+		{"m", RELOPT_TYPE_INT, offsetof(YbHnswCreateOptions, m)},
+		{"m0", RELOPT_TYPE_INT, offsetof(YbHnswCreateOptions, m0)},
 		{"ef_construction", RELOPT_TYPE_INT,
-		offsetof(YbHnswOptions, ef_construction)},
+		offsetof(YbHnswCreateOptions, ef_construction)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate,
 									  ybhnsw_relopt_kind,
-									  sizeof(YbHnswOptions),
+									  sizeof(YbHnswCreateOptions),
 									  tab, lengthof(tab));
 }
 
 static void
 bindYbHnswIndexOptions(YbcPgStatement handle, Datum reloptions)
 {
-	YbHnswOptions *hnsw_options = (YbHnswOptions *) ybhnswoptions(reloptions, false);
+	YbHnswCreateOptions *hnsw_options = (YbHnswCreateOptions *) ybhnswoptions(reloptions, false);
 	int			m = YBHNSW_DEFAULT_M;
 	int         m0 = YBHNSW_DEFAULT_M;
 	int			ef_construction = YBHNSW_DEFAULT_EF_CONSTRUCTION;
@@ -149,6 +161,26 @@ ybhnswbindcolumnschema(YbcPgStatement handle,
 	YBCBindCreateIndexColumns(handle, indexInfo, indexTupleDesc, coloptions, 0);
 }
 
+static void
+ybBindHnswReadOptions(YbScanDesc yb_scan)
+{
+	YBCPgDmlHnswSetReadOptions(yb_scan->handle, ybhnsw_ef_search);
+}
+
+/*
+ * ybvectorrescan
+ *		Reset temporary structures to prepare for rescan.
+ */
+void
+ybhnswrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
+			 ScanKey orderbys, int norderbys)
+{
+	ybvectorrescan(scan, scankeys, nscankeys, orderbys, norderbys);
+	YbVectorScanOpaque so = (YbVectorScanOpaque) scan->opaque;
+	YbScanDesc ybscan = so->yb_scan_desc;
+	ybBindHnswReadOptions(ybscan);
+}
+
 
 /*
  * ybusearchhandler handler function: return
@@ -163,6 +195,8 @@ ybhnswhandler(PG_FUNCTION_ARGS)
 
 	amroutine->yb_ambindschema = ybhnswbindcolumnschema;
 	amroutine->amoptions = ybhnswoptions;
+
+	amroutine->amrescan = ybhnswrescan;
 
 	PG_RETURN_POINTER(amroutine);
 }

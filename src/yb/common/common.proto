@@ -150,9 +150,16 @@ message PgVectorIdxOptionsPB {
   optional PgHnswIndexOptionsPB hnsw = 7;
 }
 
+message PgHnswReadOptionsPB {
+  required uint32 ef_search = 1;
+}
+
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  oneof index_params {
+    PgHnswReadOptionsPB hnsw_options = 3;
+  }
 }
 
 message TablePropertiesPB {

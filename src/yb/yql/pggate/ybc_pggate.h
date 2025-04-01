@@ -565,6 +565,8 @@ YbcStatus YBCPgDmlANNBindVector(YbcPgStatement handle, YbcPgExpr vector);
 
 YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
+YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
