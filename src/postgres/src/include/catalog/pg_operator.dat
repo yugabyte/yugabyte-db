@@ -2385,7 +2385,7 @@
   oprresult => 'numeric', oprcode => 'numeric_uplus' },
 
 # bytea operators
-{ oid => '1955', descr => 'equal',
+{ oid => '1955', oid_symbol => 'ByteaEqualOperator', descr => 'equal',
   oprname => '=', oprcanmerge => 't', oprcanhash => 't', oprleft => 'bytea',
   oprright => 'bytea', oprresult => 'bool', oprcom => '=(bytea,bytea)',
   oprnegate => '<>(bytea,bytea)', oprcode => 'byteaeq', oprrest => 'eqsel',

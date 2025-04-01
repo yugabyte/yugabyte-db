@@ -567,6 +567,9 @@ class PgApiImpl {
 
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
+  Status BindYbctids(
+      PgStatement *handle, int n, std::unique_ptr<const std::vector<std::string>> ybctids);
+
   //------------------------------------------------------------------------------------------------
   // Functions.
 

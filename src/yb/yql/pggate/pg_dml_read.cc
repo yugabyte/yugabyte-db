@@ -322,6 +322,11 @@ bool PgDmlRead::IsConcreteRowRead() const {
                                   read_req_->range_column_values().size())));
 }
 
+Status PgDmlRead::SetRequestedYbctids(std::unique_ptr<const std::vector<std::string>> ybctids) {
+  requested_ybctids_owned_ = std::move(ybctids);
+  return Status::OK();
+}
+
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Save IN/OUT parameters from Postgres.
   pg_exec_params_ = exec_params;
@@ -330,10 +335,15 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   SetColumnRefs();
 
   const auto row_mark_type = GetRowMarkType(exec_params);
-  if (has_doc_op() &&
-      !secondary_index_query_ &&
-      IsAllPrimaryKeysBound()) {
-    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
+
+  if (requested_ybctids_owned_) {
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params,
+                                                    *requested_ybctids_owned_));
+  } else if (has_doc_op() &&
+             !secondary_index_query_ &&
+             IsAllPrimaryKeysBound()) {
+    const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params, ybctids));
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
     if (has_doc_op()) {
@@ -689,8 +699,8 @@ Status PgDmlRead::AddRowLowerBound(YBCPgStatement handle,
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params) {
-  const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
+Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(
+    const PgExecParameters* exec_params, const std::vector<std::string>& ybctids) {
   for (auto& col : bind_.columns()) {
     col.UnbindValue();
   }

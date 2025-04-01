@@ -559,6 +559,8 @@ YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefi
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
+YBCStatus YBCPgBindYbctids(YBCPgStatement handle, int n, uintptr_t* datums);
+
 // Functions----------------------------------------------------------------------------------------
 YBCStatus YBCAddFunctionParam(
     YBCPgFunction handle, const char *name, const YBCPgTypeEntity *type_entity, uint64_t datum,

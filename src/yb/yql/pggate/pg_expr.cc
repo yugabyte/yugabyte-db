@@ -321,7 +321,8 @@ class PgSysColumnRefFactory {
         return YbColumn([](auto* syscols) { return &syscols->ybctid; });
       case PgSystemAttrNum::kYBIdxBaseTupleId:
         return YbColumn([](auto* syscols) { return &syscols->ybbasectid; });
-      case PgSystemAttrNum::kYBUniqueIdxKeySuffix: [[fallthrough]];
+      case PgSystemAttrNum::kYBUniqueIdxKeySuffix:
+        return YbColumn([](auto* syscols) { return &syscols->ybuniqueidxkeysuffix; });
       case PgSystemAttrNum::kYBRowId:
         break;
     }

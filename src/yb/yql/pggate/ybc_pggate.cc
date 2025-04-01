@@ -1260,6 +1260,16 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }
 
+
+YBCStatus YBCPgBindYbctids(YBCPgStatement handle, int n, uintptr_t* ybctids) {
+  auto ybctids_vector = std::make_unique<std::vector<std::string>>();
+  ybctids_vector->reserve(n);
+  for (int i = 0; i < n; i++)
+    ybctids_vector->push_back(YbctidAsSlice(ybctids[i]).ToBuffer());
+
+  return ToYBCStatus(pgapi->BindYbctids(handle, n, std::move(ybctids_vector)));
+}
+
 //------------------------------------------------------------------------------------------------
 // Functions
 //------------------------------------------------------------------------------------------------

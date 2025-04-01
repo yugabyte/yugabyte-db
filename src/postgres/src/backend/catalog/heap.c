@@ -200,6 +200,46 @@ static FormData_pg_attribute a7 = {
 
 static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7};
 
+static FormData_pg_attribute yb_a1 = {
+	.attname = {"ybuniqueidxkeysuffix"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBUniqueIdxKeySuffixAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = 'i',
+	.attstorage = 'x',
+	.attnotnull = false,
+	.attislocal = true,
+};
+
+static FormData_pg_attribute yb_a2 = {
+	.attname = {"ybidxbasectid"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBIdxBaseTupleIdAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = 'i',
+	.attstorage = 'x',
+	.attnotnull = true,
+	.attislocal = true,
+};
+
+
+static const Form_pg_attribute YbSysAtt[] = {&yb_a1, &yb_a2};
+
+Form_pg_attribute
+YbSystemAttributeDefinition(AttrNumber attno)
+{
+	int index = attno - YBSystemFirstLowInvalidAttributeNumber - 1;
+	if (index < 0 || index >= lengthof(YbSysAtt))
+		elog(ERROR, "invalid YB system attribute number %d", attno);
+	return YbSysAtt[index];
+}
+
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
  * Note that we elog if the presented attno is invalid, which would only
@@ -208,6 +248,29 @@ static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7};
 Form_pg_attribute
 SystemAttributeDefinition(AttrNumber attno, bool relhasoids)
 {
+	if (attno <= YBFirstLowInvalidAttributeNumber)
+		return YbSystemAttributeDefinition(attno);
+	if (attno == YBTupleIdAttributeNumber)
+	{
+		/*
+		 * With 5b60a0c (version 2025.1), ybctid became part of SysAtt. Since
+		 * that is not the case in this branch, do a special handling.
+		 */
+		static FormData_pg_attribute ybctid_atrr = {
+			.attname = {"ybctid"},
+			.atttypid = BYTEAOID,
+			.attlen = -1,
+			.attnum = YBTupleIdAttributeNumber,
+			.attcacheoff = -1,
+			.atttypmod = -1,
+			.attbyval = false,
+			.attalign = 'i',
+			.attstorage = 'x',
+			.attnotnull = true,
+			.attislocal = true,
+		};
+		return &ybctid_atrr;
+	}
 	if (attno >= 0 || attno < -(int) lengthof(SysAtt))
 		elog(ERROR, "invalid system attribute number %d", attno);
 	if (attno == ObjectIdAttributeNumber && !relhasoids)

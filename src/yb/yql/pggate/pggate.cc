@@ -1656,6 +1656,12 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   return dml_read.Exec(exec_params);
 }
 
+Status PgApiImpl::BindYbctids(
+    PgStatement *handle, int n, std::unique_ptr<const std::vector<std::string>> ybctids) {
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+  RETURN_NOT_OK(dml_read.SetRequestedYbctids(std::move(ybctids)));
+  return Status::OK();
+}
 
 //--------------------------------------------------------------------------------------------------
 // Functions.
