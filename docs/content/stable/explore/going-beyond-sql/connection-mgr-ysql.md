@@ -48,15 +48,19 @@ YSQL Connection Manager has the following key features:
 
 To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
-When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
-
-To create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
+For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
 
 ```sh
-./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,allowed_preview_flags_csv={enable_ysql_conn_mgr}" --ui false
+./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true" --ui false
 ```
 
-Because `enable_ysql_conn_mgr` is a preview flag only, to use it, add the flag to the `allowed_preview_flags_csv` list (that is, `allowed_preview_flags_csv=enable_ysql_conn_mgr`).
+When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
+
+<!--YSQL Connection Manager needs to specify a TCP/IP connections listen port that is different from `pgsql_proxy_bind_address`. By default, both the postmaster as well as YSQL Connection Manager attempt to listen for TCP/IP connections on the port 5433, but in case of this specific conflict, the port for the postmaster process is resolved to instead listen on 6433. In case of conflicts on other ports, you will have to explicitly define both the postmaster TCP/IP listen port as well as the YSQL Connection Manager TCP/IP listen port:
+
+```sh
+./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,pgsql_proxy_bind_address=6433,ysql_conn_mgr_port=5433" --ui false
+```-->
 
 {{< note >}}
 
