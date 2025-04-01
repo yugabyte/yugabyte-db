@@ -106,6 +106,9 @@ static char *masterHosts = NULL;
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
 										 * YB specific metadata such as tablet
 										 * partitions. */
+static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks if the used ROLE
+										 * exists. The ROLE usage statements are skipped if
+										 * the ROLE does not exist. */
 static int	dump_single_database = 0;	/* Dump only one DB specified by
 										 * '--database' argument. */
 
@@ -167,6 +170,7 @@ main(int argc, char *argv[])
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
 		{"include-yb-metadata", no_argument, &include_yb_metadata, 1},
+		{"dump-role-checks", no_argument, &yb_dump_role_checks, 1},
 		{"dump-single-database", no_argument, &dump_single_database, 1},
 
 		{NULL, 0, NULL, 0}
@@ -411,6 +415,13 @@ main(int argc, char *argv[])
 		exit_nicely(1);
 	}
 
+	if (yb_dump_role_checks && !include_yb_metadata)
+	{
+		pg_log_error("option --dump-role-checks must be used only together with --include-yb-metadata");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit_nicely(1);
+	}
+
 	/*
 	 * If password values are not required in the dump, switch to using
 	 * pg_roles which is equally useful, just more likely to have unrestricted
@@ -458,6 +469,8 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
 	if (include_yb_metadata)
 		appendPQExpBufferStr(pgdumpopts, " --include-yb-metadata");
+	if (yb_dump_role_checks)
+		appendPQExpBufferStr(pgdumpopts, " --dump-role-checks");
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -665,6 +678,10 @@ help(void)
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
 			 "                               like SPLIT details).\n"));
+	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
+			 "                               exists. The ROLE usage statements are skipped if\n"
+			 "                               the ROLE does not exist.\n"
+			 "                               Requires --include-yb-metadata.\n"));
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));
@@ -843,7 +860,7 @@ dumpRoles(PGconn *conn)
 		const char *rolename;
 		Oid			auth_oid;
 
-		char	   *yb_frolename;
+		char	   *yb_frolename = NULL;
 		const char *yb_indent = "";
 		bool		yb_skip_create_role = false;
 		bool		yb_need_endif = false;
@@ -1063,10 +1080,13 @@ dumpRoleMembership(PGconn *conn)
 		char	   *member = PQgetvalue(res, i, 1);
 		char	   *option = PQgetvalue(res, i, 2);
 
-		fprintf(OPF, "GRANT %s", fmtId(roleid));
-		fprintf(OPF, " TO %s", fmtId(member));
+		char	   *yb_grantor = NULL;
+
+		PQExpBuffer yb_sql = createPQExpBuffer();
+		appendPQExpBuffer(yb_sql, "GRANT %s", fmtId(roleid));
+		appendPQExpBuffer(yb_sql, " TO %s", fmtId(member));
 		if (*option == 't')
-			fprintf(OPF, " WITH ADMIN OPTION");
+			appendPQExpBufferStr(yb_sql, " WITH ADMIN OPTION");
 
 		/*
 		 * We don't track the grantor very carefully in the backend, so cope
@@ -1074,17 +1094,33 @@ dumpRoleMembership(PGconn *conn)
 		 */
 		if (!PQgetisnull(res, i, 3))
 		{
-			char	   *grantor = PQgetvalue(res, i, 3);
-
-			fprintf(OPF, " GRANTED BY %s", fmtId(grantor));
+			yb_grantor = PQgetvalue(res, i, 3);
+			appendPQExpBuffer(yb_sql, " GRANTED BY %s", fmtId(yb_grantor));
 		}
-		fprintf(OPF, ";\n");
+		appendPQExpBufferStr(yb_sql, ";\n");
+
+		if (yb_dump_role_checks)
+		{
+			PQExpBuffer yb_source_sql = yb_sql;
+			yb_sql = createPQExpBuffer();
+			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
+								member,		/* role1 */
+								yb_grantor,	/* role2; note: yb_grantor can be NULL */
+								NULL,		/* role3 */
+								yb_sql);
+			destroyPQExpBuffer(yb_source_sql);
+		}
+
+		fprintf(OPF, "%s", yb_sql->data);
+		destroyPQExpBuffer(yb_sql);
 	}
 
 	PQclear(res);
 	destroyPQExpBuffer(buf);
 
-	fprintf(OPF, "\n\n");
+	fprintf(OPF, "\n");
+	if (!yb_dump_role_checks)
+		fprintf(OPF, "\n"); /* Second EOL. */
 }
 
 
@@ -1126,9 +1162,9 @@ dumpRoleGUCPrivs(PGconn *conn)
 		/* needed for buildACLCommands() */
 		fparname = pg_strdup(fmtId(parname));
 
-		if (!buildACLCommands(fparname, NULL, NULL, "PARAMETER",
+		if (!buildACLCommands(conn, fparname, NULL, NULL, "PARAMETER",
 							  paracl, acldefault,
-							  parowner, "", server_version, buf))
+							  parowner, "", server_version, yb_dump_role_checks, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for parameter \"%s\"",
 						 paracl, parname);
@@ -1271,9 +1307,9 @@ dumpTablespaces(PGconn *conn)
 		/* tablespaces can't have initprivs */
 
 		if (!skip_acls &&
-			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
+			!buildACLCommands(conn, fspcname, NULL, NULL, "TABLESPACE",
 							  spcacl, acldefault,
-							  spcowner, "", server_version, buf))
+							  spcowner, "", server_version, yb_dump_role_checks, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for tablespace \"%s\"",
 						 spcacl, spcname);

@@ -117,8 +117,19 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 -- Role memberships
 --
 
-GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
-GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
+    GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+\else
+    \echo 'Skipping grant privilege due to missing role:' regress_priv_user8 'OR' yugabyte_test
+\endif
+
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
+    GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
+\else
+    \echo 'Skipping grant privilege due to missing role:' regress_priv_user7 'OR' yugabyte_test
+\endif
 
 
 
@@ -184,7 +195,6 @@ GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -277,7 +287,6 @@ END $$;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -368,7 +377,6 @@ END $$;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -401,14 +409,18 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
+\if :role_exists
     ALTER DATABASE system_platform OWNER TO postgres;
+\else
+    \echo 'Skipping owner privilege due to missing role:' postgres
+\endif
 \endif
 
 \connect system_platform
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -478,7 +490,6 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -511,14 +522,18 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
+\if :role_exists
     ALTER DATABASE yugabyte OWNER TO postgres;
+\else
+    \echo 'Skipping owner privilege due to missing role:' postgres
+\endif
 \endif
 
 \connect yugabyte
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -553,7 +568,12 @@ CREATE TABLEGROUP grp_with_spc;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -571,7 +591,12 @@ CREATE TABLEGROUP grp_without_spc;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -604,7 +629,12 @@ SPLIT INTO 3 TABLETS;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLE public.table1 OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -635,7 +665,12 @@ SPLIT INTO 3 TABLETS;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLE public.table2 OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -667,7 +702,12 @@ TABLEGROUP grp_with_spc;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLE public.tbl_with_grp_with_spc OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 --

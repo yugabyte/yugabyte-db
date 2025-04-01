@@ -469,6 +469,7 @@ main(int argc, char **argv)
 		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
 		{"no-tablegroup-creations", no_argument, &dopt.no_tablegroup_creations, 1},
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
+		{"dump-role-checks", no_argument, &dopt.yb_dump_role_checks, 1},
 		{"read-time", required_argument, NULL, 12},
 		{NULL, 0, NULL, 0}
 	};
@@ -740,6 +741,15 @@ main(int argc, char **argv)
 	 */
 	if ((!IsYugabyteEnabled && dopt.binary_upgrade) || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
+
+	if (dopt.binary_upgrade && dopt.include_yb_metadata)
+		pg_fatal("options --binary-upgrade and --include-yb-metadata cannot be used together");
+
+	if (dopt.use_setsessauth && dopt.include_yb_metadata)
+		pg_fatal("option --use-set-session-authorization is not supported yet together with --include-yb-metadata option");
+
+	if (dopt.yb_dump_role_checks && !dopt.include_yb_metadata)
+		pg_fatal("options --dump-role-checks requires option --include-yb-metadata");
 
 	if (data_only && schema_only)
 		pg_fatal("options -s/--schema-only and -a/--data-only cannot be used together");
@@ -1150,6 +1160,10 @@ help(const char *progname)
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
 			 "                               like SPLIT details).\n"));
+	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
+			 "                               exists. The ROLE usage statements are skipped if\n"
+			 "                               the ROLE does not exist.\n"
+			 "                               Requires --include-yb-metadata.\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));
 	printf(_("  --no-publications            do not dump publications\n"));
@@ -14763,13 +14777,15 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 	appendPQExpBuffer(tag, "DEFAULT PRIVILEGES FOR %s", type);
 
 	/* build the actual command(s) for this tuple */
-	if (!buildDefaultACLCommands(type,
+	if (!buildDefaultACLCommands(GetConnection(fout),
+								 type,
 								 daclinfo->dobj.namespace != NULL ?
 								 daclinfo->dobj.namespace->dobj.name : NULL,
 								 daclinfo->dacl.acl,
 								 daclinfo->dacl.acldefault,
 								 daclinfo->defaclrole,
 								 fout->remoteVersion,
+								 dopt->yb_dump_role_checks,
 								 q))
 		pg_fatal("could not parse default ACL list (%s)",
 				 daclinfo->dacl.acl);
@@ -14868,9 +14884,9 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		initprivs && *initprivs != '\0')
 	{
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
-		if (!buildACLCommands(name, subname, nspname, type,
+		if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 							  initprivs, acldefault, owner,
-							  "", fout->remoteVersion, sql))
+							  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
@@ -14893,9 +14909,9 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 	else
 		baseacls = acldefault;
 
-	if (!buildACLCommands(name, subname, nspname, type,
+	if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 						  acls, baseacls, owner,
-						  "", fout->remoteVersion, sql))
+						  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
 		pg_fatal("could not parse ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				 acls, baseacls, name, type);
 

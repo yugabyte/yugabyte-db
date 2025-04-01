@@ -1701,12 +1701,20 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public void doTestBackupRestoreRoles(boolean restoreRoles, boolean useRoles)
-      throws Exception {
+  private static enum RestoreRoles { ON, OFF }
+  private static enum UseRoles { ON, OFF }
+  private static enum DumpRoleChecks { ON, OFF }
+
+  public void doTestBackupRestoreRoles(final RestoreRoles restoreRoles,
+                                       final UseRoles useRoles,
+                                       final DumpRoleChecks dumpRoleChecks) throws Exception {
     // ybc doesn't support --ignore_existing_roles currently
     if (TestUtils.useYbController()){
       return;
     }
+
+    // Uncomment the next line to get detailed log from the 'yb_backup.py' script.
+    // YBBackupUtil.enableVerboseMode();
 
     String[] roles = {"admin", "CaseSensitiveRole", "role_with_a space", "Role with spaces",
                       "Role with a quote '", "Role with 'quotes'",
@@ -1726,8 +1734,13 @@ public class TestYbBackup extends BasePgSQLTest {
       }
 
       backupDir = YBBackupUtil.getTempBackupDir();
-      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql.yugabyte", "--backup_roles");
+      List<String> args = new ArrayList<>(Arrays.asList(
+          "--backup_location", backupDir, "--keyspace", "ysql.yugabyte", "--backup_roles"));
+      if (dumpRoleChecks == DumpRoleChecks.ON) {
+        args.add("--dump_role_checks");
+      }
+
+      String output = YBBackupUtil.runYbBackupCreate(args);
       backupDir = new JSONObject(output).getString("snapshot_url");
     }
 
@@ -1746,17 +1759,22 @@ public class TestYbBackup extends BasePgSQLTest {
 
     List<String> args = new ArrayList<>(Arrays.asList(
         "--keyspace", "ysql.yb2", "--ignore_existing_roles"));
-    if (restoreRoles) {
+    if (restoreRoles == RestoreRoles.ON) {
       args.add("--restore_roles");
     }
-    if (useRoles) {
+    if (useRoles == UseRoles.ON) {
       args.add("--use_roles");
     }
 
     try {
       YBBackupUtil.runYbBackupRestore(backupDir, args);
     } catch (YBBackupException ex) {
-      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && !restoreRoles) {
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR &&
+          restoreRoles == RestoreRoles.OFF && dumpRoleChecks == DumpRoleChecks.OFF) {
+        // The exception is expected if
+        //     (1) the roles were NOT restored (restoreRoles == RestoreRoles.OFF)
+        // AND (2) --dump_role_checks was NOT used on the backup create
+        //         phase (dumpRoleChecks == DumpRoleChecks.OFF)
         LOG.info("Expected exception", ex);
         assertTrue(ex.getMessage().contains("ERROR:  role \"admin\" does not exist"));
         return;
@@ -1779,7 +1797,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
         runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
       } catch (PSQLException ex) {
-        if (restoreRoles) {
+        if (restoreRoles == RestoreRoles.ON) {
           throw ex;
         } else {
           LOG.info("Expected exception", ex);
@@ -1798,17 +1816,31 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testBackupRestoreRoles() throws Exception {
-    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ true);
+    doTestBackupRestoreRoles(RestoreRoles.ON, UseRoles.ON, DumpRoleChecks.OFF);
   }
 
   @Test
   public void testBackupRolesWithoutUseRoles() throws Exception {
-    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ false);
+    doTestBackupRestoreRoles(RestoreRoles.ON, UseRoles.OFF, DumpRoleChecks.OFF);
   }
 
   @Test
   public void testBackupRolesWithoutRestoreRoles() throws Exception {
-    doTestBackupRestoreRoles(/* restoreRoles */ false, /* useRoles */ false);
+    doTestBackupRestoreRoles(RestoreRoles.OFF, UseRoles.OFF, DumpRoleChecks.OFF);
+  }
+
+  @Test
+  public void testBackupRolesWithDumpRoleChecks() throws Exception {
+    // Ignore not restored role 'admin' - via the message:
+    // "Skipping grant privilege due to missing role: admin".
+    doTestBackupRestoreRoles(RestoreRoles.OFF, UseRoles.ON, DumpRoleChecks.ON);
+  }
+
+  @Test
+  public void testBackupRolesWithoutDumpRoleChecks() throws Exception {
+    // Ignore not restored role 'admin' - via the expected exception (YSQL error):
+    // ERROR:  role "admin" does not exist.
+    doTestBackupRestoreRoles(RestoreRoles.OFF, UseRoles.ON, DumpRoleChecks.OFF);
   }
 
   @Test

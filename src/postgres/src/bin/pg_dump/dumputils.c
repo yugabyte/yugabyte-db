@@ -28,6 +28,7 @@ static char *dequoteAclUserName(PQExpBuffer output, char *input);
 static void AddAcl(PQExpBuffer aclbuf, const char *keyword,
 				   const char *subname);
 
+static void YBDropDuplicateStr(const char **str1, const char **str2);
 
 /*
  * Build GRANT/REVOKE command(s) for an object.
@@ -61,10 +62,11 @@ static void AddAcl(PQExpBuffer aclbuf, const char *keyword,
  * since this routine uses fmtId() internally.
  */
 bool
-buildACLCommands(const char *name, const char *subname, const char *nspname,
+buildACLCommands(PGconn *yb_conn,
+				 const char *name, const char *subname, const char *nspname,
 				 const char *type, const char *acls, const char *baseacls,
 				 const char *owner, const char *prefix, int remoteVersion,
-				 PQExpBuffer sql)
+				 bool yb_dump_role_checks, PQExpBuffer sql)
 {
 	bool		ok = true;
 	char	  **aclitems = NULL;
@@ -183,16 +185,29 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 
 		if (privs->len > 0)
 		{
-			appendPQExpBuffer(firstsql, "%sREVOKE %s ON %s ",
+			PQExpBuffer yb_sql = yb_dump_role_checks ? createPQExpBuffer() : firstsql;
+
+			appendPQExpBuffer(yb_sql, "%sREVOKE %s ON %s ",
 							  prefix, privs->data, type);
 			if (nspname && *nspname)
-				appendPQExpBuffer(firstsql, "%s.", fmtId(nspname));
-			appendPQExpBuffer(firstsql, "%s FROM ", name);
+				appendPQExpBuffer(yb_sql, "%s.", fmtId(nspname));
+			appendPQExpBuffer(yb_sql, "%s FROM ", name);
 			if (grantee->len == 0)
-				appendPQExpBufferStr(firstsql, "PUBLIC;\n");
+				appendPQExpBufferStr(yb_sql, "PUBLIC;\n");
 			else
-				appendPQExpBuffer(firstsql, "%s;\n",
-								  fmtId(grantee->data));
+				appendPQExpBuffer(yb_sql, "%s;\n", fmtId(grantee->data));
+
+			if (yb_dump_role_checks)
+			{
+				YBWwrapInRoleChecks(yb_conn, yb_sql, "revoke privilege",
+									/* if not PUBLIC role */
+									grantee->len > 0 ? grantee->data : NULL, /* role1 */
+									/* if ALTER DEFAULT PRIVILEGES FOR ROLE case */
+									(*prefix != '\0' && owner) ? owner : NULL, /* role2 */
+									NULL, /* role3 */
+									firstsql);
+				destroyPQExpBuffer(yb_sql);
+			}
 		}
 	}
 
@@ -245,40 +260,55 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 				else
 					thissql = secondsql;
 
-				if (grantor->len > 0
-					&& (!owner || strcmp(owner, grantor->data) != 0))
-					appendPQExpBuffer(thissql, "SET SESSION AUTHORIZATION %s;\n",
+				PQExpBuffer yb_sql = yb_dump_role_checks ? createPQExpBuffer() : thissql;
+				const bool yb_need_session_auth =
+					(grantor->len > 0 && (!owner || strcmp(owner, grantor->data) != 0));
+
+				if (yb_need_session_auth)
+					appendPQExpBuffer(yb_sql, "SET SESSION AUTHORIZATION %s;\n",
 									  fmtId(grantor->data));
 
 				if (privs->len > 0)
 				{
-					appendPQExpBuffer(thissql, "%sGRANT %s ON %s ",
+					appendPQExpBuffer(yb_sql, "%sGRANT %s ON %s ",
 									  prefix, privs->data, type);
 					if (nspname && *nspname)
-						appendPQExpBuffer(thissql, "%s.", fmtId(nspname));
-					appendPQExpBuffer(thissql, "%s TO ", name);
+						appendPQExpBuffer(yb_sql, "%s.", fmtId(nspname));
+					appendPQExpBuffer(yb_sql, "%s TO ", name);
 					if (grantee->len == 0)
-						appendPQExpBufferStr(thissql, "PUBLIC;\n");
+						appendPQExpBufferStr(yb_sql, "PUBLIC;\n");
 					else
-						appendPQExpBuffer(thissql, "%s;\n", fmtId(grantee->data));
+						appendPQExpBuffer(yb_sql, "%s;\n", fmtId(grantee->data));
 				}
 				if (privswgo->len > 0)
 				{
-					appendPQExpBuffer(thissql, "%sGRANT %s ON %s ",
+					appendPQExpBuffer(yb_sql, "%sGRANT %s ON %s ",
 									  prefix, privswgo->data, type);
 					if (nspname && *nspname)
-						appendPQExpBuffer(thissql, "%s.", fmtId(nspname));
-					appendPQExpBuffer(thissql, "%s TO ", name);
+						appendPQExpBuffer(yb_sql, "%s.", fmtId(nspname));
+					appendPQExpBuffer(yb_sql, "%s TO ", name);
 					if (grantee->len == 0)
-						appendPQExpBufferStr(thissql, "PUBLIC");
+						appendPQExpBufferStr(yb_sql, "PUBLIC");
 					else
-						appendPQExpBufferStr(thissql, fmtId(grantee->data));
-					appendPQExpBufferStr(thissql, " WITH GRANT OPTION;\n");
+						appendPQExpBufferStr(yb_sql, fmtId(grantee->data));
+					appendPQExpBufferStr(yb_sql, " WITH GRANT OPTION;\n");
 				}
 
-				if (grantor->len > 0
-					&& (!owner || strcmp(owner, grantor->data) != 0))
-					appendPQExpBufferStr(thissql, "RESET SESSION AUTHORIZATION;\n");
+				if (yb_need_session_auth)
+					appendPQExpBufferStr(yb_sql, "RESET SESSION AUTHORIZATION;\n");
+
+				if (yb_dump_role_checks)
+				{
+					YBWwrapInRoleChecks(yb_conn, yb_sql, "grant privilege",
+										/* not PUBLIC role */
+										grantee->len > 0 ? grantee->data : NULL, /* role1 */
+										/* Additional SET SESSION AUTHORIZATION statement */
+										yb_need_session_auth ? grantor->data : NULL, /* role2 */
+										/* ALTER DEFAULT PRIVILEGES FOR ROLE case */
+										(*prefix != '\0' && owner) ? owner : NULL, /* role3 */
+										thissql);
+					destroyPQExpBuffer(yb_sql);
+				}
 			}
 		}
 		else
@@ -324,11 +354,11 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
  * The resulting commands (if any) are appended to the contents of 'sql'.
  */
 bool
-buildDefaultACLCommands(const char *type, const char *nspname,
+buildDefaultACLCommands(PGconn *yb_conn,
+						const char *type, const char *nspname,
 						const char *acls, const char *acldefault,
-						const char *owner,
-						int remoteVersion,
-						PQExpBuffer sql)
+						const char *owner, int remoteVersion,
+						bool yb_dump_role_checks, PQExpBuffer sql)
 {
 	PQExpBuffer prefix;
 
@@ -349,17 +379,101 @@ buildDefaultACLCommands(const char *type, const char *nspname,
 	 * There's no such thing as initprivs for a default ACL, so the base ACL
 	 * is always just the object-type-specific default.
 	 */
-	if (!buildACLCommands("", NULL, NULL, type,
+	if (!buildACLCommands(yb_conn, "", NULL, NULL, type,
 						  acls, acldefault, owner,
-						  prefix->data, remoteVersion, sql))
+						  prefix->data, remoteVersion, yb_dump_role_checks, sql))
 	{
 		destroyPQExpBuffer(prefix);
 		return false;
 	}
 
 	destroyPQExpBuffer(prefix);
-
 	return true;
+}
+
+static void
+YBDropDuplicateStr(const char **str1, const char **str2)
+{
+	if (*str1 && *str2 && strcmp(*str1, *str2) == 0)
+		*str2 = NULL;
+}
+
+void
+YBWwrapInRoleChecks(PGconn *conn,
+					PQExpBuffer sql, const char *op_name,
+					const char *role_name1, const char *role_name2,
+					const char *role_name3, PQExpBuffer result)
+{
+	/* Treat empty-string role names same as NULL. */
+	const char *role1 = (role_name1 && *role_name1 == '\0' ? NULL : role_name1);
+	const char *role2 = (role_name2 && *role_name2 == '\0' ? NULL : role_name2);
+	const char *role3 = (role_name3 && *role_name3 == '\0' ? NULL : role_name3);
+
+	/* Delete duplicate roles. */
+	YBDropDuplicateStr(&role2, &role3);
+	YBDropDuplicateStr(&role1, &role3);
+	YBDropDuplicateStr(&role1, &role2);
+
+	/* Exclude empty Role2. */
+	if (!role2 && role3)
+	{
+		role2 = role3;
+		role3 = NULL;
+	}
+
+	/* Exclude empty Role1. */
+	if (!role1 && role2)
+	{
+		role1 = role2;
+		role2 = NULL;
+	}
+
+	if (role1)
+	{
+		/* Expecting role1 is not NULL. */
+		appendPQExpBufferStr(result, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ");
+		appendStringLiteralConn(result, role1, conn);
+
+		if (role2)
+		{
+			appendPQExpBufferStr(result, ") AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ");
+			appendStringLiteralConn(result, role2, conn);
+		}
+
+		if (role3)
+		{
+			appendPQExpBufferStr(result, ") AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ");
+			appendStringLiteralConn(result, role3, conn);
+		}
+
+		appendPQExpBufferStr(result, ") AS role_exists \\gset\n"
+									 "\\if :role_exists\n");
+
+		/* Replace "<str>EOL" by "<indent><str>EOL". */
+		const char *str = sql->data;
+		for (char *ptr = NULL; (ptr = strchr(str, '\n')) != NULL; str = ptr + 1)
+		{
+			(*ptr) = '\0';
+			appendPQExpBuffer(result, "    %s\n", str);
+			(*ptr) = '\n';
+		}
+
+		/* Print tail after the last EOL if it's available. Usually it's empty. */
+		if (*str != '\0')
+			appendPQExpBuffer(result, "    %s\n", str);
+
+		appendPQExpBuffer(result, "\\else\n"
+								  "    \\echo 'Skipping %s due to missing role:' %s",
+								  op_name, fmtId(role1));
+		if (role2)
+			appendPQExpBuffer(result, " 'OR' %s", fmtId(role2));
+		if (role3)
+			appendPQExpBuffer(result, " 'OR' %s", fmtId(role3));
+
+		appendPQExpBufferStr(result, "\n\\endif\n\n");
+	}
+	else  /* NO not empty roles - skip role checks. */
+		appendPQExpBuffer(result, "%s", sql->data);
 }
 
 /*
