@@ -1,13 +1,12 @@
-<!---
-title: Benefits of using YugabyteDB
-headerTitle: Key benefits
-linkTitle: Key benefits
+---
+title: Introduction to YugabyteDB
+headerTitle: Introduction to YugabyteDB
+linkTitle: Introduction
 description: Benefits of using YugabyteDB to power your next cloud-native application.
-headcontent: Why YugabyteDB should power your next cloud-native application
+headcontent: Distribute data and workloads for resilience and scalability
 type: docs
 unversioned: true
-private: true
---->
+---
 
 YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions (inspired by Google Spanner), YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
 
@@ -17,14 +16,14 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 - Hybrid Transactional/Analytical Processing (HTAP) (also known as Translytical) applications needing real-time analytics on transactional data. For example, user personalization, fraud detection, machine learning.
 - Streaming applications needing to efficiently ingest, analyze, and store ever-growing data. For example, IoT sensor analytics, time series metrics, real-time monitoring.
 
-## Key benefits
+## 
 
-YugabyteDB provides five key features for cloud-native applications:
+YugabyteDB provides essential capabilities that make it suitable for cloud-native applications:
 
 - PostgreSQL compatibility
 - Resilience and continuous availability
 - Scalability
-- Globally distributed
+- Geo-distributed
 - Hybrid and multi-cloud
 
 ### PostgreSQL compatible
@@ -79,6 +78,14 @@ Deploy YugabyteDB anywhere, in any combination - public, private, and hybrid clo
 
 --> [Explore hybrid- and multi-cloud capabilities](../develop/multi-cloud/)
 
+## More resources
+
+- Video: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
+- [How to Scale a Single-Server Database: A Guide to Distributed PostgreSQL](https://www.yugabyte.com/postgresql/distributed-postgresql/)
+- [Data Replication in YugabyteDB](https://www.yugabyte.com/blog/data-replication/)
+- [Improving PostgreSQL: How to Overcome the Tough Challenges with YugabyteDB](https://www.yugabyte.com/blog/improve-postgresql/)
+
+<!--
 ## Next steps
 
 {{< sections/2-boxes >}}
@@ -96,3 +103,4 @@ Deploy YugabyteDB anywhere, in any combination - public, private, and hybrid clo
     buttonUrl="../explore/"
   >}}
 {{< /sections/2-boxes >}}
+-->

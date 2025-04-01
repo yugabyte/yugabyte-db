@@ -7,7 +7,7 @@ type: indexpage
 layout: list
 breadcrumbDisable: true
 weight: 1
-showRightNav: true
+showRightNav: false
 unversioned: true
 ---
 
@@ -33,129 +33,58 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 {{< /sections/2-boxes >}}
 
-{{< sections/3-boxes-top-image >}}
-  {{< sections/3-box-card
-    title="Run a real world global app"
-    description="Explore core features of YugabyteDB using a globally distributed application in real time."
-    buttonText="Product Lab"
-    buttonUrl="/preview/yugabyte-cloud/managed-labs/"
-    imageAlt="Run a real world demo app"
-    imageUrl="/images/homepage/run-real-world-demo-app.svg"
-  >}}
 
-  {{< sections/3-box-card
-    title="Build a Hello World application"
-    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
-    buttonText="Hello World"
-    buttonUrl="/preview/tutorials/build-apps/"
-    imageAlt="Build a Hello world application"
-    imageUrl="/images/homepage/build-hello-world-application.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="Learn the essentials"
-    description="Learn YugabyteDB essential features by building a scalable and fault-tolerant streaming application."
-    buttonText="Build and Learn"
-    buttonUrl="/preview/tutorials/build-and-learn/"
-    imageAlt="Explore Distributed SQL capabilities"
-    imageUrl="/images/homepage/explore-distributed-sql-capabilities.svg"
-  >}}
-{{< /sections/3-boxes-top-image >}}
-
-<!--
-{{< sections/3-boxes >}}
-  {{< sections/3-box-card
-    title="New to YugabyteDB"
-    linkText3="Explore YugabyteDB"
-    linkUrl3="/preview/explore/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Develop"
-    linkText1="Hello world"
-    linkUrl1="/preview/tutorials/build-apps/"
-    linkText2="Drivers and ORMs"
-    linkUrl2="/preview/drivers-orms/"
-    linkText3="Distributed SQL APIs"
-    linkUrl3="/preview/api/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Why YugabyteDB"
-    linkText2="Resilience and availability"
-    linkUrl2="/preview/explore/fault-tolerance/"
-    linkText3="Horizontal scaling"
-    linkUrl3="/preview/explore/linear-scalability/"
-    linkText1="Flexible deployment"
-    linkUrl1="/preview/explore/multi-region-deployments/"
-  >}}
-
-{{< /sections/3-boxes >}}
-
-### Products
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-    title="YugabyteDB"
-    description="The open source cloud-native distributed SQL database."
-    buttonText="Explore YugabyteDB"
-    buttonUrl="/preview/"
-    imageAlt="YugabyteDB Core"
-    imageUrl="/icons/database.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Anywhere"
-    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-platform/"
-    imageAlt="YugabyteDB Anywhere"
-    imageUrl="/icons/server.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Managed"
-    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-cloud/"
-    imageAlt="YugabyteDB Managed"
-    imageUrl="/icons/cloud.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Voyager"
-    description="Simplify migration from legacy and cloud databases to YugabyteDB."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-voyager/"
-    imageAlt="YugabyteDB Managed"
-    imageUrl="/images/migrate/migration-icon.svg"
-  >}}
-{{< /sections/3-boxes >}}
-
-### New to YugabyteDB?
-
-{{< sections/3-boxes >}}
-  {{< sections/3-box-card
-    title="Key benefits"
-    description="What is YugabyteDB, and why it should power your cloud-native applications."
-    buttonText="Key benefits"
+    title="Introduction to YugabyteDB"
+    description="The distributed SQL database for mission-critical applications."
+    buttonText="Introduction"
     buttonUrl="/preview/features/"
   >}}
 
   {{< sections/3-box-card
-    title="Quick start"
-    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes."
-    buttonText="Get Started"
-    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    title="Migrate"
+    description="Simplify migration from legacy and cloud databases using YugabyteDB Voyager."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-voyager/"
   >}}
 
   {{< sections/3-box-card
-    title="Explore YugabyteDB"
-    description="Test YugabyteDB's features through examples, including API compatibility, availability, scalability, and more."
-    buttonText="Explore"
-    buttonUrl="/preview/explore/"
+    title="Deploy"
+    description="Simplify migration from legacy and cloud databases using YugabyteDB Voyager."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-voyager/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+### Deployment options
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Synchronous replication"
+    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
+    buttonText="Build a Hello world application"
+    buttonUrl="/preview/tutorials/build-apps/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Asynchronous xCluster"
+    description="Replicate between two regions for disaster recovery."
+    buttonText="Drivers and ORMs"
+    buttonUrl="/preview/explore/going-beyond-sql/asynchronous-replication-ysql/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Geo-partitioned"
+    description="Pin data to different geographic locations based on policy."
+    buttonText="Global Apps"
+    buttonUrl="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
   >}}
 {{< /sections/3-boxes >}}
+
+
 
 ### For developers
 
@@ -164,7 +93,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     title="Build a Hello world application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build a Hello world application"
-    buttonUrl="/preview/develop/build-apps/"
+    buttonUrl="/preview/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card
@@ -175,13 +104,14 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 
   {{< sections/3-box-card
-    title="Common patterns"
-    description="Leverage common data models to design robust and efficient cloud-native applications."
-    buttonText="Common patterns"
-    buttonUrl="/preview/develop/common-patterns//"
+    title="Build global applications"
+    description="Learn how to design globally distributed applications using simple patterns."
+    buttonText="Global Apps"
+    buttonUrl="/preview/develop/build-global-apps/"
   >}}
 {{< /sections/3-boxes >}}
 
+<!--
 ### Operations
 
 {{< sections/3-boxes >}}
@@ -194,7 +124,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
   {{< sections/3-box-card
     title="Manage your deployment"
-    description="Back up, change cluster configuration, and upgrade deplopyments."
+    description="Back up, change cluster configuration, and upgrade deployments."
     buttonText="Manage your deployment"
     buttonUrl="/preview/manage/"
   >}}
@@ -237,6 +167,73 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     imageUrl="/images/homepage/explore-distributed-sql-capabilities.svg"
   >}}
 {{< /sections/3-boxes-top-image >}}
+
+
+### New to YugabyteDB?
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Key benefits"
+    description="What is YugabyteDB, and why it should power your cloud-native applications."
+    buttonText="Key benefits"
+    buttonUrl="/preview/features/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Quick start"
+    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes."
+    buttonText="Get Started"
+    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Explore YugabyteDB"
+    description="Test YugabyteDB's features through examples, including API compatibility, availability, scalability, and more."
+    buttonText="Explore"
+    buttonUrl="/preview/explore/"
+  >}}
+{{< /sections/3-boxes >}}
+
+
+### Products
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="YugabyteDB"
+    description="The open source cloud-native distributed SQL database."
+    buttonText="Explore YugabyteDB"
+    buttonUrl="/preview/"
+    imageAlt="YugabyteDB Core"
+    imageUrl="/icons/database.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Anywhere"
+    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-platform/"
+    imageAlt="YugabyteDB Anywhere"
+    imageUrl="/icons/server.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Managed"
+    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-cloud/"
+    imageAlt="YugabyteDB Managed"
+    imageUrl="/icons/cloud.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Voyager"
+    description="Simplify migration from legacy and cloud databases to YugabyteDB."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-voyager/"
+    imageAlt="YugabyteDB Managed"
+    imageUrl="/images/migrate/migration-icon.svg"
+  >}}
+{{< /sections/3-boxes >}}
 
 ## Key concepts
 
