@@ -7,7 +7,7 @@ import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.google.protobuf.util.JsonFormat;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -37,13 +37,15 @@ import play.libs.Json;
 @Slf4j
 public class TabletReportComponent implements SupportBundleComponent {
 
-  private final ApiHelper apiHelper;
+  private final NodeUIApiHelper apiHelper;
   private final SupportBundleUtil supportBundleUtil;
   private final YBClientService ybClientService;
 
   @Inject
   TabletReportComponent(
-      ApiHelper apiHelper, SupportBundleUtil supportBundleUtil, YBClientService ybClientService) {
+      NodeUIApiHelper apiHelper,
+      SupportBundleUtil supportBundleUtil,
+      YBClientService ybClientService) {
     this.apiHelper = apiHelper;
     this.supportBundleUtil = supportBundleUtil;
     this.ybClientService = ybClientService;
@@ -67,7 +69,12 @@ public class TabletReportComponent implements SupportBundleComponent {
     try {
       String masterLeaderHost = universe.getMasterLeaderHostText();
       int masterHttpPort = universe.getMasterLeaderNode().masterHttpPort;
-      String url = String.format("http://%s:%d/dump-entities", masterLeaderHost, masterHttpPort);
+      String protocol =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt
+              ? "https"
+              : "http";
+      String url =
+          String.format("%s://%s:%d/dump-entities", protocol, masterLeaderHost, masterHttpPort);
       log.info("Querying url {} for dump entities.", url);
       JsonNode response = apiHelper.getRequest(url);
       if (response.has("error")) {
