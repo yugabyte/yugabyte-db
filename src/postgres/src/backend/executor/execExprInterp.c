@@ -542,6 +542,16 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 				*op->resnull = false;
 				d = scanslot->tts_ybctid;
 			}
+			else if (attnum == YBIdxBaseTupleIdAttributeNumber && scanslot->tts_ybctid)
+			{
+				*op->resnull = false;
+				d = scanslot->tts_ybctid;
+			}
+			else if (attnum == YBUniqueIdxKeySuffixAttributeNumber)
+			{
+				*op->resnull = DatumGetPointer(scanslot->tts_ybuniqueidxkeysuffix) == NULL;
+				d = scanslot->tts_ybuniqueidxkeysuffix;
+			}
 			else
 			{
 				/* these asserts must match defenses in slot_getattr */

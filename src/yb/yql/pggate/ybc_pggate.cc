@@ -1715,6 +1715,10 @@ YBCStatus YBCPgFetchRequestedYbctids(YBCPgStatement handle, const YBCPgExecParam
   return ToYBCStatus(pgapi->FetchRequestedYbctids(handle, exec_params, ybctids));
 }
 
+YBCStatus YBCPgBindYbctids(YBCPgStatement handle, int n, uintptr_t* ybctids) {
+  return ToYBCStatus(pgapi->BindYbctids(handle, n, ybctids));
+}
+
 //------------------------------------------------------------------------------------------------
 // Functions
 //------------------------------------------------------------------------------------------------

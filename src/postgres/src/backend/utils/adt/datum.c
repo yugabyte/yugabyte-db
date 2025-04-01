@@ -255,6 +255,76 @@ datumIsEqual(Datum value1, Datum value2, bool typByVal, int typLen)
 
 /* YB: taken from datum.c of upstream PG 15.2 */
 /*-------------------------------------------------------------------------
+ * datum_image_eq
+ *
+ * Compares two datums for identical contents, based on byte images.  Return
+ * true if the two datums are equal, false otherwise.
+ *-------------------------------------------------------------------------
+ */
+bool
+datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen)
+{
+	Size		len1,
+				len2;
+	bool		result = true;
+
+	if (typByVal)
+	{
+		result = (value1 == value2);
+	}
+	else if (typLen > 0)
+	{
+		result = (memcmp(DatumGetPointer(value1),
+						 DatumGetPointer(value2),
+						 typLen) == 0);
+	}
+	else if (typLen == -1)
+	{
+		len1 = toast_raw_datum_size(value1);
+		len2 = toast_raw_datum_size(value2);
+		/* No need to de-toast if lengths don't match. */
+		if (len1 != len2)
+			result = false;
+		else
+		{
+			struct varlena *arg1val;
+			struct varlena *arg2val;
+
+			arg1val = PG_DETOAST_DATUM_PACKED(value1);
+			arg2val = PG_DETOAST_DATUM_PACKED(value2);
+
+			result = (memcmp(VARDATA_ANY(arg1val),
+							 VARDATA_ANY(arg2val),
+							 len1 - VARHDRSZ) == 0);
+
+			/* Only free memory if it's a copy made here. */
+			if ((Pointer) arg1val != (Pointer) value1)
+				pfree(arg1val);
+			if ((Pointer) arg2val != (Pointer) value2)
+				pfree(arg2val);
+		}
+	}
+	else if (typLen == -2)
+	{
+		char	   *s1,
+				   *s2;
+
+		/* Compare cstring datums */
+		s1 = DatumGetCString(value1);
+		s2 = DatumGetCString(value2);
+		len1 = strlen(s1) + 1;
+		len2 = strlen(s2) + 1;
+		if (len1 != len2)
+			return false;
+		result = (memcmp(s1, s2, len1) == 0);
+	}
+	else
+		elog(ERROR, "unexpected typLen: %d", typLen);
+
+	return result;
+}
+
+/*-------------------------------------------------------------------------
  * datum_image_hash
  *
  * Generate a hash value based on the binary representation of 'value'.  Most

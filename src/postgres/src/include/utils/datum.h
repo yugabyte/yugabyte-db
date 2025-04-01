@@ -48,6 +48,14 @@ extern bool datumIsEqual(Datum value1, Datum value2,
 
 /* YB: taken from datum.h of upstream PG 15.2 */
 /*
+ * datum_image_eq
+ *
+ * Compares two datums for identical contents, based on byte images.  Return
+ * true if the two datums are equal, false otherwise.
+ */
+extern bool datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen);
+
+/*
  * datum_image_hash
  *
  * Generates hash value for 'value' based on its bits rather than logical

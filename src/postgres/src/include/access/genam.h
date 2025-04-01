@@ -220,5 +220,8 @@ extern SysScanDesc systable_beginscan_ordered(Relation heapRelation,
 extern HeapTuple systable_getnext_ordered(SysScanDesc sysscan,
 						 ScanDirection direction);
 extern void systable_endscan_ordered(SysScanDesc sysscan);
+extern Relation yb_dummy_baserel_index_open(Oid relationId, LOCKMODE lockmode);
+extern void yb_free_dummy_baserel_index(Relation relation);
+
 
 #endif							/* GENAM_H */

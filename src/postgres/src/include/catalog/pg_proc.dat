@@ -10599,4 +10599,9 @@
   proargnames => '{pid}',
   prosrc => 'yb_log_backend_heap_snapshot_peak'},
 
+{ oid => '8090', descr => 'returns whether the index is logically consistent with its base relation',
+  proname => 'yb_index_check', provolatile => 's',
+  prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'yb_index_check' },
+
 ]

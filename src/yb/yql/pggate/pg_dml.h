@@ -272,6 +272,9 @@ class PgDml : public PgStatement {
   // OUT value back to postgres.
   const PgExecParameters* pg_exec_params_ = nullptr;
 
+  // Requested ybctids in owned container. Used by yb_index_check().
+  std::unique_ptr<const std::vector<Slice>> requested_ybctids_owned_ = nullptr;
+
   //------------------------------------------------------------------------------------------------
   // Hashed and range values/components used to compute the tuple id.
   //
