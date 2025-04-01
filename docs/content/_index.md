@@ -38,9 +38,13 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="Introduction to YugabyteDB"
-    description="The distributed SQL database for mission-critical applications."
-    buttonText="Introduction"
-    buttonUrl="/preview/features/"
+    description="Learn about YugabyteDB and how it supports mission-critical applications."
+    linkText1="Resilient"
+    linkUrl1="/preview/architecture/"
+    linkText2="Scalable"
+    linkUrl2="/preview/benchmark/"
+    linkText3="Geo distributed"
+    linkUrl3="/preview/benchmark/"
   >}}
 
   {{< sections/3-box-card
@@ -111,7 +115,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 {{< /sections/3-boxes >}}
 
-<!--
+
 ### Operations
 
 {{< sections/3-boxes >}}
@@ -272,8 +276,10 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   {{< sections/3-box-card
     title="Yugabyte University"
     description="Learn YugabyteDB via self-paced courses, virtual training, and builder workshops."
-    buttonText="Learn more"
-    buttonUrl="https://university.yugabyte.com/"
+    linkText1="YugabyteDB architecture"
+    linkUrl1="/preview/architecture/"
+    linkText2="Benchmark YugabyteDB"
+    linkUrl2="/preview/benchmark/"
   >}}
 
   {{< sections/3-box-card
