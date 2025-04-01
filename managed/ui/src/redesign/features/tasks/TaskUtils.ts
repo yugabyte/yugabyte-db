@@ -41,7 +41,7 @@ export const doesTaskSupportsDiffData = (task: Task): boolean => {
   if (task.type === TaskType.EDIT) {
     return task.target === 'Universe';
   }
-  return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE].includes(task.type);
+  return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE, TaskType.RESIZE_NODE].includes(task.type);
 };
 
 /**

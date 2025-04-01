@@ -607,7 +607,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     beforeInstanceTags: UserIntent['instanceTags'],
     afterInstanceTags: UserIntent['instanceTags']
   ) {
-    if (!beforeInstanceTags && !afterInstanceTags) {
+    if (!beforeInstanceTags && !afterInstanceTags || isEqual(beforeInstanceTags, afterInstanceTags)) {
+      // If both instance tags are null or equal, return.
       return;
     }
     const attributes: JSX.Element[] = [];

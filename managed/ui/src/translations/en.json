@@ -2348,7 +2348,8 @@
         "diffs": {
           "Update": "View Universe Changes",
           "SoftwareUpgrade": "View Software Upgrade Changes",
-          "GFlagsUpgrade": "View GFlags Changes"
+          "GFlagsUpgrade": "View GFlags Changes",
+          "ResizeNode": "View Universe Changes"
         },
         "messages": {
           "abortConfirmTitle": "Abort Running Task ?",
@@ -2368,6 +2369,9 @@
         "status": "Status",
         "startTime": "Start Time",
         "endTime": "End time",
+        "upgradeMethod": "Upgrade Method",
+        "delay": "Delay between servers",
+        "delayValue": "{{delay}} secs",
         "startVersion": "Start Version",
         "targetVersion": "Target Version",
         "Failure": "Failed",
@@ -2407,7 +2411,8 @@
         "titles": {
           "Update": "Universe Changes",
           "SoftwareUpgrade": "Software Upgrade Changes",
-          "GFlagsUpgrade": " GFlags Upgrade Changes"
+          "GFlagsUpgrade": " GFlags Upgrade Changes",
+          "ResizeNode": "Universe Changes"
         },
         "universeDiff": {
           "region": "Region",
