@@ -33,6 +33,7 @@
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_pg_inherits_scan.h"
+#include "catalog/heap.h"
 #include "commands/dbcommands.h"
 #include "commands/tablegroup.h"
 #include "catalog/index.h"
@@ -158,20 +159,8 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 
 static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 {
-	Oid	atttypid;
-
-	if (attnum > 0)
-	{
-		/* Get the type from the description */
-		atttypid = TupleDescAttr(bind_desc, attnum - 1)->atttypid;
-	}
-	else
-	{
-		/* This must be an OID column. */
-		atttypid = OIDOID;
-	}
-
-  return atttypid;
+	return attnum > 0 ? TupleDescAttr(bind_desc, attnum - 1)->atttypid :
+						SystemAttributeDefinition(attnum, bind_desc->tdhasoid)->atttypid;
 }
 
 /*
@@ -643,6 +632,9 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 					tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
 					ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 				}
+				if (syscols.ybuniqueidxkeysuffix != NULL)
+						tuple->t_ybuniqueidxkeysuffix =
+							PointerGetDatum(syscols.ybuniqueidxkeysuffix);
 			}
 			break;
 		}
@@ -1090,13 +1082,20 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
+	bool sk_cols_has_ybctid = false;
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
 		if (attnum == InvalidAttrNumber)
 			break;
 
-		int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
+		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
+
+		if (attnum == YBTupleIdAttributeNumber)
+		{
+			sk_cols_has_ybctid = true;
+			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+		}
 		/*
 		 * TODO: Can we have bound keys on non-pkey columns here?
 		 *       If not we do not need the is_primary_key below.
@@ -1111,12 +1110,14 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/*
-	 * If hash key is not fully set, we must do a full-table scan so clear all
-	 * the scan keys if the hash code was explicitly specified as a
-	 * scan key then we also shouldn't be clearing the scan keys
+	 * If hash key is not fully set and ybctid is not set either, we must do a
+	 * full-table scan so clear all the scan keys if the hash code was
+	 * explicitly specified as a scan key then we also shouldn't be clearing the
+	 * scan keys.
 	 */
 	if (ybScan->hash_code_keys == NIL &&
-		!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols))
+		!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols) &&
+		!sk_cols_has_ybctid)
 	{
 		bms_free(scan_plan->sk_cols);
 		scan_plan->sk_cols = NULL;
@@ -1723,6 +1724,11 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 								length_of_key - 1, attnums,
 								num_elems, elem_values);
 	}
+	else if (scan_plan->bind_key_attnums[i] == YBTupleIdAttributeNumber)
+	{
+		Assert(num_elems == num_valid);
+		YBCPgBindYbctids(ybScan->handle, num_elems, elem_values);
+	}
 	else
 	{
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
@@ -2294,7 +2300,8 @@ YbBindHashKeys(YbScanDesc ybScan)
 
 static void
 YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
-						   Bitmapset **required_attrs, bool is_index_only_scan)
+						   Bitmapset **required_attrs, bool is_index_only_scan,
+						   int min_attr)
 {
 	Relation index = ybScan->index;
 	Relation secondary_index =
@@ -2303,21 +2310,13 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
 	int idx = -1;
 	while ((idx = bms_next_member(scan_plan->hash_key, idx)) >= 0)
 	{
+		AttrNumber attnum = YBBmsIndexToAttnum(scan_plan->target_relation, idx);
 		if (secondary_index)
-		{
-			AttrNumber attnum =
-				YBBmsIndexToAttnum(scan_plan->target_relation, idx);
 			attnum = secondary_index->rd_index->indkey.values[attnum - 1];
 
-			int hash_code_bms_idx = YBAttnumToBmsIndex(secondary_index, attnum);
+		int hash_code_bms_idx = YBAttnumToBmsIndexWithMinAttr(min_attr, attnum);
 
-			*required_attrs =
-				bms_add_member(*required_attrs, hash_code_bms_idx);
-		}
-		else
-		{
-			*required_attrs = bms_add_member(*required_attrs, idx);
-		}
+		*required_attrs = bms_add_member(*required_attrs, hash_code_bms_idx);
 	}
 }
 
@@ -2360,7 +2359,7 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
-				YBFirstLowInvalidAttributeNumber, ybScan->target_key_attnums[i]);
+				YBSystemFirstLowInvalidAttributeNumber, ybScan->target_key_attnums[i]);
 			columns = bms_add_member(columns, bms_idx);
 		}
 	}
@@ -2373,7 +2372,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 {
 	Relation	index = ybScan->index;
 	bool		is_index_only_scan = ybScan->prepare_params.index_only_scan;
-	const int	min_attr = YBFirstLowInvalidAttributeNumber;
+	const int	min_attr = YBSystemFirstLowInvalidAttributeNumber;
 	bool		all_attrs_required = !ybScan->prepare_params.fetch_ybctids_only;
 
 	/*
@@ -2424,7 +2423,8 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 
 		if (ybScan->hash_code_keys != NIL)
 			YbCollectHashKeyComponents(ybScan, scan_plan, &required_attrs,
-									   is_index_only_scan);
+									   is_index_only_scan,
+									   min_attr);
 
 		required_attrs = bms_join(required_attrs,
 								  YbGetOrdinaryColumnsNeedingPgRecheck(ybScan));

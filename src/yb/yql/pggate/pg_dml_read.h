@@ -113,6 +113,7 @@ class PgDmlRead : public PgDml {
   // Execute.
   virtual Status Exec(const PgExecParameters *exec_params);
   Status SetRequestedYbctids(const std::vector<Slice> *ybctids);
+  Status SetRequestedYbctids(std::unique_ptr<const std::vector<Slice>> ybctids);
   Status RetrieveYbctidsFromSecondaryIndex(const PgExecParameters *exec_params,
                                            std::vector<Slice> *ybctids,
                                            bool *exceeded_work_mem);

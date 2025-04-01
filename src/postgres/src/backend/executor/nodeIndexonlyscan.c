@@ -348,6 +348,9 @@ StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup, TupleDesc itupdesc)
 	for (i = 0; i < nindexatts; i++)
 		values[i] = index_getattr(itup, i + 1, itupdesc, &isnull[i]);
 	ExecStoreVirtualTuple(slot);
+
+	slot->tts_ybctid = itup->t_ybctid; /* ybidxbasectid */
+	slot->tts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix; /* ybuniqueidxkeysuffix */
 }
 
 /*

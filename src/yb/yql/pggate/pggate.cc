@@ -1823,6 +1823,16 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   return dml_read.Exec(exec_params);
 }
 
+Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
+  auto ybctids_vector = std::make_unique<std::vector<Slice>>();
+  ybctids_vector->reserve(n);
+  for (int i = 0; i < n; i++)
+    ybctids_vector->push_back(GetYbctidAsSlice(ybctids[i]));
+
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+  RETURN_NOT_OK(dml_read.SetRequestedYbctids(std::move(ybctids_vector)));
+  return Status::OK();
+}
 
 //--------------------------------------------------------------------------------------------------
 // Functions.

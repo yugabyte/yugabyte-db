@@ -56,4 +56,13 @@ extern void datumSerialize(Datum value, bool isnull, bool typByVal,
 			   int typLen, char **start_address);
 extern Datum datumRestore(char **start_address, bool *isnull);
 
+/* YB: taken from datum.h of upstream PG 15.2 */
+/*
+ * datum_image_eq
+ *
+ * Compares two datums for identical contents, based on byte images.  Return
+ * true if the two datums are equal, false otherwise.
+ */
+extern bool datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen);
+
 #endif							/* DATUM_H */

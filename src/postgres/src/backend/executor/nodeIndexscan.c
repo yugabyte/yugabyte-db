@@ -930,7 +930,12 @@ ExecEndIndexScan(IndexScanState *node)
 	if (indexScanDesc)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
+	{
+		if (node->ss.ps.state->yb_exec_params.yb_index_check &&
+			indexRelationDesc->rd_rel->relkind == RELKIND_RELATION)
+			yb_free_dummy_baserel_index(indexRelationDesc);
 		index_close(indexRelationDesc, NoLock);
+	}
 
 	/*
 	 * close the heap relation.
@@ -1097,9 +1102,14 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 * taking another lock here.  Otherwise we need a normal reader's lock.
 	 */
 	relistarget = ExecRelationIsTargetRelation(estate, node->scan.scanrelid);
-	indexstate->iss_RelationDesc = index_open(node->indexid,
-											  relistarget ? NoLock : AccessShareLock);
 
+	if (!estate->yb_exec_params.yb_index_check)
+		indexstate->iss_RelationDesc = index_open(node->indexid,
+												  relistarget ? NoLock : AccessShareLock);
+	else
+		indexstate->iss_RelationDesc =
+			yb_dummy_baserel_index_open(node->indexid,
+										relistarget ? NoLock : AccessShareLock);
 	/*
 	 * Initialize index-specific scan state
 	 */

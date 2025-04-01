@@ -604,7 +604,7 @@ class PgApiImpl {
                          bool *exceeded_work_mem);
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
-
+  Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
 
   //------------------------------------------------------------------------------------------------
   // Functions.
