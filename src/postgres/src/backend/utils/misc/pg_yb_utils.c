@@ -4671,7 +4671,8 @@ getSplitPointsInfo(Oid relid, YbcPgTableDesc yb_tabledesc,
 	 * indexes themselves.
 	 */
 	Relation	rel = relation_open(relid, AccessShareLock);
-	bool		is_table = rel->rd_rel->relkind == RELKIND_RELATION;
+	bool		is_table = rel->rd_rel->relkind == RELKIND_RELATION ||
+						   rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
 	Relation	index_rel = (is_table ?
 							 relation_open(RelationGetPrimaryKeyIndex(rel),
 										   AccessShareLock) :
