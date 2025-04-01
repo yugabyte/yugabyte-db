@@ -3235,7 +3235,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_allow_separate_requests_for_sampling_stages,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

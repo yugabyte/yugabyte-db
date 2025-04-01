@@ -70,8 +70,6 @@ class PgDocSampleOp : public PgDocReadOp {
     uint64_t num_blocks_collected;
     double num_rows_processed;
     int32 num_rows_collected;
-    // TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366: Remove this:
-    double DEPRECATED_estimated_total_rows;
   };
 
   PgDocSampleOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op)
@@ -163,10 +161,6 @@ class PgDocSampleOp : public PgDocReadOp {
       .num_blocks_collected = sampling_state->num_blocks_collected(),
       .num_rows_processed = sampling_state->samplerows(),
       .num_rows_collected = sampling_state->numrows(),
-      // TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366: Remove this:
-      .DEPRECATED_estimated_total_rows = sampling_state->has_deprecated_estimated_total_rows()
-                                             ? sampling_state->deprecated_estimated_total_rows()
-                                             : sampling_state->samplerows()
   };
 
   RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
@@ -611,9 +605,7 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
   }
 
   double GetEstimatedRowCount() const override {
-    // TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366: Simplify the
-    // following code to return GetSampleOp().GetSamplingStats().num_rows_processed.
-    return GetSampleOp().GetSamplingStats().DEPRECATED_estimated_total_rows;
+    return GetSampleOp().GetSamplingStats().num_rows_processed;
   }
 
   Status SetSampleBlocksBounds(std::vector<std::pair<KeyBuffer, KeyBuffer>>&& sample_blocks) {
@@ -686,6 +678,9 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
 
   double GetEstimatedRowCount() const override {
     const auto num_rows_processed = sample_rows_picker_->GetNumRowsProcessed();
+    VLOG_WITH_FUNC(1) << "num_rows_processed: " << num_rows_processed
+                      << " num_blocks_collected_: " << num_blocks_collected_
+                      << " num_blocks_processed_: " << num_blocks_processed_;
     return num_blocks_collected_ >= num_blocks_processed_
                ? num_rows_processed
                : 1.0 * num_rows_processed * num_blocks_processed_ / num_blocks_collected_;
@@ -743,34 +738,22 @@ Status PgSample::Prepare(
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
   bind_ = PgTable(nullptr);
 
-  const auto allow_separate_requests_for_sampling_stages =
-      yb_allow_separate_requests_for_sampling_stages;
-
-  // TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366:
-  // Simplify the following code to fallback to YsqlSamplingAlgorithm::FULL_TABLE_SCAN when
-  // yb_allow_separate_requests_for_sampling_stages is false.
   YsqlSamplingAlgorithm ysql_sampling_algorithm;
-  if (yb_allow_block_based_sampling_algorithm &&
-      (target_->IsColocated() || allow_separate_requests_for_sampling_stages)) {
+  if (yb_allow_separate_requests_for_sampling_stages) {
     ysql_sampling_algorithm = YsqlSamplingAlgorithm(yb_sampling_algorithm);
   } else {
+    // Older versions might not have ExecuteSampleBlockBased implementation which runs block-based
+    // sampling stages separately. For both backward compatibility and simplicity, in this case we
+    // fallback to full table scan for ANALYZE. This only affects performance of colocated tables
+    // ANALYZE queries launched during upgrade process.
     ysql_sampling_algorithm = YsqlSamplingAlgorithm::FULL_TABLE_SCAN;
   }
 
-  if (ysql_sampling_algorithm == YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING &&
-      allow_separate_requests_for_sampling_stages) {
+  if (ysql_sampling_algorithm == YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING) {
     sample_rows_picker_ = VERIFY_RESULT(TwoStageSampleRowsPicker::Make(
         pg_session_, table_id, is_region_local, targrows, rand_state, read_time,
         ysql_sampling_algorithm));
   } else {
-    // Old versions might not have ExecuteSampleBlockBased implementation which runs stages
-    // separately. So for backward compatibility, if yb_allow_separate_requests_for_sampling_stages
-    // is false, even for YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING we use SampleRowsPicker class
-    // which expects tserver to run two-stages-in-single-run
-    // DEPRECATED_ExecuteSampleBlockBasedColocated function.
-    // New versions fall back to DEPRECATED_ExecuteSampleBlockBasedColocated when
-    // PgsqlSamplingStatePB::is_blocks_sampling_stage is false and PgsqlReadRequestPB::sample_blocks
-    // is empty.
     sample_rows_picker_ = VERIFY_RESULT(SampleRowsPicker::Make(
         pg_session_, table_id, is_region_local, targrows, rand_state, read_time,
         ysql_sampling_algorithm));

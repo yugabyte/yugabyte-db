@@ -645,7 +645,8 @@ bool PutAdjustedSampleBlockBounds(
   auto adjusted_sample_block_bounds = std::make_pair(
       KeyBuffer(sample_block.first.empty() ? partition_lower_bound_key : sample_block.first),
       KeyBuffer(sample_block.second.empty() ? partition_upper_bound_key : sample_block.second));
-  if (adjusted_sample_block_bounds.first == adjusted_sample_block_bounds.second) {
+  if (adjusted_sample_block_bounds.first == adjusted_sample_block_bounds.second &&
+      !adjusted_sample_block_bounds.first.empty()) {
     // Don't put empty sample block
     return false;
   }
