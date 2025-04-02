@@ -2208,16 +2208,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  public void createCheckCertificateConfigTask(
-      Collection<Cluster> clusters,
-      Set<NodeDetails> nodes,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA,
-      boolean enableClientToNodeEncrypt) {
-    createCheckCertificateConfigTask(
-        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
-  }
-
   /**
    * Create preflight node check to check certificateConfig for on-prem nodes in the universe
    *
@@ -2299,9 +2289,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Create check certificate config tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param clusters the clusters
+   * @param universe the universe to which the clusters belong.
+   * @param clusters the clusters.
    */
-  public void createCheckCertificateConfigTask(Collection<Cluster> clusters) {
+  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
     log.info("Checking certificate config for on-prem nodes in the universe.");
     Set<Cluster> onPremClusters =
         clusters.stream()
@@ -2311,15 +2302,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("No on-prem clusters found in the universe.");
       return;
     }
+
     UUID rootCA =
-        EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null;
+        EncryptionInTransitUtil.isRootCARequired(universe.getUniverseDetails())
+            ? taskParams().rootCA
+            : null;
     UUID clientRootCA =
-        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+        EncryptionInTransitUtil.isClientRootCARequired(universe.getUniverseDetails())
             ? taskParams().getClientRootCA()
             : null;
-    boolean enableClientToNodeEncrypt =
-        taskParams().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate
+    // config.
     if (rootCA == null && clientRootCA == null) {
       return;
     }
@@ -2327,6 +2320,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
     if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      boolean enableClientToNodeEncrypt =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
       createCheckCertificateConfigTask(
           clusters, nodesToProvision, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
     }
