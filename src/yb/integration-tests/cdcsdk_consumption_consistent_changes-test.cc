@@ -4233,6 +4233,16 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestMovingRestartTimeForwardWhenN
   slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
   auto restart_time_4 = slot_entry->record_id_commit_time;
   ASSERT_GT(restart_time_4, restart_time_3);
+
+  // Increase the value of the flag cdcsdk_update_restart_time_interval_secs back to 60 seconds.
+  // Since we updated the restart time in last GetConsistentChanges call, it should not be updated
+  // for the next minute.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 60;
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_5 = slot_entry->record_id_commit_time;
+  ASSERT_EQ(restart_time_5, restart_time_4);
 }
 
 // This test verifies that we do not ship records with commit time < vwal_safe_time.
