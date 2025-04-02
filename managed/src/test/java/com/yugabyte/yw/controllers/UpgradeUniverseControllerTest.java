@@ -1534,6 +1534,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
+    // Rolling is not supported due to a bug PLAT-9434.
+    bodyJson.put("upgradeOption", "Non-Rolling");
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
