@@ -21,6 +21,7 @@ COPY table FROM 's3://mybucket/data.parquet' WITH (format 'parquet');
   - [Copy FROM/TO Parquet files TO/FROM Postgres tables](#copy-tofrom-parquet-files-fromto-postgres-tables)
   - [Inspect Parquet schema](#inspect-parquet-schema)
   - [Inspect Parquet metadata](#inspect-parquet-metadata)
+  - [Inspect Parquet column statistics](#inspect-parquet-column-statistics)
 - [Object Store Support](#object-store-support)
 - [Copy Options](#copy-options)
 - [Configuration](#configuration)
@@ -155,6 +156,30 @@ SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM 
 ------------------------------+--------------+---------------------
  /tmp/product_example.parquet | ARROW:schema | /////5gIAAAQAAAA ...
 (1 row)
+```
+
+### Inspect Parquet column statistics
+
+You can call `SELECT * FROM parquet.column_stats(<uri>)` to discover the column statistics of the Parquet file, such as min and max value for the column, at given uri.
+
+```sql
+SELECT * FROM parquet.column_stats('/tmp/product_example.parquet')
+ column_id | field_id |         stats_min          |         stats_max          | stats_null_count | stats_distinct_count 
+-----------+----------+----------------------------+----------------------------+------------------+----------------------
+         4 |        7 | item 1                     | item 2                     |                1 |                     
+         6 |       11 | 1                          | 1                          |                1 |                     
+         7 |       12 |                            |                            |                2 |                     
+        10 |       17 |                            |                            |                2 |                     
+         0 |        0 | 1                          | 1                          |                0 |                     
+        11 |       18 | 2025-03-11 14:01:22.045739 | 2025-03-11 14:01:22.045739 |                0 |                     
+         3 |        6 | 1                          | 2                          |                1 |                     
+        12 |       19 | 2022-05-01 19:00:00+03     | 2022-05-01 19:00:00+03     |                0 |                     
+         8 |       15 |                            |                            |                2 |                     
+         5 |        8 | 1                          | 2                          |                1 |                     
+         9 |       16 |                            |                            |                2 |                     
+         1 |        2 | 1                          | 1                          |                0 |                     
+         2 |        3 | product 1                  | product 1                  |                0 |                     
+(13 rows)
 ```
 
 ## Object Store Support

@@ -71,6 +71,8 @@ pub(crate) fn i64_to_timestamp(i64_timestamp: i64) -> Timestamp {
 }
 
 pub(crate) fn timestamptz_to_i64(timestamptz: TimestampWithTimeZone) -> i64 {
+    // timestamptz is already adjusted to utc internally by Postgres. Postgres uses
+    // local session timezone to display timestamptz values.
     // PG epoch is (2000-01-01). Convert it to Unix epoch (1970-01-01). +10957 days
     let adjustment_interval = Interval::from_days(10957);
     let adjusted_timestamptz: TimestampWithTimeZone = unsafe {
@@ -353,6 +355,11 @@ fn extract_precision_from_numeric_typmod(typmod: i32) -> i32 {
 fn extract_scale_from_numeric_typmod(typmod: i32) -> i32 {
     // taken from PG's numeric.c
     (((typmod - pg_sys::VARHDRSZ as i32) & 0x7ff) ^ 1024) - 1024
+}
+
+#[inline]
+pub(crate) fn make_numeric_typmod(precision: i32, scale: i32) -> i32 {
+    ((precision << 16) | (scale & 0x7ff)) + pg_sys::VARHDRSZ as i32
 }
 
 fn is_unbounded_numeric_typmod(typmod: i32) -> bool {
