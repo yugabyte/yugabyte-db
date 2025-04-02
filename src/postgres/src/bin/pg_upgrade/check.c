@@ -1786,7 +1786,8 @@ yb_check_installed_extensions()
 			"'hll',"
 			"'pg_cron',"
 			"'pg_partman',"
-			"'plpgsql')");
+			"'plpgsql',"
+			"'anon')");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 

@@ -2228,7 +2228,8 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol) {
+    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol,
+    const std::string& user) {
   if (!node_index) {
     node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
   }
@@ -2237,7 +2238,7 @@ Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
   auto* ts = tablet_server(*node_index);
 
   auto settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(), .port = ts->ysql_port(), .dbname = db_name};
+      .host = ts->bind_host(), .port = ts->ysql_port(), .dbname = db_name, .user = user};
 
   if (opts_.enable_ysql_auth) {
     settings.user = "yugabyte";
