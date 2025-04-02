@@ -2099,6 +2099,10 @@ void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
+void PgApiImpl::SetLockTimeout(int lock_timeout_ms) {
+  pg_session_->SetLockTimeout(lock_timeout_ms);
+}
+
 Result<yb::tserver::PgGetLockStatusResponsePB> PgApiImpl::GetLockStatusData(
     const std::string &table_id, const std::string &transaction_id) {
   return pg_session_->GetLockStatusData(table_id, transaction_id);

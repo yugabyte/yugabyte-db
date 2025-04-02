@@ -3937,7 +3937,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&LockTimeout,
 		0, 0, INT_MAX,
-		NULL, NULL, NULL
+		NULL, YBCSetLockTimeout, NULL
 	},
 
 	{

@@ -948,6 +948,10 @@ void PgSession::SetTimeout(const int timeout_ms) {
   pg_client_.SetTimeout(timeout_ms * 1ms);
 }
 
+void PgSession::SetLockTimeout(int lock_timeout_ms) {
+  pg_client_.SetLockTimeout(lock_timeout_ms * 1ms);
+}
+
 void PgSession::ResetCatalogReadPoint() {
   catalog_read_time_ = ReadHybridTime();
 }
