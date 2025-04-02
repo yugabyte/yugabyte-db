@@ -35,32 +35,38 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 {{< /sections/2-boxes >}}
 
 
-## Introduction to YugabyteDB
-
-Learn how YugabyteDB supports mission-critical applications.
-
-- Scalability - Scale in and out with no downtime
-- Resilience - Survuve failures and zero-downtime upgrades and patching
-- Compatibiliy - YugabyteDB reuses PostgreSQL's query layer for maximum conpatibility
-
-## Migrate
-
-Simplify migration from legacy and cloud databases using [YugabyteDB Voyager](/preview/yugabyte-voyager/).
-
-## Deploy
-
-
-
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="Introduction to YugabyteDB"
     description="Learn about YugabyteDB and how it supports mission-critical applications."
-    linkText1="Resilient"
-    linkUrl1="/preview/architecture/"
-    linkText2="Scalable"
-    linkUrl2="/preview/benchmark/"
-    linkText3="Geo distributed"
-    linkUrl3="/preview/benchmark/"
+    linkText1="Resiliency - Survive failures, with zero-downtime upgrades and patching"
+    linkUrl1="/preview/explore/fault-tolerance/"
+    linkText2="Scalability - Scale in and out with no downtime"
+    linkUrl2="/preview/explore/linear-scalability/"
+    linkText3="Compatibility - YugabyteDB reuses PostgreSQL's query layer for maximum compatibility"
+    linkUrl3="/preview/explore/ysql-language-features/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Deploy"
+    description="YugabyteDB features flexible deployment options for ."
+    linkText1="Synchronous replication - Keep serving requests in the event of a failure."
+    linkUrl1="/preview/explore/multi-region-deployments/synchronous-replication-ysql/"
+    linkText2="Asynchronous xCluster - Replicate between two regions for disaster recovery"
+    linkUrl2="/preview/explore/going-beyond-sql/asynchronous-replication-ysql/"
+    linkText3="Geo-partitioning - Pin data to regions for compliance and lower latencies."
+    linkUrl3="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Deploy"
+    description="Simplify migration from legacy and cloud databases using YugabyteDB Voyager."
+    linkText1="Synchronous replication - Keep serving requests in the event of a failure."
+    linkUrl1="/preview/explore/multi-region-deployments/synchronous-replication-ysql/"
+    linkText2="Asynchronous xCluster - Replicate between two regions for disaster recovery"
+    linkUrl2="/preview/explore/going-beyond-sql/asynchronous-replication-ysql/"
+    linkText3="Geo-partitioning - Pin data to regions for compliance and lower latencies."
+    linkUrl3="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
   >}}
 
   {{< sections/3-box-card
@@ -70,14 +76,20 @@ Simplify migration from legacy and cloud databases using [YugabyteDB Voyager](/p
     buttonUrl="/preview/yugabyte-voyager/"
   >}}
 
-  {{< sections/3-box-card
-    title="Deploy"
-    description="Simplify migration from legacy and cloud databases using YugabyteDB Voyager."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-voyager/"
-  >}}
-
 {{< /sections/3-boxes >}}
+
+
+## Introduction to YugabyteDB
+
+Learn how YugabyteDB supports mission-critical applications.
+
+- Scalability - Scale in and out with no downtime    [Learn More](/preview/explore/linear-scalability/)
+- Resilience - Survive failures, and zero-downtime upgrades and patching    [Learn More](/preview/explore/fault-tolerance/)
+- Compatibility - YugabyteDB reuses PostgreSQL's query layer for maximum compatibility    [Learn More](/preview/explore/ysql-language-features/)
+
+## Migrate
+
+Simplify migration from legacy and cloud databases using [YugabyteDB Voyager](/preview/yugabyte-voyager/).
 
 ### Deployment options
 
