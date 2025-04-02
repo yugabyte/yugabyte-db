@@ -114,4 +114,6 @@ extern int	date2isoyearday(int year, int mon, int mday);
 
 extern bool TimestampTimestampTzRequiresRewrite(void);
 
+extern pg_time_t yb_timestamptz_to_micros_time_t(TimestampTz t);
+
 #endif							/* TIMESTAMP_H */

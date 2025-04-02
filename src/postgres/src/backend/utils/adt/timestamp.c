@@ -5940,3 +5940,17 @@ generate_series_timestamptz(PG_FUNCTION_ARGS)
 		SRF_RETURN_DONE(funcctx);
 	}
 }
+
+/*
+ * Same as timestamptz_to_time_t, but with microsecond precision.
+ */
+pg_time_t
+yb_timestamptz_to_micros_time_t(TimestampTz t)
+{
+	pg_time_t	result;
+
+	result = (pg_time_t) (t +
+						  ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY));
+
+	return result;
+}

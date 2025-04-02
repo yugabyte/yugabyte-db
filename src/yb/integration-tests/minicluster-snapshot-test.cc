@@ -718,42 +718,56 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}, {2, 20}};
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
-
   // Write a second row after recording the hybrid time.
-  auto ht = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
 
-  // Perform the first clone operation to ht.
+  // Clone to ht and verify clone only has the first row.
   ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName, ht));
-
-  // Perform the second clone operation to clone the source DB using the current timestamp (AS OF is
-  // not specified)
-  ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
-
-  // Verify source rows are unchanged.
-  auto rows = ASSERT_RESULT((source_conn_->FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
-
-  // Verify first clone only has the first row.
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
   // Use a scope here and below so we can drop the cloned databases after.
   {
     auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
     auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
     ASSERT_EQ(row, kRows[0]);
   }
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
 
-  // Verify second clone has both rows.
+  // Clone using the current timestamp (AS OF is not specified) and check that it has both rows.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
   {
     auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-    rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+    auto rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
     ASSERT_VECTORS_EQ(rows, kRows);
   }
-
-  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
+
+  // Clone using a timestamp in PG's timestamptz format. It should only have the first row.
+  const auto kTargetNamespaceName3 = "testdb_clone3";
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF '$2'", kTargetNamespaceName3, kSourceNamespaceName,
+      timestamp.ToHumanReadableTime()));
+  {
+    auto target_conn3 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName3));
+    auto row = ASSERT_RESULT((target_conn3.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, kRows[0]);
+  }
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName3));
+
+  // Cloning using a timestamp in Unix seconds should not work.
+  const auto kTargetNamespaceName4 = "testdb_clone4";
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName4, kSourceNamespaceName,
+      timestamp.ToInt64() / 1000000);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "invalid clone time type");
+
+  // Verify source rows are unchanged.
+  auto rows = ASSERT_RESULT((source_conn_->FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_VECTORS_EQ(rows, kRows);
 }
 
 class TsDataSizeMetricsTest : public PgCloneTest {
