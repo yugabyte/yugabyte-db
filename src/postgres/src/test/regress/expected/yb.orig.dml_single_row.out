@@ -539,10 +539,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE k = 1 AND 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE 1 = k; -- single row path
-                  QUERY PLAN                  
-----------------------------------------------
+                   QUERY PLAN                    
+-------------------------------------------------
  Update on single_row (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result single_row (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
