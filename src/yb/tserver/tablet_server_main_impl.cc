@@ -37,47 +37,48 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/common/termination_monitor.h"
 #include "yb/common/llvm_profile_dumper.h"
+#include "yb/common/termination_monitor.h"
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
+
+#include "yb/server/skewed_clock.h"
+
+#include "yb/tserver/factory.h"
+#include "yb/tserver/metrics_snapshotter.h"
+#include "yb/tserver/server_main_util.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_call_home.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/port_picker.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
+#include "yb/util/ulimit_util.h"
+#include "yb/util/debug/trace_event.h"
+#include "yb/util/net/net_util.h"
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
-
-#include "yb/gutil/strings/substitute.h"
-#include "yb/tserver/tserver_call_home.h"
-#include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
-#include "yb/rpc/secure_stream.h"
-#include "yb/server/skewed_clock.h"
-#include "yb/rpc/secure.h"
-#include "yb/tserver/factory.h"
-#include "yb/tserver/metrics_snapshotter.h"
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
-#include "yb/util/main_util.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/result.h"
-#include "yb/util/ulimit_util.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status_log.h"
-#include "yb/util/debug/trace_event.h"
-#include "yb/util/thread.h"
-#include "yb/util/port_picker.h"
-
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
-
-#include "yb/tserver/server_main_util.h"
 
 using std::string;
 using namespace std::placeholders;

@@ -482,7 +482,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
       // worker threads, log a warning message and continue.
       LOG(WARNING) << "Thread pool failed to create thread: " << status << ", num_threads: "
                    << num_threads_ << ", max_threads: " << max_threads_;
-      if (num_threads_ == 0) {
+      if (num_threads_ == 0 || max_queue_size_ == total_queued_tasks_) {
         // If we have no threads, we can't do any work.
         return status;
       }

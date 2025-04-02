@@ -254,6 +254,7 @@ class ThreadMgr {
 
   void RenderThreadGroup(const std::string& group, std::ostream& output);
   uint64_t ReadThreadsRunning();
+  uint64_t ReadThreadsStarted();
 
  private:
   // Container class for any details we want to capture about a thread
@@ -303,9 +304,6 @@ class ThreadMgr {
   // category.
   std::unique_ptr<ThreadCategoryTracker> started_category_tracker_;
   std::unique_ptr<ThreadCategoryTracker> running_category_tracker_;
-
-  // Metric callbacks.
-  uint64_t ReadThreadsStarted();
 
   // Webpage callback; prints all threads by category
   void ThreadPathHandler(const WebCallbackRegistry::WebRequest& args,
@@ -963,6 +961,10 @@ void RenderAllThreadStacks(std::ostream& output) {
 
 size_t CountManagedThreads() {
   return thread_manager->ReadThreadsRunning();
+}
+
+size_t CountStartedThreads() {
+  return thread_manager->ReadThreadsStarted();
 }
 
 } // namespace yb

@@ -13,6 +13,7 @@
 
 #include "yb/tserver/metrics_snapshotter.h"
 
+#include <sys/shm.h>
 #include <sys/statvfs.h>
 
 #include <memory>
@@ -28,6 +29,8 @@
 #include <mach/mach_error.h>
 #include <mach/mach_host.h>
 #include <mach/vm_map.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
 #else
 #include <stdlib.h>
 #include <stdio.h>
