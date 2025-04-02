@@ -19,11 +19,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
@@ -63,10 +66,6 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
-    if (cloudEnabled) {
-      log.debug("Skipping check for ybm");
-      return;
-    }
     String softwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
@@ -85,7 +84,8 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
           "Unable to verify cluster consistency (CheckClusterConsistency). "
               + runtimeConfigInfo
               + " Encountered error: "
-              + e);
+              + e,
+          e);
     }
     if (!errors.isEmpty()) {
       throw new PlatformServiceException(
@@ -119,6 +119,43 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     return errors;
   }
 
+  @Data
+  public static class CheckResult {
+    final Set<String> unknownMasterIps = new HashSet<>();
+    final Set<String> unknownTserverIps = new HashSet<>();
+    final Set<String> absentMasterIps = new HashSet<>();
+    final Set<String> absentTserverIps = new HashSet<>();
+    boolean noMasterLeader;
+    final List<String> errors = new ArrayList<>();
+    long checkTimestamp = System.currentTimeMillis();
+  }
+
+  public static class NodeResp {
+    private final Set<String> ipAddresses = new HashSet<>();
+
+    public NodeResp(String ip) {
+      this.ipAddresses.add(ip);
+    }
+
+    public NodeResp(List<String> ips) {
+      this.ipAddresses.addAll(ips);
+    }
+
+    public boolean hasIp(String ip) {
+      return ipAddresses.contains(ip);
+    }
+
+    public String getAnyIp() {
+      // Every node has at least 1 ip, use findAny to get it;
+      return ipAddresses.stream().findAny().get();
+    }
+
+    @Override
+    public String toString() {
+      return String.join(", ", ipAddresses);
+    }
+  }
+
   public static List<String> checkCurrentServers(
       YBClient ybClient,
       Universe universe,
@@ -131,15 +168,21 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       errors.add("No master leader!");
     }
     ListMasterRaftPeersResponse listMastersResponse = ybClient.listMasterRaftPeers();
-    Set<String> masterIps =
+    List<NodeResp> masterNodes =
         listMastersResponse.getPeersList().stream()
-            .flatMap(p -> p.getLastKnownPrivateIps().stream())
-            .map(hp -> hp.getHost())
-            .collect(Collectors.toSet());
+            .map(
+                p ->
+                    new NodeResp(
+                        Stream.concat(
+                                p.getLastKnownPrivateIps().stream(),
+                                p.getLastKnownBroadcastIps().stream())
+                            .map(hp -> hp.getHost())
+                            .collect(Collectors.toList())))
+            .collect(Collectors.toList());
 
     errors.addAll(
         checkServers(
-            masterIps,
+            masterNodes,
             skipMaybeRunning,
             universe,
             UniverseTaskBase.ServerType.MASTER,
@@ -147,13 +190,13 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             cloudEnabled));
 
     ListLiveTabletServersResponse liveTabletServersResponse = ybClient.listLiveTabletServers();
-    Set<String> tserverIps =
+    List<NodeResp> tserverNodes =
         liveTabletServersResponse.getTabletServers().stream()
-            .map(ts -> ts.getPrivateAddress().getHost())
-            .collect(Collectors.toSet());
+            .map(ts -> new NodeResp(ts.getPrivateAddress().getHost()))
+            .collect(Collectors.toList());
     errors.addAll(
         checkServers(
-            tserverIps,
+            tserverNodes,
             skipMaybeRunning,
             universe,
             UniverseTaskBase.ServerType.TSERVER,
@@ -163,7 +206,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
   }
 
   private static Set<String> checkServers(
-      Set<String> currentIPs,
+      List<NodeResp> currentNodes,
       Set<String> skipMaybeRunningNodes,
       Universe universe,
       UniverseTaskBase.ServerType serverType,
@@ -189,36 +232,39 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
                 })
             .collect(Collectors.toSet());
 
-    log.debug("Checking {}: expected {} actual {}", serverType, expectedIPs, currentIPs);
+    log.debug("Checking {}: expected {} actual {}", serverType, expectedIPs, currentNodes);
 
-    for (String currentIP : currentIPs) {
-      if (!expectedIPs.remove(currentIP)) {
-        NodeDetails nodeDetails = universe.getNodeByAnyIP(currentIP);
-        if (nodeDetails != null) {
-          if (skipMaybeRunningNodes != null
-              && skipMaybeRunningNodes.contains(nodeDetails.nodeName)) {
-            log.warn(
-                "{} is running on {} but not expected, skipping because may be running",
-                serverType.name(),
-                currentIP);
-            continue;
-          }
+    for (String expectedIP : expectedIPs) {
+      Optional<NodeResp> found = currentNodes.stream().filter(n -> n.hasIp(expectedIP)).findFirst();
+      if (found.isPresent()) {
+        currentNodes.remove(found.get());
+      } else {
+        if (strict) {
           errors.add(
-              String.format(
-                  "Unexpected %s: %s, node %s is not marked as %s",
-                  serverType.name(), currentIP, nodeDetails.getNodeName(), serverType.name()));
-        } else {
-          errors.add(
-              String.format(
-                  "Unexpected %s: %s, node with such ip is not present in cluster",
-                  serverType.name(), currentIP));
+              String.format("Expected, but not present %s: %s", serverType.name(), expectedIP));
         }
       }
     }
-    if (strict) {
-      for (String expectedIP : expectedIPs) {
+    for (NodeResp currentNode : currentNodes) {
+      String currentIP = currentNode.getAnyIp();
+      NodeDetails nodeDetails = universe.getNodeByAnyIP(currentIP);
+      if (nodeDetails != null) {
+        if (skipMaybeRunningNodes != null && skipMaybeRunningNodes.contains(nodeDetails.nodeName)) {
+          log.warn(
+              "{} is running on {} but not expected, skipping because may be running",
+              serverType.name(),
+              currentIP);
+          continue;
+        }
         errors.add(
-            String.format("Expected, but not present %s: %s", serverType.name(), expectedIP));
+            String.format(
+                "Unexpected %s: %s, node %s is not marked as %s",
+                serverType.name(), currentIP, nodeDetails.getNodeName(), serverType.name()));
+      } else {
+        errors.add(
+            String.format(
+                "Unexpected %s: %s, node with such ip is not present in cluster",
+                serverType.name(), currentIP));
       }
     }
     return errors;

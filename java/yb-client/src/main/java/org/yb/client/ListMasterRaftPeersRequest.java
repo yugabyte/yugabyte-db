@@ -64,7 +64,12 @@ class ListMasterRaftPeersRequest extends YRpc<ListMasterRaftPeersResponse> {
         for (HostPortPB hostPortPB : entry.getLastKnownPrivateAddrList()) {
           addresses.add(HostAndPort.fromParts(hostPortPB.getHost(), hostPortPB.getPort()));
         }
+        List<HostAndPort> broadcastAddrs = new ArrayList<>();
+        for (HostPortPB hostPortPB : entry.getLastKnownBroadcastAddrList()) {
+          broadcastAddrs.add(HostAndPort.fromParts(hostPortPB.getHost(), hostPortPB.getPort()));
+        }
         peerInfo.setLastKnownPrivateIps(addresses);
+        peerInfo.setLastKnownBroadcastIps(broadcastAddrs);
         peerInfo.setMemberType(entry.getMemberType());
         if (entry.hasPermanentUuid()) {
           peerInfo.setUuid(entry.getPermanentUuid().toString("utf8"));
