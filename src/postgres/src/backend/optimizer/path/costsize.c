@@ -219,6 +219,8 @@ bool		enable_async_append = true;
 bool		yb_enable_geolocation_costing = true;
 bool		yb_enable_batchednl = false;
 bool		yb_enable_parallel_append = false;
+YbCostModel	yb_enable_cbo = YB_COST_MODEL_LEGACY;
+bool		yb_ignore_stats = false;
 
 extern int	yb_bnl_batch_size;
 
