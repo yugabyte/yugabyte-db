@@ -64,6 +64,10 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    if (cloudEnabled) {
+      log.debug("Skipping check for ybm");
+      return;
+    }
     String softwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
