@@ -703,34 +703,34 @@ EXPLAIN (COSTS OFF) SELECT * from t_range_100k_4update;
 
 -- Query Hash: c84c26737002659979e72554dcc9ce60
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where id > 0;
-         QUERY PLAN
-----------------------------
- Seq Scan on t_range_100k
-   Storage Filter: (id > 0)
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using t_range_100k_pkey on t_range_100k
+   Index Cond: (id > 0)
 (2 rows)
 
 -- Query Hash: c07f7e18d9f2631cab48c5b81b101312
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where id > 1;
-         QUERY PLAN
-----------------------------
- Seq Scan on t_range_100k
-   Storage Filter: (id > 1)
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using t_range_100k_pkey on t_range_100k
+   Index Cond: (id > 1)
 (2 rows)
 
 -- Query Hash: 641f7f11c6bdc12df3067ae6f1d8a4f5
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where id > 10;
-         QUERY PLAN
------------------------------
- Seq Scan on t_range_100k
-   Storage Filter: (id > 10)
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using t_range_100k_pkey on t_range_100k
+   Index Cond: (id > 10)
 (2 rows)
 
 -- Query Hash: 09c5aed4c09b9f521d3f28ad63bc310c
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where id > 100;
-          QUERY PLAN
-------------------------------
- Seq Scan on t_range_100k
-   Storage Filter: (id > 100)
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using t_range_100k_pkey on t_range_100k
+   Index Cond: (id > 100)
 (2 rows)
 
 -- Query Hash: 5760478f38fc87bd0152788749a4586e

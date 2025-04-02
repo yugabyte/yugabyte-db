@@ -118,15 +118,16 @@ explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 
 (6 rows)
 
 /*+NoYbBatchedNL(p1 p5)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
-                         QUERY PLAN
-------------------------------------------------------------
- Hash Right Join
-   Hash Cond: ((p5.a = (p1.a - 1)) AND (p5.b = (p1.b - 1)))
-   ->  Seq Scan on p5
-   ->  Hash
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Merge Left Join
+   Merge Cond: ((((p1.a - 1)) = p5.a) AND (((p1.b - 1)) = p5.b))
+   ->  Sort
+         Sort Key: ((p1.a - 1)), ((p1.b - 1))
          ->  Seq Scan on p1
                Storage Filter: (a <= 30)
-(6 rows)
+   ->  Index Scan using p5_pkey on p5
+(7 rows)
 
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                                                QUERY PLAN
@@ -559,7 +560,7 @@ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a
 -------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (p2.c1 = p1.c1)
-   ->  Seq Scan on q1 p1
+   ->  Index Scan using q1_pkey on q1 p1
    ->  Nested Loop
          ->  Index Scan using q2_pkey on q2 p2
                Index Cond: (c1 = ANY (ARRAY[p1.c1, $1, $2, ..., $1023]))
@@ -581,7 +582,7 @@ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a
          ->  Materialize
                ->  Index Only Scan using q3_range on q3 p3
    ->  Hash
-         ->  Seq Scan on q1 p1
+         ->  Index Scan using q1_pkey on q1 p1
 (9 rows)
 
 DROP TABLE q1;
@@ -625,9 +626,9 @@ explain (costs off) /*+YbBatchedNL(tab1 tab2)*/ select * from tab1, tab2 where t
 ---------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (tab1.c1 = tab2.c1)
-   ->  Seq Scan on tab2
-   ->  Index Scan using tab1_pkey on tab1
-         Index Cond: (c1 = ANY (ARRAY[tab2.c1, $1, $2, ..., $1023]))
+   ->  Seq Scan on tab1
+   ->  Index Scan using tab2_c1_idx on tab2
+         Index Cond: (c1 = ANY (ARRAY[tab1.c1, $1, $2, ..., $1023]))
 (5 rows)
 
 drop table tab1;
