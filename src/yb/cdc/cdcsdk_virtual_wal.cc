@@ -1072,7 +1072,8 @@ Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
   auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
   if (last_restart_lsn_read_time_.is_valid() &&
       current_time.PhysicalDiff(last_restart_lsn_read_time_) <
-          static_cast<int64>(GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_interval_secs))) {
+          static_cast<int64_t>(
+              GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_interval_secs) * 1000000)) {
     return Status::OK();
   }
 
