@@ -42,11 +42,6 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
     "client connection for a duration equal to or exceeding the value provided, "
     "it will be automatically closed by the Ysql Connection Manager.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
-    "Total number of concurrent client connections that the Ysql Connection Manager allows.");
-
-DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1));
-
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
   "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
   "the number of worker threads will be half of the number of CPU cores.");

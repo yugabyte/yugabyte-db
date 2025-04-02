@@ -39,9 +39,10 @@
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 using std::string;
+DECLARE_uint32(ysql_conn_mgr_max_client_connections);
+DECLARE_string(metric_node_name);
 
 namespace yb::pggate {
-DECLARE_string(metric_node_name);
 
 static ybpgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
@@ -205,6 +206,15 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
           last_updated_timestamp, AggregationFunction::kSum, kServerLevel, "gauge",
           "Timestamp of last update to YSQL Connection Manager metrics"),
       "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
+
+  // Publish the maximum number of clients which can connect to connection manager
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_max_client_connections",
+          FLAGS_ysql_conn_mgr_max_client_connections, AggregationFunction::kSum, kServerLevel,
+          "gauge", "Maximum number of clients that can connect to YSQL "
+          "Connection Manager"),
+      "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {

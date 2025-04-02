@@ -14,6 +14,7 @@
 // This file contains the gFlags that are common across yb-master and yb-tserver processes.
 
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 
 // User specified identifier for this cluster. On the first master leader setup, this is stored in
 // the cluster_config. if not specified, a random UUID is generated.
@@ -38,3 +39,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
 // ycql_ignore_group_by_error in introduced for the same functionality.
 DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, false,
     "This flag is deprecated, please use ycql_ignore_group_by_error");
+
+// DevNote: If this flag is changed to runtime then it needs to be converted to RUNTIME_PG_FLAG,
+// and pggate/webserver/ybc_pg_webserver_wrapper.cc needs to be updated to use the guc instead of
+// the gFlag, since gFlags in PG are not updated at runtime.
+// Connection manager doesn't support yet changing gflag at runtime.
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
+    "Total number of concurrent client connections that the Ysql Connection Manager allows.");
+DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1));
