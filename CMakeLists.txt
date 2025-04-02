@@ -376,7 +376,8 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Wshorten-64-to-32")
 
   # Allow variable length arrays in C++.
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0")
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0" OR
+     (APPLE AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "17.0.0"))
     ADD_CXX_FLAGS("-Wno-vla-cxx-extension")
   endif()
 endif()
