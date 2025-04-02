@@ -489,6 +489,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     }
 
     if (VERIFY_RESULT(context_.Entry(key_slice, reverse_index_value, metadata, handler))) {
+      context_.Complete(*handler, /* transaction_finished= */ false);
       return Status::OK();
     }
 
@@ -496,7 +497,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   }
   RETURN_NOT_OK(reverse_index_iter_.status());
 
-  context_.Complete(handler);
+  context_.Complete(*handler, /* transaction_finished= */ true);
 
   return Status::OK();
 }
@@ -510,10 +511,11 @@ ApplyIntentsContext::ApplyIntentsContext(
     HybridTime log_ht,
     HybridTime file_filter_ht,
     const KeyBounds* key_bounds,
-    SchemaPackingProvider* schema_packing_provider,
+    SchemaPackingProvider& schema_packing_provider,
+    ConsensusFrontiers& frontiers,
     rocksdb::DB* intents_db)
     : IntentsWriterContext(transaction_id),
-      FrontierSchemaVersionUpdater(schema_packing_provider),
+      FrontierSchemaVersionUpdater(schema_packing_provider, &frontiers),
       tablet_id_(tablet_id),
       apply_state_(apply_state),
       // In case we have passed in a non-null apply_state, its aborted set will have been loaded
@@ -650,11 +652,14 @@ Result<bool> ApplyIntentsContext::Entry(
   return false;
 }
 
-void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
-  if (apply_state_) {
-    char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
-    std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
-    PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
+void ApplyIntentsContext::Complete(
+    rocksdb::DirectWriteHandler& handler, bool transaction_finished) {
+  if (transaction_finished) {
+    if (apply_state_) {
+      char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
+      std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
+      PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, &handler);
+    }
   }
   FlushSchemaVersion();
 }
@@ -683,7 +688,7 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     if (VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id))) {
       if (colocation_id != schema_version_colocation_id_) {
         FlushSchemaVersion();
-        auto packing = schema_packing_provider_->ColocationPacking(
+        auto packing = schema_packing_provider_.ColocationPacking(
             colocation_id, kLatestSchemaVersion, HybridTime::kMax);
         if (packing.ok()) {
           cotable_id = packing->cotable_id;
@@ -741,14 +746,15 @@ Result<bool> RemoveIntentsContext::Entry(
   return false;
 }
 
-void RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
+void RemoveIntentsContext::Complete(
+    rocksdb::DirectWriteHandler& handler, bool transaction_finished) {
 }
 
 NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-    SchemaPackingProvider* schema_packing_provider)
-    : FrontierSchemaVersionUpdater(schema_packing_provider),
+    SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers* frontiers)
+    : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
       batch_hybrid_time_(batch_hybrid_time),
