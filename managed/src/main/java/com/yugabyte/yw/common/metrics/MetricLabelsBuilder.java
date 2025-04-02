@@ -15,7 +15,7 @@ import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,7 +38,7 @@ public class MetricLabelsBuilder {
     KnownAlertLabels.SOURCE_TYPE.labelName()
   };
 
-  private final Map<String, String> labels = new HashMap<>();
+  private final Map<String, String> labels = new LinkedHashMap<>();
 
   public static MetricLabelsBuilder create() {
     return new MetricLabelsBuilder();
