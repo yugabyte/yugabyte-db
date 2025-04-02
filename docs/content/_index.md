@@ -49,24 +49,24 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
   {{< sections/3-box-card
     title="Deploy"
-    description="YugabyteDB features flexible deployment options for ."
-    linkText1="Synchronous replication - Keep serving requests in the event of a failure."
+    description="Use replication and data geo-partitioning to achieve low latency, resilience, and compliance."
+    linkText1="Synchronous replication - Keep serving requests in the event of a failure"
     linkUrl1="/preview/explore/multi-region-deployments/synchronous-replication-ysql/"
     linkText2="Asynchronous xCluster - Replicate between two regions for disaster recovery"
     linkUrl2="/preview/explore/going-beyond-sql/asynchronous-replication-ysql/"
-    linkText3="Geo-partitioning - Pin data to regions for compliance and lower latencies."
+    linkText3="Geo-partitioning - Pin data to regions for compliance and lower latencies"
     linkUrl3="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
   >}}
 
   {{< sections/3-box-card
-    title="Deploy"
-    description="Simplify migration from legacy and cloud databases using YugabyteDB Voyager."
-    linkText1="Synchronous replication - Keep serving requests in the event of a failure."
-    linkUrl1="/preview/explore/multi-region-deployments/synchronous-replication-ysql/"
-    linkText2="Asynchronous xCluster - Replicate between two regions for disaster recovery"
-    linkUrl2="/preview/explore/going-beyond-sql/asynchronous-replication-ysql/"
-    linkText3="Geo-partitioning - Pin data to regions for compliance and lower latencies."
-    linkUrl3="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
+    title="Develop"
+    description="Get started building applications based on YugabyteDB."
+    linkText1="Hello World - Use your favorite language to build an application that connects to a YugabyteDB cluster."
+    linkUrl1="/preview/tutorials/build-apps/"
+    linkText2="Drivers and ORMs - Connect applications using familiar third-party drivers and ORMs"
+    linkUrl2="/preview/drivers-orms/"
+    linkText3="Tutorials - Step-by-step guides for building scalable and fault tolerant applications"
+    linkUrl3="/preview/tutorials/"
   >}}
 
   {{< sections/3-box-card
@@ -78,19 +78,45 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
 {{< /sections/3-boxes >}}
 
+&nbsp;
 
-## Introduction to YugabyteDB
+{{< tabpane text=true >}}
 
-Learn how YugabyteDB supports mission-critical applications.
+  {{% tab header="Introduction" lang="intro" %}}
 
-- Scalability - Scale in and out with no downtime    [Learn More](/preview/explore/linear-scalability/)
-- Resilience - Survive failures, and zero-downtime upgrades and patching    [Learn More](/preview/explore/fault-tolerance/)
-- Compatibility - YugabyteDB reuses PostgreSQL's query layer for maximum compatibility    [Learn More](/preview/explore/ysql-language-features/)
+Learn about YugabyteDB and how it supports mission-critical applications.
 
-## Migrate
+- Resiliency - Survive failures, with zero-downtime upgrades and patching
 
-Simplify migration from legacy and cloud databases using [YugabyteDB Voyager](/preview/yugabyte-voyager/).
+- Scalability - Scale in and out with no downtime
 
+- Compatibility - YugabyteDB reuses PostgreSQL's query layer for maximum compatibility
+
+  {{% /tab %}}
+
+  {{% tab header="Deploy" lang="deploy" %}}
+
+Use replication and data geo-partitioning to achieve low latency, resilience, and compliance.
+
+- Synchronous replication - Keep serving requests in the event of a failure"
+- Asynchronous xCluster - Replicate between two regions for disaster recovery
+- Geo-partitioning - Pin data to regions for compliance and lower latencies
+
+  {{% /tab %}}
+
+  {{% tab header="Develop" lang="develop" %}}
+
+Get started building applications based on YugabyteDB.
+
+- Hello World - Use your favorite language to build an application that connects to a YugabyteDB cluster.
+- Drivers and ORMs - Connect applications using familiar third-party drivers and ORMs
+- Tutorials - Step-by-step guides for building scalable and fault tolerant applications
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+<!--
 ### Deployment options
 
 {{< sections/3-boxes >}}
