@@ -124,7 +124,7 @@ To create a Kafka Connect image with the YugabyteDB connector, start with the [C
             sleep infinity
     ```
 
-    The above configuration follows client authentication using SASL, for more details about usage, refer to [Authentication with SASL using JAAS](https://docs.confluent.io/platform/7.0/kafka/authentication_sasl/index.html#authentication-with-sasl-using-jaas).
+    This configuration uses SASL for client authentication. For more information about using SASL with Confluent, refer to [Authentication with SASL using JAAS](https://docs.confluent.io/platform/7.0/kafka/authentication_sasl/index.html#authentication-with-sasl-using-jaas) in the Confluent documentation.
 
     {{< note title="Using Schema Registry" >}}
 
@@ -141,7 +141,7 @@ CONNECT_VALUE_CONVERTER_BASIC_AUTH_CREDENTIALS_SOURCE: "USER_INFO"
 CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: "SCHEMA_REGISTRY_USER:SCHEMA_REGISTRY_PASSWORD"
 ```
 
-For more details on the usage of schema registry, refer to [Confluent documentation](https://docs.confluent.io/cloud/current/connectors/bring-your-connector/custom-connector-fands.html#sr-integration).
+For more details on the usage of schema registry, refer to the [Confluent documentation](https://docs.confluent.io/cloud/current/connectors/bring-your-connector/custom-connector-fands.html#sr-integration).
 
     {{< /note >}}
 
