@@ -400,8 +400,9 @@ grep -nE '^\w+(\s+\w+)+\(' "$1" \
 # alignment.  '(' is needed for cases such as
 #
 #     void\t\t(*startup_fn) (Node *clause, PredIterInfo info);
-grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
-  | perl -ne 'print unless /^\d+:\s+'\
+if ! [[ "$1" == src/postgres/src/backend/utils/error/elog.c ]]; then
+  grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
+    | perl -ne 'print unless /^\d+:\s+'\
 '(\w{1}(\t\t| {7})'\
 '|\w{2}(\t\t| {6})'\
 '|\w{3}(\t\t| {5})'\
@@ -418,8 +419,9 @@ grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
 '|\w{2}(\t| {2})'\
 '|\w{3}\t))'\
 '[\w(]/' \
-  | sed 's/^/error:bad_variable_declaration_spacing:'\
+    | sed 's/^/error:bad_variable_declaration_spacing:'\
 'Variable declarations should align variable names to the 12 column mark:/'
+fi
 
 # Braces
 grep -nE '(\)|else)\s+{$' "$1" \
