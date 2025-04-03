@@ -316,7 +316,17 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
     MiniCluster* cluster, const TabletId& tablet_id);
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
-    MiniCluster* cluster, const TableId& table_id);
+    MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter = ListPeersFilter::kAll);
+
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
+    MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
+Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
+    MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
+std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers);
 
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
 // i.e. not yet completed split or deleted (tombstoned).
@@ -379,6 +389,7 @@ int NumRunningFlushes(MiniCluster* cluster);
 
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
+Result<TableId> FindTableId(MiniCluster* cluster, const std::string& table_name);
 
 Status WaitForInitDb(MiniCluster* cluster);
 

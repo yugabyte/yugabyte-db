@@ -130,7 +130,7 @@ class IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) = 0;
 
-  virtual void Complete(rocksdb::DirectWriteHandler* handler) = 0;
+  virtual void Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) = 0;
 
   const TransactionId& transaction_id() const {
     return transaction_id_;
@@ -181,22 +181,26 @@ class IntentsWriter : public rocksdb::DirectWriter {
 
 class FrontierSchemaVersionUpdater {
  public:
-  explicit FrontierSchemaVersionUpdater(SchemaPackingProvider* schema_packing_provider)
-      : schema_packing_provider_(schema_packing_provider) {}
+  FrontierSchemaVersionUpdater(
+      SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers* frontiers)
+      : schema_packing_provider_(schema_packing_provider), frontiers_(frontiers) {}
 
-  void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
+  SchemaPackingProvider& schema_packing_provider() const {
+    return schema_packing_provider_;
+  }
 
  protected:
   Status UpdateSchemaVersion(Slice key, Slice value);
   void FlushSchemaVersion();
 
+  SchemaPackingProvider& schema_packing_provider_;
+  ConsensusFrontiers* const frontiers_;
+
  private:
-  SchemaPackingProvider* schema_packing_provider_;
   Uuid schema_version_table_ = Uuid::Nil();
   ColocationId schema_version_colocation_id_ = 0;
   SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
-  ConsensusFrontiers* frontiers_ = nullptr;
 };
 
 class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
@@ -208,7 +212,8 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       HybridTime commit_ht,
       HybridTime log_ht,
       const KeyBounds* key_bounds,
-      SchemaPackingProvider* schema_packing_provider,
+      SchemaPackingProvider& schema_packing_provider,
+      ConsensusFrontiers& frontiers,
       rocksdb::DB* intents_db);
 
   void Start(const boost::optional<Slice>& first_key) override;
@@ -217,7 +222,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) override;
 
-  void Complete(rocksdb::DirectWriteHandler* handler) override;
+  void Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
@@ -239,7 +244,8 @@ class RemoveIntentsContext : public IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) override;
 
-  void Complete(rocksdb::DirectWriteHandler* handler) override;
+  void Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
+
  private:
   uint8_t reason_;
 };
@@ -267,7 +273,8 @@ class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
   ExternalIntentsBatchWriter(
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
-      rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider* schema_packing_provider);
+      rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
+      ConsensusFrontiers* frontiers);
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;

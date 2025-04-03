@@ -137,6 +137,8 @@ class CompactionJob {
 
   void CloseFile(Status* status, std::unique_ptr<WritableFileWriter>* writer);
 
+  const std::string& LogPrefix() const;
+
   int job_id_;
 
   // CompactionJob state
