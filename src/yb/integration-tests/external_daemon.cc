@@ -512,8 +512,9 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
   int ret = 0;
   WARN_NOT_OK(process_->Wait(&ret), Format("$0 Waiting on $1", LogPrefix(), process_name_and_pid));
   process_.reset();
-  LOG_WITH_PREFIX(INFO) << "Process " << process_name_and_pid << " shutdown completed in "
-                        << ToMilliseconds(CoarseMonoClock::Now() - start_time) << "ms";
+  LOG_WITH_PREFIX(INFO)
+      << "Process " << process_name_and_pid << " shutdown completed in "
+      << MonoDelta(CoarseMonoClock::Now() - start_time).ToPrettyString() << ", exit code: " << ret;
 }
 
 void ExternalDaemon::FlushCoverage() {
