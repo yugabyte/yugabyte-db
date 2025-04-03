@@ -78,23 +78,28 @@ public class TestMixedModePushdown extends BasePgSQLTest {
   private static final String kTidColumn = "tid_col";
   private static final String kCircleColumn = "circle_col";
   private static final String kCharColumn = "char_col";
+  private static final String kUuidColumn = "uuid_col";
+
+  private static final String kTimestampCol = "timestamp_col";
+  private static final String kTimestamptzCol = "timestamptz_col";
+  private static final String kDateCol = "date_col";
+  private static final String kTimeCol = "time_col";
+  private static final String kTimetzCol = "timetz_col";
+  private static final String kIntervalCol = "interval_col";
 
   private static final Pattern kStorageFilter = Pattern.compile("^[\t ]+Storage (Index )?Filter: ");
   private static final Pattern kLocalFilter = Pattern.compile("^[\t ]+Filter: ");
-  private static final String kInvalidFunctionError = "does not exist";
-  private static final String kInvalidOperatorError =
-    "No operator matches the given name and argument types";
-  private static final String kOutofRangeError = "out of range";
 
   private static final String kExplainArgs = "(ANALYZE, COSTS OFF, TIMING OFF)";
 
   private static enum Behaviour {
-    kNotPushable,
-    kPushable,
-    kMMPushable,
-    kOperatorError,
-    kFunctionError,
-    kBadCastError,
+    kNotPushable, // The expression is not pushable
+    kPushable, // The expression is pushable but not in compatibility mode
+    kMMPushable, // The expression is pushable in compatibility mode
+    kOperatorError, // The expression is a operator error.
+    kFunctionError, // The expression is a function error.
+    kOutofRangeError, // The expression fails because of a bad cast, e.g. smallint out of range
+    kBadCastError, // The expression fails because the two types are incompatible
   }
 
   @Before
@@ -102,7 +107,7 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     Statement statement = connection.createStatement();
     String createTable = String.format(
       "CREATE TABLE %s(%s INT2, %s INT4, %s INT8, %s FLOAT4, %s FLOAT8, %s NUMERIC, %s NAME, " +
-      "%s TEXT, %s POINT, %s BOX, %s TID, %s CIRCLE, %s BOOL, %s CHAR)",
+      "%s TEXT, %s POINT, %s BOX, %s TID, %s CIRCLE, %s BOOL, %s CHAR, %s UUID)",
       kTableName,
       kInt2Column,
       kInt4Column,
@@ -117,7 +122,8 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       kTidColumn,
       kCircleColumn,
       kBoolColumn,
-      kCharColumn
+      kCharColumn,
+      kUuidColumn
     );
     LOG.info("Creating table: " + createTable);
     statement.execute(createTable);
@@ -133,8 +139,10 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       "(2 ^ LEAST(31.0, %f) - 1)::int, " +
       "(2 ^ %f)::bigint, %f, %f, %f, '%f', '%f', " +
       "'(%f, %f)'::point, '(1,1,1,1)'::box, ('(42, ' || round(%f %% 40)::text || ')')::tid, " +
-      "'<(%f, %f), 1>'::circle, round(%f %% 2)::int::bool, '1')",
+      "'<(%f, %f), 1>'::circle, round(%f %% 2)::int::bool, '1', " +
+      "('12345679-1234-5678-1234-' || lpad(round(%f)::text, 12, '0'))::uuid)",
       kTableName,
+      i,
       i,
       i,
       i,
@@ -154,21 +162,47 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     statement.execute(insert);
   }
 
+  /*
+   * Expression is a class designed to hold a condition and its expected behaviour.
+   * There's an optional parameter match_regex that can be used to match the filter in the explain
+   * plan, for cases where the filter is difficult to get to exactly match the expression. If
+   * match_regex is unspecified, the filter in the explain plan must exactly match the expression.
+   */
   class Expression {
 
     String expr;
     Behaviour behaviour;
+    Pattern match_regex;
 
-    Expression(String expr, Behaviour behaviour) {
+    Expression(String expr, Behaviour behaviour, Pattern match_regex) {
       this.expr = expr;
       this.behaviour = behaviour;
+      this.match_regex = match_regex;
+    }
+
+    Expression(String expr, Behaviour behaviour) {
+      this(expr, behaviour, null);
+    }
+
+    String getExpectedError() {
+      if (behaviour == Behaviour.kOperatorError) {
+        return "No operator matches the given name and argument types";
+      } else if (behaviour == Behaviour.kFunctionError) {
+        return "does not exist";
+      } else if (behaviour == Behaviour.kOutofRangeError) {
+        return "out of range";
+      } else if (behaviour == Behaviour.kBadCastError) {
+        return "cannot cast type";
+      }
+      fail("Unknown behaviour: " + behaviour);
+      return null;
     }
   }
 
   private void SetCompatibilityMode(String version) throws Exception {
     Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
     for (HostAndPort tServer : tServers) {
-      LOG.info(String.format("Setting compatibility mode to $0 for $1", version, tServer));
+      LOG.info(String.format("Setting compatibility mode to $0 for %s", version, tServer));
       setServerFlag(tServer, "ysql_yb_major_version_upgrade_compatibility", version);
     }
   }
@@ -193,26 +227,22 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       statement.execute(String.format("%s %s", prefix, expr.expr));
       fail("Expected query to fail: " + expr.expr);
     } catch (SQLException e) {
-      String error = e.getMessage();
-      if (expr.behaviour == Behaviour.kOperatorError) {
-        if (error.indexOf(kInvalidOperatorError) != -1) return;
-      } else if (expr.behaviour == Behaviour.kFunctionError) {
-        if (error.indexOf(kInvalidFunctionError) != -1) return;
-      } else if (expr.behaviour == Behaviour.kBadCastError) {
-        if (error.indexOf(kOutofRangeError) != -1) return;
-      } else {
-        fail("Unexpected error: " + error);
+      if (e.getMessage().indexOf(expr.getExpectedError()) == -1) {
+        fail("Expected error: " + expr.getExpectedError() + ", got: " + e.getMessage());
       }
     }
   }
 
-  private void CheckFilters(String prefix, Pattern filter_type, String expr) throws SQLException {
+  private void CheckFilters(String prefix, Pattern filter_type, Expression expr)
+    throws SQLException {
     Statement statement = connection.createStatement();
-    ResultSet rs = statement.executeQuery(String.format("%s %s", prefix, expr));
+    ResultSet rs = statement.executeQuery(String.format("%s %s", prefix, expr.expr));
     List<String> result = new ArrayList<String>();
     while (rs.next()) {
       String explainLine = rs.getString(1);
-      if (filter_type.matcher(explainLine).find() && explainLine.contains(expr)) return;
+      if (filter_type.matcher(explainLine).find() &&
+          (explainLine.contains(expr.expr) || expr.match_regex.matcher(explainLine).find()))
+        return;
       result.add(explainLine);
     }
     fail(
@@ -224,15 +254,14 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     throws SQLException {
     for (Expression expr : exprs) {
       if (expr.behaviour == Behaviour.kNotPushable) {
-        CheckFilters(prefix, kLocalFilter, expr.expr);
+        CheckFilters(prefix, kLocalFilter, expr);
       } else if (expr.behaviour == Behaviour.kPushable) {
-        if (compatibility) CheckFilters(prefix, kLocalFilter, expr.expr); else CheckFilters(
-          prefix,
-          kStorageFilter,
-          expr.expr
-        );
+        if (compatibility)
+          CheckFilters(prefix, kLocalFilter, expr);
+        else
+          CheckFilters(prefix, kStorageFilter, expr);
       } else if (expr.behaviour == Behaviour.kMMPushable) {
-        CheckFilters(prefix, kStorageFilter, expr.expr);
+        CheckFilters(prefix, kStorageFilter, expr);
       } else {
         CheckFailure(prefix, expr);
       }
@@ -260,6 +289,18 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       return "integer";
     } else if (column_name == kInt8Column) {
       return "bigint";
+    } else if (column_name == kTimestampCol) {
+      return "timestamp without time zone";
+    } else if (column_name == kTimestamptzCol) {
+      return "timestamp with time zone";
+    } else if (column_name == kDateCol) {
+      return "date";
+    } else if (column_name == kTimeCol) {
+      return "time without time zone";
+    } else if (column_name == kTimetzCol) {
+      return "time with time zone";
+    } else if (column_name == kIntervalCol) {
+      return "interval";
     }
     return "";
   }
@@ -273,9 +314,9 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     kNumericColumn
   );
 
-  List<Expression> CreateExpressions() {
-    List<String> comparison_operations = Arrays.asList("=", "<>", "<", "<=", ">", ">=");
+  List<String> comparison_operations = Arrays.asList("=", "<>", "<", "<=", ">", ">=");
 
+  List<Expression> CreateExpressions() {
     List<Expression> exprs = new ArrayList<Expression>();
 
     // Add basic numeric comparisons
@@ -421,6 +462,16 @@ public class TestMixedModePushdown extends BasePgSQLTest {
 
     exprs.add(new Expression(String.format("(NOT %s)", kBoolColumn), Behaviour.kMMPushable));
 
+    // Add UUID comparisons
+    for (String op : comparison_operations) {
+      exprs.add(
+        new Expression(
+          String.format("(%s %s '12345679-1234-5678-1234-123456789012'::uuid)", kUuidColumn, op),
+          Behaviour.kMMPushable
+        )
+      );
+    }
+
     return exprs;
   }
 
@@ -470,7 +521,7 @@ public class TestMixedModePushdown extends BasePgSQLTest {
         String cond = String.format("(%s = (%s)::%s)", t1, t2, getCast(t1));
         if (t1.compareTo(t2) < 0) {
           // casting t2 to a smaller type will cause an error
-          exprs.add(new Expression(cond, Behaviour.kBadCastError));
+          exprs.add(new Expression(cond, Behaviour.kOutofRangeError));
         } else {
           // casting t2 to a larger type is fine
           exprs.add(new Expression(cond, Behaviour.kMMPushable));
@@ -572,5 +623,80 @@ public class TestMixedModePushdown extends BasePgSQLTest {
           Behaviour.kOperatorError)
       )
     );
+  }
+
+  Boolean hasDate(String type) {
+    return type == kDateCol || type == kTimestampCol || type == kTimestamptzCol;
+  }
+
+  Boolean hasTimezone(String type) {
+    return type == kTimestamptzCol || type == kTimetzCol;
+  }
+
+  @Test
+  public void TestTimePushdowns() throws Exception {
+    final String kTimeTable = "time_tbl";
+
+    {
+      Statement statement = connection.createStatement();
+      String createTable = String.format(
+        "CREATE TABLE %s(%s timestamp, %s timestamptz, %s date, %s time, %s timetz, %s interval)",
+        kTimeTable, kTimestampCol, kTimestamptzCol, kDateCol, kTimeCol, kTimetzCol, kIntervalCol
+      );
+      LOG.info("Creating table: " + createTable);
+      statement.execute(createTable);
+
+      for (int i = 1; i <= 12; i++) {
+        statement.execute(String.format(
+            "INSERT INTO %s VALUES ('2022-%s-%s 00:00:00', '2022-%s-%s 00:00:00+00', " +
+            "'2022-%s-%s', '%s:00:00', '%s:00:00+00', '%s days')",
+            kTimeTable, i, i, i, i, i, i, i, i, i, i));
+      }
+    }
+
+    List<String> time_cols = Arrays.asList(
+      kTimestampCol, kTimestamptzCol, kDateCol, kTimeCol, kTimetzCol
+    );
+
+    List<Expression> exprs = new ArrayList<Expression>();
+    for (String op : comparison_operations) {
+      exprs.add(new Expression(String.format("(%s %s '1 day'::interval)", kIntervalCol, op),
+                            Behaviour.kMMPushable));
+      for (String col : time_cols) {
+        exprs.add(new Expression(
+            String.format("(%s %s '2022-01-01 00:00:00'::%s)", col, op, getCast(col)),
+            Behaviour.kMMPushable,
+            // The timezone is modified to use the server timezone, so omit the actual time value.
+            Pattern.compile(String.format("%s %s .*::%s", col, op, getCast(col)))));
+      }
+    }
+
+    // Try casting between all time types. Most must be done locally, but there are some exceptions.
+    for (String from : time_cols) {
+      for (String to : time_cols) {
+        if (from == to)
+          continue;
+
+        Behaviour behaviour = Behaviour.kNotPushable;
+        if (!hasTimezone(to) && from == kTimestampCol)
+          behaviour = Behaviour.kPushable;
+        else if (!hasDate(to) && from == kDateCol)
+          behaviour = Behaviour.kBadCastError;
+        else if (hasDate(to) && !hasDate(from))
+          behaviour = Behaviour.kBadCastError;
+        else if (to == kTimeCol && from == kTimetzCol)
+          behaviour = Behaviour.kPushable;
+        else if (to == kTimestampCol && from == kDateCol)
+          behaviour = Behaviour.kPushable;
+        else if (to == kTimetzCol && from == kTimestampCol)
+          behaviour = Behaviour.kBadCastError;
+
+        exprs.add(new Expression(String.format("(%s = (%s)::%s)", to, from, getCast(to)),
+                                  behaviour));
+      }
+    }
+
+    TestPushdowns(String.format("EXPLAIN %s SELECT * FROM %s WHERE", kExplainArgs, kTimeTable),
+                          exprs);
   }
 }

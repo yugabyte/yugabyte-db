@@ -182,6 +182,25 @@ const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
 	1396 /* int8abs */,
 	1395 /* float8abs */,
 	1394 /* float4abs */,
+
+	COMPARISON_OPS(UUID_),
+
+	COMPARISON_OPS(TIME_),
+	COMPARISON_OPS(TIMETZ_),
+	1152, /* timestamptz_eq */
+	1153, /* timestamptz_ne */
+	1154, /* timestamptz_lt */
+	1155, /* timestamptz_le */
+	1156, /* timestamptz_ge */
+	1157, /* timestamptz_gt */
+	2052, /* timestamp_eq */
+	2053, /* timestamp_ne */
+	2054, /* timestamp_lt */
+	2055, /* timestamp_le */
+	2056, /* timestamp_ge */
+	2057, /* timestamp_gt */
+	COMPARISON_OPS(DATE_),
+	COMPARISON_OPS(INTERVAL_),
 };
 
 #define DEFINE_ARRAY_SIZE(array) const int array##_count = lengthof(array)
