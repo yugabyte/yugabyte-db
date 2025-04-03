@@ -8797,12 +8797,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * tuples_fetched;
 
-	path->rows =
-		clamp_row_est(baserel->tuples *
-					  clauselist_selectivity(root, baserel->baserestrictinfo,
-											 baserel->relid, JOIN_INNER, NULL));
-
-	path->rows = tuples_fetched;
 	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->yb_plan_info.estimated_num_nexts = num_nexts;
