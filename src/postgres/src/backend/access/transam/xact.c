@@ -3218,13 +3218,6 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_internal_savepoint)
 			{
 				/*
-				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
-				 * current query). This helps track if automatic restart of a query is possible in
-				 * READ COMMITTED isolation level.
-				 */
-				s->ybDataSentForCurrQuery = false;
-
-				/*
 				 * Create a new internal sub txn before any execution. This aids in rolling back any changes
 				 * before restarting the statement.
 				 *

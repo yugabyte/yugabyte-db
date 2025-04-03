@@ -4826,6 +4826,27 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/*
+	 * This check is not strictly necessary.
+	 * However, recommend read committed isolation level when
+	 * increasing ysql_output_buffer_size is ineffective.
+	 *
+	 * This scenario is retryable if isolation is read committed instead.
+	 */
+	if (!IsYBReadCommitted() && YBIsDataSent() && !YBIsDataSentForCurrQuery())
+	{
+		const char *retry_err = "";
+
+		retry_err = psprintf("query layer retry isn't possible because "
+							 "this is not the first command in the "
+							 "transaction. Consider using READ COMMITTED "
+							 "isolation level.");
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
 	 * In REPEATABLE READ and SERIALIZABLE isolation levels, retrying involves restarting the whole
 	 * transaction. So, we can only retry if no data has been sent to the external client as part of
 	 * the current transaction.
@@ -4838,10 +4859,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		(IsYBReadCommitted() && YBIsDataSentForCurrQuery()))
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
-								 "data was already sent, if this is the read "
-								 "committed isolation (or) the first "
-								 "statement in repeatable read/ serializable "
-								 "isolation transaction, consider increasing "
+								 "data was already transferred, consider increasing "
 								 "the tserver gflag ysql_output_buffer_size");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
@@ -6254,6 +6272,8 @@ PostgresMain(const char *dbname, const char *username)
 				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 				yb_catalog_version_type = CATALOG_VERSION_UNSET;
 			yb_is_multi_statement_query = false;
+			/* New Query => Did not sent any data for the current query. */
+			YBMarkDataNotSentForCurrQuery();
 		}
 
 		switch (firstchar)
