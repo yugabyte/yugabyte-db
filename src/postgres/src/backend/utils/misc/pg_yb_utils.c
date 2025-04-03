@@ -352,6 +352,19 @@ YbIsTempRelation(Relation relation)
 	return relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 }
 
+/*
+ * Returns true if the relation has temp persistence.
+ * Returns false for all other relations, or if they are not found.
+ */
+static bool
+YbIsRangeVarTempRelation(const RangeVar *relation)
+{
+	Oid relid = RangeVarGetRelidExtended(relation, NoLock,
+		RVR_MISSING_OK, /* callback */ NULL, /* callback_arg */ NULL);
+
+	return OidIsValid(relid) && get_rel_persistence(relid) == RELPERSISTENCE_TEMP;
+}
+
 bool
 IsRealYBColumn(Relation rel, int attrNum)
 {
@@ -3314,9 +3327,36 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
 				 * tables, and do not need to increment catalog version.
 				 */
-				if (ddl_transaction_state.original_node_tag ==
-					T_RefreshMatViewStmt)
+				if (ddl_transaction_state.original_node_tag == T_RefreshMatViewStmt)
 					is_version_increment = false;
+				else
+				{
+					/*
+					 * If all dropped objects are temporary, we do not need to
+					 * bump the catalog version.
+					 */
+					DropStmt *stmt = castNode(DropStmt, parsetree);
+					if (stmt->removeType == OBJECT_INDEX ||
+						stmt->removeType == OBJECT_TABLE ||
+						stmt->removeType == OBJECT_VIEW)
+					{
+						ListCell   *cell;
+						is_version_increment = false;
+
+						foreach(cell, stmt->objects)
+						{
+							RangeVar *rel = makeRangeVarFromNameList((List *) lfirst(cell));
+							if (!YbIsRangeVarTempRelation(rel))
+							{
+								is_version_increment = true;
+								break;
+							}
+						}
+
+						if (!is_version_increment)
+							is_altering_existing_data = true;
+					}
+				}
 				is_breaking_change = false;
 				break;
 			}
@@ -3407,52 +3447,44 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			}
 
 		case T_AlterTableStmt:
-			/* We rely on table schema version mismatch to abort transactions that touch the table. */
-			is_breaking_change = false;
-
-			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
-
-			Oid relid = RangeVarGetRelidExtended(stmt->relation, NoLock,
-				RVR_MISSING_OK, /* callback */ NULL, /* callback_arg */ NULL);
-			if (OidIsValid(relid))
 			{
-				Relation	rel;
-				rel = relation_open(relid, NoLock);
-				bool is_temp_table = rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
-				relation_close(rel, NoLock);
+				/* We rely on table schema version mismatch to abort transactions that touch the table. */
+				is_breaking_change = false;
 
-				if (is_temp_table)
+				AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
+				if (YbIsRangeVarTempRelation(stmt->relation))
 				{
 					is_version_increment = false;
+					is_altering_existing_data = true;
 					break;
 				}
-			}
 
-			/*
-			 * Must increment catalog version when creating table with foreign
-			 * key reference and refresh PG cache on ongoing transactions.
-			 */
-			if ((context == PROCESS_UTILITY_SUBCOMMAND ||
-				 context == PROCESS_UTILITY_QUERY_NONATOMIC) &&
-				ddl_transaction_state.original_node_tag == T_CreateStmt &&
-				node_tag == T_AlterTableStmt)
-			{
-				ListCell   *lcmd;
-
-				foreach(lcmd, stmt->cmds)
+				/*
+				 * Must increment catalog version when creating table with foreign
+				 * key reference and refresh PG cache on ongoing transactions.
+				 */
+				if ((context == PROCESS_UTILITY_SUBCOMMAND ||
+					 context == PROCESS_UTILITY_QUERY_NONATOMIC) &&
+					ddl_transaction_state.original_node_tag == T_CreateStmt &&
+					node_tag == T_AlterTableStmt)
 				{
-					AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+					ListCell   *lcmd;
 
-					if (cmd->def != NULL &&
-						IsA(cmd->def, Constraint) &&
-						((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
+					foreach(lcmd, stmt->cmds)
 					{
-						is_version_increment = true;
-						break;
+						AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+
+						if (cmd->def != NULL &&
+							IsA(cmd->def, Constraint) &&
+							((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
+						{
+							is_version_increment = true;
+							break;
+						}
 					}
 				}
+				break;
 			}
-			break;
 
 			/* T_Grant... */
 		case T_GrantStmt:
@@ -3467,15 +3499,22 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 			/* T_Index... */
 		case T_IndexStmt:
-			/*
-			 * For nonconcurrent index backfill we do not guarantee global consistency anyway.
-			 * For (new) concurrent backfill the backfill process should wait for ongoing
-			 * transactions so we don't have to force a transaction abort on PG side.
-			 */
-			is_breaking_change = false;
-			is_online_schema_change =
-				castNode(IndexStmt, parsetree)->concurrent != YB_CONCURRENCY_DISABLED;
-			break;
+			{
+				IndexStmt  *stmt = castNode(IndexStmt, parsetree);
+				/*
+				 * For nonconcurrent index backfill we do not guarantee global consistency anyway.
+				 * For (new) concurrent backfill the backfill process should wait for ongoing
+				 * transactions so we don't have to force a transaction abort on PG side.
+				 */
+				if (YbIsRangeVarTempRelation(stmt->relation))
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
+				}
+				is_breaking_change = false;
+				is_online_schema_change = stmt->concurrent != YB_CONCURRENCY_DISABLED;
+				break;
+			}
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */

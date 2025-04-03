@@ -1687,11 +1687,13 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM demo"));
   ASSERT_EQ(row_count, 99);
 
-  // Alter temp table should not increment catalog version.
+  // Temp table DDLs should not increment catalog version.
+  version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_demo (a INT, b INT)"));
-  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
   ASSERT_OK(conn.Execute("ALTER TABLE temp_demo ADD COLUMN c INT"));
+  ASSERT_OK(conn.Execute("CREATE INDEX temp_idx ON temp_demo(c)"));
+  ASSERT_OK(conn.Execute("DROP INDEX temp_idx"));
+  ASSERT_OK(conn.Execute("DROP TABLE temp_demo"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version);
 }

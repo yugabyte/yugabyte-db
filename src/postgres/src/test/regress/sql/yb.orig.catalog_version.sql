@@ -308,7 +308,7 @@ ALTER TABLE evt_trig_table ADD COLUMN val INT;
 CREATE TABLE post_trigger_table (id INT);
 :display_catalog_version;
 
--- The execution on atomic SPI context function will increment current_version.
+-- The execution on atomic SPI context function will not increment current_version.
 CREATE FUNCTION atomic_spi(INT) RETURNS INT AS $$
 DECLARE TOTAL INT;
 BEGIN

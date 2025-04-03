@@ -273,6 +273,16 @@ bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
     const TableId& table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
+    // Allow updates to the catalog version table only during the pg_upgrade step.
+    // These updates are later fixed up in UpdateCatalogVersions.
+    if (table_id == kPgYbCatalogVersionTableIdPriorVersion ||
+        (table_id == kPgYbCatalogVersionTableId &&
+         ysql_catalog_config_.GetMajorCatalogUpgradeState() ==
+             YsqlMajorCatalogUpgradeInfoPB::MONITORING)) {
+      LOG(DFATAL) << "Invalid attempt to update catalog version table " << table_id
+                  << " during ysql major upgrade";
+      return false;
+    }
     return is_forced_update;
   }
 
