@@ -5056,6 +5056,12 @@ YbWaitForBackendsCatalogVersion()
 									   yb_wait_for_backends_catalog_version_timeout))
 		{
 			if (num_lagging_backends > 0)
+				/*
+				 * Note: keep the errhint query in sync with the actual query
+				 * internally used
+				 * (TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion
+				 * at the time of writing).
+				 */
 				ereport(ERROR,
 						(errmsg("timed out waiting for postgres backends to catch"
 								" up"),
@@ -5066,8 +5072,10 @@ YbWaitForBackendsCatalogVersion()
 								   catalog_version),
 						 errhint("Run the following query on all tservers to find"
 								 " the lagging backends: SELECT * FROM"
-								 " pg_stat_activity WHERE catalog_version < %"
-								 PRIu64 " AND datid = %u;",
+								 " pg_stat_activity WHERE"
+								 " backend_type != 'walsender' AND"
+								 " catalog_version < %" PRIu64
+								 " AND datid = %u;",
 								 catalog_version,
 								 MyDatabaseId)));
 			else
