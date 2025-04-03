@@ -3052,6 +3052,14 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     }
   }
 
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateMetadata(
+      {.root_request_id = Uuid::Generate(),
+      .query_id = std::to_underlying(ash::FixedQueryId::kQueryIdForRemoteBootstrap)});
+    wait_state->UpdateAuxInfo({.tablet_id = req->tablet_id(), .method = "RemoteBootstrap"});
+  }
+
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
   if (!s.ok()) {
     // Using Status::AlreadyPresent for a remote bootstrap operation that is already in progress.

@@ -34,6 +34,8 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/opid_util.h"
@@ -426,6 +428,7 @@ Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_
 }
 
 Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) {
+  SCOPED_WAIT_STATUS(RemoteBootstrap_ReadDataFromFile);
   const auto& source = sources_[data_id.type()];
 
   if (source) {
