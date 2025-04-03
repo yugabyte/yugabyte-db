@@ -11,10 +11,9 @@ showRightNav: false
 unversioned: true
 ---
 
-YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications.
+YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.
 <!--Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
-
-YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.-->
+-->
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
@@ -55,17 +54,50 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   >}}
 
   {{< sections/3-box-card
-    title="Tutorials"
-    description="Step-by-step guides for building scalable and fault tolerant applications."
-    buttonText="Tutorials"
-    buttonUrl="/preview/tutorials/"
-    imageAlt="Tutorials"
+    title="Deploy"
+    description="Explore YugabyteDB's flexible multi-region deployment topologies."
+    buttonText="Deploy"
+    buttonUrl="/preview/explore/multi-region-deployments/"
+    imageAlt="Topologies"
     imageUrl="/icons/cloud.svg"
   >}}
 
 {{< /sections/3-boxes >}}
 
+### More resources
 
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Blogs"
+    linkText1="Data Replication in YugabyteDB"
+    linkUrl1="https://www.yugabyte.com/blog/data-replication/"
+    linkText2="Migrate using YugabyteDB Voyager"
+    linkUrl2="https://www.yugabyte.com/blog/simplify-database-migration-voyager/"
+    linkText3="Client Connections in YugabyteDB"
+    linkUrl3="https://www.yugabyte.com/blog/how-connection-pooling-works/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Videos"
+    linkText1="Introducing YugabyteDB"
+    linkUrl1="https://www.youtube.com/watch?v=j24p07Frw00"
+    linkText2="Distributed PostgreSQL Essentials"
+    linkUrl2="https://www.youtube.com/watch?v=rqJBFQ-4Hgk"
+    linkText3="Migration with Voyager"
+    linkUrl3="https://www.youtube.com/watch?v=GEzs---fFPQ&list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR"
+  >}}
+
+  {{< sections/3-box-card
+    title="Articles"
+    linkText1="Distributed SQL 101"
+    linkUrl1="https://www.yugabyte.com/distributed-sql/"
+    linkText2="Scale a Single-Server Database"
+    linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"
+    linkText3="Local Reads in YugabyteDB"
+    linkUrl3="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+  >}}
+
+{{< /sections/3-boxes >}}
 
 <!--
 {{< sections/3-boxes >}}
