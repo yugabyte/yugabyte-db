@@ -155,7 +155,11 @@ YugabyteDB is a high-performance distributed SQL database for powering global, i
 
   {{% tab header="Introduction" lang="intro" %}}
 
-Learn about YugabyteDB and how it supports mission-critical applications.  -->[Explore](/preview/explore/)
+Learn about YugabyteDB and how it supports mission-critical applications.
+
+[more text?]
+
+-->[Explore](/preview/explore/)
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
@@ -190,7 +194,11 @@ Learn about YugabyteDB and how it supports mission-critical applications.  -->[E
 
   {{% tab header="Deploy" lang="deploy" %}}
 
-Explore YugabyteDB's flexible multi-region deployment topologies.  -->[Deploy](/preview/explore/multi-region-deployments/)
+Explore YugabyteDB's flexible multi-region deployment topologies.
+
+[more text?]
+
+-->[Deploy](/preview/explore/multi-region-deployments/)
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
@@ -223,7 +231,11 @@ Explore YugabyteDB's flexible multi-region deployment topologies.  -->[Deploy](/
 
   {{% tab header="Develop" lang="develop" %}}
 
-Get started building applications based on YugabyteDB. -->[Develop](/preview/develop/)
+Get started building applications based on YugabyteDB.
+
+[more text?]
+
+-->[Develop](/preview/develop/)
 
 {{< sections/3-boxes >}}
 
