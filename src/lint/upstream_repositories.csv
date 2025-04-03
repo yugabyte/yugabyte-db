@@ -1,5 +1,5 @@
 local_path,upstream_path,repository,commit
-src/postgres,,https://github.com/yugabyte/postgres,a033f9165c2c024756d9cd3033263724d53fd9ef
+src/postgres,,https://github.com/yugabyte/postgres,aed0fe08b8b80a38b9b9a3ed9e66f932ec326caa
 src/postgres/contrib/passwordcheck,passwordcheck_extra,https://github.com/michaelpq/pg_plugins,66a75ea0ca0706bef7b1e17055aa5fd364189fec
 src/postgres/third-party-extensions/hypopg,,https://github.com/HypoPG/hypopg,97026c0bff16b905c555acdd82e15979fa6b9781
 src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,6adbd66c429dabb828f10d764d356824efeb8396
