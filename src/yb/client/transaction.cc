@@ -224,6 +224,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(Trace::MaybeGetNewTrace()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -239,6 +240,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
       : trace_(Trace::MaybeGetNewTrace()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
@@ -250,6 +252,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
       : trace_(Trace::MaybeGetNewTrace()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -1091,6 +1094,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return state == OldTransactionState::kAborted;
   }
 
+  const ash::WaitStateInfoPtr wait_state() {
+    return wait_state_;
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -1548,6 +1555,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                           const YBTransactionPtr& transaction,
                           TransactionPromoting promoting) {
     TRACE_TO(trace_, __func__);
+    ADOPT_WAIT_STATE(wait_state_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
     if (!tablet.ok()) {
@@ -1577,6 +1586,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       const Result<client::internal::RemoteTabletPtr>& result, const YBTransactionPtr& transaction,
       TransactionPromoting promoting) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
+    ADOPT_WAIT_STATE(wait_state_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
     if (!result.ok()) {
@@ -1861,6 +1872,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                      TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction,
                      SendHeartbeatToNewTablet send_to_new_tablet) {
+    ADOPT_WAIT_STATE(wait_state_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     UpdateClock(response, manager_);
     auto& handle = send_to_new_tablet ? new_heartbeat_handle_ : heartbeat_handle_;
     manager_->rpcs().Unregister(&handle);
@@ -1926,9 +1939,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
           FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING:
+          ASH_ENABLE_CONCURRENT_UPDATES();
+          SET_WAIT_STATUS(OnCpu_Passive);
           manager_->client()->messenger()->scheduler().Schedule(
-              [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id](
+              [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id,
+                  wait_state = wait_state_](
                   const Status&) {
+                ADOPT_WAIT_STATE(wait_state);
+                SCOPED_WAIT_STATUS(OnCpu_Active);
                 SendHeartbeat(TransactionStatus::PENDING, id, weak_transaction, send_to_new_tablet);
               },
               std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
@@ -2279,6 +2297,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
+  // This is a pointer to the wait state that was created while
+  // processing the inbound call, we use this to update the
+  // threadlocal wait state ptr when changing threads.
+  const ash::WaitStateInfoPtr wait_state_;
+
   std::atomic<MicrosTime> start_;
 
   // Manager is created once per service.
@@ -2544,6 +2567,10 @@ void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {
 
 bool YBTransaction::OldTransactionAborted() const {
   return impl_->OldTransactionAborted();
+}
+
+const ash::WaitStateInfoPtr YBTransaction::wait_state() {
+  return impl_->wait_state();
 }
 
 } // namespace client

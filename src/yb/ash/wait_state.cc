@@ -189,9 +189,11 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kYCQL_Execute:
       return "YCQL is executing a query.";
     case WaitStateCode::kYBClient_WaitingOnDocDB:
-      return "YB Client is waiting on DocDB to return a response.";
+      return "YB client is waiting on DocDB to return a response.";
     case WaitStateCode::kYBClient_LookingUpTablet:
-      return "YB Client is looking up tablet information from the master.";
+      return "YB client is looking up tablet information from the master.";
+    case WaitStateCode::kYBClient_WaitingOnMaster:
+      return "YB client is waiting on master.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -566,6 +568,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
+    case WaitStateCode::kYBClient_WaitingOnMaster:
       return WaitStateType::kNetwork;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);

@@ -20,6 +20,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -190,6 +192,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const;
 
   bool OldTransactionAborted() const;
+
+  const ash::WaitStateInfoPtr wait_state();
 
  private:
   class Impl;

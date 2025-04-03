@@ -909,7 +909,8 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kYCQL_Analyze,
       ash::WaitStateCode::kYCQL_Execute,
       ash::WaitStateCode::kYBClient_WaitingOnDocDB,
-      ash::WaitStateCode::kYBClient_LookingUpTablet
+      ash::WaitStateCode::kYBClient_LookingUpTablet,
+      ash::WaitStateCode::kYBClient_WaitingOnMaster
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyOccurrence, VerifyWaitStateEntered) {

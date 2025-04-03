@@ -189,6 +189,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Wait states related to YBClient
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
+    (kYBClient_WaitingOnMaster)
 );
 
 // We also want to track background operations such as, log-append
@@ -454,6 +455,13 @@ class WaitStateInfo {
   void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb);
+  }
+
+  template <class PB>
+  static void CurrentMetadataToPB(PB* pb) {
+    if (const auto& wait_state = CurrentWaitState()) {
+      wait_state->MetadataToPB(pb);
+    }
   }
 
   template <class PB>

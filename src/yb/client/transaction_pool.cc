@@ -140,6 +140,8 @@ class SingleLocalityPool {
  private:
   void TransactionReady(
       const Status& status, const YBTransactionPtr& txn, uint64_t taken_before_creation) {
+    ADOPT_WAIT_STATE(txn->wait_state());
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     if (status.ok()) {
       IncrementGauge(gauge_prepared_);
     }
@@ -161,12 +163,16 @@ class SingleLocalityPool {
   }
 
   void ScheduleCleanup() REQUIRES(mutex_) {
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(OnCpu_Passive);
     scheduled_task_ = manager_.client()->messenger()->scheduler().Schedule(
-        std::bind(&SingleLocalityPool::Cleanup, this, _1),
+        std::bind(&SingleLocalityPool::Cleanup, this, ash::WaitStateInfo::CurrentWaitState(), _1),
         FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
   }
 
-  void Cleanup(const Status& status) {
+  void Cleanup(ash::WaitStateInfoPtr wait_state, const Status& status) {
+    ADOPT_WAIT_STATE(wait_state);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     std::lock_guard lock(mutex_);
     scheduled_task_ = rpc::kUninitializedScheduledTaskId;
     if (CheckClosing()) {
