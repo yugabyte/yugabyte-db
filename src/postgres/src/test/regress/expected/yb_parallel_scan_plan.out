@@ -55,12 +55,10 @@ ANALYZE t1m;
 -- Broken until #23709 is fixed.
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1 FROM t1m t;
-            QUERY PLAN
-----------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Seq Scan on t1m t
-(3 rows)
+    QUERY PLAN
+-------------------
+ Seq Scan on t1m t
+(1 row)
 
 --
 -- Should choose serial index scan
@@ -236,12 +234,12 @@ SELECT k1, k2, k3 FROM t1m t WHERE k2 BETWEEN 5000-(200/2 - 1) AND 5000+(200/2);
 -- Broken until #23709 is fixed.
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(1000/2 - 1) AND 5000+(1000/2);
-                       QUERY PLAN
----------------------------------------------------------
+                        QUERY PLAN
+----------------------------------------------------------
  Gather
    Workers Planned: 2
-   ->  Parallel Seq Scan on t1m t
-         Storage Filter: ((k3 >= 4501) AND (k3 <= 5500))
+   ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t
+         Index Cond: ((k3 >= 4501) AND (k3 <= 5500))
 (4 rows)
 
 --
@@ -252,12 +250,10 @@ SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(1000/2 - 1) AND 5000+(1000/2
 -- Chooses "parallel" index only scan until #23709 is fixed. (Either plan is okay.)
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT k1, k2, k3 FROM t1m t;
-                        QUERY PLAN
-----------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t
-(3 rows)
+                QUERY PLAN
+-------------------------------------------
+ Index Only Scan using t1m_k1k2k3 on t1m t
+(1 row)
 
 /*+ Set(parallel_tuple_cost 0.01) */
 EXPLAIN (COSTS off, SUMMARY off)
@@ -272,22 +268,20 @@ SELECT k1, k2, k3 FROM t1m t;
 -- Broken until #23709 is fixed.
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT 0 FROM t1m t;
-                       QUERY PLAN
---------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Index Only Scan using t1m_pkey on t1m t
-(3 rows)
+                QUERY PLAN
+-------------------------------------------
+ Index Only Scan using t1m_k1k2k3 on t1m t
+(1 row)
 
 -- Broken until #23709 is fixed.
 /*+ Set(parallel_tuple_cost 0.01) */
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT 0 FROM t1m t;
-                       QUERY PLAN
---------------------------------------------------------
+                        QUERY PLAN
+----------------------------------------------------------
  Gather
    Workers Planned: 2
-   ->  Parallel Index Only Scan using t1m_pkey on t1m t
+   ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t
 (3 rows)
 
 --
