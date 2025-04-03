@@ -17,6 +17,8 @@
 
 #include <boost/preprocessor/cat.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -166,6 +168,11 @@ void PrepareRequest(tserver::UpdateTransactionRequestPB* req) {
     auto id = TransactionId::GenerateRandom();
     req->mutable_state()->set_transaction_id(id.data(), id.size());
   }
+  ash::WaitStateInfo::CurrentMetadataToPB(req->mutable_ash_metadata());
+}
+
+void PrepareRequest(tserver::AbortTransactionRequestPB* req) {
+  ash::WaitStateInfo::CurrentMetadataToPB(req->mutable_ash_metadata());
 }
 
 #define TRANSACTION_RPC_TRAITS_NAME(entry) BOOST_PP_CAT(TRANSACTION_RPC_NAME(entry), Traits)
