@@ -88,7 +88,7 @@ Displays information about active WAL senders, providing insights into the state
 | backend_xmin | xid | The oldest transaction the client is interested in. |
 | state | text | Current WAL sender state (Always `streaming`). |
 | sent_lsn | pg_lsn | Last write-ahead log location sent on this connection. |
-| write_lsn | pg_lsn | The last WAL location acknowledged by the logical replication client. |
+| write_lsn | pg_lsn | The last lsn acknowledged by the logical replication client. |
 | flush_lsn | pg_lsn | Same as `write_lsn`. |
 | replay_lsn | pg_lsn | Same as `write_lsn`. |
 | write_lag | interval | The difference between the timestamp of the latest record in WAL and the timestamp of the last acknowledged record. Since YugabyteDB does not differentiate between write, flush, or replay, this value is the same for all three lag metrics. |
