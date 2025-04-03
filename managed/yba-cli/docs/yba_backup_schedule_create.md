@@ -36,6 +36,7 @@ yba backup schedule create -n <schedule-name> \
       --sse                                        [Optional] Enable sse while persisting the data in AWS S3. (default true)
       --enable-verbose-logs                        [Optional] Enable verbose logging while taking backup via "yb_backup" script. (default false)
       --parallelism int                            [Optional] Number of concurrent commands to run on nodes over SSH via "yb_backup" script. (default 8)
+      --enable-pitr                                [Optional] Enable PITR for the backup schedule. (default false)
   -h, --help                                       help for create
 ```
 

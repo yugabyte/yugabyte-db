@@ -14,7 +14,7 @@ yba backup pitr create [flags]
 
 ```
 yba backup pitr create --universe-name <universe-name> --keyspace <keyspace-name>
-	--table-type <table-type> --retention-period <retention-period>
+	--table-type <table-type> --retention-in-secs <retention-in-secs>
 ```
 
 ### Options
