@@ -272,22 +272,22 @@ SELECT k1, k2, k3 FROM t1m t;
 -- Broken until #23709 is fixed.
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT 0 FROM t1m t;
-            QUERY PLAN
-----------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Gather
    Workers Planned: 2
-   ->  Parallel Seq Scan on t1m t
+   ->  Parallel Index Only Scan using t1m_pkey on t1m t
 (3 rows)
 
 -- Broken until #23709 is fixed.
 /*+ Set(parallel_tuple_cost 0.01) */
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT 0 FROM t1m t;
-            QUERY PLAN
-----------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Gather
    Workers Planned: 2
-   ->  Parallel Seq Scan on t1m t
+   ->  Parallel Index Only Scan using t1m_pkey on t1m t
 (3 rows)
 
 --
