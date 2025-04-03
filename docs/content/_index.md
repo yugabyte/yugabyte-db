@@ -18,23 +18,56 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Get Started in the Cloud"
-    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
+    title="Get Started"
+    description="Create your first cluster and build a sample application in 15 minutes. No credit card required."
     buttonText="Get started"
-    buttonUrl="/preview/yugabyte-cloud/cloud-quickstart/"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+    buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
+    imageAlt="Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
   {{< sections/bottom-image-box
-    title="Get Started locally on your Laptop"
-    description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
-    buttonText="Get started"
-    buttonUrl="/preview/tutorials/quick-start/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+    title="Migrate"
+    description="Simplify migration from legacy and cloud databases using YugabyteDB Voyager."
+    buttonText="Migrate"
+    buttonUrl="/preview/yugabyte-voyager/"
+    imageAlt="Cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
 
 
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Introduction"
+    description="Learn about YugabyteDB and how it supports mission-critical applications."
+    buttonText="Explore"
+    buttonUrl="/preview/explore/"
+    imageAlt="YugabyteDB Core"
+    imageUrl="/icons/database.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="Develop"
+    description="Get started building applications based on YugabyteDB."
+    buttonText="Develop"
+    buttonUrl="/preview/develop/"
+    imageAlt="Develop"
+    imageUrl="/icons/server.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="Tutorials"
+    description="Step-by-step guides for building scalable and fault tolerant applications."
+    buttonText="Tutorials"
+    buttonUrl="/preview/tutorials/"
+    imageAlt="Tutorials"
+    imageUrl="/icons/cloud.svg"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+
+
+<!--
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="Introduction to YugabyteDB"
@@ -80,6 +113,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
 &nbsp;
 
+
 {{< tabpane text=true >}}
 
   {{% tab header="Introduction" lang="intro" %}}
@@ -116,7 +150,6 @@ Get started building applications based on YugabyteDB.
 
 {{< /tabpane >}}
 
-<!--
 ### Deployment options
 
 {{< sections/3-boxes >}}

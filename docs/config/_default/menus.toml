@@ -475,14 +475,14 @@
   [preview.params]
     showSection = true
 
-[[preview]]
-  name = "Introduction"
-  weight = 3
-  identifier = "features"
-  url = "/preview/features/"
-  [preview.params]
-    showSection = true
-    hideChildren = true
+# [[preview]]
+#   name = "Introduction"
+#   weight = 3
+#   identifier = "features"
+#   url = "/preview/features/"
+#   [preview.params]
+#     showSection = true
+#     hideChildren = true
 
 # [[preview]]
 #   name = "Resource guide"
