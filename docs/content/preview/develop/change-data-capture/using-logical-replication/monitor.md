@@ -49,7 +49,6 @@ Contains mapping between publications and tables. It is a wrapper over `pg_publi
 | pubname | name | Name of publication. |
 | schemaname | name | Name of schema containing table. |
 | tablename | name | Name of table. |
-| attnames | name[] | Names of table columns included in the publication. This contains all the columns of the table when the user didn't specify the column list for the table. |
 
 ### pg_replication_slots
 
@@ -90,11 +89,11 @@ Displays information about active WAL senders, providing insights into the state
 | state | text | Current WAL sender state (Always `streaming`). |
 | sent_lsn | pg_lsn | Last write-ahead log location sent on this connection. |
 | write_lsn | pg_lsn | The last WAL location acknowledged by the logical replication client. |
-| flush_lsn | pg_lsn | Same as `write_lsn`. The last WAL location acknowledged by the logical replication client. |
-| replay_lsn | pg_lsn | Same as `write_lsn`. The last WAL location acknowledged by the logical replication client. |
-| write_lag | interval | The lag between when a WAL record was sent and when its acknowledgment was received. Since YugabyteDB does not differentiate between write, flush, or replay, this value is the same for all three lag metrics. |
-| flush_lag | interval | Same as `write_lag`. Represents the lag between when a WAL record was sent and when its acknowledgment was received. |
-| replay_lag | interval | Same as `write_lag`. Represents the lag between when a WAL record was sent and when its acknowledgment was received. |
+| flush_lsn | pg_lsn | Same as `write_lsn`. |
+| replay_lsn | pg_lsn | Same as `write_lsn`. |
+| write_lag | interval | The difference between the timestamp of the latest record in WAL and the timestamp of the last acknowledged record. Since YugabyteDB does not differentiate between write, flush, or replay, this value is the same for all three lag metrics. |
+| flush_lag | interval | Same as `write_lag`. |
+| replay_lag | interval | Same as `write_lag`. |
 | sync_priority | integer | Synchronous state of this standby server. Always 0 in YSQL since we only support asynchronous replication. |
 | sync_state | text | Synchronous state of this standby server (Always `async`). |
 | reply_time | timestamp with time zone | Timestamp of the last reply message received from the client. |
