@@ -227,8 +227,6 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
-DEFINE_UNKNOWN_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
-
 DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
             "Do we trigger quick leader elections on table creation.");
 TAG_FLAG(quick_leader_election_on_create, advanced);
@@ -1377,20 +1375,10 @@ void RaftConsensus::UpdateMajorityReplicated(
     return;
   }
 
-  EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags;
-  if (GetAtomicFlag(&FLAGS_enable_lease_revocation)) {
-    if (!state_->old_leader_lease().holder_uuid.empty() &&
-        queue_->PeerAcceptedOurLease(state_->old_leader_lease().holder_uuid)) {
-      flags.Set(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderLease);
-    }
-
-    if (!state_->old_leader_ht_lease().holder_uuid.empty() &&
-        queue_->PeerAcceptedOurLease(state_->old_leader_ht_lease().holder_uuid)) {
-      flags.Set(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderHtLease);
-    }
-  }
-
-  s = state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
+  s = state_->SetMajorityReplicatedLeaseExpirationUnlocked(
+      majority_replicated_data, [queue = queue_.get()](const auto& uuid) {
+    return queue->PeerAcceptedOurLease(uuid);
+  });
   if (s.ok()) {
     YB_PROFILE(leader_lease_wait_cond_.notify_all());
   } else {
@@ -1726,7 +1714,7 @@ Status RaftConsensus::HandleLeaderRequestTermUnlocked(const LWConsensusRequestPB
         "Rejecting Update request from peer $0 for earlier term $1. Current term is $2. Ops: $3",
         request.caller_uuid(), request.caller_term(), state_->GetCurrentTermUnlocked(),
         OpsRangeString(request));
-    LOG_WITH_PREFIX(INFO) << status.message();
+    LOG_WITH_PREFIX(INFO) << status;
     FillConsensusResponseError(response, ConsensusErrorPB::INVALID_TERM, status);
     return Status::OK();
   }
@@ -1987,9 +1975,15 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // a leader, it can wait out the time interval while the old leader might still be active.
   if (request.has_leader_lease_duration_ms()) {
     state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
-        CoarseTimeLease(deduped_req.leader_uuid,
-                        CoarseMonoClock::now() + request.leader_lease_duration_ms() * 1ms),
-        PhysicalComponentLease(deduped_req.leader_uuid, request.ht_lease_expiration()));
+        CoarseTimeLeaseUpdate {
+          .holder_uuid = deduped_req.leader_uuid,
+          .expiration = CoarseMonoClock::now() + request.leader_lease_duration_ms() * 1ms,
+        },
+        PhysicalComponentLeaseUpdate {
+          .holder_uuid = deduped_req.leader_uuid,
+          .expiration = request.ht_lease_expiration()
+        }
+    );
   }
 
   // Also prohibit voting for anyone for the minimum election timeout.
@@ -2313,7 +2307,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   RETURN_NOT_OK(state_->LockForConfigChange(&state_guard));
 
   if (PREDICT_FALSE(FLAGS_TEST_request_vote_respond_leader_still_alive)) {
-    return RequestVoteRespondLeaderIsAlive(request, response, "fake_peed_uuid");
+    return RequestVoteRespondLeaderIsAlive(request, response, "fake_peer_uuid");
   }
 
   // If the node is not in the configuration, allow the vote (this is required by Raft)
@@ -2388,31 +2382,53 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
     state_->ClearPendingElectionOpIdUnlocked();
   }
 
-  auto remaining_old_leader_lease = state_->RemainingOldLeaderLeaseDuration();
+  {
+    auto coarse_now = CoarseMonoClock::Now();
+    // Cleanup leases.
+    state_->RemainingOldLeaderLease(&coarse_now);
 
-  if (remaining_old_leader_lease.Initialized()) {
-    response->set_remaining_leader_lease_duration_ms(
-        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
-    response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
-  } else {
-    remaining_old_leader_lease = state_->RemainingMajorityReplicatedLeaderLeaseDuration();
-    if (remaining_old_leader_lease.Initialized()) {
-      response->set_remaining_leader_lease_duration_ms(
-        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
-      response->set_leader_lease_uuid(peer_uuid());
+    auto leases = state_->old_leader_lease().leases;
+    auto self_lease = state_->RemainingMajorityReplicatedLeaderLeaseDuration(coarse_now);
+    if (self_lease.Initialized()) {
+      leases.push_back({
+        .holder_uuid = peer_uuid(),
+        .expiration = coarse_now + self_lease,
+      });
+    }
+
+    // For best backward compatibility we send most advanced lease last, so it will be used by an
+    // old version.
+    std::sort(leases.begin(), leases.end());
+
+    for (const auto& lease : leases) {
+      if (lease.holder_uuid == request->candidate_uuid()) {
+        continue;
+      }
+      response->add_remaining_leader_lease_duration_ms(
+          narrow_cast<int32_t>(MonoDelta(lease.expiration - coarse_now).ToMilliseconds()));
+      response->add_leader_lease_uuid(lease.holder_uuid);
     }
   }
 
-  const auto& old_leader_ht_lease = state_->old_leader_ht_lease();
-  if (old_leader_ht_lease) {
-    response->set_leader_ht_lease_expiration(old_leader_ht_lease.expiration);
-    response->set_leader_ht_lease_uuid(old_leader_ht_lease.holder_uuid);
-  } else {
+  {
+    auto leases = state_->old_leader_ht_lease().leases;
     const auto ht_lease = VERIFY_RESULT(MajorityReplicatedHtLeaseExpiration(
         /* min_allowed = */ 0, /* deadline = */ CoarseTimePoint::max()));
     if (ht_lease) {
-      response->set_leader_ht_lease_expiration(ht_lease);
-      response->set_leader_ht_lease_uuid(peer_uuid());
+      leases.push_back({
+        .holder_uuid = peer_uuid(),
+        .expiration = ht_lease,
+      });
+    }
+
+    std::sort(leases.begin(), leases.end());
+
+    for (const auto& lease : leases) {
+      if (lease.holder_uuid == request->candidate_uuid()) {
+        continue;
+      }
+      response->add_leader_ht_lease_expiration(lease.expiration);
+      response->add_leader_ht_lease_uuid(lease.holder_uuid);
     }
   }
 
@@ -3263,7 +3279,8 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
   CHECK(state_->IsLocked());
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
-      *leader_lease_status = GetLeaderLeaseStatusUnlocked(/* ht_lease_exp = */ nullptr);
+      *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(
+          nullptr, nullptr, /* check_no_op_committed= */ true);
     } else {
       // We'll still return a valid value if we're not a leader.
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -3479,9 +3496,9 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
 
   LOG_WITH_PREFIX(INFO) << "Leader " << election_name << " won for term " << result.election_term;
 
-  // Apply lease updates that were possible received from voters.
-  state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
-      result.old_leader_lease, result.old_leader_ht_lease);
+  // Apply lease updates that were received from voters.
+  state_->UpdateOldLeaderLeaseExpirationAfterElectionUnlocked(
+      result.old_leader_leases, result.old_leader_ht_leases);
 
   state_->SetLeaderNoOpCommittedUnlocked(false);
   // Convert role to LEADER.

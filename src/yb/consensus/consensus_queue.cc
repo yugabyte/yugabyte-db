@@ -164,14 +164,15 @@ std::string MajorityReplicatedData::ToString() const {
 }
 
 std::string PeerMessageQueue::TrackedPeer::ToString() const {
-  return Format(
-      "{ peer: $0 is_new: $1 last_received: $2 next_index: $3 last_known_committed_idx: $4 "
-      "is_last_exchange_successful: $5 needs_remote_bootstrap: $6 member_type: $7 "
-      "num_sst_files: $8 last_applied: $9 last_successful_communication_time: $10ms ago}",
-      uuid, is_new, last_received, next_index, last_known_committed_idx,
-      is_last_exchange_successful, needs_remote_bootstrap, PeerMemberType_Name(member_type),
-      num_sst_files, last_applied,
-      MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds());
+  auto time_since_last_communication_ms =
+      MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds();
+  return YB_STRUCT_TO_STRING(
+      (peer, uuid), is_new, last_received, next_index, last_known_committed_idx,
+      is_last_exchange_successful, needs_remote_bootstrap,
+      (member_type, PeerMemberType_Name(member_type)), num_sst_files, last_applied,
+      (last_successful_communication_time,
+       std::to_string(time_since_last_communication_ms) + "ms ago"),
+      leader_lease_expiration);
 }
 
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
