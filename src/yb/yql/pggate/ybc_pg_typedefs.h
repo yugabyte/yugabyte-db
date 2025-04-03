@@ -823,6 +823,11 @@ typedef enum {
   YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME
 } YbcLsnType;
 
+typedef enum {
+  YB_REPLICATION_SLOT_ORDERING_MODE_ROW,
+  YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION
+} YbcOrderingMode;
+
 typedef struct {
   const char* tablet_id;
   const char* table_name;

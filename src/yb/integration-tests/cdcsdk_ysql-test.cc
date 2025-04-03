@@ -8221,6 +8221,127 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotLsnTypePresentAfterRestart) {
           .cdcsdk_ysql_replication_slot_lsn_type());
 }
 
+TEST_F(CDCSDKYsqlTest, TestPgCreateReplicationSlotDefaultOrderingMode) {
+  ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_ordering_modes, true));
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
+
+  ASSERT_OK(conn.Execute("create publication pub for all tables;"));
+
+  auto result = ASSERT_RESULT(conn.Fetch("CREATE_REPLICATION_SLOT rs LOGICAL yboutput;"));
+
+  auto list_cdc_streams_resp = ASSERT_RESULT(ListDBStreams());
+
+  ASSERT_EQ(
+      ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_TRANSACTION,
+      list_cdc_streams_resp.streams()
+          .Get(0)
+          .cdc_stream_info_options()
+          .cdcsdk_ysql_replication_slot_ordering_mode());
+}
+
+void CDCSDKYsqlTest::TestCreateReplicationSlotWithOrderingMode(const std::string ordering_mode) {
+  ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_ordering_modes, true));
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
+
+  ASSERT_OK(conn.Execute("create publication pub for all tables;"));
+
+  auto result = ASSERT_RESULT(
+      conn.Fetch("CREATE_REPLICATION_SLOT rs LOGICAL yboutput " + ordering_mode + ";"));
+
+  auto list_cdc_streams_resp = ASSERT_RESULT(ListDBStreams());
+
+  if (ordering_mode == "ROW") {
+    ASSERT_EQ(
+        ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_ROW,
+        list_cdc_streams_resp.streams()
+            .Get(0)
+            .cdc_stream_info_options()
+            .cdcsdk_ysql_replication_slot_ordering_mode());
+  } else {
+    ASSERT_EQ(
+        ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_TRANSACTION,
+        list_cdc_streams_resp.streams()
+            .Get(0)
+            .cdc_stream_info_options()
+            .cdcsdk_ysql_replication_slot_ordering_mode());
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestCreateReplicationSlotWithOrderingModeRow) {
+  TestCreateReplicationSlotWithOrderingMode("ROW");
+}
+
+TEST_F(CDCSDKYsqlTest, TestCreateReplicationSlotWithOrderingModeTransaction) {
+  TestCreateReplicationSlotWithOrderingMode("TRANSACTION");
+}
+
+TEST_F(CDCSDKYsqlTest, TestReplicationSlotOrderingModePresentAfterRestart) {
+  ASSERT_OK(SET_FLAG(ysql_yb_allow_replication_slot_ordering_modes, true));
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table test_table (id int primary key, name text, l_name varchar, hours float);"));
+
+  ASSERT_OK(conn.Execute("create publication pub for all tables;"));
+
+  auto result =
+      ASSERT_RESULT(conn.Fetch("CREATE_REPLICATION_SLOT rs LOGICAL yboutput ROW;"));
+
+  auto list_cdc_streams_resp = ASSERT_RESULT(ListDBStreams());
+
+  ASSERT_EQ(
+      ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_ROW,
+      list_cdc_streams_resp.streams()
+          .Get(0)
+          .cdc_stream_info_options()
+          .cdcsdk_ysql_replication_slot_ordering_mode());
+
+  for (int idx = 0; idx < 3; idx++) {
+    test_cluster()->mini_tablet_server(idx)->Shutdown();
+    ASSERT_OK(test_cluster()->mini_tablet_server(idx)->Start());
+    ASSERT_OK(test_cluster()->mini_tablet_server(idx)->WaitStarted());
+  }
+
+  LOG(INFO) << "All tservers restarted";
+
+  list_cdc_streams_resp = ASSERT_RESULT(ListDBStreams());
+
+  ASSERT_EQ(
+      ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_ROW,
+      list_cdc_streams_resp.streams()
+          .Get(0)
+          .cdc_stream_info_options()
+          .cdcsdk_ysql_replication_slot_ordering_mode());
+
+  // Restart master now.
+  test_cluster_.mini_cluster_->mini_master()->Shutdown();
+  ASSERT_OK(test_cluster_.mini_cluster_->StartMasters());
+
+  list_cdc_streams_resp = ASSERT_RESULT(ListDBStreams());
+
+  ASSERT_EQ(
+    ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_ROW,
+      list_cdc_streams_resp.streams()
+          .Get(0)
+          .cdc_stream_info_options()
+          .cdcsdk_ysql_replication_slot_ordering_mode());
+}
+
 TEST_F(CDCSDKYsqlTest, TestPgPublicationDisabled) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));

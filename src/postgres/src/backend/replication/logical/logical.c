@@ -45,6 +45,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "replication/slot.h"
 #include "replication/walsender.h"
 #include "replication/yb_virtual_wal_client.h"
 
@@ -801,6 +802,25 @@ YBParseLsnType(char *lsn_type)
 		return CRS_HYBRID_TIME;
 	else
 		elog(ERROR, "invalid lsn type provided");
+}
+
+void
+YBValidateOrderingMode(char *ordering_mode)
+{
+	if (!(strcmp(ordering_mode, ORDERING_MODE_ROW) == 0
+		  || strcmp(ordering_mode, ORDERING_MODE_TRANSACTION) == 0))
+		elog(ERROR, "ordering mode can only be ROW or TRANSACTION");
+}
+
+YbCRSOrderingMode
+YBParseOrderingMode(char *ordering_mode)
+{
+	if (strcmp(ordering_mode, ORDERING_MODE_ROW) == 0)
+		return YB_CRS_ROW;
+	else if (strcmp(ordering_mode, ORDERING_MODE_TRANSACTION) == 0)
+		return YB_CRS_TRANSACTION;
+	else
+		elog(ERROR, "invalid ordering mode provided");
 }
 
 static void

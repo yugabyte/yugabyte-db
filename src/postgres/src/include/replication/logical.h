@@ -167,4 +167,7 @@ extern void YBValidateOutputPlugin(char *plugin);
 extern void YBValidateLsnType(char *lsn_type);
 extern YbCRSLsnType YBParseLsnType(char *lsn_type);
 
+extern void YBValidateOrderingMode(char *ordering_mode);
+extern YbCRSOrderingMode YBParseOrderingMode(char *ordering_mode);
+
 #endif

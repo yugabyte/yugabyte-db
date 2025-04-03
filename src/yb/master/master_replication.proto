@@ -30,6 +30,9 @@ message CDCStreamInfoOptionsPB {
   // This field stores the type of the LSN being used by the replication slot.
   optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
     1 [default = ReplicationSlotLsnType_UNSPECIFIED];
+
+  optional ReplicationSlotOrderingMode cdcsdk_ysql_replication_slot_ordering_mode =
+    2 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 message CDCStreamInfoPB {

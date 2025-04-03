@@ -129,6 +129,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<uint64> consistent_snapshot_time;
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
   std::optional<ReplicationSlotLsnType> replication_slot_lsn_type;
+  std::optional<ReplicationSlotOrderingMode> replication_slot_ordering_mode;
   std::optional<uint64> stream_creation_time;
   std::unordered_map<std::string, PgReplicaIdentity> replica_identity_map;
   std::optional<std::string> replication_slot_name;
@@ -138,7 +139,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
       &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
-      &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type));
+      &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
+      &replication_slot_ordering_mode));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -206,6 +208,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   consistent_snapshot_option_ = consistent_snapshot_option;
   replication_slot_name_ = replication_slot_name;
   replication_slot_lsn_type_ = replication_slot_lsn_type;
+  replication_slot_ordering_mode_ = replication_slot_ordering_mode;
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);

@@ -74,6 +74,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /* Utility function to calculate column sorting options */
@@ -2149,7 +2150,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time,
-						 YbCRSLsnType lsn_type)
+						 YbCRSLsnType lsn_type,
+						 YbCRSOrderingMode yb_ordering_mode)
 {
 	YbcPgStatement handle;
 
@@ -2174,14 +2176,21 @@ YBCCreateReplicationSlot(const char *slot_name,
 	 */
 	YbcLsnType	repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
 
+	YbcOrderingMode repl_slot_ordering_mode =
+		YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION;
+
 	if (lsn_type == CRS_HYBRID_TIME)
 		repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME;
+
+	if (yb_ordering_mode == YB_CRS_ROW)
+		repl_slot_ordering_mode = YB_REPLICATION_SLOT_ORDERING_MODE_ROW;
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 MyDatabaseId,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
+												 repl_slot_ordering_mode,
 												 &handle));
 
 	YbcStatus	status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);

@@ -291,6 +291,13 @@ enum PGReplicationSlotLsnType {
   ReplicationSlotLsnTypePg_HYBRID_TIME = 2;
 }
 
+// proto2 version of the ReplicationSlotOrderingMode enum from yb/common/common.proto
+enum PGReplicationSlotOrderingMode {
+  ReplicationSlotOrderingModePg_UNDEFINED = 0;
+  ReplicationSlotOrderingModePg_ROW = 1;
+  ReplicationSlotOrderingModePg_TRANSACTION = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
@@ -299,6 +306,7 @@ message PgCreateReplicationSlotRequestPB {
   string output_plugin_name = 5;
   AshMetadataPB ash_metadata = 6;
   PGReplicationSlotLsnType lsn_type = 7;
+  PGReplicationSlotOrderingMode ordering_mode = 8;
 }
 
 message PgCreateReplicationSlotResponsePB {

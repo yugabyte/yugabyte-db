@@ -51,6 +51,8 @@ bool yb_enable_replication_slot_consumption = true;
 
 bool yb_allow_replication_slot_lsn_types = true;
 
+bool yb_allow_replication_slot_ordering_modes = true;
+
 bool yb_enable_alter_table_rewrite = true;
 
 bool yb_enable_replica_identity = true;

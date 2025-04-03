@@ -624,6 +624,8 @@ message SysCDCStreamEntryPB {
 
   optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
       13 [default = ReplicationSlotLsnType_UNSPECIFIED];
+  optional ReplicationSlotOrderingMode cdcsdk_ysql_replication_slot_ordering_mode =
+      14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 

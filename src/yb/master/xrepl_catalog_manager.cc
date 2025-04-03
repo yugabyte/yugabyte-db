@@ -22,6 +22,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema_pbutil.h"
@@ -142,6 +143,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
+DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_uint32(cdc_wal_retention_time_secs);
@@ -1032,6 +1034,18 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
     metadata->set_cdcsdk_ysql_replication_slot_lsn_type(
         req.cdcsdk_stream_create_options().lsn_type());
+  }
+
+  if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes &&
+      req.has_cdcsdk_ysql_replication_slot_name() && req.has_cdcsdk_stream_create_options()) {
+    RSTATUS_DCHECK(
+        req.cdcsdk_stream_create_options().has_ordering_mode() &&
+            req.cdcsdk_stream_create_options().ordering_mode() !=
+                ReplicationSlotOrderingMode_UNSPECIFIED,
+        InvalidArgument, "Ordering mode not present in CDC stream creation request");
+
+    metadata->set_cdcsdk_ysql_replication_slot_ordering_mode(
+        req.cdcsdk_stream_create_options().ordering_mode());
   }
 
   RETURN_NOT_OK(
@@ -1982,6 +1996,14 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
     RETURN_INVALID_REQUEST_STATUS(
         "Creation of CDCSDK stream with a replication slot having LSN type is disallowed because "
         "the flag ysql_yb_allow_replication_slot_lsn_types is disabled");
+  }
+
+  if (!FLAGS_ysql_yb_allow_replication_slot_ordering_modes &&
+      req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_ordering_mode()) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream with a replication slot having ordering mode is disallowed "
+        "because the flag ysql_yb_allow_replication_slot_ordering_modes is disabled");
   }
 
   // TODO: Validate that the replication slot output plugin name is provided if
@@ -2971,6 +2993,8 @@ Status CatalogManager::GetCDCStream(
     auto cdc_stream_info_options = stream_info->mutable_cdc_stream_info_options();
 
     auto replication_slot_lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_SEQUENCE;
+    auto replication_slot_ordering_mode =
+        ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_TRANSACTION;
 
     if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
         stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
@@ -2982,7 +3006,19 @@ Status CatalogManager::GetCDCStream(
               << ". Keeping default value of 'SEQUENCE'.";
     }
 
+    if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes &&
+        stream_lock->pb.has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+      replication_slot_ordering_mode = stream_lock->pb.cdcsdk_ysql_replication_slot_ordering_mode();
+    } else {
+      VLOG(2) << "No cdcsdk_ysql_replication_slot_ordering_mode found for stream: " << stream->id()
+              << " and slot " << stream_lock->pb.cdcsdk_ysql_replication_slot_name()
+              << " with flag value: " << FLAGS_ysql_yb_allow_replication_slot_ordering_modes
+              << ". Keeping default value of 'TRANSACTION'.";
+    }
+
     cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(replication_slot_lsn_type);
+    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_ordering_mode(
+        replication_slot_ordering_mode);
   }
 
   auto replica_identity_map = stream_lock->pb.replica_identity_map();
@@ -3126,6 +3162,14 @@ Status CatalogManager::ListCDCStreams(
         auto cdc_stream_info_options = stream->mutable_cdc_stream_info_options();
         cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(
             ltm->pb.cdcsdk_ysql_replication_slot_lsn_type());
+      }
+    }
+
+    if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes) {
+      if (ltm->pb.has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+        auto cdc_stream_info_options = stream->mutable_cdc_stream_info_options();
+        cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_ordering_mode(
+            ltm->pb.cdcsdk_ysql_replication_slot_ordering_mode());
       }
     }
 

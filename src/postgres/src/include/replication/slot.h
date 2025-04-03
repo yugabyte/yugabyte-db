@@ -221,6 +221,9 @@ extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
 extern PGDLLIMPORT const char *LSN_TYPE_SEQUENCE;
 extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
 
+extern PGDLLIMPORT const char *ORDERING_MODE_ROW;
+extern PGDLLIMPORT const char *ORDERING_MODE_TRANSACTION;
+
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
 extern void ReplicationSlotsShmemInit(void);
@@ -231,7 +234,8 @@ extern void ReplicationSlotCreate(const char *name, bool db_specific,
 								  char *yb_plugin_name,
 								  CRSSnapshotAction yb_snapshot_action,
 								  uint64_t *yb_consistent_snapshot_time,
-								  YbCRSLsnType lsn_type);
+								  YbCRSLsnType lsn_type,
+								  YbCRSOrderingMode yb_ordering_mode);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait);
 

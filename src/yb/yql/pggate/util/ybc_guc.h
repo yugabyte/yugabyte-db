@@ -148,6 +148,11 @@ extern bool yb_enable_replica_identity;
 extern bool yb_allow_replication_slot_lsn_types;
 
 /*
+ * Guc variable that allows ordering mode to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_ordering_modes;
+
+/*
  * GUC variable that specifies default replica identity for tables at the time of creation.
  */
 extern char* yb_default_replica_identity;

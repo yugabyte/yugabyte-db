@@ -28,6 +28,8 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
                  "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
@@ -523,7 +525,8 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
-    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type)
+    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
+    YbcOrderingMode yb_ordering_mode)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
@@ -556,6 +559,22 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(
         break;
       default:
         req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+    }
+  }
+
+  if (yb_allow_replication_slot_ordering_modes) {
+    switch (yb_ordering_mode) {
+      case YB_REPLICATION_SLOT_ORDERING_MODE_ROW:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_ROW);
+        break;
+      case YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_TRANSACTION);
+        break;
+      default:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_TRANSACTION);
     }
   }
 }

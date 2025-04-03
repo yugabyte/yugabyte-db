@@ -2561,6 +2561,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_replication_slot_ordering_modes", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow specifying ordering mode while creating replication slot"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_replication_slot_ordering_modes,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_consistent_replication_from_hash_range", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable replication slot consumption of consistent changes "
 			"from a hash range of table."),

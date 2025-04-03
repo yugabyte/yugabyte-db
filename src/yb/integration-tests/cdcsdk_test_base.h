@@ -54,6 +54,7 @@ DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(TEST_stop_committed_op_id_updation);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
+DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(cdc_send_null_before_image_if_not_exists);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 
