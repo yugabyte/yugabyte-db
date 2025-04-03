@@ -135,6 +135,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
 
 
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
 namespace yb::docdb {
 
@@ -2105,7 +2106,8 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
 
   // The response size should not exceed the rpc_max_message_size, so use it as a default size
   // limit. Reduce it to the number requested by the client, if it is stricter.
-  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
@@ -2227,10 +2229,14 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
     KeyProvider* key_provider) {
 
   // We limit the response's size.
-  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
+  VLOG_WITH_FUNC(3) << "Started, response size limit: " << response_size_limit
+                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
+                    << " tablet: " << ql_storage.ToString();
 
   auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
