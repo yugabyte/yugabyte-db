@@ -142,46 +142,122 @@ YugabyteDB is a high-performance distributed SQL database for powering global, i
   >}}
 
 {{< /sections/3-boxes >}}
+-->
+&nbsp;
 
 &nbsp;
 
+&nbsp;
+
+&nbsp;
 
 {{< tabpane text=true >}}
 
   {{% tab header="Introduction" lang="intro" %}}
 
-Learn about YugabyteDB and how it supports mission-critical applications.
+Learn about YugabyteDB and how it supports mission-critical applications.  -->[Explore](/preview/explore/)
 
-- Resiliency - Survive failures, with zero-downtime upgrades and patching
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Blogs"
+    linkText1="Data Replication in YugabyteDB"
+    linkUrl1="https://www.yugabyte.com/blog/data-replication/"
+    linkText2="Improving PostgreSQL"
+    linkUrl2="https://www.yugabyte.com/blog/improve-postgresql"
+  >}}
 
-- Scalability - Scale in and out with no downtime
+  {{< sections/3-box-card
+    title="Videos"
+    linkText1="Introducing YugabyteDB"
+    linkUrl1="https://www.youtube.com/watch?v=j24p07Frw00"
+    linkText2="Distributed PostgreSQL Essentials"
+    linkUrl2="https://www.youtube.com/watch?v=rqJBFQ-4Hgk"
+  >}}
 
-- Compatibility - YugabyteDB reuses PostgreSQL's query layer for maximum compatibility
+  {{< sections/3-box-card
+    title="Articles"
+    linkText1="Distributed SQL 101"
+    linkUrl1="https://www.yugabyte.com/distributed-sql/"
+    linkText2="Scale a Single-Server Database"
+    linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"
+    linkText3="Local Reads in YugabyteDB"
+    linkUrl3="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+  >}}
+
+{{< /sections/3-boxes >}}
 
   {{% /tab %}}
 
   {{% tab header="Deploy" lang="deploy" %}}
 
-Use replication and data geo-partitioning to achieve low latency, resilience, and compliance.
+Explore YugabyteDB's flexible multi-region deployment topologies.  -->[Deploy](/preview/explore/multi-region-deployments/)
 
-- Synchronous replication - Keep serving requests in the event of a failure"
-- Asynchronous xCluster - Replicate between two regions for disaster recovery
-- Geo-partitioning - Pin data to regions for compliance and lower latencies
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Blogs"
+    linkText1="Multi-Region Best Practices"
+    linkUrl1="https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/"
+    linkText2="Engineering Around the Physics of Latency"
+    linkUrl2="https://www.yugabyte.com/blog/geo-distribution-in-yugabytedb-engineering-around-the-physics-of-latency/"
+    linkText3="Rapid Data Recovery"
+    linkUrl3="https://www.yugabyte.com/blog/rapid-data-recovery-database-amazon-s3/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Videos"
+    linkText1="Distributed PostgreSQL Essentials"
+    linkUrl1="https://www.youtube.com/watch?v=rqJBFQ-4Hgk"
+  >}}
+
+  {{< sections/3-box-card
+    title="Articles"
+    linkText1="Distributed SQL 101"
+    linkUrl1="https://www.yugabyte.com/distributed-sql/"
+    linkText2="Local Reads in YugabyteDB"
+    linkUrl2="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+  >}}
+
+{{< /sections/3-boxes >}}
 
   {{% /tab %}}
 
   {{% tab header="Develop" lang="develop" %}}
 
-Get started building applications based on YugabyteDB.
+Get started building applications based on YugabyteDB. -->[Develop](/preview/develop/)
 
-- Hello World - Use your favorite language to build an application that connects to a YugabyteDB cluster.
-- Drivers and ORMs - Connect applications using familiar third-party drivers and ORMs
-- Tutorials - Step-by-step guides for building scalable and fault tolerant applications
+{{< sections/3-boxes >}}
+
+  {{< sections/3-box-card
+    title="Blogs"
+    linkText1="Client Connections in YugabyteDB"
+    linkUrl1="https://www.yugabyte.com/blog/how-connection-pooling-works/"
+    linkText2="Database Connection Management"
+    linkUrl2="https://www.yugabyte.com/blog/database-connection-management/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Videos"
+    linkText1="Distributed PostgreSQL Essentials"
+    linkUrl1="https://www.youtube.com/watch?v=rqJBFQ-4Hgk"
+  >}}
+
+  {{< sections/3-box-card
+    title="Articles"
+    linkText1="Distributed SQL 101"
+    linkUrl1="https://www.yugabyte.com/distributed-sql/"
+    linkText2="Scale a Single-Server Database"
+    linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"
+    linkText3="Local Reads in YugabyteDB"
+    linkUrl3="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+  >}}
+
+{{< /sections/3-boxes >}}
 
   {{% /tab %}}
 
 {{< /tabpane >}}
 
+<!--
 ### Deployment options
 
 {{< sections/3-boxes >}}
