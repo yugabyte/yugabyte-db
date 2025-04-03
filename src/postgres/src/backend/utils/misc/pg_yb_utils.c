@@ -1118,15 +1118,29 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 		 */
 		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 			return;
-		ereport(LOG,
-				(errmsg("waiting for shared catalog version to reach %" PRIu64,
-						version),
-				 errhidestmt(true),
-				 errhidecontext(true)));
+		/* Avoid flooding the log file, but always print for the first time. */
+		if (count % 20 == 1)
+			ereport(LOG,
+					(errmsg("waiting for shared catalog version to reach %" PRIu64,
+							version),
+					 errhidestmt(true),
+					 errhidecontext(true)));
 		/* wait 0.1 sec */
 		pg_usleep(100000L);
 		shared_catalog_version = YbGetSharedCatalogVersion();
 	}
+	if (shared_catalog_version >= version)
+		ereport(LOG,
+				(errmsg("shared catalog version has reached %" PRIu64,
+						shared_catalog_version),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+	else
+		ereport(WARNING,
+				(errmsg("shared catalog version %" PRIu64 " has not reached %" PRIu64,
+						shared_catalog_version, version),
+				 errhidestmt(true),
+				 errhidecontext(true)));
 }
 
 /*---------------------------------------------------------------------------*/
