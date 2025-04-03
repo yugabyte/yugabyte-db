@@ -73,7 +73,7 @@ To create a basic Node.js project and install the `TypeORM` package, do the foll
     ```
     {
       "compilerOptions": {
-        "target": "ES6",
+        "target": "ES2021",
         "module": "CommonJS",
         "outDir": "./dist",
         "rootDir": "./src",
