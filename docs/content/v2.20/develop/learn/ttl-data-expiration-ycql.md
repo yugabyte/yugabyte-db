@@ -146,7 +146,7 @@ To prevent early data deletion, it is very important that in these cases, the `d
 
 ### Best practices and troubleshooting
 
-* The file expiration feature is only enabled for tables with a default time to live. Even applications that explicitly set TTL on insert should be configured with a default time to live.
+* The file expiration feature is only enabled for tables with a default time to live. Even applications that explicitly set TTL on insert should be configured with a default time to live. 
 * The file expiration feature assumes that data arrives in rough chronological order relative to its expected expiration time. The feature is safe to use if this assumption is not met, but will be significantly less effective.
 * Files are expired in a conservative manner, only being deleted after every data item it holds has completely expired. If a file has both a table-level TTL and column-level TTL, the later of the two is used in determining expiration.
 * If a universe was created on a YugabyteDB version earlier than 2.6.6 or 2.8.1, files may not contain the necessary metadata for file expiration. Similarly, if a data item is inserted with an unreasonably high TTL (or no TTL), the file expiration feature will stop being able to garbage-collect data. In these cases, it may become necessary to set the `file_expiration_ignore_value_ttl` flag to `true`, which may lead to unwanted loss of data. For more information, see [File expiration based on TTL flags](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags).
