@@ -577,7 +577,7 @@ CREATE TABLE post_trigger_table (id INT);
               34 |                    29
 (1 row)
 
--- The execution on atomic SPI context function will increment current_version.
+-- The execution on atomic SPI context function will not increment current_version.
 CREATE FUNCTION atomic_spi(INT) RETURNS INT AS $$
 DECLARE TOTAL INT;
 BEGIN
@@ -598,7 +598,7 @@ SELECT atomic_spi(1);
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              35 |                    29
+              34 |                    29
 (1 row)
 
 SELECT atomic_spi(2);
@@ -610,7 +610,7 @@ SELECT atomic_spi(2);
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              36 |                    29
+              34 |                    29
 (1 row)
 
 -- The execution on non-atomic SPI context will not increment current_version.
@@ -628,7 +628,7 @@ CALL p1();
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              36 |                    29
+              34 |                    29
 (1 row)
 
 -- Verify that variants of CREATE TABLE AS SELECT do not increment catalog version.
@@ -637,21 +637,21 @@ SELECT id INTO TEMPORARY TABLE temp FROM t;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              36 |                    29
+              34 |                    29
 (1 row)
 
 CREATE TEMPORARY TABLE temp2 AS SELECT id FROM t;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              36 |                    29
+              34 |                    29
 (1 row)
 
 CREATE TABLE t_1 AS SELECT id FROM t;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              36 |                    29
+              34 |                    29
 (1 row)
 
 -- Verify that catalog version gets incremented if CREATE TABLE AS invokes other
@@ -667,14 +667,14 @@ END$$ LANGUAGE plpgsql;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              38 |                    29
+              36 |                    29
 (1 row)
 
 CREATE TABLE t_3 AS SELECT c FROM (SELECT 1 AS c, f1()) AS s;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              39 |                    39
+              37 |                    37
 (1 row)
 
 -- The next GRANT SELECT will increment current_version.
@@ -682,7 +682,7 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              40 |                    39
+              38 |                    37
 (1 row)
 
 -- The next GRANT SELECT will increment current_version due to evt_ddl_start.
@@ -690,14 +690,14 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              41 |                    39
+              39 |                    37
 (1 row)
 
 DROP EVENT TRIGGER evt_ddl_start;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              42 |                    39
+              40 |                    37
 (1 row)
 
 -- The next GRANT SELECT should not cause any catalog version change.
@@ -705,7 +705,7 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              42 |                    39
+              40 |                    37
 (1 row)
 
 -- Verify REFRESH MATERIALIZED VIEW is not a breaking change.
@@ -715,7 +715,7 @@ CREATE UNIQUE INDEX ON mv(t);
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              45 |                    39
+              43 |                    37
 (1 row)
 
 -- nonconcurrent refreshes should bump catalog version.
@@ -723,7 +723,7 @@ REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              46 |                    39
+              44 |                    37
 (1 row)
 
 -- concurrent refreshes should not bump catalog version.
@@ -731,7 +731,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              46 |                    39
+              44 |                    37
 (1 row)
 
 -- Verify ANALYZE increments catalog version and is not a breaking change.
@@ -743,7 +743,7 @@ ANALYZE analyze_table, analyze_table2;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              47 |                    39
+              45 |                    37
 (1 row)
 
 SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
@@ -771,7 +771,7 @@ ANALYZE;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              48 |                    39
+              46 |                    37
 (1 row)
 
 -- Verify no-op ALTER ROLE
@@ -779,7 +779,7 @@ CREATE ROLE test_role;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              48 |                    39
+              46 |                    37
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -787,7 +787,7 @@ ALTER ROLE test_role CONNECTION LIMIT 1;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              49 |                    49
+              47 |                    47
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -795,7 +795,7 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              50 |                    50
+              48 |                    48
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -803,7 +803,7 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              50 |                    50
+              48 |                    48
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -813,7 +813,7 @@ ALTER ROLE test_role PASSWORD '123';
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              50 |                    50
+              48 |                    48
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -821,39 +821,39 @@ ALTER ROLE test_role PASSWORD NULL;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
+              48 |                    48
+(1 row)
+
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
+:display_catalog_version;
+ current_version | last_breaking_version
+-----------------+-----------------------
+              49 |                    49
+(1 row)
+
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
+:display_catalog_version;
+ current_version | last_breaking_version
+-----------------+-----------------------
+              49 |                    49
+(1 row)
+
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role VALID UNTIL 'infinity';
+:display_catalog_version;
+ current_version | last_breaking_version
+-----------------+-----------------------
               50 |                    50
 (1 row)
 
--- The next ALTER ROLE should increment current_version.
-ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
-:display_catalog_version;
- current_version | last_breaking_version
------------------+-----------------------
-              51 |                    51
-(1 row)
-
--- The next ALTER ROLE should not increment current_version.
-ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
-:display_catalog_version;
- current_version | last_breaking_version
------------------+-----------------------
-              51 |                    51
-(1 row)
-
--- The next ALTER ROLE should increment current_version.
-ALTER ROLE test_role VALID UNTIL 'infinity';
-:display_catalog_version;
- current_version | last_breaking_version
------------------+-----------------------
-              52 |                    52
-(1 row)
-
 -- The next ALTER ROLE should not increment current_version.
 ALTER ROLE test_role VALID UNTIL 'infinity';
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              52 |                    52
+              50 |                    50
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -861,7 +861,7 @@ ALTER ROLE test_role CREATEROLE;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              53 |                    53
+              51 |                    51
 (1 row)
 
 -- The next ALTER ROLE should increment current_version.
@@ -869,7 +869,7 @@ ALTER ROLE test_role CREATEDB;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              54 |                    54
+              52 |                    52
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -877,7 +877,7 @@ ALTER ROLE test_role CREATEROLE CREATEDB;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              54 |                    54
+              52 |                    52
 (1 row)
 
 -- The next ALTER ROLE should not increment current_version.
@@ -885,5 +885,5 @@ ALTER ROLE test_role;
 :display_catalog_version;
  current_version | last_breaking_version
 -----------------+-----------------------
-              54 |                    54
+              52 |                    52
 (1 row)
