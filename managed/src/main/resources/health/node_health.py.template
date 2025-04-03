@@ -595,8 +595,8 @@ class NodeChecker():
                     return js
                 self.verbose_log("skipping prev stats because of version")
                 return {}
-        except IOError as ie:
-            logging.info("Failed to load prev process results")
+        except Exception as ie:
+            logging.error("Failed to load prev per process results: {}".format(str(ie)))
             return {}
 
     def _dump_per_process_results(self):
@@ -604,7 +604,7 @@ class NodeChecker():
             with open(self.temp_output_file, 'w') as f:
                 self.current_process_results['version'] = PER_PROCESS_VERSION
                 json.dump(self.current_process_results, f)
-         except IOError as ie:
+         except Exception as ie:
             logging.error("Failed to write current per process results: {}".format(str(ie)))
 
     def _new_entry(self, message, process=None):
