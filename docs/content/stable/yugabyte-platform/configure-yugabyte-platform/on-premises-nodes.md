@@ -21,7 +21,11 @@ This displays the configured instance types and instances for the selected provi
 
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-(For legacy manual provisioning (deprecated), the **Instances** page additionally includes the command for running the provisioning script.)
+{{< note title="Legacy assisted manual script" >}}
+For legacy manual provisioning (deprecated), the **Instances** page additionally displays the command for running the assisted manual provisioning script (provision_instance.py). This script is strictly for legacy manual provisioning.
+
+If you provisioned your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh), you can add your nodes (if they have not already been added to the provider) by clicking **Add Instances**.
+{{< /note >}}
 
 To add nodes, do the following:
 
