@@ -202,8 +202,7 @@ void Proxy::AsyncLocalCall(
   // Otherwise, enqueue the call to be handled by the service's handler thread.
   const shared_ptr<LocalYBInboundCall>& local_call =
       static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
-  Queue queue(!controller->allow_local_calls_in_curr_thread() ||
-              !ThreadPool::IsCurrentThreadRpcWorker());
+  Queue queue(!controller->allow_local_calls_in_curr_thread());
   context_->Handle(local_call, queue);
 }
 
