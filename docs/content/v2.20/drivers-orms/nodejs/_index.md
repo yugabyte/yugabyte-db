@@ -25,7 +25,8 @@ The following projects are recommended for implementing Node applications using 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
 | Sequelize | [Documentation](sequelize/) <br /> [Hello World](../orms/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize) |
-| Prisma | [Documentation](prisma/) <br /> [Hello World](../orms/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
+| Prisma | [Documentation](prisma/) <br /> [Hello World](../orms/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma) |
+| TypeORM | [Documentation](typeorm/) |  |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-node-driver/) or [Use an ORM](sequelize/).
 
