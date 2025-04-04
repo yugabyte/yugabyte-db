@@ -69,6 +69,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  async_rpc_tasks_base.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
   backfill_index.cc
