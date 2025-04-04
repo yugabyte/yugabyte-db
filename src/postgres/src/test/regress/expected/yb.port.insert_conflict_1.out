@@ -506,10 +506,6 @@ create table cities (
 create table capitals (
 	state		char(2)
 ) inherits (cities);
-ERROR:  INHERITS not supported yet
-LINE 3: ) inherits (cities);
-          ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 -- Create unique indexes.  Due to a general limitation of inheritance,
 -- uniqueness is only enforced per-relation.  Unique index inference
 -- specification will do the right thing, though.
@@ -564,7 +560,7 @@ select tableoid::regclass, * from cities;
 (3 rows)
 
 -- clean up
-drop table capitals; -- YB: errors because of above failure to create capitals table
+drop table capitals;
 ERROR:  table "capitals" does not exist
 drop table cities;
 -- Make sure a table named excluded is handled properly
