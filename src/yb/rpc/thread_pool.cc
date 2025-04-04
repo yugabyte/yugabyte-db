@@ -47,8 +47,6 @@ struct ThreadPoolShare {
       : options(std::move(o)) {}
 };
 
-const char* kRpcThreadCategory = "rpc_thread_pool";
-
 const auto kShuttingDownStatus = STATUS(Aborted, "Service is shutting down");
 
 void TaskDone(ThreadPoolTask* task, const Status& status) {
@@ -68,8 +66,8 @@ class Worker {
   }
 
   Status Start(size_t index) {
-    auto name = strings::Substitute("rpc_tp_$0_$1", share_->options.name, index);
-    return yb::Thread::Create(kRpcThreadCategory, name, &Worker::Execute, this, &thread_);
+    auto name = strings::Substitute("$0_$1_worker", share_->options.name, index);
+    return Thread::Create(share_->options.name, name, &Worker::Execute, this, &thread_);
   }
 
   ~Worker() {
@@ -297,11 +295,6 @@ ThreadPool::~ThreadPool() {
   if (impl_) {
     impl_->Shutdown();
   }
-}
-
-bool ThreadPool::IsCurrentThreadRpcWorker() {
-  const Thread* thread = Thread::current_thread();
-  return thread != nullptr && thread->category() == kRpcThreadCategory;
 }
 
 bool ThreadPool::Enqueue(ThreadPoolTask* task) {

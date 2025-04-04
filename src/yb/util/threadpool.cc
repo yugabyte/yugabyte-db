@@ -670,8 +670,8 @@ Status ThreadPool::CreateThreadUnlocked() {
   // The first few threads are permanent, and do not time out.
   bool permanent = (num_threads_ < min_threads_);
   scoped_refptr<Thread> t;
-  Status s = yb::Thread::Create("thread pool", strings::Substitute("$0 [worker]", name_),
-                                  &ThreadPool::DispatchThread, this, permanent, &t);
+  auto s = Thread::Create(
+      name_, Format("$0 [worker]", name_), &ThreadPool::DispatchThread, this, permanent, &t);
   if (s.ok()) {
     InsertOrDie(&threads_, t.get());
     num_threads_++;

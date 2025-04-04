@@ -157,8 +157,6 @@ class ThreadPool : public TaskRecipient<ThreadPoolTask> {
 
   void Shutdown();
 
-  static bool IsCurrentThreadRpcWorker();
-
   bool Owns(Thread* thread);
   bool OwnsThisThread();
 
