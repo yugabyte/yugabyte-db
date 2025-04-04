@@ -36,7 +36,7 @@ YugabyteDB is a high-performance distributed SQL database for powering global, i
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-    title="Introduction"
+    title="Explore"
     description="Learn about YugabyteDB and how it supports mission-critical applications."
     buttonText="Explore"
     buttonUrl="/preview/explore/"
