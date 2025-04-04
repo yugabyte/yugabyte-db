@@ -15,7 +15,7 @@ type: docs
 {{< warning title="For legacy assisted manual provisioning only" >}}
 The assisted manual provisioning script (provision_instance.py) shown on the **Instances** page is strictly for legacy manual provisioning.
 
-If you provisioned your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh), you can add your nodes (if they have not already been added to the provider) by clicking **Add Instances**.
+If you provisioned your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh), you can add your nodes (if they have not already been added to the provider) by clicking [Add Instances](../on-premises-nodes/#add-instances-to-the-on-premises-provider).
 {{< /warning >}}
 
 If the SSH user configured in the on-premises provider has sudo privileges that require a password, you can provision your nodes by running the pre-provisioning script (`provision_instance.py`).
