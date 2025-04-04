@@ -2058,7 +2058,10 @@ void AsyncClonePgSchema::HandleResponse(int attempt) {
   } else {
     TransitionToCompleteState();
   }
-  WARN_NOT_OK(callback_(resp_status), "Failed to execute the callback of AsyncClonePgSchema");
+}
+
+void AsyncClonePgSchema::Finished(const Status& status) {
+  WARN_NOT_OK(callback_(status), "Failed to execute the callback of AsyncClonePgSchema");
 }
 
 bool AsyncClonePgSchema::SendRequest(int attempt) {
