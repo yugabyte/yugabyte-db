@@ -1154,6 +1154,42 @@ TEST_F(ExternalObjectLockTestOneTS, TabletServerKillsSessionsWhenItAcquiresNewLe
         return result.status();
       },
       timeout, "Wait for pg session to be killed"));
+  // Once re-acquiring the lease, the tserver should accept new sessions again.
+  ASSERT_OK(WaitFor(
+      [this, kTSIdx]() -> Result<bool> {
+        auto result = cluster_->ConnectToDB("yugabyte", kTSIdx);
+        return result.ok();
+      },
+      timeout, "Wait for tserver to accept new pg sessions"));
+}
+
+class ExternalObjectLockTestOneTSWithoutLease : public ExternalObjectLockTestOneTS {
+ public:
+  ExternalMiniClusterOptions MakeExternalMiniClusterOptions() override;
+};
+
+TEST_F(ExternalObjectLockTestOneTSWithoutLease, TServerRefusesPGSessionsWithoutLeaseOnBoot) {
+  constexpr size_t kTSIdx = 0;
+  constexpr size_t kTimeoutSeconds = 10;
+  MonoDelta timeout = MonoDelta::FromSeconds(kTimeoutSeconds);
+  // We disabled the tserver's lease refresh on boot. It shouldn't accept pg sessions.
+  Status status;
+  ExternalClusterPGConnectionOptions connection_opts;
+  connection_opts.tserver_index = kTSIdx;
+  connection_opts.timeout_secs = kTimeoutSeconds;
+  auto conn_result = cluster_->ConnectToDB(std::move(connection_opts));
+  ASSERT_NOK(conn_result);
+  // Re-enable the lease refresher to sanity check we can connect to the tserver.
+  ASSERT_OK(cluster_->SetFlag(tablet_server(kTSIdx), kTServerYsqlLeaseRefreshFlagName, "true"));
+  ASSERT_OK(WaitFor(
+      [this, kTSIdx, kTimeoutSeconds]() -> Result<bool> {
+        ExternalClusterPGConnectionOptions options;
+        options.timeout_secs = kTimeoutSeconds;
+        options.tserver_index = kTSIdx;
+        auto result = cluster_->ConnectToDB(std::move(options));
+        return result.ok();
+      },
+      timeout, "Wait for tserver to accept new pg sessions"));
 }
 
 class MultiMasterObjectLockTestWithFailover : public MultiMasterObjectLockTest,
@@ -1415,6 +1451,7 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.num_tablet_servers = NumberOfTabletServers();
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
+  opts.wait_for_tservers_to_accept_ysql_connections = true;
   opts.extra_master_flags = {
     "--TEST_enable_object_locking_for_table_locks",
     Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
@@ -1467,6 +1504,25 @@ Status ExternalObjectLockTest::WaitForTServerLease(const std::string& ts_uuid, M
         return ts_opt && ts_opt->has_lease_info() && ts_opt->lease_info().is_live();
       },
       timeout, "Wait for master to establish tserver's lease");
+}
+
+ExternalMiniClusterOptions
+ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
+  ExternalMiniClusterOptions opts;
+  opts.num_tablet_servers = NumberOfTabletServers();
+  opts.replication_factor = ReplicationFactor();
+  opts.enable_ysql = true;
+  opts.wait_for_tservers_to_accept_ysql_connections = false;
+  opts.extra_master_flags = {
+      "--TEST_enable_object_locking_for_table_locks",
+      Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
+      Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
+      "--enable_load_balancing=false"};
+  opts.extra_tserver_flags = {
+    "--TEST_enable_object_locking_for_table_locks",
+    Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
+    "--TEST_tserver_enable_ysql_lease_refresh=false"};
+  return opts;
 }
 
 }  // namespace yb

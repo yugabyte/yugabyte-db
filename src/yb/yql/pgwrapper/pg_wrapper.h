@@ -19,12 +19,17 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/flags.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/status_fwd.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/flags.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/subprocess.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
+
+#include "yb/yql/process_wrapper/common_config.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 namespace yb {

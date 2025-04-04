@@ -15,20 +15,28 @@
 
 #include <string>
 
-#include "yb/tserver/tserver_util_fwd.h"
-#include "yb/util/status_fwd.h"
+#include "yb/fs/fs_manager.h"
 
-namespace yb::pgwrapper {
+#include "yb/server/server_base_options.h"
 
-class PgWrapperContext {
- public:
-  virtual ~PgWrapperContext() = default;
-  virtual void RegisterCertificateReloader(tserver::CertificateReloader reloader) = 0;
-  virtual void RegisterPgProcessRestarter(std::function<Status(void)> restarter) = 0;
-  virtual Status StartSharedMemoryNegotiation() = 0;
-  virtual Status StopSharedMemoryNegotiation() = 0;
-  virtual int SharedMemoryNegotiationFd() = 0;
-  virtual const std::string& permanent_uuid() const = 0;
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
+
+namespace yb {
+
+class FsManager;
+
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
+
+struct ProcessWrapperCommonConfig {
+  std::string certs_dir;
+  std::string certs_for_client_dir;
+  std::string cert_base_name;
+  bool enable_tls = false;
+
+  Status SetSslConf(const server::ServerBaseOptions& options, FsManager& fs_manager);
 };
 
-} // namespace yb::pgwrapper
+}  // namespace yb

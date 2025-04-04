@@ -410,6 +410,16 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
+  if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
+    auto ysql_connection_deadline = MonoTime::Now() + kTabletServerRegistrationTimeout;
+    LOG(INFO) << "Waiting for tservers to accept ysql connections.";
+    for (size_t i = 0; i < tablet_servers_.size(); ++i) {
+      RETURN_NOT_OK(Wait([this, i]() -> Result<bool> {
+          auto result = ConnectToDB("yugabyte", i);
+          return result.ok();
+          }, ysql_connection_deadline, "Waiting for tablet servers to accept ysql connections"));
+    }
+  }
 
   running_ = true;
   return Status::OK();
@@ -2267,23 +2277,43 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol,
+    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
     const std::string& user) {
-  if (!node_index) {
-    node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  ExternalClusterPGConnectionOptions options;
+  options.db_name = db_name;
+  if (tserver_index) {
+    options.tserver_index = tserver_index;
   }
-  LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
+  options.simple_query_protocol = simple_query_protocol;
+  options.user = user;
+  return ConnectToDB(std::move(options));
+}
 
-  auto* ts = tablet_server(*node_index);
+Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
+    ExternalClusterPGConnectionOptions&& options) {
+  if (!options.tserver_index) {
+    options.tserver_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  }
+  LOG(INFO) << Format(
+      "Connecting to PG database $0 on tserver at index $1", options.db_name,
+      *options.tserver_index);
+
+  auto* ts = tablet_server(*options.tserver_index);
 
   auto settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(), .port = ts->ysql_port(), .dbname = db_name, .user = user};
+      .host = ts->bind_host(),
+      .port = ts->ysql_port(),
+      .dbname = options.db_name,
+      .user = options.user};
+  if (options.timeout_secs) {
+    settings.connect_timeout = *options.timeout_secs;
+  }
 
   if (opts_.enable_ysql_auth) {
     settings.user = "yugabyte";
     settings.password = "yugabyte";
   }
-  return pgwrapper::PGConnBuilder(settings).Connect(simple_query_protocol);
+  return pgwrapper::PGConnBuilder(settings).Connect(options.simple_query_protocol);
 }
 
 namespace {
