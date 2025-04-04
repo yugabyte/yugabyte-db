@@ -489,6 +489,9 @@ create_cast_with_inout = 'CREATE' 'CAST' '(' cast_signature ')'
 cast_signature = source_type 'AS' target_type ;
 
 (* 'CREATE' 'DATABASE' *)
+clone_timestamp = timestamp
+                | positive_int_literal ;
+
 create_database = 'CREATE' 'DATABASE' name [ create_database_options ] ;
 
 create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
@@ -499,7 +502,8 @@ create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
                              [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
                              [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
-                             [ 'COLOCATION' [ '=' ] ('true' | 'false') ] ;
+                             [ 'COLOCATION' [ '=' ] ('true' | 'false') ] \
+                             [ 'AS OF' [ '=' ] clone_timestamp ] ;
 
 user_name = name ;
 template_name = name ;
