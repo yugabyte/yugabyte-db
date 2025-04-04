@@ -75,7 +75,7 @@ xCluster DR can be set up to perform schema changes in the following ways:
 
 ### Semi-automatic mode
 
-Semi-automatic mode is {{<tags/feature/ea>}}. In this mode, table and index-level schema changes must be performed in the same order as follows:
+Semi-automatic mode is {{<tags/feature/ea idea="1186">}}. In this mode, table and index-level schema changes must be performed in the same order as follows:
 
 1. The DR primary universe.
 2. The DR replica universe.

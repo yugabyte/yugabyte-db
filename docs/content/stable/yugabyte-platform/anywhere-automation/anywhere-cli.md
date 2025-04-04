@@ -22,7 +22,7 @@ Reference documentation for yba CLI commands and their flags is available in the
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is {{<tags/feature/ea>}}. Commands and options may change before {{<tags/feature/ga>}}.
+The CLI is {{<tags/feature/ea idea="1879">}}. Commands and options may change before {{<tags/feature/ga>}}.
 
 ## Install CLI
 
