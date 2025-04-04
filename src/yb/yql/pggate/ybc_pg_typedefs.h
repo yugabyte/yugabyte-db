@@ -208,6 +208,8 @@ static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 // Postgres object identifier (OID) defined in Postgres' postgres_ext.h
 typedef unsigned int YbcPgOid;
 
+typedef uint64_t YbcReadPointHandle;
+
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid);
 
 // These OIDs are defined here to work around the build dependency problem.

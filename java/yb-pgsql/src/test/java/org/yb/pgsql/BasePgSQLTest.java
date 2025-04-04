@@ -1554,7 +1554,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected List<Row> getRowList(ResultSet rs) throws SQLException {
+  static protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       rows.add(Row.fromResultSet(rs));
@@ -1562,7 +1562,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
+  static protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
     // Sort all rows and return.
     List<Row> rows = getRowList(rs);
     Collections.sort(rows);

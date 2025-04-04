@@ -1311,7 +1311,10 @@ extern Oid	YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 extern bool YbIsReadCommittedTxn();
 
-extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
+extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
+extern void YbUseSnapshotReadTime(uint64_t read_time);
+extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
+
 
 extern bool YbUseFastBackwardScan();
 

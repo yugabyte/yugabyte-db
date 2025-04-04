@@ -7133,23 +7133,37 @@ YbIsReadCommittedTxn()
 		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
 }
 
-YbReadTimePointHandle
-YbBuildCurrentReadTimePointHandle()
+static YbOptionalReadPointHandle
+YbMakeReadPointHandle(YbcReadPointHandle read_point)
 {
-	if (YbIsReadCommittedTxn())
-	{
-		return (YbReadTimePointHandle)
-		{
-			.has_value = true,
-				.value = YBCPgGetCurrentReadTimePoint(),
-		};
-	}
-	else
-	{
-		return (YbReadTimePointHandle)
-		{
-		};
-	}
+	return (YbOptionalReadPointHandle)
+		{ .has_value = true, .value = read_point };
+}
+
+YbOptionalReadPointHandle
+YbBuildCurrentReadPointHandle()
+{
+	return YbIsReadCommittedTxn()
+		? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
+		: (YbOptionalReadPointHandle) {};
+}
+
+void
+YbUseSnapshotReadTime(uint64_t read_time)
+{
+	HandleYBStatus(YBCPgRegisterSnapshotReadTime(read_time,
+												 true /* use_read_time */ ,
+												 NULL /* handle */ ));
+}
+
+YbOptionalReadPointHandle
+YbRegisterSnapshotReadTime(uint64_t read_time)
+{
+	YbcReadPointHandle handle = 0;
+	HandleYBStatus(YBCPgRegisterSnapshotReadTime(read_time,
+												 false /* use_read_time */ ,
+												 &handle));
+	return YbMakeReadPointHandle(handle);
 }
 
 /*
