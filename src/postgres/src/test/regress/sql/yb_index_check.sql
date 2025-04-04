@@ -84,9 +84,6 @@ END;
 $$;
 $force_cache_refresh$ AS force_cache_refresh \gset
 
-
-SET yb_non_ddl_txn_for_sys_tables_allowed = TRUE;
-
 -- Missing Index Row
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
 :force_cache_refresh
@@ -153,7 +150,6 @@ SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
 
 UPDATE abcd SET d = 51 WHERE a = 51;
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
-SET yb_non_ddl_txn_for_sys_tables_allowed = FALSE;
 
 -- Index of a partitioned table
 CREATE TABLE part(a int, b int, c int, d int) PARTITION BY RANGE(a);
@@ -183,6 +179,14 @@ INSERT INTO test_bytea (a, b, c)  VALUES (1, 42, E'\\x48656c6c6f20576f726c64');
 INSERT INTO test_bytea (a, b, c)  VALUES (2, 42, 'test');
 SELECT yb_index_check('test_bytea_b_c_idx'::regclass::oid);
 SELECT yb_index_check('test_bytea_c_b_idx'::regclass::oid);
+
+-- Index of materialized view
+CREATE MATERIALIZED VIEW matview AS SELECT * FROM abcd;
+CREATE INDEX matview_b_idx ON matview (b);
+SELECT yb_index_check('matview_b_idx'::regclass);
+-- Execute the same command second time to check if the dummy index fields are free'd up.
+-- See yb_dummy_baserel_index_open()/yb_free_dummy_baserel_index().
+SELECT yb_index_check('matview_b_idx'::regclass);
 
 -- Index of a colocated relation
 CREATE DATABASE colocateddb COLOCATION = TRUE;

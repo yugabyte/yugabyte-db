@@ -157,7 +157,8 @@ yb_dummy_baserel_index_open(Oid relationId, LOCKMODE lockmode)
 
 	relation = relation_open(relationId, lockmode);
 
-	if (relation->rd_rel->relkind == RELKIND_RELATION)
+	if (relation->rd_rel->relkind == RELKIND_RELATION ||
+		relation->rd_rel->relkind == RELKIND_MATVIEW)
 	{
 		Assert(!relation->rd_index);
 		Assert(!relation->rd_amroutine);
@@ -196,6 +197,10 @@ yb_dummy_baserel_index_open(Oid relationId, LOCKMODE lockmode)
 void
 yb_free_dummy_baserel_index(Relation relation)
 {
+	if (!(relation->rd_rel->relkind == RELKIND_RELATION ||
+		  relation->rd_rel->relkind == RELKIND_MATVIEW))
+		return;
+
 	Assert(relation->rd_index);
 	Assert(relation->rd_amroutine);
 	Assert(relation->rd_opfamily);
