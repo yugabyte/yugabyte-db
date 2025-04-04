@@ -39,14 +39,14 @@ To create a Kafka Connect image with the YugabyteDB connector, start with the [C
 1. Download the YugabyteDB connector jar.
 
     ```sh
-    curl -so debezium-connector-yugabytedb-1.9.5.y.22.jar https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.22/debezium-connector-yugabytedb-1.9.5.y.22.jar
+    curl -so debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.2.jar https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/vdz.1.9.5.yb.grpc.2024.2.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.2.jar
     ```
 
 1. Create a `Dockerfile` with the following contents:
 
     ```Dockerfile
     FROM confluentinc/cp-server-connect:7.4.0
-    ADD debezium-connector-yugabytedb-1.9.5.y.22.jar /usr/share/java/kafka/
+    ADD debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.2.jar /usr/share/java/kafka/
     USER 1001
     ```
 
@@ -61,8 +61,8 @@ To create a Kafka Connect image with the YugabyteDB connector, start with the [C
     ```yaml
     version: '3'
     services:
-      kafka-CCLOUD-BROKER-ENDPOINT.:latest
-        container_name: kafka-connect-ccloud
+      kafka-CCLOUD-BROKER-ENDPOINT:
+        container_name: custom-connect:latest
         ports:
           - 8083:8083
         environment:
@@ -124,6 +124,8 @@ To create a Kafka Connect image with the YugabyteDB connector, start with the [C
             sleep infinity
     ```
 
+    This configuration uses SASL for client authentication. For more information about using SASL with Confluent, refer to [Authentication with SASL using JAAS](https://docs.confluent.io/platform/7.0/kafka/authentication_sasl/index.html#authentication-with-sasl-using-jaas) in the Confluent documentation.
+
     {{< note title="Using Schema Registry" >}}
 
 If the configuration is such that it needs schema registry as well, then you need to add the following environment variables to the Docker compose file:
@@ -138,6 +140,8 @@ CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: "https://SCHEMA-REGISTRY-CCLOUD-END
 CONNECT_VALUE_CONVERTER_BASIC_AUTH_CREDENTIALS_SOURCE: "USER_INFO"
 CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: "SCHEMA_REGISTRY_USER:SCHEMA_REGISTRY_PASSWORD"
 ```
+
+For more details on the usage of schema registry, refer to the [Confluent documentation](https://docs.confluent.io/cloud/current/connectors/bring-your-connector/custom-connector-fands.html#sr-integration).
 
     {{< /note >}}
 
