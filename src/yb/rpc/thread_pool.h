@@ -88,13 +88,16 @@ FunctorThreadPoolTask<F, TaskBase>* MakeFunctorThreadPoolTask(F&& f) {
   return new FunctorThreadPoolTask<F, TaskBase>(std::move(f));
 }
 
+MonoDelta DefaultIdleTimeout();
+
 struct ThreadPoolOptions {
   std::string name;
 
   size_t max_workers;
+  MonoDelta idle_timeout = DefaultIdleTimeout();
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(name, max_workers);
+    return YB_STRUCT_TO_STRING(name, max_workers, idle_timeout);
   }
 
   static constexpr auto kUnlimitedWorkers = std::numeric_limits<decltype(max_workers)>::max();

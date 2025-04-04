@@ -381,11 +381,14 @@ uint64_t ThreadMgr::ReadThreadsRunning() {
 }
 
 void ThreadMgr::AddThread(std::unique_ptr<ThreadDescriptor> descriptor) {
+  ++threads_running_counter_;
+  ++threads_started_counter_;
   pending_threads_.Push(&descriptor.release()->add_link);
   ProcessPendingThreads();
 }
 
 void ThreadMgr::RemoveThread(ThreadDescriptor* descriptor) {
+  --threads_running_counter_;
   pending_threads_.Push(&descriptor->remove_link);
   ProcessPendingThreads();
 }
@@ -419,7 +422,6 @@ void ThreadMgr::ProcessPendingThreads() {
         const auto& category_name = descriptor->category;
         auto& category = thread_categories_[category_name];
         if (metrics_enabled_) {
-          --threads_running_counter_;
           running_category_tracker_->DecrementCategory(category_name);
         }
         category.erase(category.iterator_to(*descriptor));
@@ -430,8 +432,6 @@ void ThreadMgr::ProcessPendingThreads() {
         auto& category = thread_categories_[category_name];
         category.push_back(*descriptor);
         if (metrics_enabled_) {
-          ++threads_running_counter_;
-          ++threads_started_counter_;
           started_category_tracker_->IncrementCategory(category_name);
           running_category_tracker_->IncrementCategory(category_name);
         }
