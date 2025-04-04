@@ -822,6 +822,7 @@ bool YBCExecuteUpdate(Relation rel,
 					  TupleTableSlot *slot,
 					  HeapTuple oldtuple,
 					  HeapTuple tuple,
+					  TupleDesc inputTupleDesc,
 					  EState *estate,
 					  ModifyTable *mt_plan,
 					  bool target_tuple_fetched,
@@ -829,8 +830,6 @@ bool YBCExecuteUpdate(Relation rel,
 					  Bitmapset *updatedCols,
 					  bool canSetTag)
 {
-	// The input heap tuple's descriptor
-	TupleDesc		inputTupleDesc = slot->tts_tupleDescriptor;
 	// The target table tuple's descriptor
 	TupleDesc		outputTupleDesc = RelationGetDescr(rel);
 	Oid				dboid = YBCGetDatabaseOid(rel);
