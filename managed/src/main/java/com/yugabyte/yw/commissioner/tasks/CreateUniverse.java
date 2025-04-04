@@ -211,7 +211,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createStartMasterProcessTasks(newMasters);
 
       // Start tservers on tserver nodes.
-      createStartTserverProcessTasks(newTservers, isYSQLEnabled);
+      createStartTserverProcessTasks(newTservers, isYSQLEnabled, true /* skipYSQLServerCheck */);
 
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
@@ -225,7 +225,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster, newMasters, null /* gflagsUpgradeSubtasks */);
+      createConfigureUniverseTasks(
+          primaryCluster, newMasters, newTservers, null /* gflagsUpgradeSubtasks */);
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
