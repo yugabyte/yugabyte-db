@@ -476,7 +476,7 @@
     showSection = true
 
 # [[preview]]
-#   name = "Key benefits"
+#   name = "Introduction"
 #   weight = 3
 #   identifier = "features"
 #   url = "/preview/features/"
