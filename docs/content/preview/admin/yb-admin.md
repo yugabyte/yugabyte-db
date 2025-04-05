@@ -2010,12 +2010,13 @@ Use the `remove_table` subcommand to remove one or more tables from the existing
 ```sh
 yb-admin -master_addresses <target-master-addresses> \
     alter_universe_replication <replication-group-id> \
-    remove_table <source-table-ids>
+    remove_table <source-table-ids> [ignore-errors]
 ```
 
 * *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* `ignore-errors`: Execute the command, ignoring any errors. It is recommended that you contact support before using this option.
 
 Use the `rename_id` subcommand to rename xCluster replication streams.
 
