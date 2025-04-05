@@ -202,7 +202,7 @@ public class TestMixedModePushdown extends BasePgSQLTest {
   private void SetCompatibilityMode(String version) throws Exception {
     Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
     for (HostAndPort tServer : tServers) {
-      LOG.info(String.format("Setting compatibility mode to $0 for %s", version, tServer));
+      LOG.info(String.format("Setting compatibility mode to %s for %s", version, tServer));
       setServerFlag(tServer, "ysql_yb_major_version_upgrade_compatibility", version);
     }
   }
@@ -305,6 +305,19 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     return "";
   }
 
+  String getModName(String column_name) {
+    if (column_name == kInt2Column) {
+      return "int2mod";
+    } else if (column_name == kInt4Column) {
+      return "int4mod";
+    } else if (column_name == kInt8Column) {
+      return "int8mod";
+    } else if (column_name == kNumericColumn) {
+      return "numeric_mod";
+    }
+    return "invalid mod function";
+  };
+
   List<String> numeric_types = Arrays.asList(
     kInt2Column,
     kInt4Column,
@@ -344,16 +357,45 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       }
     }
 
+    // Add MOD expressions
+    for (String t1 : numeric_types) {
+      if (isFloat(t1))
+        continue;
+      if (t1 == kInt4Column) {
+        for (String mod_name : Arrays.asList(getModName(t1), "mod")) {
+          exprs.add(new Expression(String.format("(%s(%s, 10) = 0)", mod_name, t1),
+                                   Behaviour.kMMPushable));
+        }
+        exprs.add(new Expression(String.format("((%s %% 10) = 0)", t1),
+                                 Behaviour.kMMPushable));
+      } else if (isInt(t1)) {
+        for (String mod_name : Arrays.asList(getModName(t1), "mod")) {
+          exprs.add(new Expression(
+              String.format("(%s(%s, '10'::%s) = 0)", mod_name, t1, getCast(t1)),
+              Behaviour.kMMPushable));
+        }
+        exprs.add(new Expression(String.format("((%s %% '10'::%s) = 0)", t1, getCast(t1)),
+                                 Behaviour.kMMPushable));
+      } else {
+        for (String mod_name : Arrays.asList("numeric_mod", "mod")) {
+          exprs.add(new Expression(String.format("(%s(%s, '10'::numeric) = 0.0)", mod_name, t1),
+                                   Behaviour.kMMPushable));
+        }
+        exprs.add(new Expression(String.format("((%s %% '10'::numeric) = 0.0)", t1),
+                                 Behaviour.kMMPushable));
+      }
+    }
+
     exprs.add(new Expression(String.format("((%s)::integer = %s)", kBoolColumn, kInt4Column),
-              Behaviour.kMMPushable));
+                             Behaviour.kMMPushable));
     exprs.add(new Expression(String.format("(%s = (%s)::boolean)", kBoolColumn, kInt4Column),
-              Behaviour.kMMPushable));
+                             Behaviour.kMMPushable));
 
     // (char_col)::integer is not pushable
     exprs.add(new Expression(String.format("((%s)::integer = %s)", kCharColumn, kInt4Column),
-              Behaviour.kNotPushable));
+                             Behaviour.kNotPushable));
     exprs.add(new Expression(String.format("(%s = (%s)::character(1))", kCharColumn, kInt4Column),
-              Behaviour.kNotPushable));
+                             Behaviour.kNotPushable));
 
     // Add basic arithmetic operations (t1 arith_op t2) = t3
     List<String> arithmetic_ops = Arrays.asList("+", "*", "-", "/");
@@ -631,6 +673,79 @@ public class TestMixedModePushdown extends BasePgSQLTest {
 
   Boolean hasTimezone(String type) {
     return type == kTimestamptzCol || type == kTimetzCol;
+  }
+
+  @Test
+  public void TestStringOperations() throws Exception {
+    final String kTable = "text_tbl";
+    final String kTextColumn = "text_col";
+    final String kVarcharColumn = "varchar_col";
+    final String kCharColumn = "char_col";
+    final String kBpCharColumn = "bpchar_col";
+
+    {
+      Statement statement = connection.createStatement();
+      String createTable = String.format(
+        "CREATE TABLE %s(%s TEXT, %s VARCHAR, %s CHAR, %s BPCHAR)",
+        kTable, kTextColumn, kVarcharColumn, kCharColumn, kBpCharColumn
+      );
+      LOG.info("Creating table: " + createTable);
+      statement.execute(createTable);
+
+      statement.execute(
+          String.format("INSERT INTO %s VALUES ('hello', 'world', 'a', 'b')", kTable));
+    }
+
+    List<Expression> exprs = new ArrayList<Expression>();
+    for (String cond : Arrays.asList(
+      String.format("(%s ~~ 'h%%'::text)", kTextColumn), // F_TEXTLIKE
+      String.format("(%s !~~ 'h%%'::text)", kTextColumn), // F_TEXTNLIKE
+      String.format("(%s ~~ (%s)::text)", kTextColumn, kVarcharColumn), // F_LIKE_TEXT_TEXT
+      String.format("(%s !~~ (%s)::text)", kTextColumn, kVarcharColumn), // F_NOTLIKE_TEXT_TEXT
+      String.format("(%s ~~ 'b%%'::text)", kBpCharColumn), // F_BPCHARLIKE
+      String.format("(%s !~~ 'b%%'::text)", kBpCharColumn), // F_BPCHARNLIKE
+      String.format("(%s ~~* 'H%%'::text)", kTextColumn), // F_TEXTICLIKE
+      String.format("(%s !~~* 'H%%'::text)", kTextColumn), // F_TEXTICNLIKE
+      String.format("(%s ~~* 'B%%'::text)", kBpCharColumn), // F_BPCHARICLIKE
+      String.format("(%s !~~* 'B%%'::text)", kBpCharColumn), // F_BPCHARICNLIKE
+      String.format("(%s ~ 'h.*'::text)", kTextColumn), // F_TEXTREGEXEQ
+      String.format("(%s !~ 'h.*'::text)", kTextColumn), // F_TEXTREGEXNE
+      String.format("(ascii(%s) = 104)", kTextColumn), // F_ASCII
+
+      // F_SUBSTRING_TEXT_TEXT
+      String.format("(\"substring\"(%s, 'h.'::text) = 'he'::text)", kTextColumn),
+
+      // F_SUBSTRING_TEXT_INT4
+      String.format("(\"substring\"(%s, 2) = 'ello'::text)", kTextColumn),
+
+      // F_SUBSTRING_TEXT_INT4_INT4
+      String.format("(\"substring\"(%s, 2, 3) = 'ell'::text)", kTextColumn)
+    )) {
+      exprs.add(new Expression(cond, Behaviour.kMMPushable));
+    }
+
+    // special cases: the formatting for these conditions changes in the output depending on the
+    // YSQL version, so use a regex to check that the correct condition is present in the output
+    // F_LIKE_TEXT_TEXT
+    exprs.add(new Expression(String.format("like(%s, 'h%%'::text)", kTextColumn),
+                             Behaviour.kMMPushable, Pattern.compile(".*like.*")));
+    // F_NOTLIKE_TEXT_TEXT
+    exprs.add(new Expression(String.format("notlike(%s, 'h%%'::text)", kTextColumn),
+                             Behaviour.kMMPushable, Pattern.compile(".*notlike.*")));
+
+    // these functions don't exist in PG11, so they can't be pushed
+    exprs.add(new Expression(String.format("regexp_like(%s, 'h.*'::text)", kTextColumn),
+                             Behaviour.kFunctionError, Pattern.compile(".*regexp_like.*")));
+
+    for (String cond : Arrays.asList(
+      String.format("(regexp_substr(%s, 'h.'::text) = 'he'::text)", kTextColumn),
+      String.format("(regexp_substr(%s, 'h.'::text, 1) = 'he'::text)", kTextColumn)
+    )) {
+      exprs.add(new Expression(cond, Behaviour.kFunctionError));
+    }
+
+    String prefix = String.format("EXPLAIN %s SELECT * FROM %s WHERE", kExplainArgs, kTable);
+    TestPushdowns(prefix, exprs);
   }
 
   @Test
