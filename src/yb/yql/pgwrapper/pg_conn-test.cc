@@ -10,7 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
@@ -20,6 +22,11 @@ namespace yb {
 namespace pgwrapper {
 
 class PgConnTest : public LibPqTestBase {
+ public:
+  Result<PGConn> Connect(bool simple_query_protocol = false) {
+    return LibPqTestBase::Connect(simple_query_protocol);
+  }
+
  protected:
   void TestUriAuth();
 
@@ -181,6 +188,118 @@ TEST_F_EX(PgConnTest, ConnectionLimit, PgConnTestLimit) {
   const Status& s = res.status();
   ASSERT_TRUE(s.IsNetworkError()) << s;
   ASSERT_STR_CONTAINS(s.message().ToBuffer(), "sorry, too many clients already");
+}
+
+class PgSessionExpirationTest : public PgConnTest {
+ public:
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgConnTest::UpdateMiniClusterOptions(options);
+    for (const auto& tserver_flag : std::initializer_list<std::string>{
+             "--pg_client_use_shared_memory=true",
+             "--max_big_shared_memory_segment_size=1048576",
+             Format("--io_thread_pool_size=$0", kIoThreadPoolSize),
+             // Should be big enough for other PgClientServiceImpl::Impl::CheckExpiredSessions
+             // to be called by scheduler.
+             Format("--TEST_delay_before_complete_expired_pg_sessions_shutdown_ms=1000"),
+             Format(
+                 "--pg_client_heartbeat_interval_ms=$0",
+                 ToMilliseconds(kPgClientHeartbeatInterval)),
+             Format(
+                 "--pg_client_session_expiration_ms=$0",
+                 ToMilliseconds(kPgClientSessionExpiration)),
+             Format(
+                 "--big_shared_memory_segment_session_expiration_time_ms=$0",
+                 ToMilliseconds(kBigSharedMemorySegmentSesionExpiration)),
+         }) {
+      options->extra_tserver_flags.push_back(tserver_flag);
+    }
+  }
+
+  static constexpr auto kPgClientHeartbeatInterval =
+      RegularBuildVsDebugVsSanitizers(1500ms, 2000ms, 2000ms);
+  static constexpr auto kPgClientSessionExpiration = kPgClientHeartbeatInterval * 2;
+  static constexpr auto kBigSharedMemorySegmentSesionExpiration = kPgClientSessionExpiration * 2;
+  static constexpr auto kIoThreadPoolSize = 2;
+};
+
+TEST_F_EX(PgConnTest, SessionExpiration, PgSessionExpirationTest) {
+  constexpr auto kGroupSize = 5;
+  constexpr auto kNumGroups = kIoThreadPoolSize;
+  constexpr auto kDelayBetweenGroupConnectionsClose = 100ms;
+
+  class ClientJob {
+   public:
+    ClientJob(const std::string& name, PgConnTest& test, CountDownLatch& latch)
+        : log_prefix_(name + ": "), test_(test), latch_(latch) {}
+
+    void operator()() const {
+      LOG_WITH_PREFIX(INFO) << "Connecting...";
+      PGConn conn = ASSERT_RESULT(test_.Connect());
+      LOG_WITH_PREFIX(INFO) << "Connected";
+      LOG_WITH_PREFIX(INFO) << "Got response: " << ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"))
+                            << " latch count: " << latch_.count();
+      latch_.CountDown();
+
+      // Close connections for the group at once.
+      LOG_WITH_PREFIX(INFO) << "Waiting for latch";
+      latch_.Wait();
+      LOG_WITH_PREFIX(INFO) << "Closing connection...";
+    }
+
+    const std::string& LogPrefix() const { return log_prefix_; }
+
+   private:
+    const std::string log_prefix_;
+    PgConnTest& test_;
+    CountDownLatch& latch_;
+  };
+
+  TestThreadHolder thread_holder;
+  std::vector<std::unique_ptr<CountDownLatch>> latches;
+  for (int i = 0; i < kNumGroups; ++i) {
+    latches.push_back(std::make_unique<CountDownLatch>(kGroupSize + 1));
+    for (int j = 0; j < kGroupSize; ++j) {
+      thread_holder.AddThreadFunctor(
+          ClientJob(Format("Group #$0, thread #$1", i, j), *this, *latches.back()));
+    }
+  }
+
+  ASSERT_OK(LoggedWaitFor(
+      [&latches] {
+        for (auto& latch : latches) {
+          if (latch->count() > 1) {
+            return false;
+          }
+        }
+        return true;
+      },
+      RegularBuildVsDebugVsSanitizers(60s, 120s, 180s),
+      Format("Wait for all queries to return.")));
+
+  // Unblock threads with delay between groups.
+  for (auto& latch : latches) {
+    LOG(INFO) << "latch->count(): " << latch->count();
+    latch->CountDown();
+    std::this_thread::sleep_for(kDelayBetweenGroupConnectionsClose);
+  }
+
+  LOG(INFO) << "Joining test threads";
+  thread_holder.JoinAll();
+
+  // Wait for sessions to expire.
+  std::this_thread::sleep_for(kPgClientSessionExpiration + 500ms);
+
+  LOG(INFO) << "Shutting down cluster";
+  cluster_->Shutdown();
+  for (const auto& server : cluster_->daemons()) {
+    if (server) {
+      ASSERT_FALSE(server->WasUnsafeShutdown());
+    }
+  }
 }
 
 } // namespace pgwrapper

@@ -426,7 +426,8 @@ RaftConsensus::RaftConsensus(
       queue_(std::move(queue)),
       rng_(GetRandomSeed32()),
       withhold_votes_until_(MonoTime::Min()),
-      step_down_check_tracker_(&peer_proxy_factory_->messenger()->scheduler()),
+      step_down_check_tracker_(
+          "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
       follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateMetric<Counter>(

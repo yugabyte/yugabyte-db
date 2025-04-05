@@ -119,6 +119,9 @@ DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
                  "production environment. In unit test we use this flag to force allocation of "
                  "large Postgres OIDs.");
 
+DEFINE_test_flag(uint64, delay_before_complete_expired_pg_sessions_shutdown_ms, 0,
+                 "Inject delay before completing shutdown of expired PG sessions.");
+
 DEFINE_RUNTIME_uint64(ysql_cdc_active_replication_slot_window_ms, 60000,
                       "Determines the window in milliseconds in which if a client has consumed the "
                       "changes of a ReplicationSlot across any tablet, then it is considered to be "
@@ -216,7 +219,7 @@ class LockablePgClientSession : public PgClientSession {
   }
 
   bool ReadyToShutdown() const {
-    return !exchange_ || exchange_->ReadyToShutdown();
+    return (!exchange_ || exchange_->ReadyToShutdown()) && PgClientSession::ReadyToShutdown();
   }
 
   void CompleteShutdown() override {
@@ -444,8 +447,8 @@ class PgClientServiceImpl::Impl {
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
         table_cache_(client_future),
-        check_expired_sessions_(&messenger->scheduler()),
-        check_object_id_allocators_(&messenger->scheduler()),
+        check_expired_sessions_("check_expired_sessions", &messenger->scheduler()),
+        check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
@@ -2070,6 +2073,7 @@ class PgClientServiceImpl::Impl {
     for (const auto& session : ready_sessions) {
       session->session().CompleteShutdown();
     }
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
     for (const auto& session : expired_sessions) {
       if (session->session().ReadyToShutdown()) {
         session->session().CompleteShutdown();

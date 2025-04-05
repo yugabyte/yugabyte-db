@@ -177,6 +177,7 @@ class PgClientSession {
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
   virtual void StartShutdown();
+  bool ReadyToShutdown() const;
   virtual void CompleteShutdown();
 
   Result<ReadHybridTime> GetTxnSnapshotReadTime(

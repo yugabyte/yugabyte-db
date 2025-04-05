@@ -776,7 +776,7 @@ PgClientSession::PgClientSession(
       response_cache_(*response_cache),
       sequence_cache_(*sequence_cache),
       shared_mem_pool_(shared_mem_pool),
-      big_shared_mem_expiration_task_(&scheduler),
+      big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
       stats_exchange_response_size_(stats_exchange_response_size),
       read_point_history_(PrefixLogger(id_)) {}
 
@@ -2346,6 +2346,10 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
 
 void PgClientSession::StartShutdown() {
   big_shared_mem_expiration_task_.StartShutdown();
+}
+
+bool PgClientSession::ReadyToShutdown() const {
+  return big_shared_mem_expiration_task_.ReadyToShutdown();
 }
 
 void PgClientSession::CompleteShutdown() {
