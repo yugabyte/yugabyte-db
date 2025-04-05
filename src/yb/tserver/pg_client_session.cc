@@ -1126,7 +1126,7 @@ class PgClientSession::Impl {
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
-        big_shared_mem_expiration_task_(&scheduler),
+        big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
@@ -2131,6 +2131,10 @@ class PgClientSession::Impl {
     big_shared_mem_expiration_task_.StartShutdown();
   }
 
+  bool ReadyToShutdown() {
+    return big_shared_mem_expiration_task_.ReadyToShutdown();
+  }
+
   void CompleteShutdown() {
     big_shared_mem_expiration_task_.CompleteShutdown();
   }
@@ -3121,6 +3125,10 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
 
 void PgClientSession::StartShutdown() {
   return impl_->StartShutdown();
+}
+
+bool PgClientSession::ReadyToShutdown() const {
+  return impl_->ReadyToShutdown();
 }
 
 void PgClientSession::CompleteShutdown() {
