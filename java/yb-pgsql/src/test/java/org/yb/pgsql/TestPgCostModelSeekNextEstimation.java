@@ -7,6 +7,7 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_OR;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BITMAP_TABLE_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
 
@@ -88,13 +89,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   }
 
   private void testSeekAndNextEstimationIndexScanHelper(
-      Statement stmt, String query,
-      String table_name, String index_name,
-      double expected_seeks,
-      double expected_nexts,
-      Integer expected_docdb_result_width) throws Exception {
-    testSeekAndNextEstimationIndexScanHelper(stmt, query, table_name, index_name,
-        NODE_INDEX_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
+    Statement stmt, String query,
+    String table_name, String index_name,
+    double expected_seeks,
+    double expected_nexts,
+    Integer expected_docdb_result_width) throws Exception {
+  testSeekAndNextEstimationIndexScanHelper(stmt, query, table_name, index_name,
+      NODE_INDEX_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
   }
 
   private void testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(
@@ -105,7 +106,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     Integer expected_docdb_result_width) throws Exception {
   testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt, query, table_name, index_name,
       NODE_INDEX_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
-}
+  }
 
   private void testSeekAndNextEstimationIndexOnlyScanHelper(
       Statement stmt, String query,
@@ -118,14 +119,15 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   }
 
   private void testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(
-    Statement stmt, String query,
-    String table_name, String index_name,
-    double expected_seeks,
-    double expected_nexts,
-    Integer expected_docdb_result_width) throws Exception {
-  testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt, query, table_name, index_name,
-      NODE_INDEX_ONLY_SCAN, expected_seeks, expected_nexts, expected_docdb_result_width);
-}
+      Statement stmt, String query,
+      String table_name, String index_name,
+      double expected_seeks,
+      double expected_nexts,
+      Integer expected_docdb_result_width) throws Exception {
+    testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt, query, table_name,
+        index_name, NODE_INDEX_ONLY_SCAN, expected_seeks, expected_nexts,
+        expected_docdb_result_width);
+  }
 
   private void testSeekAndNextEstimationIndexScanHelper(
       Statement stmt, String query,
@@ -291,21 +293,32 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     }
   }
 
-  private void testSeekAndNextEstimationSeqScanHelper_IgnoreActualResults(
+  private void testSeekAndNextEstimationJoinHelper_IgnoreActualResults(
       Statement stmt, String query,
-      String table_name, double expected_seeks,
-      double expected_nexts,
-      long expected_docdb_result_width) throws Exception {
+      String join_type,
+      String outer_table_name, String outer_table_scan_type,
+      double outer_expected_seeks, double outer_expected_nexts,
+      String inner_table_name, String inner_table_scan_type,
+      double inner_expected_seeks, double inner_expected_nexts) throws Exception {
     try {
       testExplainDebug(stmt, query,
           makeTopLevelBuilder()
               .plan(makePlanBuilder()
-                  .nodeType(NODE_SEQ_SCAN)
-                  .relationName(table_name)
-                  .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNexts(expectedNextsRange(expected_nexts))
-                  .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .build())
+                  .nodeType(join_type)
+                  .plans(
+                      makePlanBuilder()
+                          .relationName(outer_table_name)
+                          .nodeType(outer_table_scan_type)
+                          .estimatedSeeks(expectedSeeksRange(outer_expected_seeks))
+                          .estimatedNexts(expectedNextsRange(outer_expected_nexts))
+                          .build(),
+                      makePlanBuilder()
+                          .relationName(inner_table_name)
+                          .nodeType(inner_table_scan_type)
+                          .estimatedSeeks(expectedSeeksRange(inner_expected_seeks))
+                          .estimatedNexts(expectedNextsRange(inner_expected_nexts))
+                          .build())
+                      .build())
               .build());
     }
     catch (AssertionError e) {
@@ -406,15 +419,18 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 4, 86, 10);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, T2_INDEX_NAME, 101, 280, 10);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, T4_INDEX_NAME, 6007, 16808, 20);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, T4_INDEX_NAME, 6505, 17804, 20);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s WHERE k2 IN (4, 8, 12, 16)",
+          T2_NAME, T2_NAME),
+        T2_NAME, T2_INDEX_NAME, 60, 120, 10);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
+          + "WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+        T4_NAME, T4_INDEX_NAME, 3607, 7206, 20);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
+          + "WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+        T4_NAME, T4_INDEX_NAME, 4904, 9800, 20);
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 22, 6440, 20);
@@ -460,18 +476,22 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 5, 8, 10);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, T2_INDEX_NAME, 10, 18, 10);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, T2_INDEX_NAME, 50, 98, 10);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
-        T3_NAME, T3_INDEX_NAME, 301, 600, 15);
-      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, T4_INDEX_NAME, 4844, 9680, 20);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s WHERE k1 >= 4 and "
+          + "k1 < 6 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, T2_INDEX_NAME, 6, 12, 10);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s WHERE k1 >= 4 and "
+          + "k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, T2_INDEX_NAME, 30, 60, 10);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s WHERE k1 >= 4 and "
+          + "k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
+        T3_NAME, T3_INDEX_NAME, 181, 362, 15);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        String.format("/*+IndexScan(%s)*/ SELECT * FROM %s WHERE k2 >= 4 and "
+          + "k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+        T4_NAME, T4_INDEX_NAME, 3643, 7280, 20);
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 35, 32037, 20);
@@ -500,7 +520,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         + "FROM %s WHERE k1 >= 4 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 747, 69426, 20);
 
-      testSeekAndNextEstimationIndexOnlyScanHelper(stmt,
+      testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexOnlyScan(%s %s)*/ SELECT k2 FROM %s "
           + "WHERE k1 >= 4 AND k3 >= 4",
           T4_NO_PKEY_NAME, T4_NO_PKEY_SINDEX_3_NAME, T4_NO_PKEY_NAME),
@@ -590,20 +610,21 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, 80, 240, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 4, 86));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
-        String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, 80, 240, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 101, 280));
+        String.format("/*+BitmapScan(%s)*/ SELECT * FROM %s WHERE k2 IN (4, 8, 12, 16)",
+          T2_NAME, T2_NAME),
+        T2_NAME, 80, 240, 10,
+        makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 60, 120));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
-        String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 4830, 14490, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 6007, 16808));
+        String.format("/*+BitmapScan(%s)*/ SELECT * FROM %s WHERE "
+          + "k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME), T4_NAME,
+        4830, 14490, 20, makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 3607, 7206));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
-        String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, 4800, 14400, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 6505, 17804));
+        String.format("/*+BitmapScan(%s)*/ SELECT * FROM %s WHERE "
+          + "k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME), T4_NAME,
+        4800, 14400, 20, makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 4904, 9800));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
-        String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+        String.format("/*+BitmapScan(%s)*/ SELECT * FROM %s WHERE"
+          + " k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
         T4_NAME, 6400, 19200, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 22, 6436));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format("/*+BitmapScan(%s)*/ SELECT * "
@@ -664,19 +685,22 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, 8, 24, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 10, 18));
-      testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
+        T2_NAME, 8, 24, 10, makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 6, 12));
+        testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, 40, 120, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 50, 98));
-      testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
+          + "FROM %s WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, 40, 120, 10,
+        makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 30, 60));
+        testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
-        T3_NAME, 240, 720, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 301, 600));
+        T3_NAME, 240, 720, 15,
+        makeBitmapIndexScanChecker_IgnoreActualResults(T3_INDEX_NAME, 181, 362));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
-        String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, 3600, 10800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 4844, 9680));
+        String.format("/*+BitmapScan(%s)*/ SELECT * FROM %s "
+          + "WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+        T4_NAME, 3600, 10800, 20,
+        makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 3643, 7280));
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
@@ -718,7 +742,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T2_NAME, 111, 333, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
           makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 3, 68),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 80, 162)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 60, 162)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T2_NAME, "k1 < 2 OR k2 < 4"),
@@ -746,7 +770,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T4_NAME, 44400, 133200, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 32000, 88250)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 24000, 88250)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k2 < 4"),
@@ -1040,54 +1064,19 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 5, 6, 7)",
-        T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
+        T4_NAME, T4_INDEX_NAME, 24031, 80000, 20);
 
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 6, 8, 10)",
-        T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
+        T4_NAME, T4_INDEX_NAME, 24031, 80000, 20);
 
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 7, 10, 13)",
-        T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
+        T4_NAME, T4_INDEX_NAME, 24031, 80000, 20);
 
-      testSeekAndNextEstimationIndexScanHelper(stmt,
+        testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 8, 12, 16)",
-        T4_NAME, T4_INDEX_NAME, 40031, 80000, 20);
-    }
-  }
-
-  @Test
-  public void testSeekNextEstimation25862IntegerOverflow() throws Exception {
-    /*
-     * #25862 : Estimated seeks and nexts value can overflow in a large table
-     *
-     * This test case checks that estimated seeks and nexts values do not overflow
-     * when the table has a large number of rows.
-     */
-    try (Statement stmt = this.connection2.createStatement()) {
-      stmt.execute("CREATE TABLE t_25862 (k1 INT, v1 INT, PRIMARY KEY (k1 ASC))");
-      stmt.execute("CREATE INDEX t_25862_idx on t_25862 (v1 ASC)");
-      /* Simluate a large table by setting reltuples in pg_class to 4B rows. */
-      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
-      stmt.execute("UPDATE pg_class SET reltuples=4000000000 WHERE relname LIKE '%t_25862%'");
-      stmt.execute("UPDATE pg_yb_catalog_version SET current_version=current_version+1 "
-        + "WHERE db_oid=1");
-      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
-
-      stmt.execute("SET yb_enable_base_scans_cost_model = ON");
-
-      testSeekAndNextEstimationSeqScanHelper_IgnoreActualResults(stmt,
-        "/*+ SeqScan(t_25862) */ SELECT * FROM t_25862 WHERE k1 > 0",
-        "t_25862", 1302084.0, 4001302082.0, 2);
-      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
-        "/*+ IndexScan(t_25862 t_25862_pkey) */ SELECT * FROM t_25862 WHERE k1 > 0",
-        "t_25862", "t_25862_pkey", 1302084.0, 1333333334.0, 2);
-      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
-        "/*+ IndexScan(t_25862 t_25862_idx) */ SELECT * FROM t_25862 WHERE v1 > 0",
-        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 2);
-      testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
-        "/*+ IndexOnlyScan(t_25862 t_25862_idx) */ SELECT v1 FROM t_25862 WHERE v1 > 0",
-        "t_25862", "t_25862_idx", 1302084.0, 1333333334.0, 1);
+        T4_NAME, T4_INDEX_NAME, 24031, 80000, 20);
     }
   }
 }
