@@ -293,6 +293,30 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     }
   }
 
+  private void testSeekAndNextEstimationSeqScanHelper_IgnoreActualResults(
+    Statement stmt, String query,
+    String table_name, double expected_seeks,
+    double expected_nexts,
+    long expected_docdb_result_width) throws Exception {
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_SEQ_SCAN)
+                  .relationName(table_name)
+                  .estimatedSeeks(expectedSeeksRange(expected_seeks))
+                  .estimatedNexts(expectedNextsRange(expected_nexts))
+                  .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
+  }
+
   private void testSeekAndNextEstimationJoinHelper_IgnoreActualResults(
       Statement stmt, String query,
       String join_type,
@@ -1077,6 +1101,115 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(t4)*/ SELECT * FROM t4 WHERE k4 IN (4, 8, 12, 16)",
         T4_NAME, T4_INDEX_NAME, 24031, 80000, 20);
+    }
+  }
+
+  @Test
+  public void testSeekNextEstimation25862IntegerOverflow() throws Exception {
+    /*
+     * #25862 : Estimated seeks and nexts value can overflow in a large table
+     *
+     * This test case checks that estimated seeks and nexts values do not overflow
+     * when the table has a large number of rows.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t_25862 (k1 INT, v1 INT, PRIMARY KEY (k1 ASC))");
+      stmt.execute("CREATE INDEX t_25862_idx on t_25862 (v1 ASC)");
+      /* Simluate a large table by setting reltuples in pg_class to 4B rows. */
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
+      stmt.execute("UPDATE pg_class SET reltuples=4000000000 WHERE relname LIKE '%t_25862%'");
+      stmt.execute("UPDATE pg_yb_catalog_version SET current_version=current_version+1 "
+        + "WHERE db_oid=1");
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
+
+      stmt.execute("SET yb_enable_base_scans_cost_model = ON");
+
+      testSeekAndNextEstimationSeqScanHelper_IgnoreActualResults(stmt,
+        "/*+ SeqScan(t_25862) */ SELECT * FROM t_25862 WHERE k1 > 0",
+        "t_25862", 1302084.0, 4001302082.0, 2);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        "/*+ IndexScan(t_25862 t_25862_pkey) */ SELECT * FROM t_25862 WHERE k1 > 0",
+        "t_25862", "t_25862_pkey", 1302084.0, 1333333334.0, 2);
+      testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
+        "/*+ IndexScan(t_25862 t_25862_idx) */ SELECT * FROM t_25862 WHERE v1 > 0",
+        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 2);
+      testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
+        "/*+ IndexOnlyScan(t_25862 t_25862_idx) */ SELECT v1 FROM t_25862 WHERE v1 > 0",
+        "t_25862", "t_25862_idx", 1302084.0, 1333333334.0, 1);
+    }
+  }
+
+  @Test
+  public void test26462SeekNextEstimationForInnerTableInBNL() throws Exception {
+    /*
+     * #26462 : Seeks and nexts are misestimated for Batched Nested Loop Joins
+     *
+     * This test checks the seek and next estimations for inner tables in
+     * Batched Nested Loop Join.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t1_26462 (k1 INT, k2 INT, PRIMARY KEY (k1 ASC))");
+      stmt.execute("CREATE INDEX t1_26462_idx ON t1_26462 (k1 ASC, k2 ASC)");
+      stmt.execute("CREATE TABLE t2_26462 (k1 INT, k2 INT, PRIMARY KEY (k1 ASC))");
+      stmt.execute("CREATE INDEX t2_26462_idx ON t2_26462 (k1 ASC, k2 ASC)");
+      stmt.execute("INSERT INTO t1_26462 (SELECT s, s FROM generate_series(1, 10000) s)");
+      stmt.execute("INSERT INTO t2_26462 (SELECT s, s FROM generate_series(1, 10000) s)");
+      stmt.execute("ANALYZE t1_26462, t2_26462");
+
+      stmt.execute("SET yb_enable_base_scans_cost_model=on");
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ YbBatchedNL(t1_26462 t2_26462) */ SELECT * "
+        + "FROM t1_26462 JOIN t2_26462 ON t1_26462.k1 = t2_26462.k1;",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t1_26462", NODE_INDEX_SCAN, 10.0, 10000.0,
+        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ YbBatchedNL(t1_26462 t2_26462) IndexScan(t1_26462 t1_26462_idx) "
+        + "IndexScan(t2_26462 t2_26462_idx) */ SELECT * FROM t1_26462 JOIN t2_26462 "
+        + "ON t1_26462.k1 = t2_26462.k1 AND t1_26462.k2 = t2_26462.k2;",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t1_26462", NODE_INDEX_SCAN, 10010.0, 10000.0,
+        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ YbBatchedNL(t1_26462 t2_26462) IndexScan(t1_26462 t1_26462_idx) "
+        + "IndexScan(t2_26462 t2_26462_idx) */ SELECT * FROM t1_26462 JOIN t2_26462 "
+        + "ON ROW(t1_26462.k1, t1_26462.k2) = ROW(t2_26462.k1, t2_26462.k2);",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t1_26462", NODE_INDEX_SCAN, 10010.0, 10000.0,
+        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+    }
+  }
+
+  @Test
+  public void test26463IntegerOverflowInSeekEstimationforBNL() throws Exception {
+    /*
+     * #26463 : Negative cost estimates for BNL due to integer overflow
+     *
+     * This test checks that seek and next estimations do not overflow when
+     * joining large tables using Batched Nested Loop Join.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t1_26463 (k INT, PRIMARY KEY (k ASC))");
+      stmt.execute("CREATE TABLE t2_26463 (k INT)");
+      /* Simluate a large table by setting reltuples in pg_class */
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
+      stmt.execute("UPDATE pg_class SET reltuples=1000000000 WHERE relname='t1_26463'");
+      stmt.execute("UPDATE pg_class SET reltuples=100000000000 WHERE relname='t2_26463'");
+      stmt.execute("UPDATE pg_yb_catalog_version SET current_version=current_version+1 "
+        + "WHERE db_oid=1");
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
+
+      stmt.execute("SET yb_enable_base_scans_cost_model=on");
+
+      testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
+        "/*+ Leading((t2_26463 t1_26463)) YbBatchedNL(t1_26463 t2_26463) */ SELECT t1_26463.k "
+        + "FROM t1_26463, t2_26463 WHERE t1_26463.k = t2_26463.k;",
+        NODE_YB_BATCHED_NESTED_LOOP,
+        "t2_26463", NODE_SEQ_SCAN, 97656248.0, 100097654198.0,
+        "t1_26463", NODE_INDEX_SCAN, 1024.0, 2048.0);
     }
   }
 }
