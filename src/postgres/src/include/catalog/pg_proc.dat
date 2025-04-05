@@ -11173,6 +11173,10 @@
   proname => 'binary_upgrade_set_next_pg_tablespace_oid', provolatile => 'v',
   proparallel => 'u', prorettype => 'void', proargtypes => 'oid',
   prosrc => 'binary_upgrade_set_next_pg_tablespace_oid' },
+{ oid => '8095', descr => 'for use by pg_upgrade',
+  proname => 'yb_binary_upgrade_set_next_pg_enum_sortorder', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'float4',
+  prosrc => 'yb_binary_upgrade_set_next_pg_enum_sortorder' },
 
 # conversion functions
 { oid => '4302',

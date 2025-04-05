@@ -1835,4 +1835,132 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, AlterTypeIsBlocked) {
   VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
 }
 
+TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+  {
+    auto conn = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+
+    ASSERT_OK(conn->ExecuteFormat(R"(
+        CREATE TYPE planets AS ENUM ( 'A', 'D' );
+        ALTER TYPE planets ADD VALUE 'B' BEFORE 'D';
+        ALTER TYPE planets ADD VALUE 'C' BEFORE 'D';
+    )"));
+    ASSERT_OK(conn->ExecuteFormat(R"(
+        CREATE TABLE enum_table (c planets, PRIMARY KEY (c ASC));
+        INSERT INTO enum_table (c) VALUES('D');
+        INSERT INTO enum_table (c) VALUES('A');
+    )"));
+    // If we keep adding new nables before 'Z', we will run into enum label renumber
+    // that is not yet supported in Yugabyte.
+    ASSERT_OK(conn->ExecuteFormat(R"(
+        CREATE TYPE overflow AS ENUM ( 'A', 'Z' );
+        ALTER TYPE overflow ADD VALUE 'B' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'C' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'D' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'E' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'F' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'G' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'H' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'I' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'J' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'K' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'L' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'M' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'N' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'O' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'P' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'Q' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'R' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'S' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'T' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'U' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'V' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'W' BEFORE 'Z';
+        ALTER TYPE overflow ADD VALUE 'X' BEFORE 'Z';
+    )"));
+    ASSERT_NOK_STR_CONTAINS(conn->ExecuteFormat(R"(
+        ALTER TYPE overflow ADD VALUE 'Y' BEFORE 'Z';
+    )"), "renumber enum labels is not yet supported");
+    ASSERT_OK(conn->ExecuteFormat(R"(
+        CREATE TYPE underflow AS ENUM ( 'A', 'Z' );
+        ALTER TYPE underflow ADD VALUE 'Y' BEFORE 'Z';
+        ALTER TYPE underflow ADD VALUE 'X' BEFORE 'Y';
+        ALTER TYPE underflow ADD VALUE 'W' BEFORE 'X';
+        ALTER TYPE underflow ADD VALUE 'V' BEFORE 'W';
+        ALTER TYPE underflow ADD VALUE 'U' BEFORE 'V';
+        ALTER TYPE underflow ADD VALUE 'T' BEFORE 'U';
+        ALTER TYPE underflow ADD VALUE 'S' BEFORE 'T';
+        ALTER TYPE underflow ADD VALUE 'R' BEFORE 'S';
+        ALTER TYPE underflow ADD VALUE 'Q' BEFORE 'R';
+        ALTER TYPE underflow ADD VALUE 'P' BEFORE 'Q';
+        ALTER TYPE underflow ADD VALUE 'O' BEFORE 'P';
+        ALTER TYPE underflow ADD VALUE 'N' BEFORE 'O';
+        ALTER TYPE underflow ADD VALUE 'M' BEFORE 'N';
+        ALTER TYPE underflow ADD VALUE 'L' BEFORE 'M';
+        ALTER TYPE underflow ADD VALUE 'K' BEFORE 'L';
+        ALTER TYPE underflow ADD VALUE 'J' BEFORE 'K';
+        ALTER TYPE underflow ADD VALUE 'I' BEFORE 'J';
+        ALTER TYPE underflow ADD VALUE 'H' BEFORE 'I';
+        ALTER TYPE underflow ADD VALUE 'G' BEFORE 'H';
+        ALTER TYPE underflow ADD VALUE 'F' BEFORE 'G';
+        ALTER TYPE underflow ADD VALUE 'E' BEFORE 'F';
+        ALTER TYPE underflow ADD VALUE 'D' BEFORE 'E';
+        ALTER TYPE underflow ADD VALUE 'C' BEFORE 'D';
+    )"));
+    ASSERT_NOK_STR_CONTAINS(conn->ExecuteFormat(R"(
+        ALTER TYPE underflow ADD VALUE 'B' BEFORE 'C';
+    )"), "renumber enum labels is not yet supported");
+  }
+
+  auto GetEnumInfoAndOrderedRows =
+      [&](Cluster& cluster) -> Result<std::pair<std::string, std::string>> {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    auto enum_info = Format("enum information:\n$0",
+        VERIFY_RESULT(conn.FetchAllAsString(
+        "SELECT typname, enumlabel, pg_enum.oid, enumsortorder FROM pg_enum "
+        "JOIN pg_type ON pg_enum.enumtypid = pg_type.oid ORDER BY typname, enumlabel ASC;",
+        ", ", "\n")));
+    LOG(INFO) << enum_info;
+    auto enum_table_c =
+        VERIFY_RESULT(conn.FetchAllAsString(
+        // WARNING: you need the enum_table.c here to avoid it referring to the result of c::text.
+        "SELECT c::text FROM enum_table ORDER BY enum_table.c ASC;", ", ", "\n"));
+    return std::make_pair(enum_info, enum_table_c);
+  };
+
+  std::string expected_enum_info;
+  {
+    auto [enum_info, rows] = ASSERT_RESULT(GetEnumInfoAndOrderedRows(producer_cluster_));
+    expected_enum_info = enum_info;
+    LOG(INFO) << "before we backup: " << rows;
+  }
+
+  // Backup then restore our database; in theory this should not affect anything.
+  ASSERT_OK(BackupFromProducer());
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(RestoreToConsumer());
+  SetReplicationDirection(ReplicationDirection::AToB);
+
+  {
+    auto conn = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+    ASSERT_OK(conn->ExecuteFormat(R"(
+        INSERT INTO enum_table (c) VALUES('C');
+    )"));
+  }
+
+  // At this point, we have inserted D then A before the backup&restore then inserted C afterwards.
+  {
+    auto [enum_info, rows] = ASSERT_RESULT(GetEnumInfoAndOrderedRows(producer_cluster_));
+    ASSERT_EQ(rows, "A\nC\nD");
+    // Also check after restore the exact enum info (including enumsortorder) do not change.
+    ASSERT_EQ(enum_info, expected_enum_info);
+  }
+}
+
 }  // namespace yb
