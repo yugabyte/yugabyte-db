@@ -67,6 +67,10 @@ class PgCommandTestBase : public PgWrapperTestBase {
     RunPsqlCommand(statement, "CREATE TYPE");
   }
 
+  void AlterType(const std::string &statement) {
+    RunPsqlCommand(statement, "ALTER TYPE");
+  }
+
   void CreateIndex(const std::string &statement) {
     RunPsqlCommand(statement, "CREATE INDEX");
   }
