@@ -18,7 +18,7 @@ The following page describes the steps to perform and verify a successful offlin
 
 ## Migration workflow
 
-![Offline migration workflow](/images/migrate/migration-workflow-new.png)
+![Offline migration workflow](/images/migrate/migration-workflow-updated.png)
 
 | Phase | Step | Description |
 | :---- | :--- | :---------- |
