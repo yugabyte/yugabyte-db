@@ -92,6 +92,45 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnum)) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnumSortOrder)) {
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE planets AS ENUM ( 'A', 'D' )"));
+  ASSERT_NO_FATALS(AlterType("ALTER TYPE planets ADD VALUE 'B' BEFORE 'D'"));
+  ASSERT_NO_FATALS(AlterType("ALTER TYPE planets ADD VALUE 'C' BEFORE 'D'"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE enum_table (c planets, PRIMARY KEY (c ASC))"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO enum_table (c) VALUES('D')"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO enum_table (c) VALUES('A')"));
+  const string query = "SELECT c::text FROM enum_table ORDER BY enum_table.c ASC";
+  ASSERT_NO_FATALS(RunPsqlCommand(query,
+      R"#(
+         c
+        ---
+         A
+         D
+        (2 rows)
+      )#"
+  ));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  SetDbName("yugabyte_new"); // Connecting to the second DB from the moment.
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO enum_table (c) VALUES('C')"));
+  ASSERT_NO_FATALS(RunPsqlCommand(query,
+      R"#(
+         c
+        ---
+         A
+         C
+         D
+        (3 rows)
+      )#"
+  ));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
   DoTestYSQLRestoreBackup(std::nullopt /* db_catalog_version_mode */);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
