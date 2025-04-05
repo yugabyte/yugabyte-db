@@ -10,6 +10,8 @@ import { StepCard } from "./StepCard";
 import { SchemaAnalysis } from "./SchemaAnalysis";
 import { MigrateSchemaTaskInfo, useGetVoyagerMigrateSchemaTasksQuery } from "@app/api/src";
 import { Trans } from "react-i18next";
+import VoyagerVersionBox from "../../VoyagerVersionBox";
+
 const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(4),
@@ -101,6 +103,7 @@ interface MigrationSchemaProps {
   onRefetch: () => void;
   isFetching?: boolean;
   isNewMigration?: boolean;
+  voyagerVersion?: string;
 }
 
 export const MigrationSchema: FC<MigrationSchemaProps> = ({
@@ -109,6 +112,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   onRefetch,
   isFetching = false,
   isNewMigration = false,
+  voyagerVersion
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -119,30 +123,40 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     isFetching: isFetchingAPI,
     isError: isErrorMigrationSchemaTasks,
   } = useGetVoyagerMigrateSchemaTasksQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
-
   const EXPORT_SCHEMA_DOCS_URL =
       "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema"
   const ANALYZE_SCHEMA_DOCS_URL =
       "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#analyze-schema"
   const IMPORT_SCHEMA_DOCS_URL =
       "https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema"
+
   let manualSum: number = (
-        schemaAPI?.current_analysis_report?.recommended_refactoring?.refactor_details?.reduce(
+        schemaAPI?.current_analysis_report?.recommended_refactoring?.reduce(
           (sum, detail) => {
             return sum + (detail?.manual ?? 0);
           }, 0) || 0);
+
   const manualRefactorRequired: boolean = manualSum !== 0;
 
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
-        <Typography variant="h4" className={classes.heading}>
-          {heading}
-        </Typography>
+        <Box display="flex" sx={{ position: "relative" }}>
+          <Typography variant="h4" className={classes.heading}>
+            {heading}
+          </Typography>
+          {
+            !(isFetching && !isNewMigration) && !!voyagerVersion && (
+              <Box sx={{ position: "absolute", top: -5, width: "120%", left: 150 }}>
+                <VoyagerVersionBox voyagerVersion={voyagerVersion} />
+              </Box>
+            )
+          }
+        </Box>
         <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>

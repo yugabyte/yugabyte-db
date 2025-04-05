@@ -622,25 +622,27 @@ export const MigrationList: FC<MigrationListProps> = ({
             <MigrationListSourceDBSidePanel
               open={!!sourceDBSelection}
               onClose={() => setSourceDBSelection(undefined)}
-              ip={sourceDBSelection?.ip ?? "N/A"}
-              port={sourceDBSelection?.port ?? "N/A"}
-              engine={sourceDBSelection?.engine ?? "N/A"}
-              version={sourceDBSelection?.version ?? "N/A"}
-              database={sourceDBSelection?.database ?? "N/A"}
-              schema={sourceDBSelection?.schema ?? "N/A"}
+              ip={sourceDBSelection?.ip ?? t("common.notAvailable")}
+              port={sourceDBSelection?.port ?? t("common.notAvailable")}
+              engine={sourceDBSelection?.engine ?? t("common.notAvailable")}
+              version={sourceDBSelection?.version ?? t("common.notAvailable")}
+              database={sourceDBSelection?.database ?? t("common.notAvailable")}
+              schema={sourceDBSelection?.schema ?? t("common.notAvailable")}
             />
 
             <MigrationListVoyagerSidePanel
               open={!!voyagerSelection}
               onClose={() => setVoyagerSelection(undefined)}
-              machine_ip={voyagerSelection?.machine_ip || "N/A"}
-              os={voyagerSelection?.os || "N/A"}
+              machine_ip={voyagerSelection?.machine_ip || t("common.notAvailable")}
+              os={voyagerSelection?.os || t("common.notAvailable")}
               avail_disk_bytes={
                 getMemorySizeUnits(parseInt(voyagerSelection?.avail_disk_bytes ?? "")) == '-' ?
-                  "N/A" :
+                  t("common.notAvailable") :
                   getMemorySizeUnits(parseInt(voyagerSelection?.avail_disk_bytes ?? ""))}
-              export_dir={voyagerSelection?.export_dir || "N/A"}
-              exported_schema_location={voyagerSelection?.exported_schema_location || "N/A"}
+              export_dir={voyagerSelection?.export_dir || t("common.notAvailable")}
+              exported_schema_location={
+                voyagerSelection?.exported_schema_location || t("common.notAvailable")
+              }
             />
 
             <MigrationListColumns
