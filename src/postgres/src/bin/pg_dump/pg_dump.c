@@ -65,7 +65,9 @@
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include <float.h>          /* for DBL_DIG */
 
 typedef struct
 {
@@ -10537,14 +10539,17 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 	char	   *qualtypname;
 	char	   *label;
 
+	/* This is are added for YB */
+	float4		enum_sortorder;
+
 	if (fout->remoteVersion >= 90100)
-		appendPQExpBuffer(query, "SELECT oid, enumlabel "
+		appendPQExpBuffer(query, "SELECT oid, enumlabel, enumsortorder "
 						  "FROM pg_catalog.pg_enum "
 						  "WHERE enumtypid = '%u'"
 						  "ORDER BY enumsortorder",
 						  tyinfo->dobj.catId.oid);
 	else
-		appendPQExpBuffer(query, "SELECT oid, enumlabel "
+		appendPQExpBuffer(query, "SELECT oid, enumlabel, enumsortorder "
 						  "FROM pg_catalog.pg_enum "
 						  "WHERE enumtypid = '%u'"
 						  "ORDER BY oid",
@@ -10593,12 +10598,16 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 		{
 			enum_oid = atooid(PQgetvalue(res, i, PQfnumber(res, "oid")));
 			label = PQgetvalue(res, i, PQfnumber(res, "enumlabel"));
+			enum_sortorder = atof(PQgetvalue(res, i, PQfnumber(res, "enumsortorder")));
 
 			if (i == 0)
-				appendPQExpBufferStr(q, "\n-- For binary upgrade, must preserve pg_enum oids\n");
+				appendPQExpBufferStr(q, "\n-- For binary upgrade, must preserve pg_enum oids and sortorders\n");
 			appendPQExpBuffer(q,
 							  "SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('%u'::pg_catalog.oid);\n",
 							  enum_oid);
+			appendPQExpBuffer(q,
+							  "SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('%.*g'::real);\n",
+							  DBL_DIG, enum_sortorder);
 			appendPQExpBuffer(q, "ALTER TYPE %s ADD VALUE ", qualtypname);
 			appendStringLiteralAH(q, label, fout);
 			appendPQExpBufferStr(q, ";\n\n");

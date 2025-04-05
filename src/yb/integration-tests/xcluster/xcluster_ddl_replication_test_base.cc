@@ -213,4 +213,18 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
 
   return Status::OK();
 }
+
+bool XClusterDDLReplicationTestBase::SetReplicationDirection(
+    ReplicationDirection replication_direction) {
+  if (replication_direction_ == replication_direction) {
+    return false;
+  }
+  replication_direction_ = replication_direction;
+  std::swap(consumer_cluster_, producer_cluster_);
+  std::swap(consumer_table_, producer_table_);
+  LOG(INFO) << "Switched replication direction to "
+            << (replication_direction_ == ReplicationDirection::AToB ? "A -> B" : "B -> A");
+  return true;
+}
+
 }  // namespace yb

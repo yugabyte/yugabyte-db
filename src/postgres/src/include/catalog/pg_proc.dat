@@ -10172,6 +10172,10 @@
   proname => 'binary_upgrade_set_missing_value', provolatile => 'v',
   proparallel => 'u', prorettype => 'void', proargtypes => 'oid text text',
   prosrc => 'binary_upgrade_set_missing_value' },
+{ oid => '8095', descr => 'for use by pg_upgrade',
+  proname => 'yb_binary_upgrade_set_next_pg_enum_sortorder', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'float4',
+  prosrc => 'yb_binary_upgrade_set_next_pg_enum_sortorder' },
 
 # replication/origin.h
 { oid => '6003', descr => 'create a replication origin',

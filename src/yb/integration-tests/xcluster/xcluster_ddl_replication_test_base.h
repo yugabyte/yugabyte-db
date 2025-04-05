@@ -18,6 +18,8 @@
 
 namespace yb {
 
+YB_DEFINE_ENUM(ReplicationDirection, (AToB)(BToA))
+
 class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
  public:
   XClusterDDLReplicationTestBase() = default;
@@ -66,8 +68,18 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   Status PrintDDLQueue(Cluster& cluster);
 
+  // Swaps producer_cluster_ and consumer_cluster_ if the replication_direction is different.
+  // Returns if the direction was changed.
+  // This allows us to reuse existing test functions for switchovers.
+  //
+  // NOTE: This does not change the log prefixes, search for "Switched replication direction" in
+  // logs to determine the current direction.
+  virtual bool SetReplicationDirection(ReplicationDirection replication_direction);
+
  private:
   tools::TmpDirProvider tmp_dir_;
+
+  ReplicationDirection replication_direction_ = ReplicationDirection::AToB;
 };
 
 }  // namespace yb
