@@ -462,6 +462,8 @@ message ReleaseObjectLockRequestPB {
   optional fixed64 propagated_hybrid_time = 6;
 
   optional DBCatalogVersionDataPB db_catalog_version_data = 7;
+  // Used for tracking in-progress DDL unlock requests at the master.
+  optional uint64 request_id = 8;
 }
 
 message ReleaseObjectLockResponsePB {

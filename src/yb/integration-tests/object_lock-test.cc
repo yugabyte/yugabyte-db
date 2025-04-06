@@ -55,6 +55,7 @@ using namespace std::chrono_literals;
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_bool(TEST_skip_launch_release_request);
 DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
@@ -394,25 +395,58 @@ Status ReleaseLockGlobally(
   return sync.Wait();
 }
 
-class ObjectLockTestWithMissingResponses : public ObjectLockTest,
-                                           public ::testing::WithParamInterface<bool> {
+YB_DEFINE_ENUM(FailureMode, (NoFailure)(MissingHeartbeatResponses)(RestartMasterDuringRelease));
+class ObjectLockTestWithMissingResponsesAndMasterRestartDuringRelease
+    : public ObjectLockTest,
+      public ::testing::WithParamInterface<FailureMode> {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob) =
-        GetParam() ? 0.5 : 0.0;
+    failure_mode_ = GetParam();
+    if (failure_mode_ == FailureMode::MissingHeartbeatResponses) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob) = 0.5;
+    } else if (failure_mode_ == FailureMode::RestartMasterDuringRelease) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_launch_release_request) = true;
+    }
     ObjectLockTest::SetUp();
   }
+
+ protected:
+  FailureMode failure_mode_;
 };
 
-TEST_P(ObjectLockTestWithMissingResponses, AcquireReleaseLockGlobally) {
+TEST_P(
+    ObjectLockTestWithMissingResponsesAndMasterRestartDuringRelease, AcquireReleaseLockGlobally) {
   const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kObjectId));
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn1));
+  if (failure_mode_ == FailureMode::RestartMasterDuringRelease) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_launch_release_request) = false;
+    ASSERT_OK(cluster_->mini_master()->Restart(/* wait_until_catalog_manager_is_leader */ true));
+  }
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager]() -> bool {
+        return master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+      },
+      kTimeout, "Wait for release to complete"));
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
 }
 
 INSTANTIATE_TEST_CASE_P(
-    CauseMissingResponses, ObjectLockTestWithMissingResponses, ::testing::Bool());
+    CauseMissingResponsesAndRestartMasterDuringRelease,
+    ObjectLockTestWithMissingResponsesAndMasterRestartDuringRelease,
+    ::testing::Values(
+        FailureMode::NoFailure, FailureMode::MissingHeartbeatResponses,
+        FailureMode::RestartMasterDuringRelease));
 
 void ObjectLockTest::testAcquireObjectLockWaitsOnTServer(bool do_master_failover) {
   const auto& kSessionHostUuid = TSUuid(0);
@@ -483,8 +517,19 @@ TEST_F(ObjectLockTest, AcquireObjectLocksWaitsOnTServer) {
 TEST_F(ObjectLockTest, AcquireAndReleaseDDLLock) {
   const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
   ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn2, kDatabaseID, kObjectId));
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn2));
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+               master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+      },
+      60s, "wait for DDL locks to clear at the master"));
 
   // Release non-existent lock.
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn2));
@@ -554,6 +599,11 @@ TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
 
   // Release lock from Session-1
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn1));
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0;
+      },
+      60s, "wait for DDL unlock to complete at the master"));
 
   // Verify that lock acquistion for session-2 is successful.
   EXPECT_OK(ResolveFutureStatus(acquire_future));
@@ -569,6 +619,12 @@ TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
 
   // Release lock from Session-2
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn2));
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+               master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+      },
+      60s, "wait for DDL locks to clear at the master"));
   DumpMasterAndTServerLocks(cluster_.get(), "After releasing all locks");
   ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), 0);
   ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
@@ -614,10 +670,14 @@ TEST_F(ObjectLockTest, DDLLocksCleanupAtMaster) {
   // Release all locks taken from host-0, session-0
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), ddl_txns[0]));
 
-  DumpMasterAndTServerLocks(cluster_.get(), "After Releasing locks from host-0, session-0");
   num_locks = kEntriesPerRequest * (kNumHosts * kNumDDLsPerHost - 1) * kNumObjectsPerDDL;
-  ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), num_locks);
-  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager, num_locks]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+               master_local_lock_manager->TEST_GrantedLocksSize() == num_locks;
+      },
+      60s, "wait for DDL locks to clear at the master"));
+  DumpMasterAndTServerLocks(cluster_.get(), "After Releasing locks from host-0, session-0");
   for (auto ts : cluster_->mini_tablet_servers()) {
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), num_locks);
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
@@ -746,6 +806,17 @@ TEST_F(ObjectLockTest, BootstrapTServersUponAddition) {
   }
 
   ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn2));
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+               master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+      },
+      60s, "wait for DDL locks to clear at the master"));
 
   LOG(INFO) << "Counts after releasing the DDL lock";
   expected_locks = 0;
@@ -867,6 +938,7 @@ TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {
   auto ts_uuid = TSUuid(ts_idx);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   uint64_t lease_epoch = kLeaseEpoch;
+  LOG(INFO) << "Acquiring global lock in term " << lease_epoch;
   ASSERT_OK(AcquireLockGlobally(
       &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId, lease_epoch, nullptr, std::nullopt,
       kTimeout));
@@ -876,9 +948,11 @@ TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {
   lease_epoch++;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
+        LOG(INFO) << "Trying to Acquire global lock in term " << lease_epoch;
         auto status = AcquireLockGlobally(
             &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId2, lease_epoch, nullptr,
             std::nullopt, kTimeout);
+        LOG(INFO) << "Got " << status.ToString();
         if (status.ok()) {
           return true;
         }
@@ -891,9 +965,12 @@ TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {
       },
       kTimeout, "Try to acquire exclusive lock after tserver restart"));
   // Using the previous lease epoch should fail.
+  LOG(INFO) << "Acquiring global lock using a previous/wrong epoch " << kLeaseEpoch
+            << " instead of " << lease_epoch;
   auto status = AcquireLockGlobally(
       &master_proxy, ts_uuid, kTxn1, kDatabaseID, kObjectId3, kLeaseEpoch, nullptr, std::nullopt,
       kTimeout);
+  LOG(INFO) << "Got " << status.ToString();
   EXPECT_THAT(status, EqualsStatus(BuildLeaseEpochMismatchErrorStatus(kLeaseEpoch, lease_epoch)));
 }
 
@@ -1043,6 +1120,12 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
               << leader_master2->ToString();
     auto master_proxy = MasterProxy(leader_master2);
     ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, kTxn2));
+    ASSERT_OK(WaitFor(
+        [master_local_lock_manager2]() -> bool {
+          return master_local_lock_manager2->TEST_WaitingLocksSize() == 0 &&
+                 master_local_lock_manager2->TEST_GrantedLocksSize() == 0;
+        },
+        60s, "wait for DDL locks to clear at the master"));
   }
 }
 
@@ -1213,6 +1296,12 @@ TEST_P(MultiMasterObjectLockTestOutOfOrder, IgnoreDDLAcquireAfterRelease) {
       ASSERT_OK(ReleaseLockGloballyAt(
           &master_proxy, kDdlHostUuid, kTxn2, kLeaseEpoch, hybrid_clock, apply_after,
           release_ddl_timeout));
+      ASSERT_OK(WaitFor(
+          [master_local_lock_manager]() -> bool {
+            return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+                   master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+          },
+          60s, "wait for DDL locks to clear at the master"));
       break;
     }
     case ReleaseOptions::ReleaseByMaster: {
