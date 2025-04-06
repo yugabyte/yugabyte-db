@@ -655,6 +655,7 @@ const struct config_enum_entry yb_batch_detection_mechanism_options[] = {
 const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
 	{"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
+	{"deferred", YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY, false},
 	{NULL, 0, false}
 };
 
@@ -7015,6 +7016,8 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
 						 " relaxed. Read only statements/transactions do not see read restart errors but"
 						 " may miss recent updates with staleness bounded by clock skew."
+						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
+						 " guarantee is maintained."
 			),
 			0
 		},

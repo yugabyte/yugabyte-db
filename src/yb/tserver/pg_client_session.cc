@@ -2694,6 +2694,9 @@ class PgClientSession::Impl {
         RSTATUS_DCHECK(
             is_plain_session, IllegalState,
             "Read time manipulation can't be specified for non kPlain sessions");
+        RSTATUS_DCHECK(
+            !options.defer_read_point(), IllegalState,
+            "Cannot manipulate read time when read point needs to be deferred.");
         ProcessReadTimeManipulation(
             options.read_time_manipulation(), read_time_serial_no,
             ClampUncertaintyWindow(options.clamp_uncertainty_window()));
@@ -2713,15 +2716,8 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(
         UpdateReadPointForXClusterConsistentReads(options, deadline, session.read_point()));
 
-    if (options.defer_read_point()) {
-      // Deferring allows avoiding read restart errors in case of a READ ONLY transaction by setting
-      // the read point to the global limit (i.e., read time + max clock skew) and hence waiting out
-      // any ambiguity of data visibility that might arise from clock skew.
-      RSTATUS_DCHECK(
-        !txn, IllegalState,
-        "Deferring read point is only allowed in SERIALIZABLE DEFERRABLE READ ONLY, a distributed "
-        "transaction is unexpected here.");
-
+    if (!options.ddl_mode() && !options.use_catalog_session() && options.defer_read_point()) {
+      // For DMLs, only fast path writes cannot be deferred.
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
     }
 
