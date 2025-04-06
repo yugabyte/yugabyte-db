@@ -176,25 +176,12 @@ bool CanAbortTransaction(const Status& status,
                          const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
-  // 2. When running a transaction with READ COMMITTED isolation where the current subtransaction
-  //    id is not at the default value, and we face a kConflict/kReadRestart error. This is because
-  //    YB PG backend retries kConflict and kReadRestart errors for READ COMMITTED isolation by
-  //    restarting statements instead of the whole transaction if the statment is in a transactional
-  //    block. Else it restarts the whole transaction, in which case we can abort the current one.
-  //
-  //    See 'IsInTransactionBlock' function in src/postgres/src/backend/tcop/postgres.c for details.
+  // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
   const TransactionError txn_err(status);
   if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
     return false;
   }
-  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED &&
-      subtransaction_pb && subtransaction_pb->subtransaction_id() > kMinSubTransactionId) {
-    return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
-           txn_err.value() != TransactionErrorCode::kConflict;
-  }
-  // For other situations, we can safely abort the transaction. Even if the error is retriable, it
-  // will be retried by starting a new transaction (done by the query layer).
-  return true;
+  return !subtransaction_pb || subtransaction_pb->subtransaction_id() == kMinSubTransactionId;
 }
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
