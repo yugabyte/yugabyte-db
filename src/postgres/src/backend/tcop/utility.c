@@ -775,7 +775,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree);
+			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
 			break;
 
 		case T_CopyStmt:

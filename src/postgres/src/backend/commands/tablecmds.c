@@ -1928,7 +1928,7 @@ RangeVarCallbackForDropRelation(const RangeVar *rel, Oid relOid, Oid oldRelOid,
  * are truncated and reindexed.
  */
 void
-ExecuteTruncate(TruncateStmt *stmt)
+ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level)
 {
 	List	   *rels = NIL;
 	List	   *relids = NIL;
@@ -2027,7 +2027,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 	}
 
 	ExecuteTruncateGuts(rels, relids, relids_logged,
-						stmt->behavior, stmt->restart_seqs);
+						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
 
 	/* And close the rels */
 	foreach(cell, rels)
@@ -2055,7 +2055,8 @@ void
 ExecuteTruncateGuts(List *explicit_rels,
 					List *relids,
 					List *relids_logged,
-					DropBehavior behavior, bool restart_seqs)
+					DropBehavior behavior, bool restart_seqs,
+					bool yb_is_top_level)
 {
 	List	   *rels;
 	List	   *seq_relids = NIL;
@@ -2121,6 +2122,39 @@ ExecuteTruncateGuts(List *explicit_rels,
 	if (behavior == DROP_RESTRICT)
 		heap_truncate_check_FKs(rels, false);
 #endif
+
+	/*
+	 * Unsafe truncate cannot be used inside a transaction block. Hence, check
+	 * early and report error if necessary.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		IsInTransactionBlock(yb_is_top_level))
+	{
+		foreach(cell, rels)
+		{
+			Relation	rel = (Relation) lfirst(cell);
+			YbTruncateType unsafe_truncate_reason =
+				YbUseUnsafeTruncate(rel);
+
+			switch (unsafe_truncate_reason)
+			{
+				case YB_SAFE_TRUNCATE:
+					break;
+				case YB_UNSAFE_TRUNCATE_SYSTEM_RELATION:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot TRUNCATE system relations in a transaction block.")));
+					break;
+				case YB_UNSAFE_TRUNCATE_TABLE_REWRITE_DISABLED:
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("unsafe TRUNCATE cannot be executed in a transaction block."),
+							 errhint("Set yb_enable_alter_table_rewrite to true.")));
+					break;
+			}
+		}
+	}
 
 	/*
 	 * If we are asked to restart sequences, find all the sequences, lock them
@@ -2264,7 +2298,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 		 * table or the current physical file to be thrown away anyway.
 		 * YB: Check if the unsafe truncate method should be used.
 		 */
-		if (YbUseUnsafeTruncate(rel))
+		if (YbUseUnsafeTruncate(rel) != YB_SAFE_TRUNCATE)
 			YbUnsafeTruncate(rel);
 		else if (rel->rd_createSubid == mySubid ||
 				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
