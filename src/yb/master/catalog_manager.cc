@@ -101,7 +101,6 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
@@ -167,11 +166,11 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
+#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -201,9 +200,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
@@ -827,7 +826,7 @@ GetMoreEligibleSysCatalogLeaders(
   for (const auto& master : masters) {
     auto master_score = get_score(master.registration());
     if (master_score < my_score) {
-      scored_masters.push_back({master, get_score(master.registration())});
+      scored_masters.emplace_back(master, get_score(master.registration()));
     }
   }
 
@@ -4510,15 +4509,14 @@ Status CatalogManager::CreateTableIfNotFound(
   return Status::OK();
 }
 
-void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
-                                                const TableInfoPtr& table,
-                                                const LeaderEpoch& epoch) {
+void CatalogManager::ScheduleVerifyTablePgLayer(
+    TransactionMetadata txn, const TableInfoPtr& table, const LeaderEpoch& epoch) {
   auto when_done = [this, table, epoch](Result<std::optional<bool>> exists) {
     WARN_NOT_OK(VerifyTablePgLayer(table, exists, epoch), "Failed to verify table");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
       *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
-      *master_->messenger(), epoch, false /* ddl_atomicity_enabled */);
+      *master_->messenger(), epoch, /*ddl_atomicity_enabled=*/false);
 }
 
 Status CatalogManager::VerifyTablePgLayer(
@@ -8248,12 +8246,12 @@ std::vector<TableInfoPtr> CatalogManager::GetTables(
   FATAL_INVALID_ENUM_VALUE(GetTablesMode, mode);
 }
 
-void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
-                                      bool includeOnlyRunningNamespaces) {
+void CatalogManager::GetAllNamespaces(
+    std::vector<scoped_refptr<NamespaceInfo>>* namespaces, bool include_only_running_namespaces) {
   namespaces->clear();
   SharedLock lock(mutex_);
   for (const NamespaceInfoMap::value_type& e : namespace_ids_map_) {
-    if (includeOnlyRunningNamespaces && e.second->state() != SysNamespaceEntryPB::RUNNING) {
+    if (include_only_running_namespaces && e.second->state() != SysNamespaceEntryPB::RUNNING) {
       continue;
     }
     namespaces->push_back(e.second);
@@ -9459,11 +9457,11 @@ Status CatalogManager::DeleteYsqlDBTables(
       // Colocation parent tables should be deleted last, so we store them separately and append to
       // the end of the list later.
       if (table->IsColocationParentTable()) {
-        colocation_parents.push_back({table, std::move(l)});
+        colocation_parents.emplace_back(table, std::move(l));
       } else if (IsTable(l->pb)) {
         tables_and_locks.insert(tables_and_locks.begin(), {table, std::move(l)});
       } else {
-        tables_and_locks.push_back({table, std::move(l)});
+        tables_and_locks.emplace_back(table, std::move(l));
       }
     }
 

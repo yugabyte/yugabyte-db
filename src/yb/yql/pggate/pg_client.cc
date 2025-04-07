@@ -36,19 +36,15 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
-#include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
-#include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
@@ -260,7 +256,7 @@ struct PerformData : public FetchBigDataCallback {
     }
   }
 
-  void BigDataFetched(Result<rpc::CallData>* call_data) {
+  void BigDataFetched(Result<rpc::CallData>* call_data) override {
     std::lock_guard lock(exchange_mutex);
     if (!call_data->ok()) {
       exchange_result = call_data->status();
@@ -906,6 +902,18 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.version();
   }
 
+  Result<uint32_t> GetXClusterRole(uint32_t db_oid) {
+    tserver::PgGetXClusterRoleRequestPB req;
+    tserver::PgGetXClusterRoleResponsePB resp;
+
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::GetXClusterRole, req, resp,
+        ash::PggateRPC::kGetXClusterRole));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.xcluster_role();
+  }
+
   Status CreateSequencesDataTable() {
     tserver::PgCreateSequencesDataTableRequestPB req;
     tserver::PgCreateSequencesDataTableResponsePB resp;
@@ -1301,7 +1309,7 @@ class PgClient::Impl : public BigDataFetcher {
     }
 
     if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
-      if (slot_hash_range != NULL) {
+      if (slot_hash_range != nullptr) {
         VLOG(1) << "Setting hash ranges in InitVirtualVWAL request - start_range: "
                 << slot_hash_range->start_range << ", end_range: " << slot_hash_range->end_range;
         auto req_slot_range = req.mutable_slot_hash_range();
@@ -1627,6 +1635,10 @@ Result<bool> PgClient::IsInitDbDone() {
 
 Result<uint64_t> PgClient::GetCatalogMasterVersion() {
   return impl_->GetCatalogMasterVersion();
+}
+
+Result<uint32_t> PgClient::GetXClusterRole(uint32_t db_oid) {
+  return impl_->GetXClusterRole(db_oid);
 }
 
 Status PgClient::CreateSequencesDataTable() {

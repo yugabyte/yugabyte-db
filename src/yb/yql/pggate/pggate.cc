@@ -29,11 +29,9 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -71,7 +69,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
@@ -1834,6 +1831,10 @@ const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
 
 pid_t PgApiImpl::GetLocalTServerPid() const {
   return tserver_shared_object_->pid();
+}
+
+Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
+  return pg_session_->GetXClusterRole(db_oid);
 }
 
 // Tuple Expression -----------------------------------------------------------------------------
