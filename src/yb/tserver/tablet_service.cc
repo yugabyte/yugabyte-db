@@ -3637,6 +3637,11 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
 }
 
+Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(
+    const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
+  return server_->GetYSQLLeaseInfo();
+}
+
 void TabletServiceImpl::AdminExecutePgsql(
     const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
     rpc::RpcContext context) {

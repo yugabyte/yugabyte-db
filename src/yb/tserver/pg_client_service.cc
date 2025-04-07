@@ -1821,6 +1821,17 @@ class PgClientServiceImpl::Impl {
     CleanupSessions(std::move(sessions), CoarseMonoClock::now());
   }
 
+  YSQLLeaseInfo GetYSQLLeaseInfo() {
+    SharedLock lock(mutex_);
+    YSQLLeaseInfo lease_info;
+    // todo(zdrudi): For now just return is live if we've ever received a lease.
+    lease_info.is_live = last_lease_refresh_time_.Initialized();
+    if (lease_info.is_live) {
+      lease_info.lease_epoch = lease_epoch_;
+    }
+    return lease_info;
+  }
+
   void CleanupSessions(
       std::vector<SessionInfoPtr>&& expired_sessions, CoarseTimePoint time) {
     if (expired_sessions.empty()) {
@@ -2406,6 +2417,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 void PgClientServiceImpl::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB&
                                              lease_refresh_info, MonoTime time) {
   impl_->ProcessLeaseUpdate(lease_refresh_info, time);
+}
+
+YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {
+  return impl_->GetYSQLLeaseInfo();
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }

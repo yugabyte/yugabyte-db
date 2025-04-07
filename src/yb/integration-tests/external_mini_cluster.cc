@@ -1570,7 +1570,6 @@ Status ExternalMiniCluster::RemoveTabletServers(
   for (const auto& hp : hps) {
     RETURN_NOT_OK(cluster_client.UnBlacklistHost(hp));
   }
-  // ExternalTabletServer* tablet_server_by_uuid(const std::string& uuid) const;
   return Status::OK();
 }
 
@@ -1721,6 +1720,46 @@ Status ExternalMiniCluster::WaitForTabletServerToRegister(
     SleepFor(MonoDelta::FromMilliseconds(100));
   }
   return Status::OK();
+}
+
+Status ExternalMiniCluster::WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline) {
+  return WaitForTabletServersToAcquireYSQLLeases(tablet_servers_, deadline);
+}
+
+Status ExternalMiniCluster::WaitForTabletServersToAcquireYSQLLeases(
+    const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline) {
+  std::unordered_set<std::string> tservers_without_leases;
+  for (auto now = MonoTime::Now(); now < deadline; now = MonoTime::Now()) {
+    tservers_without_leases.clear();
+    for (const auto& ts : tablet_servers) {
+      tservers_without_leases.insert(ts->id());
+    }
+    for (const auto& ts : tablet_servers) {
+      tserver::GetYSQLLeaseInfoRequestPB req;
+      tserver::GetYSQLLeaseInfoResponsePB resp;
+      rpc::RpcController rpc;
+      rpc.set_timeout(kDefaultTimeout);
+      RETURN_NOT_OK(
+          GetProxy<TabletServerServiceProxy>(ts.get()).GetYSQLLeaseInfo(req, &resp, &rpc));
+      if (resp.has_error()) {
+        if (StatusFromPB(resp.error().status()).IsNotSupported()) {
+          tservers_without_leases.erase(ts->id());
+        }
+        continue;
+      }
+      if (resp.is_live()) {
+        tservers_without_leases.erase(ts->id());
+      }
+    }
+    if (tservers_without_leases.empty()) {
+      return Status::OK();
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+  return STATUS_FORMAT(
+      TimedOut,
+      "$0 tablet server(s) failed to acquire leases, list of tablet servers without leases: $1",
+      tservers_without_leases.size(), tservers_without_leases);
 }
 
 void ExternalMiniCluster::AssertNoCrashes() {

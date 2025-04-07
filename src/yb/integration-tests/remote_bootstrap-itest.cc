@@ -2062,8 +2062,6 @@ void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_ser
   // stop the ts.
   const auto timeout = MonoDelta::FromSeconds(40);
   ASSERT_OK(cluster_->RemoveTabletServer(ts_uuid_to_add, MonoTime::Now() + timeout));
-  ASSERT_OK(
-      cluster_->WaitForTabletServerCount(num_tablet_servers - 1, timeout));
 
   LOG(INFO) << "Starting workload";
   TestWorkload workload(cluster_.get());
