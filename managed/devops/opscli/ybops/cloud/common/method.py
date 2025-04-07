@@ -24,7 +24,7 @@ from pprint import pprint
 from ybops.cloud.common.cloud import InstanceState
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 from ybops.utils import get_path_from_yb, \
-    generate_random_password, validate_cron_status, \
+    generate_random_password, validate_cron_status, retry_operation_for_timeout, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
@@ -569,21 +569,87 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
                                  required=True,
                                  help="The new boot disk to attach to the instance")
 
+    def _is_disk_mounted(self, host_info, volume_id, args):
+        disk = self.cloud.get_disk(host_info, volume_id, args)
+        if disk is not None:
+            if self.cloud.name == "aws":
+                if disk.get('State').lower() in ['in-use']:
+                    return True
+            elif self.cloud.name == "gcp":
+                users = len(disk.get("users", []))
+                if disk.get("status").lower() in ['ready'] and users > 0:
+                    return True
+        return False
+
+    def _is_disk_unmounting(self, host_info, volume_id, args):
+        disk = self.cloud.get_disk(host_info, volume_id, args)
+        if disk is not None:
+            if self.cloud.name == "aws":
+                for attachment in disk.get("Attachments", []):
+                    if attachment["State"].lower() in ['detaching']:
+                        return True
+        return False
+
+    def _is_disk_mounting(self, host_info, volume_id, args):
+        disk = self.cloud.get_disk(host_info, volume_id, args)
+        if disk is not None:
+            if self.cloud.name == "aws":
+                for attachment in disk.get("Attachments", []):
+                    if attachment["State"].lower() in ['attaching']:
+                        return True
+        return False
+
+    def _is_disk_unmounted(self, host_info, volume_id, args):
+        disk = self.cloud.get_disk(host_info, volume_id, args)
+        if disk is not None:
+            if self.cloud.name == "aws":
+                if disk.get('State').lower() in ['available']:
+                    return True
+            elif self.cloud.name == "gcp":
+                users = len(disk.get("users", []))
+                if disk.get("status").lower() in ['ready'] and users == 0:
+                    return True
+        return False
+
     def _replace_root_volume(self, args, host_info, current_root_volume):
         unmounted = False
+
+        def __is_disk_unmounting():
+            return self._is_disk_unmounting(host_info, current_root_volume, args)
+
+        def __is_disk_unmounted():
+            return self._is_disk_unmounted(host_info, current_root_volume, args)
+
+        def __is_disk_mounting():
+            return self._is_disk_mounting(host_info, current_root_volume, args)
+
+        def __is_disk_mounted():
+            return self._is_disk_mounted(host_info, current_root_volume, args)
+
         try:
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
             self.cloud.stop_instance(host_info)
             # Azure does not require unmounting because replacement is done in one API call.
             if current_root_volume and self.cloud.name != "azu":
-                self.cloud.unmount_disk(host_info, current_root_volume)
+                retry_operation_for_timeout(
+                    self.cloud.unmount_disk, host_info, current_root_volume,
+                    operation_name=f"unmounting disk {current_root_volume}",
+                    precondition_check=__is_disk_unmounting,
+                    postcondition_check=__is_disk_unmounted
+                )
                 unmounted = True
                 logging.info("==> Root volume {} unmounted from {}".format(
                     current_root_volume, id))
             logging.info("==> Mounting {} as the new root volume on {}".format(
                 args.replacement_disk, id))
-            self._mount_root_volume(host_info, args.replacement_disk)
+            # Mount the replacement disk
+            retry_operation_for_timeout(
+                self._mount_root_volume, host_info, args.replacement_disk,
+                operation_name=f"mounting {args.replacement_disk} as root volume",
+                precondition_check=__is_disk_mounting,
+                postcondition_check=__is_disk_mounted
+            )
         except Exception as e:
             logging.exception(e)
             if unmounted:
@@ -592,7 +658,12 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
                 # the instance name(id).
                 old_disk_url = os.path.join(
                     args.replacement_disk[:args.replacement_disk.rfind('/')], id)
-                self._mount_root_volume(host_info, old_disk_url)
+                retry_operation_for_timeout(
+                    self._mount_root_volume, host_info, old_disk_url,
+                    operation_name=f"re-mounting original volume {old_disk_url}",
+                    precondition_check=__is_disk_mounting,
+                    postcondition_check=__is_disk_mounted
+                )
                 logging.warning("Mounted the original volume {} on {} before failing".format(
                                 old_disk_url, id))
             raise e
