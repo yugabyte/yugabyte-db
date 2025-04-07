@@ -3885,14 +3885,12 @@ YbInvalidateTableCacheForAlteredTables()
 
 			/*
 			 * The relation may no longer exist if it was dropped as part of
-			 * a legacy rewrite operation. We can skip invalidation in that
-			 * case.
+			 * a legacy rewrite operation or if it was created and then dropped
+			 * in the same transaction block. We can skip invalidation in these
+			 * cases.
 			 */
 			if (!rel)
-			{
-				Assert(!yb_enable_alter_table_rewrite);
 				continue;
-			}
 			YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOidByRelid(relid),
 												YbGetRelfileNodeIdFromRelId(relid));
 			RelationClose(rel);
