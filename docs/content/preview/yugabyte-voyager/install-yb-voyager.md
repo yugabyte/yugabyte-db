@@ -235,11 +235,16 @@ Usage:
 
 The options are as follows.
 
-| Argument | Description/valid options |
-| :------- | :------------------------ |
-| -d, --check-only-dependencies | Check only dependencies and exit. |
-| -f, --force-install | Force install packages without checking dependencies. |
-| -h, --help | Display this help message. |
+| Argument                       | Description/valid options                                                     |
+| :----------------------------- | :--------------------------------------------------------------------------- |
+| -d, --check-dependencies-only | Check only dependencies and exit.                                           |
+| -f, --force-install           | Force install packages without checking dependencies.                       |
+| -p, --pg-only                 | Install and check only PostgreSQL source related voyager dependencies.     |
+| -m, --mysql-only              | Install and check only MySQL source related voyager dependencies.          |
+| -o, --oracle-only             | Install and check only Oracle source related voyager dependencies.         |
+| -h, --help                    | Display this help message.                                                 |
+
+If none of the `--pg-only`, `--oracle-only`, or `--mysql-only` flags are provided, the script will default to checking and installing dependencies for all database types. Additionally, only one of these flags can be used at a time. These flags also work alongside `--help` and `--check-dependencies-only`, ensuring that help documentation and dependency checks are specific to the selected database.
 
 ### Oracle Instant Client installation help for Centos/RHEL
 
@@ -340,11 +345,16 @@ Usage:
 
 The options are as follows.
 
-| Argument | Description/valid options |
-| :------- | :------------------------ |
-| -d, --check-only-dependencies | Check only dependencies and exit. |
-| -f, --force-install | Force install packages without checking dependencies. |
-| -h, --help | Display this help message. |
+| Argument                       | Description/valid options                                                     |
+| :----------------------------- | :--------------------------------------------------------------------------- |
+| -d, --check-dependencies-only | Check only dependencies and exit.                                           |
+| -f, --force-install           | Force install packages without checking dependencies.                       |
+| -p, --pg-only                 | Install and check only PostgreSQL source related voyager dependencies.     |
+| -m, --mysql-only              | Install and check only MySQL source related voyager dependencies.          |
+| -o, --oracle-only             | Install and check only Oracle source related voyager dependencies.         |
+| -h, --help                    | Display this help message.                                                 |
+
+If none of the `--pg-only`, `--oracle-only`, or `--mysql-only` flags are provided, the script will default to checking and installing dependencies for all database types. Additionally, only one of these flags can be used at a time. These flags also work alongside `--help` and `--check-dependencies-only`, ensuring that help documentation and dependency checks are specific to the selected database.
 
 ### Oracle Instant Client installation help for Ubuntu
 

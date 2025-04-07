@@ -13,6 +13,19 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.15 - April 8, 2025
+
+### Enhancements
+
+* Improved UI/UX for guardrails for the single table list in live migration with better output for readability, especially for large table lists.
+* Improved consistency in table list output by always showing fully qualified table names.
+* Added --pg-only, --oracle-only, and --mysql-only flags to the airgapped installation script to check/install dependencies for a specific database.
+* Enhanced the issues in the assessment report under the category Unsupported datatypes to include more detailed information about each datatype.
+
+### Bug fixes
+
+* Fixed an issue in the fall back scenario where restoring sequences was failing due to missing permissions. The necessary SELECT, USAGE, and UPDATE permissions are now correctly granted in yb-voyager-pg-grant-migration-permissions.sql.
+
 ## v1.8.14 - March 25, 2025
 
 ### Enhancements
