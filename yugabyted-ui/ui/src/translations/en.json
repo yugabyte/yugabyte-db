@@ -1011,7 +1011,8 @@
             "Level1": "Level 1",
             "Level2": "Level 2",
             "Level3": "Level 3",
-            "allImpacts": "All Impacts"
+            "allImpacts": "All Impacts",
+            "allObjectTypes": "All Object Types"
           },
           "sourceEnv": {
             "heading": "Source Environment",
@@ -1086,6 +1087,9 @@
             "schemaChanges": {
               "heading": "Recommended Changes",
               "objectType": "Object Type",
+              "automaticDDLImportTooltip": "SQL objects that can be imported into YugabyteDB without DDL changes.",
+              "manualRefactoringTooltip": "Number of DDL statements requiring manual refactoring.",
+              "invalidObjectCountTooltip": "Invalid object count requiring manual refactoring.",
               "automaticDDLImport": "Automatic DDL Import",
               "invalidObjectCount": "Invalid Object Count",
               "manualRefactoring": "Manual Refactoring",
@@ -1101,13 +1105,14 @@
               "category": "Category",
               "issueType": "Issue Type",
               "occurrences": "Occurrences",
+              "objectName": "Object Name : ",
               "previewSqlStatement": "Preview SQL Statement/Object",
               "workaround": "Workaround",
               "linkToDocs": "Link to docs",
               "linkToGithub": "Link to Github issue",
               "notAvailable": "N/A",
               "issueDetails": "Issue Details",
-              "targetDBVersion": "Target database version : ",
+              "targetDBVersion": "Target Database Version : ",
               "targetDBVersionTooltip": "Problems reported are according to target DB version.",
               "minVersionsFixedIn": "Minimum Versions Fixed In",
               "minVersionsFixedInTooltip": "This column shows the minimum target database versions where the issue is resolved."

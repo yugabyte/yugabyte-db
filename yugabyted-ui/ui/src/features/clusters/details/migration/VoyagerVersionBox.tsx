@@ -23,11 +23,14 @@ const VoyagerVersionBox: React.FC<VoyagerVersionBoxProps> = ({ voyagerVersion })
   };
 
   return (
-    <Box sx={greyBox}>
-      <Typography variant="caption">
-        {t("clusterDetail.voyager.planAndAssess.summary.voyagerVersion")}:
-      </Typography>
-      <Box sx={{ marginLeft: 3 }}>
+    <Box style={greyBox}>
+      <Box style={{ maxWidth: "100px", whiteSpace: "normal", wordBreak: "break-word" }}>
+        <Typography variant="body2">
+          {t("clusterDetail.voyager.planAndAssess.summary.voyagerVersion")}
+        </Typography>
+      </Box>
+
+      <Box style={{ marginLeft: 12 }}>
         <Typography>
           {voyagerVersion}
         </Typography>

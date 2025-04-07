@@ -416,7 +416,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
         setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
-          <YBBadge text={count} variant={BadgeVariant.Warning} />
+          <YBBadge text={count} variant={count > 0 ? BadgeVariant.Warning : BadgeVariant.Success} />
         ),
         customHeadLabelRender: createCustomHeaderLabelRender(
         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount",
