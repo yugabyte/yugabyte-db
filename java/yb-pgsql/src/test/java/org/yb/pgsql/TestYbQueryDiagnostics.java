@@ -2232,4 +2232,96 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertFalse("schema_details file should not exist", Files.exists(schemaDetailsPath));
         }
     }
+
+    /*
+     * Tests if yb_query_diagnostics_status view is persistent across crashes.
+     */
+    @Test
+    public void testViewPersistence() throws Exception {
+        setUpQueryDiagnostics();
+
+        int successfulDiagnosticsInterval = 10;
+        Path successfulBundlePath;
+        String successfulQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams successfulParams = new QueryDiagnosticsParams(
+                successfulDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path inProgressBundlePath;
+        int inProgressDiagnosticsInterval = 100;
+        String inProgressQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams inProgressParams = new QueryDiagnosticsParams(
+                inProgressDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path cancelledBundlePath;
+        int cancelledDiagnosticsInterval = 100;
+        String cancelQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams cancelledParams = new QueryDiagnosticsParams(
+                cancelledDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // successful bundle
+            successfulBundlePath = runQueryDiagnostics(statement,
+                                                       successfulQueryId, successfulParams);
+            waitForBundleCompletion(successfulQueryId, statement, successfulDiagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            // bundle in progress
+            inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
+                                                       inProgressParams);
+
+            // cancel bundle
+            cancelledBundlePath = runQueryDiagnostics(statement, cancelQueryId, cancelledParams);
+            statement.execute("SELECT yb_cancel_query_diagnostics('" + cancelQueryId + "')");
+
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+        }
+
+        miniCluster.restart();
+        connection = getConnectionBuilder().connect();
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+
+            // successful bundle
+            QueryDiagnosticsStatus successfulBundleViewEntry =
+                    getViewData(statement, successfulQueryId, "");
+            QueryDiagnosticsStatus expectedSuccessfulBundleViewEntry =
+                    new QueryDiagnosticsStatus(successfulBundlePath, "Success",
+                                               noQueriesExecutedWarning, successfulParams);
+            assertQueryDiagnosticsStatus(expectedSuccessfulBundleViewEntry,
+                    successfulBundleViewEntry);
+
+            // bundle in progress
+            QueryDiagnosticsStatus inProgressBundleViewEntry =
+                    getViewData(statement, inProgressQueryId, "");
+            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
+                    inProgressBundlePath, "Postmaster Shutdown", "", inProgressParams);
+            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
+                    inProgressBundleViewEntry);
+
+            // cancelled bundle
+            QueryDiagnosticsStatus cancelledBundleViewEntry =
+                    getViewData(statement, cancelQueryId, "");
+            QueryDiagnosticsStatus expectedCancelledBundleViewEntry =
+                    new QueryDiagnosticsStatus(cancelledBundlePath, "Cancelled",
+                                               "Bundle was cancelled", cancelledParams);
+            assertQueryDiagnosticsStatus(expectedCancelledBundleViewEntry,
+                                         cancelledBundleViewEntry);
+        }
+    }
 }

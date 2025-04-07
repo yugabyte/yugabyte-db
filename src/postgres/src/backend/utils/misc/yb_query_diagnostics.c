@@ -58,6 +58,7 @@
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "yb_file_utils.h"
 #include "yb_query_diagnostics.h"
 
 static const char *constants_and_bind_variables_file = "constants_and_bind_variables.csv";
@@ -66,21 +67,25 @@ static const char *ash_file = "active_session_history.csv";
 static const char *explain_plan_file = "explain_plan.txt";
 static const char *schema_details_file = "schema_details.txt";
 
+static const int32 status_view_file_format_id = 0x20250325;
+static const char *status_view_file_name = "yb_query_diagnostics_status.txt";
+static const char *status_view_tmp_file_name = "yb_query_diagnostics_status.tmp";
+
 /* Separates schema details for different tables by 60 '=' */
 const char *schema_details_separator = "============================================================";
 
 /* Maximum number of entries in the hash table */
-#define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100
+static const int max_bundles_in_progress = 100;
 
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
 
 typedef struct YbBundleInfo
 {
+	/* 0 - Success; 1 - In Progress; 2 - Error; 3 - Cancelled; 4 - Postmaster Shutdown */
+	YbQueryDiagnosticsStatusType status;
 	YbQueryDiagnosticsMetadata metadata;	/* stores bundle's metadata */
-	int			status;			/* 0 - Success; 1 - In Progress; 2 - ERROR */
-	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error
-													 * description */
+	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error description */
 } YbBundleInfo;
 
 typedef struct YbQueryDiagnosticsBundles
@@ -161,7 +166,6 @@ static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
 											 * hash table */
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
-static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
 static YbBackgroundWorkerHandle *bg_worker_handle = NULL;
 static YbDatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
@@ -189,8 +193,8 @@ static int	YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
 static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
 static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
-static void InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
-								  const char *description);
+static void InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata,
+								  YbQueryDiagnosticsStatusType status, const char *description);
 static void OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
 						 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc);
 static void ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
@@ -199,7 +203,7 @@ static inline int CircularBufferMaxEntries(void);
 static void RemoveBundleInfo(int64 query_id);
 static int	MakeDirectory(const char *path, char *description);
 static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
-								   int status, const char *description);
+								   YbQueryDiagnosticsStatusType status, const char *description);
 static int	DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
 static int DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description);
@@ -217,6 +221,9 @@ static bool ExecuteQuery(StringInfo output_buffer, const char *query, int output
 static int	DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details, char *description);
 static void PrintTableAndDatabaseName(Oid oid, const char *db_name, StringInfo schema_details);
 static void RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry);
+static void YbSaveQueryDiagnosticsStatusView(int code, Datum arg);
+static void YbRestoreQueryDiagnosticsStatusView();
+static char *StatusToString(YbQueryDiagnosticsStatusType status);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -256,7 +263,7 @@ YbQueryDiagnosticsShmemSize(void)
 	Size		size;
 
 	size = MAXALIGN(sizeof(LWLock));
-	size = add_size(size, hash_estimate_size(QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
+	size = add_size(size, hash_estimate_size(max_bundles_in_progress,
 											 sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
@@ -297,8 +304,8 @@ YbQueryDiagnosticsShmemInit(void)
 	}
 
 	bundles_in_progress = ShmemInitHash("YbQueryDiagnostics shared hash table",
-										QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
-										QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
+										max_bundles_in_progress,
+										max_bundles_in_progress,
 										&ctl,
 										HASH_ELEM | HASH_BLOBS);
 
@@ -317,6 +324,8 @@ YbQueryDiagnosticsShmemInit(void)
 
 		LWLockInitialize(&bundles_completed->lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
+
+		YbRestoreQueryDiagnosticsStatusView();
 	}
 
 	yb_pgss_last_reset_time = (TimestampTz *) ShmemAlloc(sizeof(TimestampTz));
@@ -340,6 +349,9 @@ YbQueryDiagnosticsShmemInit(void)
 	 * explicitly triggered by a diagnostics request.
 	 */
 	(*bg_worker_should_be_active) = false;
+
+	if (!IsUnderPostmaster)
+		on_shmem_exit(YbSaveQueryDiagnosticsStatusView, (Datum) 0);
 }
 
 static inline int
@@ -353,8 +365,8 @@ CircularBufferMaxEntries(void)
  * 		Add a query diagnostics entry to the circular buffer.
  */
 static void
-InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
-					  const char *description)
+InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata,
+					  YbQueryDiagnosticsStatusType status, const char *description)
 {
 	YbBundleInfo *sample;
 
@@ -429,6 +441,76 @@ CreateJsonb(const YbQueryDiagnosticsParams *params)
 	result = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
 	PG_RETURN_POINTER(JsonbValueToJsonb(result));
+}
+
+static char *
+StatusToString(YbQueryDiagnosticsStatusType status)
+{
+	switch (status)
+	{
+		case YB_DIAGNOSTICS_SUCCESS:
+			return "Success";
+
+		case YB_DIAGNOSTICS_IN_PROGRESS:
+			return "In Progress";
+
+		case YB_DIAGNOSTICS_ERROR:
+			return "Error";
+
+		case YB_DIAGNOSTICS_CANCELLED:
+			return "Cancelled";
+
+		case YB_DIAGNOSTICS_POSTMASTER_SHUTDOWN:
+			return "Postmaster Shutdown";
+	}
+
+	/* alma8-gcc11-fastdebug fails to compile without a return statement */
+	Assert(false);
+	return NULL; /* Should never reach here. */
+}
+
+static void
+YbSaveQueryDiagnosticsStatusView(int code, Datum arg)
+{
+	/*
+	 * Completed query diagnostics bundles are within bundles_completed circular buffer and
+	 * bundles which are still in progress are in bundles_in_progress hash table.
+	 * We add the bundles in progress also into bundles_completed and dump it to a file.
+	 */
+	HASH_SEQ_STATUS status;
+	YbQueryDiagnosticsEntry *entry;
+	char	   *status_view_tmp_file_path = psprintf("%s/%s/%s", DataDir, "query-diagnostics",
+													 status_view_tmp_file_name);
+	char	   *status_view_file_path = psprintf("%s/%s/%s", DataDir, "query-diagnostics",
+													 status_view_file_name);
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	hash_seq_init(&status, bundles_in_progress);
+
+	while ((entry = hash_seq_search(&status)) != NULL)
+		InsertBundlesIntoView(&entry->metadata, YB_DIAGNOSTICS_POSTMASTER_SHUTDOWN, "");
+
+	LWLockRelease(bundles_in_progress_lock);
+
+	yb_write_struct_to_file(status_view_tmp_file_path, status_view_file_path,
+							bundles_completed, YbQueryDiagnosticsBundlesShmemSize(),
+							status_view_file_format_id);
+	pfree(status_view_tmp_file_path);
+	pfree(status_view_file_path);
+}
+
+static void
+YbRestoreQueryDiagnosticsStatusView()
+{
+	char	   *status_view_file_path = psprintf("%s/%s/%s", DataDir, "query-diagnostics",
+												 status_view_file_name);
+
+	yb_read_struct_from_file(status_view_file_path,
+							 bundles_completed, YbQueryDiagnosticsBundlesShmemSize(),
+							 status_view_file_format_id);
+
+	pfree(status_view_file_path);
 }
 
 /*
@@ -532,7 +614,7 @@ ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 
 	while ((entry = hash_seq_search(&status)) != NULL)
 		OutputBundle(entry->metadata, "",
-					 status_msg[YB_DIAGNOSTICS_IN_PROGRESS], tupstore, tupdesc);
+					 StatusToString(YB_DIAGNOSTICS_IN_PROGRESS), tupstore, tupdesc);
 
 	LWLockRelease(bundles_in_progress_lock);
 }
@@ -555,7 +637,7 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 
 		if (sample->metadata.params.query_id != 0)
 			OutputBundle(sample->metadata, sample->description,
-						 status_msg[sample->status], tupstore, tupdesc);
+						 StatusToString(sample->status), tupstore, tupdesc);
 	}
 
 	LWLockRelease(&bundles_completed->lock);
@@ -676,7 +758,7 @@ YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_
 
 	/*
 	 * This can slow down the query execution, even if the query is not being bundled.
-	 * Worst case : O(QUERY_DIAGNOSTICS_HASH_MAX_SIZE)
+	 * Worst case : O(max_bundles_in_progress)
 	 */
 	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
 													&query_id, HASH_FIND,
@@ -858,7 +940,7 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	/*
 	 * This can slow down the query execution, even if the query is not being bundled.
-	 * Worst case : O(QUERY_DIAGNOSTICS_HASH_MAX_SIZE)
+	 * Worst case : O(max_bundles_in_progress)
 	 */
 	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
 													&query_id, HASH_FIND,
@@ -959,7 +1041,7 @@ YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 	/*
 	 * This can slow down the query execution, even if the query is not being bundled.
-	 * Worst case : O(QUERY_DIAGNOSTICS_HASH_MAX_SIZE)
+	 * Worst case : O(max_bundles_in_progress)
 	 */
 	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
 													&query_id, HASH_FIND,
@@ -1327,7 +1409,7 @@ FlushAndCleanBundles()
 
 	expired_entries = (YbQueryDiagnosticsEntry *)
 		palloc0(sizeof(YbQueryDiagnosticsEntry) *
-				QUERY_DIAGNOSTICS_HASH_MAX_SIZE);
+				max_bundles_in_progress);
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 
@@ -1350,7 +1432,7 @@ FlushAndCleanBundles()
 		 * because that is set only once, when the bundle is created.
 		 */
 		char	   *folder_path = entry->metadata.path;
-		int			status = YB_DIAGNOSTICS_SUCCESS;
+		YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
 		bool		has_expired = current_time >= BundleEndTime(entry);
 
 		/* Description of the warnings/errors that occurred */
@@ -1429,7 +1511,7 @@ end_of_loop:
 		YbQueryDiagnosticsEntry *entry = &expired_entries[i];
 
 		char		description[YB_QD_DESCRIPTION_LEN];
-		int			status = YB_DIAGNOSTICS_SUCCESS;
+		YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
 		int			query_len = Min(entry->pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
 		char		query_str[query_len + 1];
 
@@ -1579,7 +1661,7 @@ DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
 {
 	StringInfoData schema_details;
 	MemoryContext curr_context = CurrentMemoryContext;
-	int			status = YB_DIAGNOSTICS_SUCCESS;
+	YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
 
 	initStringInfo(&schema_details);
 
@@ -1651,7 +1733,7 @@ DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description)
 	char		query[256];
 	StringInfoData ash_buffer;
 	TimestampTz end_time = BundleEndTime(entry);
-	int			status = YB_DIAGNOSTICS_SUCCESS;
+	YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
 
 	Assert(entry->metadata.start_time < end_time);
 
@@ -1697,7 +1779,7 @@ static int
 DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const char *folder_path,
 					 char *description, slock_t *mutex)
 {
-	int			status = YB_DIAGNOSTICS_SUCCESS;
+	YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
 
 	SpinLockAcquire(mutex);
 
@@ -1728,7 +1810,8 @@ DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const 
  *		and inserting the completed bundle info into the bundles_completed circular buffer.
  */
 static void
-FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata, int status, const char *description)
+FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
+					   YbQueryDiagnosticsStatusType status, const char *description)
 {
 	/*
 	 * Insert the completed bundle info into the bundles_completed circular
@@ -2469,7 +2552,7 @@ YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg)
 
 	YbQueryDiagnosticsEntry *entry = &database_connection_worker_info->entry;
 	const char	   *database_name = entry->metadata.db_name;
-	int			status = YB_DIAGNOSTICS_SUCCESS;
+	YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
 	char	   *description = palloc0(YB_QD_DESCRIPTION_LEN);
 
 	if (!database_name || !entry)
