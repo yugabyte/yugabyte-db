@@ -77,7 +77,7 @@ This integration allows continuous and incremental data ingestion from YugabyteD
 1. Run the docker containers:
 
     ```sh
-    docker-compose up -d
+    docker compose up -d
     ```
 
 ### Set up and configure gRPC CDC stream ID in YugabyteDB

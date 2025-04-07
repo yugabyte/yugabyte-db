@@ -194,7 +194,7 @@ Now, you're ready to switch the application from PostgreSQL to YugabyteDB.
 
 All you need to do is to restart the application containers with YugabyteDB-specific connectivity settings:
 
-1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the application containers.
+1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker compose stop` to stop the application containers.
 
 1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following connectivity settings:
 
@@ -215,7 +215,7 @@ The application uses Flyway to apply database migrations on startup. Flyway will
 1. Start the application:
 
     ```shell
-    docker-compose up
+    docker compose up
     ```
 
 This time, the `yugaplus-backend` container connects to YugabyteDB, which listens on port `5433`. Given YugabyteDB's feature and runtime compatibility with PostgreSQL, the container continues using the PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`), the pgvector extension, and other libraries and frameworks created for PostgreSQL.
