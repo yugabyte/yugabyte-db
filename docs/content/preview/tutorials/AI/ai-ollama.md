@@ -141,7 +141,7 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
     Server running at http://localhost:3000/
     ```
 
-   1. Query the `/search` endpoint with a relevant prompt and category. For instance:
+1. Query the `/search` endpoint with a relevant prompt and category. For instance:
 
        ```sh
        curl "http://localhost:3000/api/search?q=olympic%20gold%20medal&category=SPORTS"
