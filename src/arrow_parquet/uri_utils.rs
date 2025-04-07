@@ -18,7 +18,6 @@ use pgrx::{
 use url::Url;
 
 use crate::{
-    arrow_parquet::parquet_writer::DEFAULT_ROW_GROUP_SIZE,
     object_store::{
         aws::parse_s3_bucket, azure::parse_azure_blob_container, http::parse_http_base_uri,
         object_store_cache::get_or_create_object_store,
@@ -143,6 +142,9 @@ pub(crate) fn parquet_metadata_from_uri(uri_info: ParsedUriInfo) -> Arc<ParquetM
     })
 }
 
+// default # of records per batch during arrow-parquet conversions (RecordBatch api)
+pub(crate) const RECORD_BATCH_SIZE: i64 = 1024;
+
 pub(crate) fn parquet_reader_from_uri(
     uri_info: ParsedUriInfo,
 ) -> ParquetRecordBatchStream<ParquetObjectReader> {
@@ -169,11 +171,34 @@ pub(crate) fn parquet_reader_from_uri(
 
         pgrx::debug2!("Converted arrow schema is: {}", builder.schema());
 
+        let batch_size = calculate_reader_batch_size(builder.metadata());
+
         builder
-            .with_batch_size(DEFAULT_ROW_GROUP_SIZE as usize)
+            .with_batch_size(batch_size)
             .build()
             .unwrap_or_else(|e| panic!("{}", e))
     })
+}
+
+fn calculate_reader_batch_size(metadata: &Arc<ParquetMetaData>) -> usize {
+    const MAX_ARROW_ARRAY_SIZE: i64 = i32::MAX as _;
+
+    for row_group in metadata.row_groups() {
+        for column in row_group.columns() {
+            // try our best to get the size of the column
+            let column_size = column
+                .unencoded_byte_array_data_bytes()
+                .unwrap_or(column.uncompressed_size());
+
+            if column_size > MAX_ARROW_ARRAY_SIZE {
+                // to prevent decoding large arrays into memory, process one row at a time
+                return 1;
+            }
+        }
+    }
+
+    // default batch size
+    RECORD_BATCH_SIZE as _
 }
 
 pub(crate) fn parquet_writer_from_uri(

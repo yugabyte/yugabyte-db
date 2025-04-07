@@ -11,19 +11,20 @@ use crate::{
         compression::INVALID_COMPRESSION_LEVEL,
         uri_utils::{ensure_access_privilege_to_uri, uri_as_string},
     },
-    parquet_copy_hook::{
-        copy_to_dest_receiver::create_copy_to_parquet_dest_receiver,
-        copy_utils::{
-            copy_stmt_uri, copy_to_stmt_compression_level, copy_to_stmt_row_group_size,
-            copy_to_stmt_row_group_size_bytes, is_copy_from_parquet_stmt, is_copy_to_parquet_stmt,
-        },
+    parquet_copy_hook::copy_utils::{
+        copy_stmt_uri, copy_to_stmt_compression_level, copy_to_stmt_row_group_size,
+        copy_to_stmt_row_group_size_bytes, is_copy_from_parquet_stmt, is_copy_to_parquet_stmt,
     },
 };
 
 use super::{
     copy_from::{execute_copy_from, pop_parquet_reader_context},
     copy_to::execute_copy_to_with_dest_receiver,
-    copy_utils::{copy_to_stmt_compression, validate_copy_from_options, validate_copy_to_options},
+    copy_to_split_dest_receiver::create_copy_to_parquet_split_dest_receiver,
+    copy_utils::{
+        copy_to_stmt_compression, copy_to_stmt_file_size_bytes, validate_copy_from_options,
+        validate_copy_to_options,
+    },
 };
 
 pub(crate) static ENABLE_PARQUET_COPY_HOOK: GucSetting<bool> = GucSetting::<bool>::new(true);
@@ -58,31 +59,40 @@ fn process_copy_to_parquet(
 
     validate_copy_to_options(p_stmt, uri_info.clone());
 
+    let file_size_bytes = copy_to_stmt_file_size_bytes(p_stmt);
     let row_group_size = copy_to_stmt_row_group_size(p_stmt);
     let row_group_size_bytes = copy_to_stmt_row_group_size_bytes(p_stmt);
     let compression = copy_to_stmt_compression(p_stmt, uri_info.clone());
     let compression_level = copy_to_stmt_compression_level(p_stmt, uri_info.clone());
 
-    let parquet_dest = create_copy_to_parquet_dest_receiver(
+    let parquet_split_dest = create_copy_to_parquet_split_dest_receiver(
         uri_as_string(&uri).as_pg_cstr(),
+        &file_size_bytes,
         &row_group_size,
         &row_group_size_bytes,
         &compression,
         &compression_level.unwrap_or(INVALID_COMPRESSION_LEVEL),
     );
 
-    let parquet_dest = unsafe { PgBox::from_pg(parquet_dest) };
+    let parquet_split_dest = unsafe { PgBox::from_pg(parquet_split_dest) };
 
     PgTryBuilder::new(|| {
-        execute_copy_to_with_dest_receiver(p_stmt, query_string, params, query_env, &parquet_dest)
+        execute_copy_to_with_dest_receiver(
+            p_stmt,
+            query_string,
+            params,
+            query_env,
+            &parquet_split_dest,
+        )
     })
     .catch_others(|cause| {
-        // make sure to cleanup parquet dest receiver
-        if let Some(shutdown_callback) = parquet_dest.rShutdown {
+        // make sure to cleanup parquet split dest receiver
+        if let Some(shutdown_callback) = parquet_split_dest.rShutdown {
             unsafe {
-                shutdown_callback(parquet_dest.as_ptr());
+                shutdown_callback(parquet_split_dest.as_ptr());
             }
         }
+
         cause.rethrow()
     })
     .execute()

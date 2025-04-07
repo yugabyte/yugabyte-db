@@ -1217,8 +1217,6 @@ mod tests {
             results
         });
 
-        Spi::run("TRUNCATE dog_owners;").unwrap();
-
         let copy_to_query = format!(
             "COPY (SELECT owner FROM dog_owners) TO '{}' WITH (format parquet);",
             LOCAL_TEST_FILE_PATH

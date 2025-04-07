@@ -18,7 +18,7 @@ mod type_compat;
 #[allow(unused_imports)]
 pub use crate::arrow_parquet::compression::PgParquetCompression;
 #[allow(unused_imports)]
-pub use crate::parquet_copy_hook::copy_to_dest_receiver::create_copy_to_parquet_dest_receiver;
+pub use crate::parquet_copy_hook::copy_to_split_dest_receiver::create_copy_to_parquet_split_dest_receiver;
 
 pgrx::pg_module_magic!();
 

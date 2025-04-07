@@ -1,6 +1,6 @@
 #[pgrx::pg_schema]
 mod tests {
-    use std::collections::HashMap;
+    use std::{cmp::Ordering, collections::HashMap, path::Path};
 
     use pgrx::{pg_test, Spi};
 
@@ -280,6 +280,24 @@ mod tests {
     }
 
     #[pg_test]
+    #[should_panic(expected = "Minimum allowed size is 1MB. Got 102400 bytes.")]
+    fn test_invalid_file_size_bytes() {
+        let parent_folder = Path::new(LOCAL_TEST_FILE_PATH);
+        std::fs::remove_dir_all(parent_folder).ok();
+        std::fs::remove_file(parent_folder).ok();
+
+        let mut copy_options = HashMap::new();
+        copy_options.insert(
+            "file_size_bytes".to_string(),
+            CopyOptionValue::StringOption("100KB".into()),
+        );
+
+        let test_table = TestTable::<i32>::new("int4".into()).with_copy_to_options(copy_options);
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
     fn test_large_arrow_array_limit() {
         // disable row group size bytes limit
         let mut copy_options = HashMap::new();
@@ -312,7 +330,7 @@ mod tests {
             results
         });
 
-        assert_eq!(result_metadata, vec![2]);
+        assert_eq!(result_metadata, vec![1]);
     }
 
     #[pg_test]
@@ -362,7 +380,7 @@ mod tests {
 
         let id_bytes = 4;
         let name_bytes = 1;
-        let total_rows_size_bytes = (id_bytes + name_bytes) * 1_000_000;
+        let total_rows_size_bytes = (id_bytes + name_bytes) * 1024 * 1024;
 
         let row_group_size_bytes = total_rows_size_bytes / 10;
 
@@ -390,7 +408,103 @@ mod tests {
             results
         });
 
-        assert_eq!(result_metadata, vec![10]);
+        assert_eq!(result_metadata, vec![12]);
+    }
+
+    #[pg_test]
+    fn test_file_size_bytes() {
+        let uris = [
+            // with ".parquet" extension
+            LOCAL_TEST_FILE_PATH.to_string(),
+            // with ".parquet.gz" extension
+            format!("{LOCAL_TEST_FILE_PATH}.gz"),
+            // without extension
+            LOCAL_TEST_FILE_PATH
+                .strip_suffix(".parquet")
+                .unwrap()
+                .to_string(),
+        ];
+
+        let expected_file_counts = [5_usize, 3, 5];
+
+        for (uri, expected_file_count) in uris.into_iter().zip(expected_file_counts) {
+            // cleanup
+
+            // drop tables
+            Spi::run("drop table if exists test_expected, test_result;").unwrap();
+
+            let parent_folder = Path::new(&uri);
+
+            // remove if there is a directory
+            std::fs::remove_dir(parent_folder).ok();
+
+            // remove if there is a file
+            std::fs::remove_file(parent_folder).ok();
+
+            let setup_commands = format!(
+                "create table test_expected(a text);\n\
+                 create table test_result(a text);\n\
+                 insert into test_expected select 'hellooooo' || i from generate_series(1, 1000000) i;\n\
+                 copy test_expected to '{uri}' with (format parquet, file_size_bytes '1MB')");
+            Spi::run(&setup_commands).unwrap();
+
+            // assert file count
+            let mut file_entries = parent_folder
+                .read_dir()
+                .unwrap()
+                .map(|entry_res| entry_res.unwrap())
+                .collect::<Vec<_>>();
+
+            assert_eq!(file_entries.len(), expected_file_count);
+
+            file_entries.sort_by(|a, b| {
+                if a.file_name() <= b.file_name() {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            });
+
+            // assert file paths
+            for (file_idx, file_entry) in file_entries.iter().enumerate() {
+                let expected_path = parent_folder.join(format!("data_{file_idx}.parquet"));
+
+                let expected_path = expected_path.to_str().unwrap();
+
+                assert_eq!(file_entry.path().to_str().unwrap(), expected_path);
+
+                let copy_from_command =
+                    format!("copy test_result from '{expected_path}' with (format parquet)");
+                Spi::run(copy_from_command.as_str()).unwrap();
+            }
+
+            // assert rows
+            let (expected_rows, result_rows) = Spi::connect(|client| {
+                let mut expected_rows = Vec::new();
+                let tup_table = client
+                    .select("select a from test_expected order by 1", None, &[])
+                    .unwrap();
+
+                for row in tup_table {
+                    let a = row["a"].value::<&str>().unwrap().unwrap();
+                    expected_rows.push(a);
+                }
+
+                let mut result_rows = Vec::new();
+                let tup_table = client
+                    .select("select a from test_result order by 1", None, &[])
+                    .unwrap();
+
+                for row in tup_table {
+                    let a = row["a"].value::<&str>().unwrap().unwrap();
+                    result_rows.push(a);
+                }
+
+                (expected_rows, result_rows)
+            });
+
+            assert_eq!(result_rows, expected_rows);
+        }
     }
 
     #[pg_test]

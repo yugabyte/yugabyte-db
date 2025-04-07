@@ -23,13 +23,17 @@ use crate::{
     pgrx_utils::extension_exists,
 };
 
-use super::{hook::ENABLE_PARQUET_COPY_HOOK, pg_compat::strVal};
+use super::{
+    copy_to_split_dest_receiver::INVALID_FILE_SIZE_BYTES, hook::ENABLE_PARQUET_COPY_HOOK,
+    pg_compat::strVal,
+};
 
 pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: ParsedUriInfo) {
     validate_copy_option_names(
         p_stmt,
         &[
             "format",
+            "file_size_bytes",
             "row_group_size",
             "row_group_size_bytes",
             "compression",
@@ -55,6 +59,21 @@ pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: Pa
                 format
             );
         }
+    }
+
+    let file_size_bytes_option = copy_stmt_get_option(p_stmt, "file_size_bytes");
+
+    if !file_size_bytes_option.is_null() {
+        let file_size_bytes = unsafe { defGetString(file_size_bytes_option.as_ptr()) };
+
+        let file_size_bytes = unsafe {
+            CStr::from_ptr(file_size_bytes)
+                .to_str()
+                .expect("file_size_bytes option is not a valid CString")
+        };
+
+        parse_file_size(file_size_bytes)
+            .unwrap_or_else(|e| panic!("file_size_bytes option is not valid: {}", e));
     }
 
     let row_group_size_option = copy_stmt_get_option(p_stmt, "row_group_size");
@@ -180,6 +199,25 @@ pub(crate) fn copy_stmt_uri(p_stmt: &PgBox<PlannedStmt>) -> Result<ParsedUriInfo
     };
 
     ParsedUriInfo::try_from(uri)
+}
+
+pub(crate) fn copy_to_stmt_file_size_bytes(p_stmt: &PgBox<PlannedStmt>) -> i64 {
+    let file_size_bytes_option = copy_stmt_get_option(p_stmt, "file_size_bytes");
+
+    if file_size_bytes_option.is_null() {
+        INVALID_FILE_SIZE_BYTES
+    } else {
+        let file_size_bytes = unsafe { defGetString(file_size_bytes_option.as_ptr()) };
+
+        let file_size_bytes = unsafe {
+            CStr::from_ptr(file_size_bytes)
+                .to_str()
+                .expect("file_size_bytes option is not a valid CString")
+        };
+
+        parse_file_size(file_size_bytes)
+            .unwrap_or_else(|e| panic!("file_size_bytes option is not valid: {}", e)) as i64
+    }
 }
 
 pub(crate) fn copy_to_stmt_row_group_size(p_stmt: &PgBox<PlannedStmt>) -> i64 {
@@ -563,4 +601,56 @@ pub(crate) fn create_filtered_tupledesc_for_relation<'a>(
     }
 
     filtered_tupledesc
+}
+
+/// Parses a size string like "1MB", "512KB", or just "1000000" into a byte count.
+/// Enforces a minimum of 1MB.
+fn parse_file_size(size_str: &str) -> Result<u64, String> {
+    // Normalize casing and trim whitespace
+    let size_str = size_str.trim().to_uppercase();
+
+    // Find the first non-digit character
+    let mut idx = 0;
+    for c in size_str.chars() {
+        if !c.is_ascii_digit() {
+            break;
+        }
+        idx += 1;
+    }
+
+    // If there's no numeric portion, return an error
+    if idx == 0 {
+        return Err(format!("No numeric value found in '{}'", size_str));
+    }
+
+    // Split into numeric part and (optional) unit
+    let num_part = &size_str[..idx];
+    let unit_part = size_str[idx..].trim();
+
+    // Convert the numeric portion
+    let mut bytes = match num_part.parse::<u64>() {
+        Ok(n) => n,
+        Err(_) => return Err(format!("Invalid numeric portion in '{}'", size_str)),
+    };
+
+    // Interpret the suffix, if present
+    match unit_part {
+        "" => { /* no suffix: treat as bytes */ }
+        "KB" => bytes *= 1_024,
+        "MB" => bytes *= 1_024 * 1_024,
+        "GB" => bytes *= 1_024 * 1_024 * 1_024,
+        _ => {
+            return Err(format!(
+                "Unrecognized unit '{}'. Allowed units are KB, MB or GB.",
+                unit_part
+            ))
+        }
+    }
+
+    // Enforce a minimum of 1MB
+    if bytes < 1_024 * 1_024 {
+        return Err(format!("Minimum allowed size is 1MB. Got {} bytes.", bytes));
+    }
+
+    Ok(bytes)
 }

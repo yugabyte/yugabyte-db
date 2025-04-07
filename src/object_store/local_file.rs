@@ -13,6 +13,13 @@ pub(crate) fn create_local_file_object_store(
     let path = uri_as_string(uri);
 
     if !copy_from {
+        // create parent folder if it doesn't exist
+        let parent = std::path::Path::new(&path)
+            .parent()
+            .unwrap_or_else(|| panic!("invalid parent for path: {}", path));
+
+        std::fs::create_dir_all(parent).unwrap_or_else(|e| panic!("{}", e));
+
         // create or overwrite the local file
         std::fs::OpenOptions::new()
             .write(true)
