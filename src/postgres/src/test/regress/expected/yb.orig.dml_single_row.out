@@ -2804,6 +2804,358 @@ EXPLAIN(costs off) UPDATE pk SET a = 1002 WHERE a = 1000;
 (4 rows)
 
 UPDATE pk SET a = 1002 WHERE a = 1000;
+-- Test single-shard transactions in a partition table.
+-- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
+-- of single-shard transactions.
+CREATE TABLE p_test (k INT, v INT, PRIMARY KEY (k)) PARTITION BY RANGE (k);
+CREATE TABLE p_test_1 PARTITION OF p_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE p_test_2 PARTITION OF p_test FOR VALUES FROM (10) TO (20);
+CREATE TABLE p_test_3 PARTITION OF p_test FOR VALUES FROM (20) TO (30);
+-- Create an index on one of the partitions to ensure that it is not applicable
+-- for single-shard transactions.
+CREATE INDEX NONCONCURRENTLY ON p_test_3 (v);
+-- Inserting a single row into a single partition (without indexes) should be
+-- eligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (1, 1);
+                  QUERY PLAN                   
+-----------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
+         Storage Table Write Requests: 1
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 1
+ Storage Flush Requests: 0
+(7 rows)
+
+-- Inserting multiple rows should not be eligible for single-shard, even if all
+-- inserts may end up in the same partition.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (11, 11), (12, 12);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+         Storage Table Write Requests: 2
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(7 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test_1 VALUES (2, 2), (3, 3);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Insert on p_test_1 (actual rows=0 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+         Storage Table Write Requests: 2
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(7 rows)
+
+-- Inserts spanning multiple partitions should be ineligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (4, 4), (13, 13);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+         Storage Table Write Requests: 2
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(7 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (14, 14), (5, 5);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+         Storage Table Write Requests: 2
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(7 rows)
+
+-- Inserts involving p_test_3 should be ineligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (21, 21);
+                  QUERY PLAN                   
+-----------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 1
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(8 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (15, 15), (22, 22);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 1
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(8 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (23, 23), (16, 16);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 1
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(8 rows)
+
+-- Plans having multiple modify-table operations should be ineligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test VALUES (6, 6) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 1, cte.k + 1 FROM cte);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   CTE cte
+     ->  Insert on p_test p_test_1 (actual rows=1 loops=1)
+           Storage Table Write Requests: 1
+           ->  Result *RESULT* (actual rows=1 loops=1)
+                 Storage Table Write Requests: 1
+   ->  CTE Scan on cte (actual rows=1 loops=1)
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(11 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test_2 VALUES (17, 17) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 1, cte.k + 1 FROM cte);
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   CTE cte
+     ->  Insert on p_test_2 (actual rows=1 loops=1)
+           Storage Table Write Requests: 1
+           ->  Result *RESULT* (actual rows=1 loops=1)
+                 Storage Table Write Requests: 1
+   ->  CTE Scan on cte (actual rows=1 loops=1)
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(11 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test VALUES (9, 9) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 10, cte.k + 10 FROM cte);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   CTE cte
+     ->  Insert on p_test p_test_1 (actual rows=1 loops=1)
+           Storage Table Write Requests: 1
+           ->  Result *RESULT* (actual rows=1 loops=1)
+                 Storage Table Write Requests: 1
+   ->  CTE Scan on cte (actual rows=1 loops=1)
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(11 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test VALUES (8, 8) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 20, cte.k + 20 FROM cte);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Insert on p_test (actual rows=0 loops=1)
+   CTE cte
+     ->  Insert on p_test p_test_1 (actual rows=1 loops=1)
+           Storage Table Write Requests: 1
+           ->  Result *RESULT* (actual rows=1 loops=1)
+                 Storage Table Write Requests: 1
+                 Storage Index Write Requests: 1
+   ->  CTE Scan on cte (actual rows=1 loops=1)
+ Storage Read Requests: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(12 rows)
+
+SELECT * FROM p_test ORDER BY k;
+ k  | v  
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 11 | 11
+ 12 | 12
+ 13 | 13
+ 14 | 14
+ 15 | 15
+ 16 | 16
+ 17 | 17
+ 18 | 18
+ 19 | 19
+ 21 | 21
+ 22 | 22
+ 23 | 23
+ 28 | 28
+(22 rows)
+
+DELETE FROM p_test WHERE k % 10 >= 5;
+-- Cross partition updates should never be eligible for single-shard.
+-- Row movement between partitions that have no indexes or triggers.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k = 1;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Update on p_test (actual rows=0 loops=1)
+   Update on p_test_1
+   ->  Index Scan using p_test_1_pkey on p_test_1 (actual rows=1 loops=1)
+         Index Cond: (k = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(11 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k IN (2, 3);
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Update on p_test (actual rows=0 loops=1)
+   Update on p_test_1
+   ->  Index Scan using p_test_1_pkey on p_test_1 (actual rows=2 loops=1)
+         Index Cond: (k = ANY ('{2,3}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 2
+         Storage Table Write Requests: 4
+ Storage Read Requests: 1
+ Storage Rows Scanned: 2
+ Storage Write Requests: 4
+ Storage Flush Requests: 1
+(11 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 15) % 20 WHERE k IN (4, 14);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Update on p_test (actual rows=0 loops=1)
+   Update on p_test_1
+   Update on p_test_2
+   ->  Append (actual rows=2 loops=1)
+         ->  Index Scan using p_test_1_pkey on p_test_1 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{4,14}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+         ->  Index Scan using p_test_2_pkey on p_test_2 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{4,14}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+               Storage Flush Requests: 1
+ Storage Read Requests: 2
+ Storage Rows Scanned: 2
+ Storage Write Requests: 4
+ Storage Flush Requests: 2
+(19 rows)
+
+-- Row movement between partitions, one of which has indexes or triggers.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k IN (13, 23);
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Update on p_test (actual rows=0 loops=1)
+   Update on p_test_2 p_test_1
+   Update on p_test_3 p_test_2
+   ->  Append (actual rows=2 loops=1)
+         ->  Index Scan using p_test_2_pkey on p_test_2 p_test_1 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{13,23}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+               Storage Index Write Requests: 1
+         ->  Index Scan using p_test_3_pkey on p_test_3 p_test_2 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{13,23}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+               Storage Index Write Requests: 1
+               Storage Flush Requests: 1
+ Storage Read Requests: 2
+ Storage Rows Scanned: 2
+ Storage Write Requests: 6
+ Storage Flush Requests: 2
+(21 rows)
+
+INSERT INTO p_test VALUES (1, 1);
+DELETE FROM p_test WHERE k % 10 = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k IN (21, 1, 11);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Update on p_test (actual rows=0 loops=1)
+   Update on p_test_1
+   Update on p_test_2
+   Update on p_test_3
+   ->  Append (actual rows=3 loops=1)
+         ->  Index Scan using p_test_1_pkey on p_test_1 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{21,1,11}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+         ->  Index Scan using p_test_2_pkey on p_test_2 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{21,1,11}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+               Storage Index Write Requests: 1
+               Storage Flush Requests: 1
+         ->  Index Scan using p_test_3_pkey on p_test_3 (actual rows=1 loops=1)
+               Index Cond: (k = ANY ('{21,1,11}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+               Storage Table Write Requests: 2
+               Storage Index Write Requests: 1
+               Storage Flush Requests: 1
+ Storage Read Requests: 3
+ Storage Rows Scanned: 3
+ Storage Write Requests: 8
+ Storage Flush Requests: 3
+(28 rows)
+
+SELECT * FROM p_test ORDER BY k;
+ k  | v  
+----+----
+  2 | 21
+  4 | 23
+  9 | 14
+ 12 |  1
+ 16 |  1
+ 17 |  2
+ 18 |  3
+ 19 |  4
+ 22 | 11
+ 24 | 13
+(10 rows)
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -2831,6 +3183,7 @@ DROP TABLE array_t2;
 DROP TABLE array_t3;
 DROP TABLE array_t4;
 DROP TABLE json_t1;
+DROP TABLE p_test;
 DROP TABLE pk;
 DROP TYPE rt;
 DROP TYPE two_int;
