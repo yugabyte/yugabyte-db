@@ -22,8 +22,8 @@ use super::{
     copy_to::execute_copy_to_with_dest_receiver,
     copy_to_split_dest_receiver::create_copy_to_parquet_split_dest_receiver,
     copy_utils::{
-        copy_to_stmt_compression, copy_to_stmt_file_size_bytes, validate_copy_from_options,
-        validate_copy_to_options,
+        copy_to_stmt_compression, copy_to_stmt_field_ids, copy_to_stmt_file_size_bytes,
+        validate_copy_from_options, validate_copy_to_options,
     },
 };
 
@@ -60,6 +60,7 @@ fn process_copy_to_parquet(
     validate_copy_to_options(p_stmt, uri_info.clone());
 
     let file_size_bytes = copy_to_stmt_file_size_bytes(p_stmt);
+    let field_ids = copy_to_stmt_field_ids(p_stmt);
     let row_group_size = copy_to_stmt_row_group_size(p_stmt);
     let row_group_size_bytes = copy_to_stmt_row_group_size_bytes(p_stmt);
     let compression = copy_to_stmt_compression(p_stmt, uri_info.clone());
@@ -68,6 +69,7 @@ fn process_copy_to_parquet(
     let parquet_split_dest = create_copy_to_parquet_split_dest_receiver(
         uri_as_string(&uri).as_pg_cstr(),
         &file_size_bytes,
+        field_ids,
         &row_group_size,
         &row_group_size_bytes,
         &compression,

@@ -1,4 +1,7 @@
-use std::ffi::{c_char, CStr, CString};
+use std::{
+    ffi::{c_char, CStr, CString},
+    str::FromStr,
+};
 
 use pg_sys::{
     get_typlenbyval, slot_getallattrs, toast_raw_datum_size, AllocSetContextCreateExtended,
@@ -10,6 +13,7 @@ use pg_sys::{
 use pgrx::{prelude::*, FromDatum, PgList, PgMemoryContexts, PgTupleDesc};
 
 use crate::arrow_parquet::{
+    field_ids::FieldIds,
     parquet_writer::ParquetWriterContext,
     uri_utils::{ParsedUriInfo, RECORD_BATCH_SIZE},
 };
@@ -179,9 +183,19 @@ pub(crate) extern "C" fn copy_startup(
         panic!("{}", e.to_string());
     });
 
+    let field_ids = unsafe { CStr::from_ptr(parquet_dest.copy_options.field_ids) }
+        .to_str()
+        .expect("uri is not a valid C string");
+    let field_ids = FieldIds::from_str(field_ids).unwrap_or_else(|e| {
+        panic!(
+            "failed to parse field_ids from string '{}': {}",
+            field_ids, e
+        )
+    });
+
     // leak the parquet writer context since it will be used during the COPY operation
     let parquet_writer_context =
-        ParquetWriterContext::new(uri_info, parquet_dest.copy_options, &tupledesc);
+        ParquetWriterContext::new(uri_info, parquet_dest.copy_options, field_ids, &tupledesc);
     parquet_dest.parquet_writer_context = Box::into_raw(Box::new(parquet_writer_context));
 }
 

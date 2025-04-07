@@ -17,6 +17,7 @@ use pgrx::{
 use crate::{
     arrow_parquet::{
         arrow_to_pg::{context::collect_arrow_to_pg_attribute_contexts, to_pg_datum},
+        field_ids::FieldIds,
         schema_parser::{
             error_if_copy_from_match_by_position_with_generated_columns,
             parquet_schema_string_from_attributes,
@@ -65,10 +66,10 @@ impl ParquetReaderContext {
 
         pgrx::debug2!(
             "schema for tuples: {}",
-            parquet_schema_string_from_attributes(&attributes)
+            parquet_schema_string_from_attributes(&attributes, FieldIds::None)
         );
 
-        let tupledesc_schema = parse_arrow_schema_from_attributes(&attributes);
+        let tupledesc_schema = parse_arrow_schema_from_attributes(&attributes, FieldIds::None);
 
         let tupledesc_schema = Arc::new(tupledesc_schema);
 

@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::marker::PhantomData;
+use std::path::Path;
 use std::{collections::HashMap, fmt::Debug};
 
 use crate::type_compat::map::Map;
@@ -40,6 +41,30 @@ pub(crate) fn comma_separated_copy_options(options: &HashMap<String, CopyOptionV
 }
 
 pub(crate) const LOCAL_TEST_FILE_PATH: &str = "/tmp/pg_parquet_test.parquet";
+
+pub(crate) struct FileCleanup {
+    path: String,
+}
+
+impl FileCleanup {
+    pub(crate) fn new(path: &str) -> Self {
+        let path = Path::new(path);
+        std::fs::remove_dir_all(path).ok();
+        std::fs::remove_file(path).ok();
+
+        Self {
+            path: path.to_str().unwrap().to_string(),
+        }
+    }
+}
+
+impl Drop for FileCleanup {
+    fn drop(&mut self) {
+        let path = Path::new(&self.path);
+        std::fs::remove_dir_all(path).ok();
+        std::fs::remove_file(path).ok();
+    }
+}
 
 pub(crate) struct TestTable<T: IntoDatum + FromDatum> {
     uri: String,
@@ -347,4 +372,11 @@ pub(crate) fn write_record_batch_to_parquet(schema: SchemaRef, record_batch: Rec
 
     writer.write(&record_batch).unwrap();
     writer.close().unwrap();
+}
+
+pub(crate) fn create_crunchy_map_type(key_type: &str, val_type: &str) -> String {
+    assert!(extension_exists("crunchy_map"));
+
+    let command = format!("SELECT crunchy_map.create('{key_type}','{val_type}')::text;",);
+    Spi::get_one(&command).unwrap().unwrap()
 }

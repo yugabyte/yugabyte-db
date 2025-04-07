@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Deref,
+    sync::Arc,
+};
 
 use arrow::datatypes::{Field, Fields, Schema};
 use arrow_cast::can_cast_types;
@@ -27,12 +31,13 @@ use crate::{
     },
 };
 
-use super::match_by::MatchBy;
+use super::{field_ids::FieldIds, match_by::MatchBy};
 
 pub(crate) fn parquet_schema_string_from_attributes(
     attributes: &[FormData_pg_attribute],
+    field_ids: FieldIds,
 ) -> String {
-    let arrow_schema = parse_arrow_schema_from_attributes(attributes);
+    let arrow_schema = parse_arrow_schema_from_attributes(attributes, field_ids);
 
     let parquet_schema = ArrowSchemaConverter::new()
         .convert(&arrow_schema)
@@ -43,8 +48,100 @@ pub(crate) fn parquet_schema_string_from_attributes(
     String::from_utf8(buf).unwrap_or_else(|e| panic!("failed to convert schema to string: {}", e))
 }
 
-pub(crate) fn parse_arrow_schema_from_attributes(attributes: &[FormData_pg_attribute]) -> Schema {
-    let mut field_id = 0;
+// FieldIdMappingContext is used to keep track of the current field path and field id
+// while parsing the arrow schema from Postgres attributes.
+//
+// It is used to generate field ids for the fields in the arrow schema.
+// current_field_path is used to get the field id from explicit field id mapping.
+// current_field_id is used to generate field ids for fields when field ids are auto-generated.
+// If the field ids are not requested, no field ids are generated.
+struct FieldIdMappingContext {
+    field_ids: FieldIds,
+    current_field_id: i32,
+    current_field_path: Vec<String>,
+    assigned_field_ids: HashSet<i32>,
+}
+
+impl FieldIdMappingContext {
+    fn new(field_ids: FieldIds) -> Self {
+        Self {
+            field_ids,
+            current_field_id: 0,
+            current_field_path: vec![],
+            assigned_field_ids: HashSet::new(),
+        }
+    }
+
+    fn add_field_name_to_path(&mut self, field_name: &str) {
+        self.current_field_path.push(field_name.to_string());
+    }
+
+    fn remove_field_name_from_path(&mut self) {
+        self.current_field_path.pop();
+    }
+
+    fn next_field_id(&mut self) -> Option<i32> {
+        let field_id = match &self.field_ids {
+            FieldIds::None => None,
+            FieldIds::Explicit(field_id_mapping) => {
+                field_id_mapping.field_id(&self.current_field_path)
+            }
+            FieldIds::Auto => {
+                let field_id = self.current_field_id;
+                self.current_field_id += 1;
+                Some(field_id)
+            }
+        };
+
+        if let Some(field_id) = field_id {
+            // check for duplicate field id
+            if self.assigned_field_ids.contains(&field_id) {
+                panic!("duplicate field id {field_id} in \"field_ids\"");
+            }
+
+            self.assigned_field_ids.insert(field_id);
+        }
+
+        field_id
+    }
+
+    fn next_root_field_id(&mut self) -> Option<i32> {
+        self.add_field_name_to_path("__root_field_id");
+
+        let root_field_id = self.next_field_id();
+
+        self.remove_field_name_from_path();
+
+        root_field_id
+    }
+
+    fn field_with_id(&mut self, field: Field, field_id: Option<i32>) -> FieldRef {
+        if let Some(field_id) = field_id {
+            let field_id_metadata = HashMap::<String, String>::from_iter(vec![(
+                PARQUET_FIELD_ID_META_KEY.into(),
+                field_id.to_string(),
+            )]);
+
+            // append field id metadata to existing metadata of the field
+            let metadata = field
+                .metadata()
+                .iter()
+                .chain(field_id_metadata.iter())
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            field.with_metadata(metadata).into()
+        } else {
+            field.into()
+        }
+    }
+}
+
+pub(crate) fn parse_arrow_schema_from_attributes(
+    attributes: &[FormData_pg_attribute],
+    field_ids: FieldIds,
+) -> Schema {
+    let mut field_id_mapping_context = FieldIdMappingContext::new(field_ids);
 
     let mut struct_attribute_fields = vec![];
 
@@ -55,14 +152,18 @@ pub(crate) fn parse_arrow_schema_from_attributes(attributes: &[FormData_pg_attri
 
         let field = if is_composite_type(attribute_typoid) {
             let attribute_tupledesc = tuple_desc(attribute_typoid, attribute_typmod);
-            parse_struct_schema(attribute_tupledesc, attribute_name, &mut field_id)
+            parse_struct_schema(
+                attribute_tupledesc,
+                attribute_name,
+                &mut field_id_mapping_context,
+            )
         } else if is_map_type(attribute_typoid) {
             let (entries_typoid, entries_typmod) = domain_array_base_elem_type(attribute_typoid);
             parse_map_schema(
                 entries_typoid,
                 entries_typmod,
                 attribute_name,
-                &mut field_id,
+                &mut field_id_mapping_context,
             )
         } else if is_array_type(attribute_typoid) {
             let attribute_element_typoid = array_element_typoid(attribute_typoid);
@@ -70,14 +171,14 @@ pub(crate) fn parse_arrow_schema_from_attributes(attributes: &[FormData_pg_attri
                 attribute_element_typoid,
                 attribute_typmod,
                 attribute_name,
-                &mut field_id,
+                &mut field_id_mapping_context,
             )
         } else {
             parse_primitive_schema(
                 attribute_typoid,
                 attribute_typmod,
                 attribute_name,
-                &mut field_id,
+                &mut field_id_mapping_context,
             )
         };
 
@@ -87,15 +188,16 @@ pub(crate) fn parse_arrow_schema_from_attributes(attributes: &[FormData_pg_attri
     Schema::new(Fields::from(struct_attribute_fields))
 }
 
-fn parse_struct_schema(tupledesc: PgTupleDesc, elem_name: &str, field_id: &mut i32) -> Arc<Field> {
+fn parse_struct_schema(
+    tupledesc: PgTupleDesc,
+    struct_name: &str,
+    field_id_mapping_context: &mut FieldIdMappingContext,
+) -> Arc<Field> {
     check_for_interrupts!();
 
-    let metadata = HashMap::from_iter(vec![(
-        PARQUET_FIELD_ID_META_KEY.into(),
-        field_id.to_string(),
-    )]);
+    field_id_mapping_context.add_field_name_to_path(struct_name);
 
-    *field_id += 1;
+    let struct_field_id = field_id_mapping_context.next_root_field_id();
 
     let mut child_fields: Vec<Arc<Field>> = vec![];
 
@@ -112,121 +214,151 @@ fn parse_struct_schema(tupledesc: PgTupleDesc, elem_name: &str, field_id: &mut i
 
         let child_field = if is_composite_type(attribute_oid) {
             let attribute_tupledesc = tuple_desc(attribute_oid, attribute_typmod);
-            parse_struct_schema(attribute_tupledesc, attribute_name, field_id)
+            parse_struct_schema(
+                attribute_tupledesc,
+                attribute_name,
+                field_id_mapping_context,
+            )
         } else if is_map_type(attribute_oid) {
             let (entries_typoid, entries_typmod) = domain_array_base_elem_type(attribute_oid);
-            parse_map_schema(entries_typoid, entries_typmod, attribute_name, field_id)
+            parse_map_schema(
+                entries_typoid,
+                entries_typmod,
+                attribute_name,
+                field_id_mapping_context,
+            )
         } else if is_array_type(attribute_oid) {
             let attribute_element_typoid = array_element_typoid(attribute_oid);
             parse_list_schema(
                 attribute_element_typoid,
                 attribute_typmod,
                 attribute_name,
-                field_id,
+                field_id_mapping_context,
             )
         } else {
-            parse_primitive_schema(attribute_oid, attribute_typmod, attribute_name, field_id)
+            parse_primitive_schema(
+                attribute_oid,
+                attribute_typmod,
+                attribute_name,
+                field_id_mapping_context,
+            )
         };
 
         child_fields.push(child_field);
     }
 
+    field_id_mapping_context.remove_field_name_from_path();
+
     let nullable = true;
 
-    Field::new(
-        elem_name,
+    let struct_field = Field::new(
+        struct_name,
         arrow::datatypes::DataType::Struct(Fields::from(child_fields)),
         nullable,
-    )
-    .with_metadata(metadata)
-    .into()
+    );
+
+    field_id_mapping_context.field_with_id(struct_field, struct_field_id)
 }
 
-fn parse_list_schema(typoid: Oid, typmod: i32, array_name: &str, field_id: &mut i32) -> Arc<Field> {
+fn parse_list_schema(
+    typoid: Oid,
+    typmod: i32,
+    array_name: &str,
+    field_id_mapping_context: &mut FieldIdMappingContext,
+) -> Arc<Field> {
     check_for_interrupts!();
 
-    let list_metadata = HashMap::from_iter(vec![(
-        PARQUET_FIELD_ID_META_KEY.into(),
-        field_id.to_string(),
-    )]);
+    field_id_mapping_context.add_field_name_to_path(array_name);
 
-    *field_id += 1;
+    let list_field_id = field_id_mapping_context.next_root_field_id();
 
     let element_name = "element";
 
     let elem_field = if is_composite_type(typoid) {
         let tupledesc = tuple_desc(typoid, typmod);
-        parse_struct_schema(tupledesc, element_name, field_id)
+        parse_struct_schema(tupledesc, element_name, field_id_mapping_context)
     } else if is_map_type(typoid) {
         let (entries_typoid, entries_typmod) = domain_array_base_elem_type(typoid);
-        parse_map_schema(entries_typoid, entries_typmod, element_name, field_id)
+        parse_map_schema(
+            entries_typoid,
+            entries_typmod,
+            element_name,
+            field_id_mapping_context,
+        )
     } else {
-        parse_primitive_schema(typoid, typmod, element_name, field_id)
+        parse_primitive_schema(typoid, typmod, element_name, field_id_mapping_context)
     };
+
+    field_id_mapping_context.remove_field_name_from_path();
 
     let nullable = true;
 
-    Field::new(
+    let list_field = Field::new(
         array_name,
         arrow::datatypes::DataType::List(elem_field),
         nullable,
-    )
-    .with_metadata(list_metadata)
-    .into()
+    );
+
+    field_id_mapping_context.field_with_id(list_field, list_field_id)
 }
 
-fn parse_map_schema(typoid: Oid, typmod: i32, map_name: &str, field_id: &mut i32) -> Arc<Field> {
-    let map_metadata = HashMap::from_iter(vec![(
-        PARQUET_FIELD_ID_META_KEY.into(),
-        field_id.to_string(),
-    )]);
-
-    *field_id += 1;
-
+fn parse_map_schema(
+    typoid: Oid,
+    typmod: i32,
+    map_name: &str,
+    field_id_mapping_context: &mut FieldIdMappingContext,
+) -> Arc<Field> {
     let tupledesc = tuple_desc(typoid, typmod);
 
-    let entries_field = parse_struct_schema(tupledesc, map_name, field_id);
+    let entries_field = parse_struct_schema(tupledesc, map_name, field_id_mapping_context);
     let entries_field = adjust_map_entries_field(entries_field);
+
+    // map field id is the same as entries field id
+    let map_field_id = entries_field
+        .deref()
+        .metadata()
+        .get(PARQUET_FIELD_ID_META_KEY)
+        .map(|v| {
+            v.parse::<i32>()
+                .expect("expected field id to be a valid integer")
+        });
 
     let keys_sorted = false;
 
     let nullable = true;
 
-    Field::new(
+    let map_field = Field::new(
         map_name,
         arrow::datatypes::DataType::Map(entries_field, keys_sorted),
         nullable,
-    )
-    .with_metadata(map_metadata)
-    .into()
+    );
+
+    field_id_mapping_context.field_with_id(map_field, map_field_id)
 }
 
 fn parse_primitive_schema(
     typoid: Oid,
     typmod: i32,
-    elem_name: &str,
-    field_id: &mut i32,
+    scalar_name: &str,
+    field_id_mapping_context: &mut FieldIdMappingContext,
 ) -> Arc<Field> {
     check_for_interrupts!();
 
-    let primitive_metadata = HashMap::<String, String>::from_iter(vec![(
-        PARQUET_FIELD_ID_META_KEY.into(),
-        field_id.to_string(),
-    )]);
+    field_id_mapping_context.add_field_name_to_path(scalar_name);
 
-    *field_id += 1;
+    let primitive_field_id = field_id_mapping_context.next_field_id();
 
     let nullable = true;
 
     let field = match typoid {
-        FLOAT4OID => Field::new(elem_name, arrow::datatypes::DataType::Float32, nullable),
-        FLOAT8OID => Field::new(elem_name, arrow::datatypes::DataType::Float64, nullable),
-        BOOLOID => Field::new(elem_name, arrow::datatypes::DataType::Boolean, nullable),
-        INT2OID => Field::new(elem_name, arrow::datatypes::DataType::Int16, nullable),
-        INT4OID => Field::new(elem_name, arrow::datatypes::DataType::Int32, nullable),
-        INT8OID => Field::new(elem_name, arrow::datatypes::DataType::Int64, nullable),
+        FLOAT4OID => Field::new(scalar_name, arrow::datatypes::DataType::Float32, nullable),
+        FLOAT8OID => Field::new(scalar_name, arrow::datatypes::DataType::Float64, nullable),
+        BOOLOID => Field::new(scalar_name, arrow::datatypes::DataType::Boolean, nullable),
+        INT2OID => Field::new(scalar_name, arrow::datatypes::DataType::Int16, nullable),
+        INT4OID => Field::new(scalar_name, arrow::datatypes::DataType::Int32, nullable),
+        INT8OID => Field::new(scalar_name, arrow::datatypes::DataType::Int64, nullable),
         UUIDOID => Field::new(
-            elem_name,
+            scalar_name,
             arrow::datatypes::DataType::FixedSizeBinary(16),
             nullable,
         )
@@ -235,23 +367,23 @@ fn parse_primitive_schema(
             let (precision, scale) = extract_precision_and_scale_from_numeric_typmod(typmod);
 
             if should_write_numeric_as_text(precision) {
-                Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable)
+                Field::new(scalar_name, arrow::datatypes::DataType::Utf8, nullable)
             } else {
                 Field::new(
-                    elem_name,
+                    scalar_name,
                     arrow::datatypes::DataType::Decimal128(precision as _, scale as _),
                     nullable,
                 )
             }
         }
-        DATEOID => Field::new(elem_name, arrow::datatypes::DataType::Date32, nullable),
+        DATEOID => Field::new(scalar_name, arrow::datatypes::DataType::Date32, nullable),
         TIMESTAMPOID => Field::new(
-            elem_name,
+            scalar_name,
             arrow::datatypes::DataType::Timestamp(arrow::datatypes::TimeUnit::Microsecond, None),
             nullable,
         ),
         TIMESTAMPTZOID => Field::new(
-            elem_name,
+            scalar_name,
             arrow::datatypes::DataType::Timestamp(
                 arrow::datatypes::TimeUnit::Microsecond,
                 Some("+00:00".into()),
@@ -259,12 +391,12 @@ fn parse_primitive_schema(
             nullable,
         ),
         TIMEOID => Field::new(
-            elem_name,
+            scalar_name,
             arrow::datatypes::DataType::Time64(arrow::datatypes::TimeUnit::Microsecond),
             nullable,
         ),
         TIMETZOID => Field::new(
-            elem_name,
+            scalar_name,
             arrow::datatypes::DataType::Time64(arrow::datatypes::TimeUnit::Microsecond),
             nullable,
         )
@@ -272,30 +404,24 @@ fn parse_primitive_schema(
             "adjusted_to_utc".into(),
             "true".into(),
         )])),
-        CHAROID => Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable),
-        TEXTOID => Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable),
-        JSONOID | JSONBOID => Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable)
+        CHAROID => Field::new(scalar_name, arrow::datatypes::DataType::Utf8, nullable),
+        TEXTOID => Field::new(scalar_name, arrow::datatypes::DataType::Utf8, nullable),
+        JSONOID | JSONBOID => Field::new(scalar_name, arrow::datatypes::DataType::Utf8, nullable)
             .with_extension_type(arrow_schema::extension::Json::default()),
-        BYTEAOID => Field::new(elem_name, arrow::datatypes::DataType::Binary, nullable),
-        OIDOID => Field::new(elem_name, arrow::datatypes::DataType::UInt32, nullable),
+        BYTEAOID => Field::new(scalar_name, arrow::datatypes::DataType::Binary, nullable),
+        OIDOID => Field::new(scalar_name, arrow::datatypes::DataType::UInt32, nullable),
         _ => {
             if is_postgis_geometry_type(typoid) {
-                Field::new(elem_name, arrow::datatypes::DataType::Binary, nullable)
+                Field::new(scalar_name, arrow::datatypes::DataType::Binary, nullable)
             } else {
-                Field::new(elem_name, arrow::datatypes::DataType::Utf8, nullable)
+                Field::new(scalar_name, arrow::datatypes::DataType::Utf8, nullable)
             }
         }
     };
 
-    // Combine the field metadata with the field metadata from the schema visitor
-    let primitive_metadata = field
-        .metadata()
-        .iter()
-        .chain(primitive_metadata.iter())
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    field_id_mapping_context.remove_field_name_from_path();
 
-    field.with_metadata(primitive_metadata).into()
+    field_id_mapping_context.field_with_id(field, primitive_field_id)
 }
 
 fn adjust_map_entries_field(field: FieldRef) -> FieldRef {

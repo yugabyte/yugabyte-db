@@ -12,6 +12,7 @@ use pgrx::{heap_tuple::PgHeapTuple, AllocatedByRust, PgTupleDesc};
 use crate::{
     arrow_parquet::{
         compression::PgParquetCompressionWithLevel,
+        field_ids::validate_field_ids,
         pg_to_arrow::context::collect_pg_to_arrow_attribute_contexts,
         schema_parser::{
             parquet_schema_string_from_attributes, parse_arrow_schema_from_attributes,
@@ -28,6 +29,7 @@ use crate::{
 };
 
 use super::{
+    field_ids::FieldIds,
     pg_to_arrow::{context::PgToArrowAttributeContext, to_arrow_array},
     uri_utils::ParsedUriInfo,
 };
@@ -46,6 +48,7 @@ impl ParquetWriterContext {
     pub(crate) fn new(
         uri_info: ParsedUriInfo,
         options: CopyToParquetOptions,
+        field_ids: FieldIds,
         tupledesc: &PgTupleDesc,
     ) -> ParquetWriterContext {
         // Postgis and Map contexts are used throughout writing the parquet file.
@@ -57,10 +60,13 @@ impl ParquetWriterContext {
 
         pgrx::debug2!(
             "schema for tuples: {}",
-            parquet_schema_string_from_attributes(&attributes)
+            parquet_schema_string_from_attributes(&attributes, field_ids.clone())
         );
 
-        let schema = parse_arrow_schema_from_attributes(&attributes);
+        let schema = parse_arrow_schema_from_attributes(&attributes, field_ids.clone());
+
+        validate_field_ids(field_ids, &schema).unwrap_or_else(|e| panic!("{e}"));
+
         let schema = Arc::new(schema);
 
         let writer_props = Self::writer_props(tupledesc, options);

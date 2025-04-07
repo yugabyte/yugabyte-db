@@ -1,7 +1,9 @@
 use std::{ffi::CStr, str::FromStr};
 
 use pgrx::{
-    ereport, is_a,
+    ereport,
+    ffi::c_char,
+    is_a,
     pg_sys::{
         addRangeTableEntryForRelation, defGetInt32, defGetInt64, defGetString, get_namespace_name,
         get_rel_namespace, makeDefElem, makeString, make_parsestate, quote_qualified_identifier,
@@ -16,12 +18,15 @@ use url::Url;
 use crate::{
     arrow_parquet::{
         compression::{all_supported_compressions, PgParquetCompression},
+        field_ids,
         match_by::MatchBy,
         parquet_writer::{DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
         uri_utils::ParsedUriInfo,
     },
     pgrx_utils::extension_exists,
 };
+
+use self::field_ids::FieldIds;
 
 use super::{
     copy_to_split_dest_receiver::INVALID_FILE_SIZE_BYTES, hook::ENABLE_PARQUET_COPY_HOOK,
@@ -34,6 +39,7 @@ pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: Pa
         &[
             "format",
             "file_size_bytes",
+            "field_ids",
             "row_group_size",
             "row_group_size_bytes",
             "compression",
@@ -74,6 +80,27 @@ pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: Pa
 
         parse_file_size(file_size_bytes)
             .unwrap_or_else(|e| panic!("file_size_bytes option is not valid: {}", e));
+    }
+
+    let field_ids_option = copy_stmt_get_option(p_stmt, "field_ids");
+
+    if !field_ids_option.is_null() {
+        let field_ids = unsafe { defGetString(field_ids_option.as_ptr()) };
+
+        let field_ids = unsafe {
+            CStr::from_ptr(field_ids)
+                .to_str()
+                .expect("field_ids option is not a valid CString")
+        };
+
+        if let Err(e) = FieldIds::from_str(field_ids) {
+            ereport!(
+                pgrx::PgLogLevel::ERROR,
+                pgrx::PgSqlErrorCode::ERRCODE_INVALID_JSON_TEXT,
+                e,
+                "Allowed options are: none, auto, or a JSON object with field names as keys and field ids as values.",
+            );
+        }
     }
 
     let row_group_size_option = copy_stmt_get_option(p_stmt, "row_group_size");
@@ -217,6 +244,16 @@ pub(crate) fn copy_to_stmt_file_size_bytes(p_stmt: &PgBox<PlannedStmt>) -> i64 {
 
         parse_file_size(file_size_bytes)
             .unwrap_or_else(|e| panic!("file_size_bytes option is not valid: {}", e)) as i64
+    }
+}
+
+pub(crate) fn copy_to_stmt_field_ids(p_stmt: &PgBox<PlannedStmt>) -> *const c_char {
+    let field_ids_option = copy_stmt_get_option(p_stmt, "field_ids");
+
+    if field_ids_option.is_null() {
+        FieldIds::default().to_string().as_pg_cstr()
+    } else {
+        unsafe { defGetString(field_ids_option.as_ptr()) }
     }
 }
 
