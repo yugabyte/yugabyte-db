@@ -369,16 +369,6 @@ public class CiphertrustEARServiceUtil {
       }
     }
 
-    // Check if it is a symmetric key.
-    if (keyDetails.containsKey("objectType")
-        && !keyDetails.get("objectType").toString().equals("Symmetric Key")) {
-      log.error(
-          "Key '{}' is not a symmetric key on CipherTrust manager. Actual key type = '{}'.",
-          getConfigFieldValue(authConfig, CipherTrustKmsAuthConfigField.KEY_NAME.fieldName),
-          keyDetails.get("objectType").toString());
-      return false;
-    }
-
     // If all checks pass, return true.
     return true;
   }
