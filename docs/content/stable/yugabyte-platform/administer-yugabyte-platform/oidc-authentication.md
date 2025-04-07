@@ -68,7 +68,7 @@ For air-gapped installations, where YugabyteDB Anywhere does not have access to 
 
 You configure OIDC as follows:
 
-1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
+1. Navigate to **Admin > User Management > User Authentication > OIDC Configuration**.
 
 1. Select **OIDC Enabled** to turn on OIDC.
 
