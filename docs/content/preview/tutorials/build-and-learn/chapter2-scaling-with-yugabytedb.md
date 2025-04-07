@@ -202,14 +202,13 @@ All you need to do is to restart the application containers with YugabyteDB-spec
     - DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
     - DB_USER=yugabyte
     - DB_PASSWORD=yugabyte
+    - DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true
     ```
 
     {{< warning title="Flyway and Advisory Locks" >}}
-If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable in the `docker-compose.yaml` file to the following value:
+The application uses Flyway to apply database migrations on startup. Flyway tries to acquire [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), but does not require them. As this example does not use them, the DB_CONN_INIT_SQL suppresses all warnings about advisory locks.
 
-`- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
-
-The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), which are only supported in YugabyteDB v2.25.1 or later. You can use Flyway with YugabyteDB even without this type of lock. The version of YugabyteDB is displayed in the UI at <http://localhost:15433/>.
+YugabyteDB support for advisory locks is {{<tags/feature/tp idea="812">}} in v2.25.1; refer to [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks) for information on enabling and using them.
     {{< /warning >}}
 
 1. Start the application:
