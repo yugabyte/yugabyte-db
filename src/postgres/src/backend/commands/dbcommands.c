@@ -349,7 +349,34 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	else
 		dbcolocated = YBColocateDatabaseByDefault();
 	if (dclonetime && dclonetime->arg)
-		dbclonetime = defGetInt64(dclonetime);
+	{
+		/*
+		 * This is a Float and not an Integer because Integer is too small to
+		 * contain a Unix epoch timestamp in microseconds (which is the format we
+		 * require).
+		 */
+		if (IsA(dclonetime->arg, Float))
+			dbclonetime = defGetInt64(dclonetime);
+		else if (IsA(dclonetime->arg, String))
+		{
+			const char *clone_time_str = defGetString(dclonetime);
+			TimestampTz clone_time = DirectFunctionCall3(timestamptz_in,
+					CStringGetDatum(clone_time_str),
+					ObjectIdGetDatum(InvalidOid),
+					Int32GetDatum(-1));
+			dbclonetime =
+					yb_timestamptz_to_micros_time_t(DatumGetTimestampTz(clone_time));
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid clone time type: %s (must be a Unix microseconds "
+									"timestamp or a timestamptz-formatted string).",
+							nodeToString(dclonetime->arg))));
+		}
+	}
+
 	/* obtain OID of proposed owner */
 	if (dbowner)
 		datdba = get_role_oid(dbowner, false);
