@@ -14,9 +14,9 @@ import { LDAPFormProps } from './LDAPConstants';
 export const getLDAPValidationSchema = (t: TFunction) => {
   return Yup.object<Partial<LDAPFormProps>>({
     ldap_url: Yup.string()
-      .matches(/^(?:(http|https|ldap|ldaps)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
-        message: t('messages.ldapURLPortNo')
-      })
+      .matches(/^(?:(http|https|ldap|ldaps):\/\/)?([\w.-]+|\[[\da-fA-F:.]+\]):([1-9]\d{0,4})$/, {
+      message: t('messages.ldapURLPortNo')
+    })
       .required(t('messages.ldapURL')),
     ldap_security: Yup.string().required(t('messages.ldapSecurity')),
     ldap_service_account_password: Yup.string().when('ldap_service_account_distinguished_name', {
