@@ -404,4 +404,19 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(clockbound
     STATIC_LIB ${CLOCKBOUND_STATIC_LIB}
     INCLUDE_DIRS ${CLOCKBOUND_INCLUDE_DIR})
+
+  ## Bson
+  find_package(Bson REQUIRED)
+  include_directories(SYSTEM ${BSON_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(bson
+    STATIC_LIB "${BSON_STATIC_LIB}")
+
+  ## Bid
+  if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+    find_package(Bid REQUIRED)
+    include_directories(SYSTEM ${BID_INCLUDE_DIR})
+    ADD_THIRDPARTY_LIB(bid
+      STATIC_LIB "${BID_STATIC_LIB}")
+  endif()
+
 endmacro()
