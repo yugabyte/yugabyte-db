@@ -5,11 +5,14 @@
 package auth
 
 import (
+	"bufio"
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -88,4 +91,142 @@ func authUtil(url *url.URL, apiToken string) {
 	viper.GetViper().Set("user-uuid", r.GetUserUUID())
 
 	authWriteConfigFile(r)
+}
+
+func viperVariablesInAuth(cmd *cobra.Command, force bool) *url.URL {
+	hostConfig := viper.GetString("host")
+	var caCertPath, host string
+	var useInsecure bool
+	var url *url.URL
+	if !force {
+		fmt.Printf("Enter Host [%s]: ", hostConfig)
+		// Prompt for the host
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			logrus.Fatalln(
+				formatter.Colorize("Could not read host: "+err.Error()+"\n",
+					formatter.RedColor))
+		}
+		// If the input is just a newline, use the default value
+		if input == "\n" {
+			input = hostConfig + "\n"
+		}
+		host = strings.TrimSpace(input)
+		if len(host) == 0 {
+			if len(strings.TrimSpace(hostConfig)) == 0 {
+				logrus.Fatalln(
+					formatter.Colorize("Host cannot be empty.\n",
+						formatter.RedColor))
+			} else {
+				host = hostConfig
+			}
+		}
+
+		url, err = ybaAuthClient.ParseURL(host)
+		if err != nil {
+			logrus.Fatal(
+				formatter.Colorize(
+					err.Error()+"\n",
+					formatter.RedColor))
+		}
+
+		if url.Scheme == util.HTTPSURLScheme {
+			fmt.Print("Connect insecurely without verifying TLS certificate? [y/N]: ")
+
+			reader := bufio.NewReader(os.Stdin)
+			insecureInput, err := reader.ReadString('\n')
+			if err != nil {
+				logrus.Fatalln(
+					formatter.Colorize(
+						"Could not read input: "+err.Error(),
+						formatter.RedColor,
+					),
+				)
+			}
+
+			insecureInput = strings.TrimSpace(strings.ToLower(insecureInput))
+			useInsecure = (insecureInput == "y" || insecureInput == "yes")
+
+			if !useInsecure {
+				fmt.Print("Enter path to CA certificate file: ")
+				caInput, err := reader.ReadString('\n')
+				if err != nil {
+					logrus.Fatalln(
+						formatter.Colorize(
+							"Could not read CA cert path: "+err.Error(),
+							formatter.RedColor,
+						),
+					)
+				}
+				caCertPath = strings.TrimSpace(caInput)
+
+				if caCertPath == "" {
+					logrus.Fatalln(
+						formatter.Colorize(
+							"CA certificate path cannot be empty when using secure connection.\n",
+							formatter.RedColor,
+						),
+					)
+				}
+			}
+		}
+	} else {
+		hostFlag, err := cmd.Flags().GetString("host")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		// If the host is empty
+		if strings.Compare(hostFlag, "http://localhost:9000") == 0 {
+			if len(strings.TrimSpace(hostConfig)) == 0 {
+				host = hostFlag
+			} else {
+				host = hostConfig
+			}
+		} else {
+			host = hostFlag
+		}
+		url, err = ybaAuthClient.ParseURL(host)
+		if err != nil {
+			logrus.Fatal(
+				formatter.Colorize(
+					err.Error()+"\n",
+					formatter.RedColor))
+		}
+		if url.Scheme == util.HTTPSURLScheme {
+			useInsecure = false
+			if cmd.Flags().Changed("insecure") {
+				useInsecure, err = cmd.Flags().GetBool("insecure")
+				if err != nil {
+					logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+			}
+			if !useInsecure {
+				caCertPath, err = cmd.Flags().GetString("ca-cert")
+				if err != nil {
+					logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+				if caCertPath == "" {
+					logrus.Fatalln(
+						formatter.Colorize(
+							"CA certificate path cannot be empty when using secure connection.\n",
+							formatter.RedColor,
+						),
+					)
+				}
+			}
+		} else {
+			if !useInsecure {
+				errMessage := "Invalid or missing value provided for 'insecure'. Setting it to 'true'.\n"
+				logrus.Error(formatter.Colorize(errMessage, formatter.YellowColor))
+			}
+			useInsecure = true
+		}
+	}
+	viper.GetViper().Set("host", &host)
+	viper.GetViper().Set("insecure", &useInsecure)
+	viper.GetViper().Set("ca-cert", &caCertPath)
+
+	return url
+
 }
