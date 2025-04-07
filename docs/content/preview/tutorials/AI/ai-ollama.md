@@ -143,43 +143,43 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
 
 1. Query the `/search` endpoint with a relevant prompt and category. For instance:
 
-       ```sh
-       curl "http://localhost:3000/api/search?q=olympic%20gold%20medal&category=SPORTS"
-       ```
-
-    ```output
-        {
-            "data": [
-                {
-                    "headline": "17-Year-Old Snowboarder Wins United States’ First Gold Medal In Pyeongchang",
-                    "short_description": "“I haven’t had time for it to sink in yet,\" Redmond Gerard said following his victory.",
-                    "link": "https://www.huffingtonpost.com/entry/red-gerard-gold-olympics_us_5a7fac94e4b0c6726e141850"
-                },
-                {
-                    "headline": "Brazil Finally Wins Olympic Soccer Gold And Everybody Is In Tears",
-                    "short_description": "Neymar cried. And then so did everyone else.",
-                    "link": "https://www.huffingtonpost.com/entry/brazil-tears-olympic-soccer-rio-2016_us_57b960b4e4b00d9c3a180858"
-                },
-                {
-                    "headline": "Simone Manuel And Simone Biles Pose For Ultimate Olympic Selfie",
-                    "short_description": "The gold medalists are feeling the love. 💛",
-                    "link": "https://www.huffingtonpost.com/entry/simone-biles-simone-manuel-selfie_us_57ae111de4b069e7e5052acf"
-                },
-                {
-                    "headline": "United States Wins 1,000th Olympic Gold Medal",
-                    "short_description": "That's a lot of victories.",
-                    "link": "https://www.huffingtonpost.com/entry/united-states-win-womens-4x100-medley-gold_us_57afd40fe4b007c36e4f0746"
-                },
-                {
-                    "headline": "German Team Doctor Recommends Olympians Drink A Beer After Competing",
-                    "short_description": "The country currently has 10 gold medals, the second-most of any nation.",
-                    "link": "https://www.huffingtonpost.com/entry/german-team-doctor-recommends-olympians-drink-a-beer-after-competing_us_5a8b8b20e4b09fc01e02a355"
-                }
-            ]
-        } 
+    ```sh
+    curl "http://localhost:3000/api/search?q=olympic%20gold%20medal&category=SPORTS"
     ```
 
-1. Run the UI and visit http://localhost:5173 to search the news archives.
+    ```output
+    {
+        "data": [
+            {
+                "headline": "17-Year-Old Snowboarder Wins United States’ First Gold Medal In Pyeongchang",
+                "short_description": "“I haven’t had time for it to sink in yet,\" Redmond Gerard said following his victory.",
+                "link": "https://www.huffingtonpost.com/entry/red-gerard-gold-olympics_us_5a7fac94e4b0c6726e141850"
+            },
+            {
+                "headline": "Brazil Finally Wins Olympic Soccer Gold And Everybody Is In Tears",
+                "short_description": "Neymar cried. And then so did everyone else.",
+                "link": "https://www.huffingtonpost.com/entry/brazil-tears-olympic-soccer-rio-2016_us_57b960b4e4b00d9c3a180858"
+            },
+            {
+                "headline": "Simone Manuel And Simone Biles Pose For Ultimate Olympic Selfie",
+                "short_description": "The gold medalists are feeling the love. 💛",
+                "link": "https://www.huffingtonpost.com/entry/simone-biles-simone-manuel-selfie_us_57ae111de4b069e7e5052acf"
+            },
+            {
+                "headline": "United States Wins 1,000th Olympic Gold Medal",
+                "short_description": "That's a lot of victories.",
+                "link": "https://www.huffingtonpost.com/entry/united-states-win-womens-4x100-medley-gold_us_57afd40fe4b007c36e4f0746"
+            },
+            {
+                "headline": "German Team Doctor Recommends Olympians Drink A Beer After Competing",
+                "short_description": "The country currently has 10 gold medals, the second-most of any nation.",
+                "link": "https://www.huffingtonpost.com/entry/german-team-doctor-recommends-olympians-drink-a-beer-after-competing_us_5a8b8b20e4b09fc01e02a355"
+            }
+        ]
+    } 
+    ```
+
+1. Run the UI and visit <http://localhost:5173> to search the news archives.
 
     ```sh
     cd news-app-ui
