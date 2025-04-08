@@ -104,9 +104,6 @@
 | "Prometheus link use browser FQDN" | "yb.metrics.link.use_browser_fqdn" | "GLOBAL" | "If Prometheus link in browser should point to current FQDN in browser or use value from backend." | "Boolean" |
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
-| "Prometheus auth enabled" | "yb.metrics.auth" | "GLOBAL" | "Enables basic authentication for Prometheus web UI/APIs access" | "Boolean" |
-| "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
-| "Prometheus auth password" | "yb.metrics.auth_password" | "GLOBAL" | "Password, used for request authentication against embedded Prometheus" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
 | "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
 | "Enable safe mode to ignore preview YBA APIs" | "yb.api.mode.safe" | "GLOBAL" | "Will ignore preview APIs" | "Boolean" |
