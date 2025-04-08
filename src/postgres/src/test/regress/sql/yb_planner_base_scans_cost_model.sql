@@ -67,3 +67,20 @@ SET yb_enable_base_scans_cost_model = ON;
 /*+ IndexScan(t_25682 t_25682_pkey) */EXPLAIN (DEBUG, COSTS OFF) SELECT * FROM t_25682 WHERE k1 > 0;
 /*+ IndexScan(t_25682 t_25682_idx) */EXPLAIN (DEBUG, COSTS OFF) SELECT * FROM t_25682 WHERE v1 > 0;
 /*+ IndexOnlyScan(t_25682 t_25682_idx) */EXPLAIN (DEBUG, COSTS OFF) SELECT v1 FROM t_25682 WHERE v1 > 0;
+
+--------------------------------------------------------------------------------
+-- #26235 : Primary Index scan cost higher than Sequential cost in small tables
+--------------------------------------------------------------------------------
+
+CREATE TABLE t_26235 (k1 INT, v1 INT, PRIMARY KEY (k1 ASC));
+INSERT INTO t_26235 (SELECT s, s FROM generate_series(1, 10) s);
+ANALYZE t_26235;
+SET yb_enable_base_scans_cost_model = ON;
+
+-- Following querie should pick primary index scan over seq scan
+EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 1;
+EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 5;
+EXPLAIN (COSTS OFF) SELECT * FROM t_26235 WHERE k1 < 10;
+
+-- Without filter, seq scan should be preferred
+EXPLAIN (COSTS OFF) SELECT * FROM t_26235;

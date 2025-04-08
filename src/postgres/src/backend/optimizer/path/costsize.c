@@ -7390,7 +7390,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		int	num_docdb_blocks_fetched =
 			ceil(num_index_tuples_matched * baserel_tuple_width /
 					YB_DEFAULT_DOCDB_BLOCK_SIZE);
-		run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
+		/*
+		 * If this is a primary index scan, pages from the disk will likely be
+		 * fetched in sequential order as they are sorted by the primary key.
+		 * If this is a secondary index scan, we assume that the pages are
+		 * fetched in random order.
+		 */
+		if (is_primary_index)
+			run_cost += num_docdb_blocks_fetched * yb_seq_block_cost;
+		else
+			run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
 	}
 
 	/*
