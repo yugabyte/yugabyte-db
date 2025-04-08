@@ -716,6 +716,8 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  bool non_transactional_buffered_write = 26;
 }
 
 message PgPerformRequestPB {

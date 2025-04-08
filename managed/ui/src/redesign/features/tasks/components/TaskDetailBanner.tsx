@@ -8,33 +8,46 @@
  */
 
 import { FC, useCallback } from 'react';
+import moment from 'moment';
 import { useDispatch, useSelector } from 'react-redux';
-import { find, noop, values } from 'lodash';
+import { useLocalStorage } from 'react-use';
+import { noop, values } from 'lodash';
 import { TaskInProgressBanner } from './bannerComp/TaskInProgressBanner';
 import { TaskSuccessBanner } from './bannerComp/TaskSuccessBanner';
 import { TaskFailedBanner } from './bannerComp/TaskFailedBanner';
 import { TaskFailedSoftwareUpgradeBanner } from './bannerComp/TaskFailedSoftwareUpgradeBanner';
 import { isSoftwareUpgradeFailed, useIsTaskNewUIEnabled } from '../TaskUtils';
-import { hideTaskBanner, hideTaskInDrawer, showTaskInDrawer } from '../../../../actions/tasks';
+import { hideTaskInDrawer, showTaskInDrawer } from '../../../../actions/tasks';
 import { Task, TaskStates } from '../dtos';
 
 type TaskDetailBannerProps = {
-  taskUUID: string;
-  universeUUID?: string;
+  universeUUID: string;
 };
 
 export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) => {
   //We use session storage to prevent the states getting reset to defaults incase of re-rendering.
   const dispatch = useDispatch();
 
-  const bannerTaskInfo = useSelector((data: any) => data.tasks.taskBannerInfo);
   const universeData = useSelector((data: any) => data.universe?.currentUniverse?.data);
+  
+  // we use localStorage to hide the banner for the task, if it is already closed.
+  const [acknowlegedTasks, setAcknowlegedTasks] = useLocalStorage<Record<string, string>>(
+    'acknowlegedTasks',
+    {}
+  );
 
-  const tasksInUniverse = bannerTaskInfo[universeUUID!];
+  // instead of using react query , we use the data from the redux store.
+  // Old task components use redux store. We want to make sure we display the same progress across the ui.
+  const taskList = useSelector((data: any) => data.tasks);
 
-  const taskUUID = values(tasksInUniverse)
-    .filter((t) => t.visible)
-    .sort((a, b) => b.timestamp - a.timestamp)?.[0]?.taskUUID;
+  const tasksInUniverse = taskList.customerTaskList;
+
+  // always display the last task in the banner
+  const task = values(tasksInUniverse)
+    .filter((t) => t.targetUUID === universeUUID)
+    .sort((a, b) => (moment(b.createTime).isBefore(a.createTime) ? -1 : 1))[0];
+
+  const taskUUID = task?.id;
 
   const toggleTaskDetailsDrawer = (flag: boolean) => {
     if (flag) {
@@ -44,14 +57,8 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
     }
   };
 
-  // instead of using react query , we use the data from the redux store.
-  // Old task components use redux store. We want to make sure we display the same progress across the ui.
-  const taskList = useSelector((data: any) => data.tasks);
-
-  const task: Task | undefined = find(taskList.customerTaskList, { id: taskUUID });
-
   const hideBanner = () => {
-    dispatch(hideTaskBanner(taskUUID, universeUUID));
+    setAcknowlegedTasks({ ...acknowlegedTasks, [universeUUID!]: taskUUID });
   };
 
   // display banner based on type
@@ -107,6 +114,8 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   );
 
   const isNewTaskDetailsUIEnabled = useIsTaskNewUIEnabled();
+  if (universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID) return null;
+
   if (!isNewTaskDetailsUIEnabled) return null;
 
   if (universeUUID && task?.targetUUID !== universeUUID) return null;

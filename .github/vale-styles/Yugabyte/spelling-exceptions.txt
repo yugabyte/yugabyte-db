@@ -447,6 +447,7 @@ offboarded
 offboarding
 offboards
 Okta
+Ollama
 OmniAuth
 onboarding
 OpenID

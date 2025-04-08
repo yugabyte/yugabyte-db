@@ -125,6 +125,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_policy.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdepend_d.h"
@@ -699,6 +700,7 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 											bool skip_copy_split_options);
 static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 									  AlteredTableInfo *tab);
+static bool YbIsTablePartOfPublication(Oid relOid);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -1707,6 +1709,12 @@ RemoveRelations(DropStmt *drop)
 			continue;
 		}
 
+		if (IsYugaByteEnabled() && YbIsTablePartOfPublication(relOid))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("cannot drop a table which is part of a publication."),
+					 errhint("Use pg_publication_tables to find all such publications and retry after dropping the table from them.")));
+
 		/*
 		 * Decide if concurrent mode needs to be used here or not.  The
 		 * callback retrieved the rel's persistence for us.
@@ -1928,7 +1936,7 @@ RangeVarCallbackForDropRelation(const RangeVar *rel, Oid relOid, Oid oldRelOid,
  * are truncated and reindexed.
  */
 void
-ExecuteTruncate(TruncateStmt *stmt)
+ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level)
 {
 	List	   *rels = NIL;
 	List	   *relids = NIL;
@@ -2027,7 +2035,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 	}
 
 	ExecuteTruncateGuts(rels, relids, relids_logged,
-						stmt->behavior, stmt->restart_seqs);
+						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
 
 	/* And close the rels */
 	foreach(cell, rels)
@@ -2055,7 +2063,8 @@ void
 ExecuteTruncateGuts(List *explicit_rels,
 					List *relids,
 					List *relids_logged,
-					DropBehavior behavior, bool restart_seqs)
+					DropBehavior behavior, bool restart_seqs,
+					bool yb_is_top_level)
 {
 	List	   *rels;
 	List	   *seq_relids = NIL;
@@ -2121,6 +2130,39 @@ ExecuteTruncateGuts(List *explicit_rels,
 	if (behavior == DROP_RESTRICT)
 		heap_truncate_check_FKs(rels, false);
 #endif
+
+	/*
+	 * Unsafe truncate cannot be used inside a transaction block. Hence, check
+	 * early and report error if necessary.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		IsInTransactionBlock(yb_is_top_level))
+	{
+		foreach(cell, rels)
+		{
+			Relation	rel = (Relation) lfirst(cell);
+			YbTruncateType unsafe_truncate_reason =
+				YbUseUnsafeTruncate(rel);
+
+			switch (unsafe_truncate_reason)
+			{
+				case YB_SAFE_TRUNCATE:
+					break;
+				case YB_UNSAFE_TRUNCATE_SYSTEM_RELATION:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot TRUNCATE system relations in a transaction block.")));
+					break;
+				case YB_UNSAFE_TRUNCATE_TABLE_REWRITE_DISABLED:
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("unsafe TRUNCATE cannot be executed in a transaction block."),
+							 errhint("Set yb_enable_alter_table_rewrite to true.")));
+					break;
+			}
+		}
+	}
 
 	/*
 	 * If we are asked to restart sequences, find all the sequences, lock them
@@ -2264,7 +2306,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 		 * table or the current physical file to be thrown away anyway.
 		 * YB: Check if the unsafe truncate method should be used.
 		 */
-		if (YbUseUnsafeTruncate(rel))
+		if (YbUseUnsafeTruncate(rel) != YB_SAFE_TRUNCATE)
 			YbUnsafeTruncate(rel);
 		else if (rel->rd_createSubid == mySubid ||
 				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
@@ -22979,3 +23021,32 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 		RelationClose(idx_rel);
 	}
 }
+
+/*
+ * Used in YB during DROP TABLE to check whether a table belongs to a publication. This does not
+ * check if the given table is part of any ALL TABLES publication.
+ */
+ static bool
+ YbIsTablePartOfPublication(Oid relOid)
+ {
+	Relation pubrel;
+	SysScanDesc scan;
+	ScanKeyData key;
+	bool is_part_of_pub = false;
+
+	pubrel = table_open(PublicationRelRelationId, AccessShareLock);
+	ScanKeyInit(&key, Anum_pg_publication_rel_prrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relOid));
+	scan = systable_beginscan(pubrel, PublicationRelPrrelidPrpubidIndexId,
+							true, NULL, 1, &key);
+
+	/* If we get at least one tuple, a publication exists for this relation. */
+	if ((systable_getnext(scan)) != NULL)
+		is_part_of_pub = true;
+
+	systable_endscan(scan);
+	table_close(pubrel, AccessShareLock);
+
+	return is_part_of_pub;
+ }

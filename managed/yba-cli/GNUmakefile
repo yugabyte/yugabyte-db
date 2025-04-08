@@ -81,9 +81,17 @@ clean-package:
 	rm -rf ${PACKAGE_DIR}
 	rm -rf ${PACKAGE_NAME}
 
+
 .PHONY: updateclient
-updateclient:
+updateclient: updatev1client updatev2client
+
+.PHONY: updatev1client
+updatev1client:
 	go get github.com/yugabyte/platform-go-client
+
+.PHONY: updatev2client
+updatev2client:
+	go get github.com/yugabyte/platform-go-client/v2
 
 .PHONY: build
 build:

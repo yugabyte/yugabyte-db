@@ -92,6 +92,7 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
@@ -883,6 +884,21 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fail_clone_pg_schema");
+}
+
+TEST_F(PgCloneTest, CloneTimeoutExceeded) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 10;
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  ASSERT_NOK(status);
+
+  // The clone should be aborted, and the error message should mention that it timed out.
+  auto row = ASSERT_RESULT((source_conn_->FetchRowAsString(
+      "SELECT db_name, parent_db_name, state FROM yb_database_clones()")));
+  ASSERT_EQ(row, Format("$0, $1, ABORTED", kTargetNamespaceName1, kSourceNamespaceName));
+  auto error_msg = ASSERT_RESULT((source_conn_->FetchRowAsString(
+      "SELECT failure_reason FROM yb_database_clones()")));
+  ASSERT_STR_CONTAINS(error_msg, "timed out");
 }
 
 // The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks

@@ -70,7 +70,18 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
 
-		primaryCluster := clusters[0]
+		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
+		if primaryCluster == (ybaclient.Cluster{}) {
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf(
+						"No primary cluster found in universe %s (%s)\n",
+						universeName,
+						universeUUID,
+					),
+					formatter.RedColor,
+				))
+		}
 		primaryUserIntent := primaryCluster.GetUserIntent()
 
 		providerUsedUUID := primaryUserIntent.GetProvider()

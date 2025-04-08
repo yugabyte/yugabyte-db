@@ -2,14 +2,43 @@ systemd_dir="/etc/systemd/system"
 
 {% if use_system_level_systemd == 'False' %}
     systemd_dir="{{yb_home_dir}}/.config/systemd/user"
+    uid=$(id -u {{ yb_user }})
+    user_run_dir="/run/user/$uid"
+    test_dir="$user_run_dir/test_$$"
+    created_user_run_dir=false
+
+    # Check if /run/user/<uid> exists
+    if [ ! -d "$user_run_dir" ]; then
+        echo "$user_run_dir does not exist. Attempting to create it..."
+        if mkdir -p "$user_run_dir" 2>/dev/null; then
+            echo "Successfully created $user_run_dir."
+            add_result "User Systemd Directory Check" "PASS" \
+                "$user_run_dir was missing but created successfully."
+            created_user_run_dir=true
+        else
+            echo "Failed to create $user_run_dir."
+            add_result "User Systemd Directory Check" "FAIL" "Could not create $user_run_dir."
+        fi
+    else
+        echo "$user_run_dir exists."
+        add_result "User Systemd Directory Check" "PASS" "$user_run_dir already exists."
+    fi
+
+    # Clean up if we created /run/user/<uid>
+    if [ "$created_user_run_dir" = true ]; then
+        rm -rf "$user_run_dir" 2>/dev/null
+        echo "Cleaned up $user_run_dir."
+    fi
 {% endif %}
 
 {% for service_file in service_files | split_servers %}
     if [ ! -f "$systemd_dir"/{{ service_file }} ]; then
         echo "Systemd unit {{ service_file }} is not configured."
-        add_result "Systemd Unit File Check - {{ service_file }}" "FAIL" "Systemd unit {{ service_file }} is not configured."
+        add_result "Systemd Unit File Check - {{ service_file }}" "FAIL" \
+            "Systemd unit {{ service_file }} is not configured."
     else
         echo "Systemd unit {{ service_file }} is configured."
-        add_result "Systemd Unit File Check - {{ service_file }}" "PASS" "Systemd unit {{ service_file }} is configured."
+        add_result "Systemd Unit File Check - {{ service_file }}" \
+            "PASS" "Systemd unit {{ service_file }} is configured."
     fi
 {% endfor %}

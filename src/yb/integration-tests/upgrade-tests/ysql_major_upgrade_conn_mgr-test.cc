@@ -33,12 +33,12 @@ class YsqlMajorUpgradeTestWithConnMgr : public YsqlMajorUpgradeTestBase {
   }
 };
 
-// YB_TODO: Enable after previous version has been updated.
+// YB_TODO: Enable Connection Manager C++ tests.
 TEST_F(YsqlMajorUpgradeTestWithConnMgr, YB_DISABLE_TEST(SimpleTableUpgrade)) {
   ASSERT_OK(TestUpgradeWithSimpleTable());
 }
 
-// YB_TODO: Enable after previous version has been updated.
+// YB_TODO: Enable Connection Manager C++ tests.
 TEST_F(YsqlMajorUpgradeTestWithConnMgr, YB_DISABLE_TEST(SimpleTableRollback)) {
   ASSERT_OK(TestRollbackWithSimpleTable());
 }

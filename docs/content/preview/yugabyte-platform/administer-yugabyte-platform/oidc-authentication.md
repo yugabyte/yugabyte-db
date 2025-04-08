@@ -52,7 +52,7 @@ Note that, if you use group mapping, you must manage users via your OIDC server.
 
 ### Prerequisites
 
-To use OIDC groups, ensure the following on your IdP:
+To use OIDC groups, ensure the following on your identity provider (IdP):
 
 - Create user groups and add users to this group. This is possible on most IdPs.
 - Configure the IdP so that groups are present in the ID token. As groups is not one of the [Standard Claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims), you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
@@ -68,34 +68,38 @@ For air-gapped installations, where YugabyteDB Anywhere does not have access to 
 
 You configure OIDC as follows:
 
-1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
+1. Navigate to **Admin > User Management > User Authentication > OIDC Configuration**.
 
 1. Select **OIDC Enabled** to turn on OIDC.
 
-1. Complete the OIDC Configuration settings.
-
     ![OIDC authentication](/images/yp/oidc-auth-2024-2.png)
 
-    - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
-    - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.
-    - Use the **Discovery URL** field to provide a URL for the discovery document that contains OIDC configuration for the identity provider. The discovery document is a JSON file stored in a well-known location.
+1. Complete the **OIDC Configuration** settings.
 
-        [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most identity providers, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
+    - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the IdP.
+    - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your IdP.
+    - Use the **Discovery URL** field to provide a URL for the discovery document that contains OIDC configuration for the IdP. The discovery document is a JSON file stored in a well-known location.
 
-        If you have an airgapped installation, where YugabyteDB Anywhere cannot access the Discovery URL, provide the OIDC configuration for the identity provider directly.
+        [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most IdPs, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
 
-        To do this, click **Add OIDC Provider Configuration** and paste the OIDC configuration document from your identity provider (in JSON format) into the field.
+        If you have an airgapped installation, where YugabyteDB Anywhere cannot access the Discovery URL, provide the OIDC configuration for the IdP directly.
 
-    - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, the defaults (`openid profile email`) will be considered.
+        To do this, click **Add OIDC Provider Configuration** and paste the OIDC configuration document from your IdP (in JSON format) into the field.
+
+    - In the **Scope** field, enter your IdP OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, the defaults (`openid profile email`) will be considered.
+
+      If you are mapping groups, add the name of the groups claim. For example, if your groups claim is called `groups`, you would set the scope to `openid profile email groups`.
     - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
     - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
     - If you have configured [OIDC enhancements](../../security/authentication/oidc-authentication-aad/#enable-oidc-enhancements), you can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [Set up OIDC with Azure AD on YugabyteDB Anywhere](../../security/authentication/oidc-authentication-aad/#set-up-oidc-with-azure-ad-on-yugabytedb-anywhere).
 
-1. To map OIDC groups to YugabyteDB Anywhere roles, select the **Use OIDC groups for authentication and authorization** option.
+1. To map OIDC groups to YugabyteDB Anywhere roles, complete the **Role Settings**.
 
-1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be Read Only or Connect Only.
+    - Select the **Use OIDC groups for authentication and authorization** option.
 
-1. Optionally, if you are using a groups claim, enter the name of the groups claim; this is the claim that lists the groups that users are a member of in the ID token.
+    - OIDC users who do not belong to any mapped group are assigned a default [built-in role](../anywhere-rbac/#built-in-roles), either **Read Only** or **Connect Only**.
+
+    - Optionally, if you are using a groups claim, enter the name of the groups claim; this is the claim that lists the groups that users are a member of in the ID token.
 
 1. Click **Save**.
 

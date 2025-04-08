@@ -631,7 +631,8 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 }
 
 Status PgTxnManager::SetupPerformOptions(
-    tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time) {
+    tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time,
+    bool non_transactional_buffered_write) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -652,6 +653,7 @@ Status PgTxnManager::SetupPerformOptions(
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(serial_no_.txn());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
+  options->set_non_transactional_buffered_write(non_transactional_buffered_write);
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);

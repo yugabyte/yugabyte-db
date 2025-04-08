@@ -1326,7 +1326,14 @@ bool		YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 SortByDir	YbGetIndexKeySortOrdering(Relation indexRel);
 
-bool		YbUseUnsafeTruncate(Relation rel);
+typedef enum YbTruncateType
+{
+	YB_SAFE_TRUNCATE,
+	YB_UNSAFE_TRUNCATE_SYSTEM_RELATION,
+	YB_UNSAFE_TRUNCATE_TABLE_REWRITE_DISABLED,
+} YbTruncateType;
+
+extern YbTruncateType YbUseUnsafeTruncate(Relation rel);
 
 extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
 

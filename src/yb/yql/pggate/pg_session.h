@@ -301,6 +301,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
     std::optional<CacheOptions> cache_options = std::nullopt;
     HybridTime in_txn_limit = {};
+    bool non_transactional_buffered_write = false;
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);

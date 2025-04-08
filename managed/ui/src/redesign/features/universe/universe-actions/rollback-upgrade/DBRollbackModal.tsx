@@ -15,7 +15,6 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure,
   showTaskInDrawer,
-  clearAllTaskBanners
 } from '../../../../../actions/tasks';
 import { createErrorMessage, transitToUniverse } from '../../universe-form/utils/helpers';
 import { Universe } from '../../universe-form/utils/dto';
@@ -77,7 +76,6 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
           });
         }, 2000);
         if (isNewTaskUIEnabled) {
-          dispatch(clearAllTaskBanners(universeUUID));
           dispatch(showTaskInDrawer(resp.taskUUID));
         }
         else {
