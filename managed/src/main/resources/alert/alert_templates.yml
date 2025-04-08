@@ -460,7 +460,7 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
-        threshold: 0.0
+        threshold: 100.0
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
     defaultThresholdUnit: COUNT
@@ -660,6 +660,7 @@ templates:
     queryTemplate: yb_ddl_atomicity_check{universe_uuid="__universeUuid__"}
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
+    defaultDurationSec: 300
     defaultThresholdMap:
       SEVERE:
         threshold: 1.0

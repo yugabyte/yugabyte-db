@@ -435,8 +435,8 @@ buildDependentArtifacts := {
 generateOssConfig := {
   ybLog("Generating oss config class.")
   val srcTemplatePath = (baseDirectory.value / "src/main/resources/templates/OperatorConfig.template").toPath
-  val generatedFilePath = (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/OperatorConfig.java").toPath
-  val directoryPath =  (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/").toPath
+  val generatedFilePath = (baseDirectory.value / "src/main/java/com/yugabyte/operator/OperatorConfig.java").toPath
+  val directoryPath =  (baseDirectory.value / "src/main/java/com/yugabyte/operator/").toPath
 
   Files.createDirectories(directoryPath)
 
@@ -504,7 +504,7 @@ cleanVenv := {
 }
 
 cleanOperatorConfig := {
-  val filePath = baseDirectory.value / "target/scala-2.13/OperatorConfig.java"
+  val filePath = baseDirectory.value / "src/main/java/com/yugabyte/operator/OperatorConfig.java"
   val file = sbt.file(filePath.toString)
   if (file.exists()) {
     sbt.IO.delete(file)
