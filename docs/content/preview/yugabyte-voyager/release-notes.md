@@ -17,10 +17,10 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### Enhancements
 
-- Improved UI/UX for guardrails for the single table list in live migration with better output for readability, especially for large table lists.
+- Improved layout for guardrails for the single table list in live migration, with better output for readability, especially for large table lists.
 - Improved consistency in table list output by always showing fully qualified table names.
 - Added --pg-only, --oracle-only, and --mysql-only flags to the airgapped installation script to check/install dependencies for a specific database.
-- Enhanced the issues in the assessment report under the category Unsupported datatypes to include more detailed information about each datatype.
+- Enhanced the assessment report to provide more detailed information about each datatype under **Unsupported datatypes**.
 
 ### Bug fixes
 
