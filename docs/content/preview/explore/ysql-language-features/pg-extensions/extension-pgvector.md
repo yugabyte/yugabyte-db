@@ -214,6 +214,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 ## Read more
 
-- [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](/preview/tutorials/azure/azure-openai/)
+- Tutorial: [Build and Learn](/preview/tutorials/build-and-learn/)
+- Tutorial: [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](/preview/tutorials/azure/azure-openai/)
 - [PostgreSQL pgvector: Getting Started and Scaling](https://www.yugabyte.com/blog/postgresql-pgvector-getting-started/)
 - [Multimodal Search with PostgreSQL pgvector](https://www.yugabyte.com/blog/postgresql-pgvector-multimodal-search/)
