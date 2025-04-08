@@ -151,7 +151,7 @@ The Flask server for this application exposes a REST endpoint which returns valu
 
     # Find me shoes that are in stock and available in size 15.
 
-    curl -X POST http://localhost:8080/queries -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
+    curl -X POST http://127.0.0.1:8080/queries -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
     ```
 
     ```output.json
