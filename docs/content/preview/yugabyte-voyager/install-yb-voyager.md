@@ -237,14 +237,14 @@ The options are as follows.
 
 | Argument                       | Description/valid options                                                     |
 | :----------------------------- | :--------------------------------------------------------------------------- |
-| -d, --check-dependencies-only | Check only dependencies and exit.                                           |
+| -d, --check-dependencies-only | Check the dependencies only, then exit without installing.                                           |
 | -f, --force-install           | Force install packages without checking dependencies.                       |
-| -p, --pg-only                 | Install and check only PostgreSQL source related voyager dependencies.     |
-| -m, --mysql-only              | Install and check only MySQL source related voyager dependencies.          |
-| -o, --oracle-only             | Install and check only Oracle source related voyager dependencies.         |
+| -p, --pg-only                 | Check and install only PostgreSQL source-related voyager dependencies.     |
+| -m, --mysql-only              | Check and install only MySQL source-related voyager dependencies.          |
+| -o, --oracle-only             | Check and install only Oracle source-related voyager dependencies.         |
 | -h, --help                    | Display this help message.                                                 |
 
-If none of the `--pg-only`, `--oracle-only`, or `--mysql-only` flags are provided, the script will default to checking and installing dependencies for all database types. Additionally, only one of these flags can be used at a time. These flags also work alongside `--help` and `--check-dependencies-only`, ensuring that help documentation and dependency checks are specific to the selected database.
+You can only specify one of `--pg-only`, `--oracle-only`, or `--mysql-only`. If none are provided, the script checks and installs dependencies for all database types. When one of the flags is specified, `--help` and `--check-dependencies-only` are specific to the selected database.
 
 ### Oracle Instant Client installation help for Centos/RHEL
 
