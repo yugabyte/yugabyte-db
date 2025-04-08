@@ -38,6 +38,7 @@ conf/*
 /swagger/conf/*
 
 src/main/public/*
+src/main/java/com/yugabyte/operator/*
 src/main/resources/version_metadata.json
 src/universal/ybc/*
 *.pyc
