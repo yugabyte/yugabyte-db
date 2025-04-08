@@ -41,7 +41,7 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time. On YugabyteDB 2.20 and above, yb-voyager adapts the value of N depending on the resource usage (CPU/memory) of the cluster, with the goal of maintaining an optimal CPU usage (<70%).
 
-  Against older YugabyteDB versions, N is equal to one-fourth of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage. However, if the target cluster shows high CPU utilisation, then you should lower the number of parallel jobs. Similarly, if the target cluster seems to be under-utilised, then it is recommended to stop the import, and restart it with a higher number of parallel jobs.
+  Against older YugabyteDB versions, N is equal to one-fourth of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage.
 
   Use the [--parallel-jobs](../../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting based on your cluster configuration and observation.
 
@@ -57,7 +57,7 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
-- **Enable packed rows** to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer flag [ysql_enable_packed_row](../../../reference/configuration/yb-tserver/#ysql-enable-packed-row) to true. In v2.20.0 and later, packed row for YSQL is enabled by default for new universes.
+- **Enable packed rows** to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer flag [ysql_enable_packed_row](../../../reference/configuration/yb-tserver/#ysql-enable-packed-row) to true. In v2.20.0 and later, packed rows for YSQL is enabled by default for new clusters.
 
 - **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
 
