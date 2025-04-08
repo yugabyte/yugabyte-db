@@ -1089,7 +1089,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth enabled",
           "Enables basic authentication for Prometheus web UI/APIs access",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthUsername =
       new ConfKeyInfo<>(
           "yb.metrics.auth_username",
@@ -1097,7 +1097,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth username",
           "Username, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthPassword =
       new ConfKeyInfo<>(
           "yb.metrics.auth_password",
@@ -1105,7 +1105,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth password",
           "Password, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> forceYbcShutdownDuringUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.force_shutdown",
