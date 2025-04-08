@@ -76,6 +76,7 @@
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_namespace.h"
 #include "commands/dbcommands.h"
 #include "commands/vacuum.h"
 #include "lib/ilist.h"
@@ -1694,12 +1695,14 @@ AutoVacWorkerMain(int argc, char *argv[])
 		pgstat_report_autovac(dbid);
 
 		/*
-		 * Connect to the selected database, specifying no particular user
+		 * Connect to the selected database, specifying no particular user,
+		 * and ignoring datallowconn.  Collect the database's name for
+		 * display.
 		 *
 		 * Note: if we have selected a just-deleted database (due to using
 		 * stale stats info), we'll fail and exit here.
 		 */
-		InitPostgres(NULL, dbid, NULL, InvalidOid, false, false,
+		InitPostgres(NULL, dbid, NULL, InvalidOid, false, true,
 					 dbname, NULL);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(dbname);
@@ -1914,6 +1917,18 @@ get_database_list(void)
 		Form_pg_database pgdatabase = (Form_pg_database) GETSTRUCT(tup);
 		avw_dbase  *avdb;
 		MemoryContext oldcxt;
+
+		/*
+		 * If database has partially been dropped, we can't, nor need to,
+		 * vacuum it.
+		 */
+		if (database_is_invalid_form(pgdatabase))
+		{
+			elog(DEBUG2,
+				 "autovacuum: skipping invalid database \"%s\"",
+				 NameStr(pgdatabase->datname));
+			continue;
+		}
 
 		/*
 		 * Allocate our results in the caller's context, not the
@@ -2260,6 +2275,24 @@ do_autovacuum(void)
 			continue;
 		}
 
+		/*
+		 * Try to lock the temp namespace, too.  Even though we have lock on
+		 * the table itself, there's a risk of deadlock against an incoming
+		 * backend trying to clean out the temp namespace, in case this table
+		 * has dependencies (such as sequences) that the backend's
+		 * performDeletion call might visit in a different order.  If we can
+		 * get AccessShareLock on the namespace, that's sufficient to ensure
+		 * we're not running concurrently with RemoveTempRelations.  If we
+		 * can't, back off and let RemoveTempRelations do its thing.
+		 */
+		if (!ConditionalLockDatabaseObject(NamespaceRelationId,
+										   classForm->relnamespace, 0,
+										   AccessShareLock))
+		{
+			UnlockRelationOid(relid, AccessExclusiveLock);
+			continue;
+		}
+
 		/* OK, let's delete it */
 		ereport(LOG,
 				(errmsg("autovacuum: dropping orphan temp table \"%s.%s.%s\"",
@@ -2277,7 +2310,7 @@ do_autovacuum(void)
 
 		/*
 		 * To commit the deletion, end current transaction and start a new
-		 * one.  Note this also releases the lock we took.
+		 * one.  Note this also releases the locks we took.
 		 */
 		CommitTransactionCommand();
 		StartTransactionCommand();
@@ -2885,7 +2918,7 @@ table_recheck_autovac(Oid relid, HTAB *table_toast_map,
 		 */
 		tab->at_dobalance =
 			!(avopts && (avopts->vacuum_cost_limit > 0 ||
-						 avopts->vacuum_cost_delay > 0));
+						 avopts->vacuum_cost_delay >= 0));
 	}
 
 	heap_freetuple(classTup);

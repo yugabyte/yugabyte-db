@@ -24,6 +24,7 @@
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "access/transam.h"
+#include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
@@ -40,6 +41,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "executor/ybModifyTable.h"
 #include <pg_yb_utils.h>
 
 
@@ -697,8 +699,10 @@ systable_beginscan_ordered(Relation heapRelation,
 
 	/* REINDEX can probably be a hard error here ... */
 	if (ReindexIsProcessingIndex(RelationGetRelid(indexRelation)))
-		elog(ERROR, "cannot do ordered scan on index \"%s\", because it is being reindexed",
-			 RelationGetRelationName(indexRelation));
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access index \"%s\" while it is being reindexed",
+						RelationGetRelationName(indexRelation))));
 	/* ... but we only throw a warning about violating IgnoreSystemIndexes */
 	if (IgnoreSystemIndexes)
 		elog(WARNING, "using index \"%s\" despite IgnoreSystemIndexes",
@@ -745,6 +749,14 @@ systable_beginscan_ordered(Relation heapRelation,
 	index_rescan(sysscan->iscan, key, nkeys, NULL, 0);
 	sysscan->scan = NULL;
 
+	/*
+	 * If CheckXidAlive is set then set a flag to indicate that system table
+	 * scan is in-progress.  See detailed comments in xact.c where these
+	 * variables are declared.
+	 */
+	if (TransactionIdIsValid(CheckXidAlive))
+		bsysscan = true;
+
 	return sysscan;
 }
 
@@ -789,5 +801,203 @@ systable_endscan_ordered(SysScanDesc sysscan)
 	index_endscan(sysscan->iscan);
 	if (sysscan->snapshot)
 		UnregisterSnapshot(sysscan->snapshot);
+
+	/*
+	 * Reset the bsysscan flag at the end of the systable scan.  See detailed
+	 * comments in xact.c where these variables are declared.
+	 */
+	if (TransactionIdIsValid(CheckXidAlive))
+		bsysscan = false;
+
 	pfree(sysscan);
+}
+
+/*
+ * systable_inplace_update_begin --- update a row "in place" (overwrite it)
+ *
+ * Overwriting violates both MVCC and transactional safety, so the uses of
+ * this function in Postgres are extremely limited.  Nonetheless we find some
+ * places to use it.  See README.tuplock section "Locking to write
+ * inplace-updated tables" and later sections for expectations of readers and
+ * writers of a table that gets inplace updates.  Standard flow:
+ *
+ * ... [any slow preparation not requiring oldtup] ...
+ * systable_inplace_update_begin([...], &tup, &inplace_state);
+ * if (!HeapTupleIsValid(tup))
+ *	elog(ERROR, [...]);
+ * ... [buffer is exclusive-locked; mutate "tup"] ...
+ * if (dirty)
+ *	systable_inplace_update_finish(inplace_state, tup);
+ * else
+ *	systable_inplace_update_cancel(inplace_state);
+ *
+ * The first several params duplicate the systable_beginscan() param list.
+ * "oldtupcopy" is an output parameter, assigned NULL if the key ceases to
+ * find a live tuple.  (In PROC_IN_VACUUM, that is a low-probability transient
+ * condition.)  If "oldtupcopy" gets non-NULL, you must pass output parameter
+ * "state" to systable_inplace_update_finish() or
+ * systable_inplace_update_cancel().
+ */
+void
+systable_inplace_update_begin(Relation relation,
+							  Oid indexId,
+							  bool indexOK,
+							  Snapshot snapshot,
+							  int nkeys, const ScanKeyData *key,
+							  HeapTuple *oldtupcopy,
+							  void **state)
+{
+	ScanKey		mutable_key = palloc(sizeof(ScanKeyData) * nkeys);
+	int			retries = 0;
+	SysScanDesc scan;
+	HeapTuple	oldtup;
+	BufferHeapTupleTableSlot *bslot;
+
+	/*
+	 * For now, we don't allow parallel updates.  Unlike a regular update,
+	 * this should never create a combo CID, so it might be possible to relax
+	 * this restriction, but not without more thought and testing.  It's not
+	 * clear that it would be useful, anyway.
+	 */
+	if (IsInParallelMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+				 errmsg("cannot update tuples during a parallel operation")));
+
+	/*
+	 * Accept a snapshot argument, for symmetry, but this function advances
+	 * its snapshot as needed to reach the tail of the updated tuple chain.
+	 */
+	Assert(snapshot == NULL);
+
+	Assert(IsInplaceUpdateRelation(relation) || !IsSystemRelation(relation));
+
+	/* Loop for an exclusive-locked buffer of a non-updated tuple. */
+	do
+	{
+		TupleTableSlot *slot;
+
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * Processes issuing heap_update (e.g. GRANT) at maximum speed could
+		 * drive us to this error.  A hostile table owner has stronger ways to
+		 * damage their own table, so that's minor.
+		 */
+		if (retries++ > 10000)
+			elog(ERROR, "giving up after too many tries to overwrite row");
+
+		memcpy(mutable_key, key, sizeof(ScanKeyData) * nkeys);
+		scan = systable_beginscan(relation, indexId, indexOK, snapshot,
+								  nkeys, mutable_key);
+		oldtup = systable_getnext(scan);
+		if (!HeapTupleIsValid(oldtup))
+		{
+			systable_endscan(scan);
+			*oldtupcopy = NULL;
+			return;
+		}
+
+		/* YB does not do heap_inplace_lock and doesn't have scan->slot. */
+		if (IsYBRelation(relation))
+			break;
+
+		slot = scan->slot;
+		Assert(TTS_IS_BUFFERTUPLE(slot));
+		bslot = (BufferHeapTupleTableSlot *) slot;
+	} while (!heap_inplace_lock(scan->heap_rel,
+								bslot->base.tuple, bslot->buffer,
+								(void (*) (void *)) systable_endscan, scan));
+
+	*oldtupcopy = heap_copytuple(oldtup);
+	*state = scan;
+}
+
+/*
+ * systable_inplace_update_finish --- second phase of inplace update
+ *
+ * The tuple cannot change size, and therefore its header fields and null
+ * bitmap (if any) don't change either.
+ *
+ * If yb_shared_update is specified, this update will be done in every
+ * database (including template0 and template1). Such operation will assume
+ * the tuple is exactly the same in all databases.
+ * This is needed when creating shared relations.
+ * This flag should not be used during initdb bootstrap.
+ */
+void
+systable_inplace_update_finish(void *state, HeapTuple tuple,
+							   bool yb_shared_update)
+{
+	SysScanDesc scan = (SysScanDesc) state;
+	Relation	relation = scan->heap_rel;
+	TupleTableSlot *slot = scan->slot;
+
+	if (IsYBRelation(relation))
+	{
+		/* Note: none of the variables above except "relation" are valid. */
+
+		if (yb_shared_update)
+		{
+			if (!IsYsqlUpgrade)
+				elog(ERROR, "shared update cannot be done outside of YSQL upgrade");
+
+			YB_FOR_EACH_DB(pg_db_tuple)
+			{
+				Oid			dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+
+				/* YB doesn't use PG locks so it's okay not to take them. */
+				YBCUpdateSysCatalogTupleForDb(dboid, relation, NULL /* oldtuple */ , tuple);
+			}
+			YB_FOR_EACH_DB_END;
+		}
+		else
+		{
+			YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */ , tuple);
+		}
+
+		/*
+		 * Note: YB doesn't do heap_inplace_lock, so no need for
+		 * heap_inplace_unlock.
+		 */
+		systable_endscan(scan);
+		return;
+	}
+
+	BufferHeapTupleTableSlot *bslot = (BufferHeapTupleTableSlot *) slot;
+	HeapTuple	oldtup = bslot->base.tuple;
+	Buffer		buffer = bslot->buffer;
+
+	heap_inplace_update_and_unlock(relation, oldtup, tuple, buffer);
+	systable_endscan(scan);
+}
+
+/*
+ * systable_inplace_update_cancel --- abandon inplace update
+ *
+ * This is an alternative to making a no-op update.
+ */
+void
+systable_inplace_update_cancel(void *state)
+{
+	SysScanDesc scan = (SysScanDesc) state;
+	Relation	relation = scan->heap_rel;
+	TupleTableSlot *slot = scan->slot;
+
+	if (IsYBRelation(relation))
+	{
+		/*
+		 * Note: YB doesn't do heap_inplace_lock, so no need for
+		 * heap_inplace_unlock.
+		 */
+		systable_endscan(scan);
+		return;
+	}
+
+	BufferHeapTupleTableSlot *bslot = (BufferHeapTupleTableSlot *) slot;
+	HeapTuple	oldtup = bslot->base.tuple;
+	Buffer		buffer = bslot->buffer;
+
+	heap_inplace_unlock(relation, oldtup, buffer);
+	systable_endscan(scan);
 }

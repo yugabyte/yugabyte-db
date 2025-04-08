@@ -2508,8 +2508,7 @@ array_set_element(Datum arraydatum,
 	{
 		bits8	   *newnullbitmap = ARR_NULLBITMAP(newarray);
 
-		/* Zero the bitmap to take care of marking inserted positions null */
-		MemSet(newnullbitmap, 0, (newnitems + 7) / 8);
+		/* palloc0 above already marked any inserted positions as nulls */
 		/* Fix the inserted value */
 		if (addedafter)
 			array_set_isnull(newnullbitmap, newnitems - 1, isNull);
@@ -2934,7 +2933,14 @@ array_set_slice(Datum arraydatum,
 						 errdetail("When assigning to a slice of an empty array value,"
 								   " slice boundaries must be fully specified.")));
 
-			dim[i] = 1 + upperIndx[i] - lowerIndx[i];
+			/* compute "upperIndx[i] - lowerIndx[i] + 1", detecting overflow */
+			if (pg_sub_s32_overflow(upperIndx[i], lowerIndx[i], &dim[i]) ||
+				pg_add_s32_overflow(dim[i], 1, &dim[i]))
+				ereport(ERROR,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("array size exceeds the maximum allowed (%d)",
+								(int) MaxArraySize)));
+
 			lb[i] = lowerIndx[i];
 		}
 
@@ -3160,8 +3166,7 @@ array_set_slice(Datum arraydatum,
 			bits8	   *newnullbitmap = ARR_NULLBITMAP(newarray);
 			bits8	   *oldnullbitmap = ARR_NULLBITMAP(array);
 
-			/* Zero the bitmap to handle marking inserted positions null */
-			MemSet(newnullbitmap, 0, (nitems + 7) / 8);
+			/* palloc0 above already marked any inserted positions as nulls */
 			array_bitmap_copy(newnullbitmap, addedbefore,
 							  oldnullbitmap, 0,
 							  itemsbefore);

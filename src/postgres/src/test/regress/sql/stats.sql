@@ -289,6 +289,36 @@ SELECT pg_stat_get_live_tuples(:drop_stats_test_subxact_oid);
 DROP TABLE trunc_stats_test, trunc_stats_test1, trunc_stats_test2, trunc_stats_test3, trunc_stats_test4;
 DROP TABLE prevstats;
 
+-----
+-- Test reset of some stats for shared table
+-----
+
+-- This updates the comment of the database currently in use in
+-- pg_shdescription with a fake value, then sets it back to its
+-- original value.
+SELECT shobj_description(d.oid, 'pg_database') as description_before
+  FROM pg_database d WHERE datname = current_database() \gset
+
+-- force some stats in pg_shdescription.
+BEGIN;
+SELECT current_database() as datname \gset
+COMMENT ON DATABASE :"datname" IS 'This is a test comment';
+SELECT pg_stat_force_next_flush();
+COMMIT;
+
+-- check that the stats are reset.
+SELECT (n_tup_ins + n_tup_upd) > 0 AS has_data FROM pg_stat_all_tables
+  WHERE relid = 'pg_shdescription'::regclass;
+SELECT pg_stat_reset_single_table_counters('pg_shdescription'::regclass);
+SELECT (n_tup_ins + n_tup_upd) > 0 AS has_data FROM pg_stat_all_tables
+  WHERE relid = 'pg_shdescription'::regclass;
+
+-- set back comment
+\if :{?description_before}
+  COMMENT ON DATABASE :"datname" IS :'description_before';
+\else
+  COMMENT ON DATABASE :"datname" IS NULL;
+\endif
 
 -----
 -- Test that various stats views are being properly populated
@@ -382,6 +412,26 @@ SELECT pg_stat_get_snapshot_timestamp() >= NOW();
 SELECT pg_stat_clear_snapshot();
 SELECT pg_stat_get_snapshot_timestamp();
 COMMIT;
+
+----
+-- Changing stats_fetch_consistency in a transaction.
+----
+BEGIN;
+-- Stats filled under the cache mode
+SET LOCAL stats_fetch_consistency = cache;
+SELECT pg_stat_get_function_calls(0);
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+-- Success in accessing pre-existing snapshot data.
+SET LOCAL stats_fetch_consistency = snapshot;
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+SELECT pg_stat_get_function_calls(0);
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+-- Snapshot cleared.
+SET LOCAL stats_fetch_consistency = none;
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+SELECT pg_stat_get_function_calls(0);
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+ROLLBACK;
 
 ----
 -- pg_stat_have_stats behavior

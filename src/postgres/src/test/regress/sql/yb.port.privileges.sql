@@ -551,13 +551,13 @@ UPDATE errtst SET b = NULL;
 -- partitioning key is updated, doesn't move the row.
 UPDATE errtst SET a = 'aaa', b = NULL;
 -- row is moved to another partition.
-UPDATE errtst SET a = 'aaaa', b = NULL; -- YB: TODO: investigate why output shows errtst_part_1 instead of errtst_part_2
+UPDATE errtst SET a = 'aaaa', b = NULL;
 
 -- row is moved to another partition. This differs from the previous case in
 -- that the new partition is excluded by constraint exclusion, so its
 -- ResultRelInfo is not created at ExecInitModifyTable, but needs to be
 -- constructed on the fly when the updated tuple is routed to it.
-UPDATE errtst SET a = 'aaaa', b = NULL WHERE a = 'aaa'; -- YB: TODO: investigate why output shows errtst_part_1 instead of errtst_part_2
+UPDATE errtst SET a = 'aaaa', b = NULL WHERE a = 'aaa';
 
 SET SESSION AUTHORIZATION regress_priv_user1;
 DROP TABLE errtst;

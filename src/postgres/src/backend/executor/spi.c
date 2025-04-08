@@ -338,13 +338,13 @@ _SPI_rollback(bool chain)
 	MemoryContext oldcontext = CurrentMemoryContext;
 	SavedTransactionCharacteristics savetc;
 
-	/* see under SPI_commit() */
+	/* see comments in _SPI_commit() */
 	if (_SPI_current->atomic)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
 				 errmsg("invalid transaction termination")));
 
-	/* see under SPI_commit() */
+	/* see comments in _SPI_commit() */
 	if (IsSubTransaction())
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
@@ -586,8 +586,11 @@ SPI_inside_nonatomic_context(void)
 {
 	if (_SPI_current == NULL)
 		return false;			/* not in any SPI context at all */
+	/* these tests must match _SPI_commit's opinion of what's atomic: */
 	if (_SPI_current->atomic)
 		return false;			/* it's atomic (ie function not procedure) */
+	if (IsSubTransaction())
+		return false;			/* if within subtransaction, it's atomic */
 	return true;
 }
 
@@ -2033,6 +2036,10 @@ SPI_result_code_string(int code)
 			return "SPI_OK_REL_REGISTER";
 		case SPI_OK_REL_UNREGISTER:
 			return "SPI_OK_REL_UNREGISTER";
+		case SPI_OK_TD_REGISTER:
+			return "SPI_OK_TD_REGISTER";
+		case SPI_OK_MERGE:
+			return "SPI_OK_MERGE";
 	}
 	/* Unrecognized code ... return something useful ... */
 	sprintf(buf, "Unrecognized SPI code %d", code);
@@ -2042,6 +2049,8 @@ SPI_result_code_string(int code)
 /*
  * SPI_plan_get_plan_sources --- get a SPI plan's underlying list of
  * CachedPlanSources.
+ *
+ * CAUTION: there is no check on whether the CachedPlanSources are up-to-date.
  *
  * This is exported so that PL/pgSQL can use it (this beats letting PL/pgSQL
  * look directly into the SPIPlan for itself).  It's not documented in
@@ -2398,12 +2407,22 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	uint64		my_processed = 0;
 	SPITupleTable *my_tuptable = NULL;
 	int			res = 0;
+	bool		allow_nonatomic;
 	bool		pushed_active_snap = false;
 	ResourceOwner plan_owner = options->owner;
 	SPICallbackArg spicallbackarg;
 	ErrorContextCallback spierrcontext;
 	CachedPlan *cplan = NULL;
 	ListCell   *lc1;
+
+	/*
+	 * We allow nonatomic behavior only if options->allow_nonatomic is set
+	 * *and* the SPI_OPT_NONATOMIC flag was given when connecting and we are
+	 * not inside a subtransaction.  The latter two tests match whether
+	 * _SPI_commit() would allow a commit; see there for more commentary.
+	 */
+	allow_nonatomic = options->allow_nonatomic &&
+		!_SPI_current->atomic && !IsSubTransaction();
 
 	/*
 	 * Setup error traceback support for ereport()
@@ -2424,12 +2443,17 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	 * snapshot != InvalidSnapshot, read_only = false: use the given snapshot,
 	 * modified by advancing its command ID before each querytree.
 	 *
-	 * snapshot == InvalidSnapshot, read_only = true: use the entry-time
-	 * ActiveSnapshot, if any (if there isn't one, we run with no snapshot).
+	 * snapshot == InvalidSnapshot, read_only = true: do nothing for queries
+	 * that require no snapshot.  For those that do, ensure that a Portal
+	 * snapshot exists; then use that, or use the entry-time ActiveSnapshot if
+	 * that exists and is different.
 	 *
-	 * snapshot == InvalidSnapshot, read_only = false: take a full new
-	 * snapshot for each user command, and advance its command ID before each
-	 * querytree within the command.
+	 * snapshot == InvalidSnapshot, read_only = false: do nothing for queries
+	 * that require no snapshot.  For those that do, ensure that a Portal
+	 * snapshot exists; then, in atomic execution (!allow_nonatomic) take a
+	 * full new snapshot for each user command, and advance its command ID
+	 * before each querytree within the command.  In allow_nonatomic mode we
+	 * just use the Portal snapshot unmodified.
 	 *
 	 * In the first two cases, we can just push the snap onto the stack once
 	 * for the whole plan list.
@@ -2439,6 +2463,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	 */
 	if (snapshot != InvalidSnapshot)
 	{
+		/* this intentionally tests the options field not the derived value */
 		Assert(!options->allow_nonatomic);
 		if (options->read_only)
 		{
@@ -2593,7 +2618,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 			 * Skip it when doing non-atomic execution, though (we rely
 			 * entirely on the Portal snapshot in that case).
 			 */
-			if (!options->read_only && !options->allow_nonatomic)
+			if (!options->read_only && !allow_nonatomic)
 			{
 				if (pushed_active_snap)
 					PopActiveSnapshot();
@@ -2693,14 +2718,13 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 				QueryCompletion qc;
 
 				/*
-				 * If the SPI context is atomic, or we were not told to allow
-				 * nonatomic operations, tell ProcessUtility this is an atomic
-				 * execution context.
+				 * If we're not allowing nonatomic operations, tell
+				 * ProcessUtility this is an atomic execution context.
 				 */
-				if (_SPI_current->atomic || !options->allow_nonatomic)
-					context = PROCESS_UTILITY_QUERY;
-				else
+				if (allow_nonatomic)
 					context = PROCESS_UTILITY_QUERY_NONATOMIC;
+				else
+					context = PROCESS_UTILITY_QUERY;
 
 				InitializeQueryCompletion(&qc);
 				ProcessUtility(stmt,

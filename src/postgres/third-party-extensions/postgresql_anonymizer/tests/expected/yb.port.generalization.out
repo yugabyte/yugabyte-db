@@ -286,7 +286,7 @@ SELECT anon.generalize_tstzrange('19041107','century');
 SELECT anon.generalize_tstzrange('19041107','millennium');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Thu Jan 01 00:00:00 1001 PST","Mon Jan 01 00:00:00 2001 PST")
+ ["Thu Jan 01 00:00:00 1001 LMT","Mon Jan 01 00:00:00 2001 PST")
 (1 row)
 
 -- generalize_daterange

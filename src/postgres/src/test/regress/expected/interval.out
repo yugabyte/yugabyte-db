@@ -357,6 +357,19 @@ SELECT * FROM INTERVAL_TBL;
  @ 5 mons 12 hours
 (10 rows)
 
+-- multiplication and division overflow test cases
+SELECT '3000000 months'::interval * 1000;
+ERROR:  interval out of range
+SELECT '3000000 months'::interval / 0.001;
+ERROR:  interval out of range
+SELECT '3000000 days'::interval * 1000;
+ERROR:  interval out of range
+SELECT '3000000 days'::interval / 0.001;
+ERROR:  interval out of range
+SELECT '1 month 2146410 days'::interval * 1000.5002;
+ERROR:  interval out of range
+SELECT '4611686018427387904 usec'::interval / 0.1;
+ERROR:  interval out of range
 -- test avg(interval), which is somewhat fragile since people have been
 -- known to change the allowed input syntax for type interval without
 -- updating pg_aggregate.agginitval
@@ -857,6 +870,11 @@ SELECT  interval '-23 hours 45 min 12.34 sec',
  -23:45:12.34 | -1 23:45:12.34 | -1-2 -1 -23:45:12.34 | -0-10 +1 +23:45:12.34
 (1 row)
 
+-- edge case for sign-matching rules
+SELECT  interval '';  -- error
+ERROR:  invalid input syntax for type interval: ""
+LINE 1: SELECT  interval '';
+                         ^
 -- test outputting iso8601 intervals
 SET IntervalStyle to iso_8601;
 select  interval '0'                                AS "zero",
@@ -937,6 +955,12 @@ select interval 'P.1Y0M3DT4H5M6S';
        interval        
 -----------------------
  1 mon 3 days 04:05:06
+(1 row)
+
+select interval 'P10.5e4Y';  -- not per spec, but we've historically taken it
+   interval   
+--------------
+ 105000 years
 (1 row)
 
 select interval 'P.Y0M3DT4H5M6S';  -- error
@@ -1045,13 +1069,13 @@ select interval 'PT2562047788:00:54.775807';
 select interval 'PT2562047788.0152155019444';
              interval              
 -----------------------------------
- @ 2562047788 hours 54.775807 secs
+ @ 2562047788 hours 54.775429 secs
 (1 row)
 
 select interval 'PT-2562047788.0152155022222';
                interval                
 ---------------------------------------
- @ 2562047788 hours 54.775808 secs ago
+ @ 2562047788 hours 54.775429 secs ago
 (1 row)
 
 -- overflow each date/time field

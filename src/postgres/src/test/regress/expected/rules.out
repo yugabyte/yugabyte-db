@@ -2477,10 +2477,7 @@ pg_stats_ext| SELECT cn.nspname AS schemaname,
             array_agg(pg_mcv_list_items.frequency) AS most_common_freqs,
             array_agg(pg_mcv_list_items.base_frequency) AS most_common_base_freqs
            FROM pg_mcv_list_items(sd.stxdmcv) pg_mcv_list_items(index, "values", nulls, frequency, base_frequency)) m ON ((sd.stxdmcv IS NOT NULL)))
-  WHERE ((NOT (EXISTS ( SELECT 1
-           FROM (unnest(s.stxkeys) k(k)
-             JOIN pg_attribute a ON (((a.attrelid = s.stxrelid) AND (a.attnum = k.k))))
-          WHERE (NOT has_column_privilege(c.oid, a.attnum, 'select'::text))))) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
+  WHERE (pg_has_role(c.relowner, 'USAGE'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
     c.relname AS tablename,
     sn.nspname AS statistics_schemaname,
@@ -2553,7 +2550,8 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
      LEFT JOIN pg_namespace cn ON ((cn.oid = c.relnamespace)))
      LEFT JOIN pg_namespace sn ON ((sn.oid = s.stxnamespace)))
      JOIN LATERAL ( SELECT unnest(pg_get_statisticsobjdef_expressions(s.oid)) AS expr,
-            unnest(sd.stxdexpr) AS a) stat ON ((stat.expr IS NOT NULL)));
+            unnest(sd.stxdexpr) AS a) stat ON ((stat.expr IS NOT NULL)))
+  WHERE (pg_has_role(c.relowner, 'USAGE'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 pg_tables| SELECT n.nspname AS schemaname,
     c.relname AS tablename,
     pg_get_userbyid(c.relowner) AS tableowner,
@@ -3022,28 +3020,21 @@ select * from rules_log;
 (16 rows)
 
 create rule r4 as on delete to rules_src do notify rules_src_deletion;
-\d+ rules_src
-                                 Table "public.rules_src"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- f1     | integer |           |          |         | plain   |              | 
- f2     | integer |           |          | 0       | plain   |              | 
-Rules:
-    r1 AS
-    ON UPDATE TO rules_src DO  INSERT INTO rules_log (f1, f2, tag, id) VALUES (old.f1,old.f2,'old'::text,DEFAULT), (new.f1,new.f2,'new'::text,DEFAULT)
-    r2 AS
-    ON UPDATE TO rules_src DO  VALUES (old.f1,old.f2,'old'::text), (new.f1,new.f2,'new'::text)
-    r3 AS
-    ON INSERT TO rules_src DO  INSERT INTO rules_log (f1, f2, tag, id) VALUES (NULL::integer,NULL::integer,'-'::text,DEFAULT), (new.f1,new.f2,'new'::text,DEFAULT)
-    r4 AS
-    ON DELETE TO rules_src DO
- NOTIFY rules_src_deletion
-
 --
 -- Ensure an aliased target relation for insert is correctly deparsed.
 --
 create rule r5 as on insert to rules_src do instead insert into rules_log AS trgt SELECT NEW.* RETURNING trgt.f1, trgt.f2;
 create rule r6 as on update to rules_src do instead UPDATE rules_log AS trgt SET tag = 'updated' WHERE trgt.f1 = new.f1;
+--
+-- Check deparse disambiguation of INSERT/UPDATE/DELETE targets.
+--
+create rule r7 as on delete to rules_src do instead
+  with wins as (insert into int4_tbl as trgt values (0) returning *),
+       wupd as (update int4_tbl trgt set f1 = f1+1 returning *),
+       wdel as (delete from int4_tbl trgt where f1 = 0 returning *)
+  insert into rules_log AS trgt select old.* from wins, wupd, wdel
+  returning trgt.f1, trgt.f2;
+-- check display of all rules added above
 \d+ rules_src
                                  Table "public.rules_src"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
@@ -3068,6 +3059,26 @@ Rules:
     r6 AS
     ON UPDATE TO rules_src DO INSTEAD  UPDATE rules_log trgt SET tag = 'updated'::text
   WHERE trgt.f1 = new.f1
+    r7 AS
+    ON DELETE TO rules_src DO INSTEAD  WITH wins AS (
+         INSERT INTO int4_tbl AS trgt_1 (f1)
+          VALUES (0)
+          RETURNING trgt_1.f1
+        ), wupd AS (
+         UPDATE int4_tbl trgt_1 SET f1 = trgt_1.f1 + 1
+          RETURNING trgt_1.f1
+        ), wdel AS (
+         DELETE FROM int4_tbl trgt_1
+          WHERE trgt_1.f1 = 0
+          RETURNING trgt_1.f1
+        )
+ INSERT INTO rules_log AS trgt (f1, f2)  SELECT old.f1,
+            old.f2
+           FROM wins,
+            wupd,
+            wdel
+  RETURNING trgt.f1,
+    trgt.f2
 
 --
 -- Also check multiassignment deparsing.
@@ -3093,6 +3104,31 @@ Rules:
     new.f2
 
 drop table rule_t1, rule_dest;
+--
+-- Test implicit LATERAL references to old/new in rules
+--
+CREATE TABLE rule_t1(a int, b text DEFAULT 'xxx', c int);
+CREATE VIEW rule_v1 AS SELECT * FROM rule_t1;
+CREATE RULE v1_ins AS ON INSERT TO rule_v1
+  DO ALSO INSERT INTO rule_t1
+  SELECT * FROM (SELECT a + 10 FROM rule_t1 WHERE a = NEW.a) tt;
+CREATE RULE v1_upd AS ON UPDATE TO rule_v1
+  DO ALSO UPDATE rule_t1 t
+  SET c = tt.a * 10
+  FROM (SELECT a FROM rule_t1 WHERE a = OLD.a) tt WHERE t.a = tt.a;
+INSERT INTO rule_v1 VALUES (1, 'a'), (2, 'b');
+UPDATE rule_v1 SET b = upper(b);
+SELECT * FROM rule_t1;
+ a  |  b  |  c  
+----+-----+-----
+  1 | A   |  10
+  2 | B   |  20
+ 11 | XXX | 110
+ 12 | XXX | 120
+(4 rows)
+
+DROP TABLE rule_t1 CASCADE;
+NOTICE:  drop cascades to view rule_v1
 --
 -- check alter rename rule
 --
@@ -3557,6 +3593,91 @@ MERGE INTO rule_merge2 t USING (SELECT 1 AS a) s
 		DELETE
 	WHEN NOT MATCHED THEN
 		INSERT VALUES (s.a, '');
+-- test deparsing
+CREATE TABLE sf_target(id int, data text, filling int[]);
+CREATE FUNCTION merge_sf_test()
+ RETURNS void
+ LANGUAGE sql
+BEGIN ATOMIC
+ MERGE INTO sf_target t
+   USING rule_merge1 s
+   ON (s.a = t.id)
+WHEN MATCHED
+   AND (s.a + t.id) = 42
+   THEN UPDATE SET data = repeat(t.data, s.a) || s.b, id = length(s.b)
+WHEN NOT MATCHED
+   AND (s.b IS NOT NULL)
+   THEN INSERT (data, id)
+   VALUES (s.b, s.a)
+WHEN MATCHED
+   AND length(s.b || t.data) > 10
+   THEN UPDATE SET data = s.b
+WHEN MATCHED
+   AND s.a > 200
+   THEN UPDATE SET filling[s.a] = t.id
+WHEN MATCHED
+   AND s.a > 100
+   THEN DELETE
+WHEN MATCHED
+   THEN DO NOTHING
+WHEN NOT MATCHED
+   AND s.a > 200
+   THEN INSERT DEFAULT VALUES
+WHEN NOT MATCHED
+   AND s.a > 100
+   THEN INSERT (id, data) OVERRIDING USER VALUE
+   VALUES (s.a, DEFAULT)
+WHEN NOT MATCHED
+   AND s.a > 0
+   THEN INSERT
+   VALUES (s.a, s.b, DEFAULT)
+WHEN NOT MATCHED
+   THEN INSERT (filling[1], id)
+   VALUES (s.a, s.a);
+END;
+\sf merge_sf_test
+CREATE OR REPLACE FUNCTION public.merge_sf_test()
+ RETURNS void
+ LANGUAGE sql
+BEGIN ATOMIC
+ MERGE INTO sf_target t
+    USING rule_merge1 s
+    ON (s.a = t.id)
+    WHEN MATCHED
+     AND ((s.a + t.id) = 42)
+     THEN UPDATE SET data = (repeat(t.data, s.a) || s.b), id = length(s.b)
+    WHEN NOT MATCHED
+     AND (s.b IS NOT NULL)
+     THEN INSERT (data, id)
+      VALUES (s.b, s.a)
+    WHEN MATCHED
+     AND (length((s.b || t.data)) > 10)
+     THEN UPDATE SET data = s.b
+    WHEN MATCHED
+     AND (s.a > 200)
+     THEN UPDATE SET filling[s.a] = t.id
+    WHEN MATCHED
+     AND (s.a > 100)
+     THEN DELETE
+    WHEN MATCHED
+     THEN DO NOTHING
+    WHEN NOT MATCHED
+     AND (s.a > 200)
+     THEN INSERT DEFAULT VALUES
+    WHEN NOT MATCHED
+     AND (s.a > 100)
+     THEN INSERT (id, data) OVERRIDING USER VALUE
+      VALUES (s.a, DEFAULT)
+    WHEN NOT MATCHED
+     AND (s.a > 0)
+     THEN INSERT (id, data, filling)
+      VALUES (s.a, s.b, DEFAULT)
+    WHEN NOT MATCHED
+     THEN INSERT (filling[1], id)
+      VALUES (s.a, s.a);
+END
+DROP FUNCTION merge_sf_test;
+DROP TABLE sf_target;
 --
 -- Test enabling/disabling
 --

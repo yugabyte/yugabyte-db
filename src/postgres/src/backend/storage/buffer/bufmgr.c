@@ -3799,11 +3799,9 @@ RelationCopyStorageUsingBuffer(RelFileNode srcnode,
 		LockBuffer(srcBuf, BUFFER_LOCK_SHARE);
 		srcPage = BufferGetPage(srcBuf);
 
-		/* Use P_NEW to extend the destination relation. */
 		dstBuf = ReadBufferWithoutRelcache(dstnode, forkNum, blkno,
-										   RBM_NORMAL, bstrategy_dst,
+										   RBM_ZERO_AND_LOCK, bstrategy_dst,
 										   permanent);
-		LockBuffer(dstBuf, BUFFER_LOCK_EXCLUSIVE);
 		dstPage = BufferGetPage(dstBuf);
 
 		START_CRIT_SECTION();
@@ -3821,6 +3819,9 @@ RelationCopyStorageUsingBuffer(RelFileNode srcnode,
 		UnlockReleaseBuffer(dstBuf);
 		UnlockReleaseBuffer(srcBuf);
 	}
+
+	FreeAccessStrategy(bstrategy_src);
+	FreeAccessStrategy(bstrategy_dst);
 }
 
 /* ---------------------------------------------------------------------

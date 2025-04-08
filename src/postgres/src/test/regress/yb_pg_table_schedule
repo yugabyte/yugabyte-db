@@ -2,6 +2,7 @@
 # This schedule is for ported tests only.
 
 # Dependencies for yb.port.alter_table
+test: yb.depd.int8_tbl
 test: yb.depd.onek
 test: yb.depd.part_test_int4_ops
 # TODO(jason): yb.port.insert is no longer a dependency, so move it to

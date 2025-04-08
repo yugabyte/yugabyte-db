@@ -701,27 +701,50 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 						   SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1))));
 	}
 
+	/*
+	 * Create the temporary "diff" table.
+	 *
+	 * Temporarily switch out of the SECURITY_RESTRICTED_OPERATION context,
+	 * because you cannot create temp tables in SRO context.  For extra
+	 * paranoia, add the composite type column only after switching back to
+	 * SRO context.
+	 */
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
-
-	/* Start building the query for creating the diff table. */
 	resetStringInfo(&querybuf);
 	if (IsYugaByteEnabled())
-	{
 		appendStringInfo(&querybuf,
-						 "CREATE TEMP TABLE %s AS "
+						 "CREATE TEMP TABLE %s (mv %s)",
+						 diffname, matviewname);
+	else
+		appendStringInfo(&querybuf,
+						 "CREATE TEMP TABLE %s (tid pg_catalog.tid)",
+						 diffname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+	SetUserIdAndSecContext(relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	resetStringInfo(&querybuf);
+	appendStringInfo(&querybuf,
+					 "ALTER TABLE %s ADD COLUMN newdata %s",
+					 diffname, tempname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	/* Start building the query for populating the diff table. */
+	resetStringInfo(&querybuf);
+	if (IsYugaByteEnabled())
+		appendStringInfo(&querybuf,
+						 "INSERT INTO %s "
 						 "SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
 						 "FROM %s mv FULL JOIN %s newdata ON (",
 						 diffname, matviewname, tempname, matviewname, tempname);
-	}
 	else
-	{
 		appendStringInfo(&querybuf,
-						 "CREATE TEMP TABLE %s AS "
+						 "INSERT INTO %s "
 						 "SELECT mv.ctid AS tid, newdata.*::%s AS newdata "
 						 "FROM %s mv FULL JOIN %s newdata ON (",
 						 diffname, tempname, matviewname, tempname);
-	}
 
 	/*
 	 * Get the list of index OIDs for the table from the relcache, and look up
@@ -838,9 +861,12 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 *
 	 * ExecRefreshMatView() checks that after taking the exclusive lock on the
 	 * matview. So at least one unique index is guaranteed to exist here
-	 * because the lock is still being held; so an Assert seems sufficient.
+	 * because the lock is still being held.  (One known exception is if a
+	 * function called as part of refreshing the matview drops the index.
+	 * That's a pretty silly thing to do.)
 	 */
-	Assert(foundUniqueIndex);
+	if (!foundUniqueIndex)
+		elog(ERROR, "could not find suitable unique index on materialized view");
 
 	if (IsYugaByteEnabled())
 	{
@@ -857,12 +883,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 							   "ORDER BY tid");
 	}
 
-	/* Create the temporary "diff" table. */
-	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+	/* Populate the temporary "diff" table. */
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_INSERT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
-
-	SetUserIdAndSecContext(relowner,
-						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 	/*
 	 * We have no further use for data from the "full-data" temp table, but we

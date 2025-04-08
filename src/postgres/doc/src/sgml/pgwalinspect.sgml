@@ -154,8 +154,9 @@ block_ref        |
       function will raise an error. For example:
 <screen>
 postgres=# SELECT * FROM pg_get_wal_stats('0/1E847D00', '0/1E84F500')
-             WHERE count > 0 LIMIT 1 AND
-                   "resource_manager/record_type" = 'Transaction';
+           WHERE count > 0 AND
+                 "resource_manager/record_type" = 'Transaction'
+           LIMIT 1;
 -[ RECORD 1 ]----------------+-------------------
 resource_manager/record_type | Transaction
 count                        | 2
@@ -174,7 +175,7 @@ combined_size_percentage     | 2.8634072910530795
     <varlistentry>
     <term>
      <function>
-      pg_get_wal_stats_till_end_of_wal(start_lsn pg_lsn, end_lsn pg_lsn, per_record boolean DEFAULT false)
+      pg_get_wal_stats_till_end_of_wal(start_lsn pg_lsn, per_record boolean DEFAULT false)
       returns setof record
      </function>
     </term>
