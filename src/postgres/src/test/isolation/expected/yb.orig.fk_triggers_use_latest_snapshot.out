@@ -1,0 +1,933 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s2_rc s1_ins s2_del_no_action_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s1_ins s2_del_no_action_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_sr s1_ins s2_del_no_action_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rc s1_ins s2_del_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rr s1_ins s2_del_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rr s2_read_pk_rel s1_ins s2_del_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_sr s1_ins s2_del_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s1_ins s2_del_no_action_col s1_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rc s2_set_deferred s1_ins s2_del_no_action_col s1_commit s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s2_set_deferred s1_ins s2_del_no_action_col s1_commit s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_sr s2_set_deferred s1_ins s2_del_no_action_col s1_commit s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_no_action_col: <... completed>
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rc s2_set_deferred s1_ins s2_del_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rr s2_set_deferred s1_ins s2_del_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rr s2_set_deferred s2_read_pk_rel s1_ins s2_del_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_sr s2_set_deferred s1_ins s2_del_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rc s1_ins s2_upd_no_action_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s1_ins s2_upd_no_action_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_sr s1_ins s2_upd_no_action_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rc s1_ins s2_upd_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rr s1_ins s2_upd_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_rr s2_read_pk_rel s1_ins s2_upd_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s2_sr s1_ins s2_upd_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s1_ins s2_upd_no_action_col s1_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_no_action_fkey" on table "fk_rel"
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rc s2_set_deferred s1_ins s2_upd_no_action_col s1_commit s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s1_begin s2_rr s2_set_deferred s1_ins s2_upd_no_action_col s1_commit s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s1_begin s2_sr s2_set_deferred s1_ins s2_upd_no_action_col s1_commit s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_no_action_col: <... completed>
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s2_rc s2_set_deferred s1_ins s2_upd_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s2_rr s2_set_deferred s1_ins s2_upd_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s2_rr s2_set_deferred s2_read_pk_rel s1_ins s2_upd_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s2_sr s2_set_deferred s1_ins s2_upd_no_action_col s2_ins_no_action_col s2_commit s2_read_fk_rel s2_read_pk_rel
+step s2_sr: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_no_action_col: UPDATE pk_rel SET v_no_action='a' WHERE v_no_action='g';
+step s2_ins_no_action_col: INSERT INTO pk_rel VALUES (5000, 'g');
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+   h|v_no_action|v_restrict|v_cascade
+----+-----------+----------+---------
+   1|a          |          |         
+5000|g          |          |         
+   2|           |g         |         
+   3|           |          |g        
+(4 rows)
+
+
+starting permutation: s1_begin s2_rr s2_read_pk_rel s1_ins s2_del_restrict_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_restrict_col: DELETE FROM pk_rel WHERE v_restrict='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_restrict_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s2_set_deferred s2_read_pk_rel s1_ins s2_del_restrict_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_restrict_col: DELETE FROM pk_rel WHERE v_restrict='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_restrict_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s2_read_pk_rel s1_ins s2_upd_restrict_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_restrict_col: UPDATE pk_rel SET v_restrict='a' WHERE v_restrict='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_restrict_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s2_set_deferred s2_read_pk_rel s1_ins s2_upd_restrict_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_set_deferred: SET CONSTRAINTS ALL DEFERRED;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_restrict_col: UPDATE pk_rel SET v_restrict='a' WHERE v_restrict='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_restrict_col: <... completed>
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v_restrict_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |g        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rr s2_read_pk_rel s1_ins s2_del_cascade_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_del_cascade_col: DELETE FROM pk_rel WHERE v_cascade='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_cascade_col: <... completed>
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+(0 rows)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+(2 rows)
+
+
+starting permutation: s1_begin s2_rr s2_read_pk_rel s1_ins s2_upd_cascade_col s1_commit s2_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |g        
+(3 rows)
+
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+step s2_upd_cascade_col: UPDATE pk_rel SET v_cascade='a' WHERE v_cascade='g'; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd_cascade_col: <... completed>
+step s2_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |g         |a        
+(1 row)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+1|g          |          |         
+2|           |g         |         
+3|           |          |a        
+(3 rows)
+
+
+starting permutation: s1_begin s2_rc s2_del_no_action_col s1_ins s2_commit s1_commit s2_read_fk_rel s2_read_pk_rel
+step s1_begin: BEGIN;
+step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+step s2_read_fk_rel: SELECT * FROM fk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+(0 rows)
+
+step s2_read_pk_rel: SELECT * FROM pk_rel;
+h|v_no_action|v_restrict|v_cascade
+-+-----------+----------+---------
+2|           |g         |         
+3|           |          |g        
+(2 rows)
+
