@@ -19,7 +19,7 @@ Follow the guide to learn how to build a scalable LLM application using the [SQL
 
 ## Prerequisites
 
-* Python 3
+* Python 3.9 or later
 * Docker
 
 ## Set up the application

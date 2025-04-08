@@ -205,11 +205,11 @@ All you need to do is to restart the application containers with YugabyteDB-spec
     - DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true
     ```
 
-    {{< warning title="Flyway and Advisory Locks" >}}
-The application uses Flyway to apply database migrations on startup. Flyway tries to acquire [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), but does not require them. As this example does not use them, the DB_CONN_INIT_SQL suppresses all warnings about advisory locks.
+    {{< note title="Flyway and Advisory Locks" >}}
+The application uses Flyway to apply database migrations on startup. Flyway tries to acquire [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), but does not require them. Because this example does not require them, we set the DB_CONN_INIT_SQL to suppress all advisory lock warnings.
 
 YugabyteDB support for advisory locks is {{<tags/feature/tp idea="812">}} in v2.25.1; refer to [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks) for information on enabling and using them.
-    {{< /warning >}}
+    {{< /note >}}
 
 1. Start the application:
 
