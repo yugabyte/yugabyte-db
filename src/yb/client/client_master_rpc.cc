@@ -44,6 +44,7 @@ void ClientMasterRpcBase::SendRpc() {
     return;
   }
 
+  // TODO: https://github.com/yugabyte/yugabyte-db/issues/26722.
   auto rpc_deadline = now + client_data_->default_rpc_timeout_;
   mutable_retrier()->mutable_controller()->set_deadline(
       std::min(rpc_deadline, retrier().deadline()));

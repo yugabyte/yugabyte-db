@@ -274,6 +274,9 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
+DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
+    "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
+
 #if defined ADDRESS_SANITIZER
 // ASAN tests run on machines with limited disk space, so disable disk full checks.
 constexpr bool kRejectWritesWhenDiskFullDefault = false;
@@ -1957,6 +1960,13 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
                                           rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "FlushTablets", req, resp, &context)) {
     return;
+  }
+
+  if (FLAGS_TEST_pause_tablet_compact_flush_ms) {
+    const auto pause_ms = FLAGS_TEST_pause_tablet_compact_flush_ms;
+    LOG_WITH_FUNC(INFO) << "Pausing flush tablets request for " << pause_ms << " ms";
+    SleepFor(MonoDelta::FromMilliseconds(pause_ms));
+    LOG_WITH_FUNC(INFO) << "Resuming flush tablets request";
   }
 
   if (!req->all_tablets() && req->tablet_ids_size() == 0) {
