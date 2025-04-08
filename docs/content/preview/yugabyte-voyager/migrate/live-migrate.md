@@ -874,7 +874,7 @@ DROP USER ybvoyager;
 ## Limitations
 
 - Schema changes on the source database will not be recognized during the live migration.
-- Adding/Deleting partitions of a partitioned table is not supported during the live migration.
+- Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
