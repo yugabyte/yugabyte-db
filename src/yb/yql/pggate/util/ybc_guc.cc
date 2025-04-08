@@ -79,7 +79,7 @@ int yb_locks_txn_locks_per_tablet = 200;
 
 int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
-int yb_walsender_poll_sleep_duration_empty_ms = 1 * 1000;
+int yb_walsender_poll_sleep_duration_empty_ms = 10;
 
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
