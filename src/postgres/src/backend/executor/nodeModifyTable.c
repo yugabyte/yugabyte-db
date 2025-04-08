@@ -2435,12 +2435,6 @@ yb_lreplace:;
 	HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, true /* materialize */ , NULL);
 
 	/*
-	 * Check the constraints of the tuple.
-	 */
-	if (resultRelationDesc->rd_att->constr)
-		ExecConstraints(resultRelInfo, slot, estate, context->mtstate);
-
-	/*
 	 * If partition constraint fails, this row might get moved to another
 	 * partition, in which case we should check the RLS CHECK policy just
 	 * before inserting into the new partition, rather than doing it here.
@@ -2547,6 +2541,12 @@ yb_lreplace:;
 		slot = context->cpUpdateRetrySlot;
 		goto yb_lreplace;
 	}
+
+	/*
+	 * Check the constraints of the tuple.
+	 */
+	if (resultRelationDesc->rd_att->constr)
+		ExecConstraints(resultRelInfo, slot, estate, context->mtstate);
 
 	bool		row_found = false;
 	bool		beforeRowUpdateTriggerFired = (resultRelInfo->ri_TrigDesc &&
