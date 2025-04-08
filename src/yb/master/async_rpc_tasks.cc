@@ -156,7 +156,7 @@ RetryingRpcTask::RetryingRpcTask(
     : master_(master),
       callback_pool_(callback_pool),
       async_task_throttler_(async_task_throttler),
-      deadline_(start_timestamp_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {}
+      deadline_(UnresponsiveDeadline()) {}
 
 RetryingRpcTask::~RetryingRpcTask() {
   auto state = state_.load(std::memory_order_acquire);
@@ -275,7 +275,11 @@ Status RetryingRpcTask::Run() {
   return Status::OK();
 }
 
-MonoTime RetryingRpcTask::ComputeDeadline() {
+MonoTime RetryingRpcTask::UnresponsiveDeadline() const {
+  return start_timestamp_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms;
+}
+
+MonoTime RetryingRpcTask::ComputeDeadline() const {
   MonoTime timeout = MonoTime::Now();
   timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
   return MonoTime::Earliest(timeout, deadline_);
@@ -717,6 +721,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                            std::move(epoch), /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()),
     cdc_sdk_set_retention_barriers_(cdc_sdk_set_retention_barriers) {
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
@@ -888,6 +893,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid,
         tablet->table(), std::move(epoch), /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
@@ -1333,7 +1339,8 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
       tablet_(tablet),
       cstate_(cstate),
       change_config_ts_uuid_(change_config_ts_uuid) {
-  deadline_ = MonoTime::Max();  // Never time out.
+  // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
+  deadline_ = MonoTime::Max();
 }
 
 CommonInfoForRaftTask::~CommonInfoForRaftTask() = default;

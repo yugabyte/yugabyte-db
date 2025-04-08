@@ -1493,6 +1493,57 @@ TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
   ASSERT_GT(last_request_time, time_before_compaction);
 }
 
+// Covers https://github.com/yugabyte/yugabyte-db/issues/19957
+TEST_F(AdminCliTest, TestAdminCommandTimeout) {
+  // The test checks that an admin command timeout for compactions and flushes is honored by
+  // FlushManager on yb-master side (no dependency on `master_ts_rpc_timeout_ms`).
+
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // No admin timeout higher than `master_ts_rpc_timeout_ms` was honored for flush and compaction
+  // operation (passed via FlushManager) before the fix, which means `master_ts_rpc_timeout_ms`
+  // was the max timeout available for the mentioned operations. It is definitely not enough at
+  // least for large compactions.
+  // In case of timeout by admin command timeout value, the admin tool gets the error:
+  // (1) `Timed out waiting for FlushTables`.
+  // In case of timeout by `master_ts_rpc_timeout_ms` value, the admin tool gets the error like:
+  // (2) `Flush operation for id: 9be5b8cbd0d14cfea3371da1a6cbccab failed`.
+  // With the fix, only the error (1) is thrown for timied out commands.
+  constexpr size_t kMasterRpcTimeout = 4000;
+  constexpr size_t kCompactionPause  = 2 * kMasterRpcTimeout;
+  constexpr size_t kAdminCmdTimeout  =
+      kMasterRpcTimeout + ((kCompactionPause - kMasterRpcTimeout) / 2);
+
+  // Update flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_pause_tablet_compact_flush_ms", std::to_string(kCompactionPause)));
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  const auto before_ts = DateTime::TimestampNow();
+  auto result = CallAdmin(
+      "compact_table", kTableName.namespace_name(), kTableName.table_name(),
+      std::to_string(kAdminCmdTimeout / MonoTime::kMillisecondsPerSecond));
+  auto duration = MonoDelta::FromMicroseconds(DateTime::TimestampNow().value() - before_ts.value());
+  LOG(INFO) << "Result: " << result << ", dutaion: " << duration;
+
+  // It is expected to always get the timeout error since kAdminCmdTimeout < kCompactionPause,
+  // additionaly it covers the cases kAdminCmdTimeout > kMasterRpcTimeout for the expected error.
+  bool timed_out = !result.ok() &&
+                    result.status().message().Contains("Timed out waiting for FlushTables");
+  ASSERT_TRUE(timed_out);
+
+  // The expectation is to have the call's duration approximately kAdminCmdTimeout amount.
+  ASSERT_GT(duration, MonoDelta::FromMilliseconds(kAdminCmdTimeout));
+  ASSERT_LT(duration, MonoDelta::FromMilliseconds(kAdminCmdTimeout * 1.25));
+
+  // Wait for some time to let the compaction be unpaused and completed.
+  SleepFor(MonoDelta::FromMilliseconds(1.1 * (kCompactionPause - kAdminCmdTimeout)));
+}
+
 Status AdminCliTest::TestDumpSysCatalogEntry(const std::string& cluster_uuid) {
   const auto dump_file_path = tmp_dir_ / Format("$0-", kClusterConfigEntryTypeName);
 

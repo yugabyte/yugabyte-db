@@ -1451,7 +1451,8 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
       start_key_(start_key),
       requested_index_names_(RetrieveIndexNames(backfill_tablet->master()->catalog_manager_impl(),
                                                 indexes_being_backfilled_)) {
-  deadline_ = MonoTime::Max(); // Never time out.
+  // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
+  deadline_ = MonoTime::Max();
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -1473,7 +1474,7 @@ Status BackfillChunk::Launch() {
   return Status::OK();
 }
 
-MonoTime BackfillChunk::ComputeDeadline() {
+MonoTime BackfillChunk::ComputeDeadline() const {
   MonoTime timeout = MonoTime::Now();
   if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
     timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_ysql_index_backfill_rpc_timeout_ms));
@@ -1481,6 +1482,7 @@ MonoTime BackfillChunk::ComputeDeadline() {
     DCHECK(GetTableType() == TableType::YQL_TABLE_TYPE);
     timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_index_backfill_rpc_timeout_ms));
   }
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   return MonoTime::Earliest(timeout, deadline_);
 }
 

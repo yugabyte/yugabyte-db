@@ -38,13 +38,16 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      const FlushRequestId& flush_id,
                                      bool is_compaction,
                                      bool regular_only,
-                                     LeaderEpoch epoch)
-: RetrySpecificTSRpcTaskWithTable(master, callback_pool, ts_uuid, table, std::move(epoch),
-                             /* async_task_throttler */ nullptr),
+                                     LeaderEpoch epoch,
+                                     MonoTime deadline)
+    : RetrySpecificTSRpcTaskWithTable(master, callback_pool, ts_uuid, table, std::move(epoch),
+                                      /* async_task_throttler = */ nullptr),
       tablet_ids_(tablet_ids),
       flush_id_(flush_id),
       is_compaction_(is_compaction),
       regular_only_(regular_only) {
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
+  deadline_ = deadline != MonoTime::Max() ? deadline : UnresponsiveDeadline();
 }
 
 string AsyncFlushTablets::description() const {
