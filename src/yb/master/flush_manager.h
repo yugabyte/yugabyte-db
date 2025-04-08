@@ -72,7 +72,8 @@ class FlushManager {
                                const FlushRequestId& flush_id,
                                bool is_compaction,
                                bool regular_only,
-                               const LeaderEpoch& epoch);
+                               const LeaderEpoch& epoch,
+                               MonoTime deadline);
 
   void UpdateFlushRequestsUnlocked(const FlushRequestId& flush_id,
                                    const TabletServerId& ts_uuid,
