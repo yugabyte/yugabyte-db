@@ -361,6 +361,25 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 
 } // namespace
 
+// List of additional RPCs that are logged by
+// yb_debug_log_docdb_requests
+static ash::PggateRPC kDebugLogRPCs[] = {
+  ash::PggateRPC::kOpenTable,
+  ash::PggateRPC::kAlterTable,
+  ash::PggateRPC::kCreateDatabase,
+  ash::PggateRPC::kBackfillIndex,
+  ash::PggateRPC::kAlterDatabase,
+  ash::PggateRPC::kCreateTable,
+  ash::PggateRPC::kCreateTablegroup,
+  ash::PggateRPC::kDropDatabase,
+  ash::PggateRPC::kDropTable,
+  ash::PggateRPC::kDropTablegroup,
+  ash::PggateRPC::kAcquireAdvisoryLock,
+  ash::PggateRPC::kReleaseAdvisoryLock,
+  ash::PggateRPC::kAcquireObjectLock,
+  ash::PggateRPC::kTruncateTable
+};
+
 class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(const YbcPgAshConfig& ash_config,
@@ -1475,8 +1494,29 @@ class PgClient::Impl : public BigDataFetcher {
       SyncRPCFunc<Req, Resp> func, Req& req, Resp& resp,
       ash::PggateRPC rpc_enum, rpc::RpcController* controller) {
     AshMetadataToPB(req);
+
+    bool log_detail = false;
+    if (yb_debug_log_docdb_requests) {
+      for (const auto kLogEnum : kDebugLogRPCs) {
+        if (kLogEnum == rpc_enum) {
+          log_detail = true;
+          break;
+        }
+      }
+    }
+
+    if (log_detail)
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
+
     auto watcher = wait_event_watcher_(ash::WaitStateCode::kWaitingOnTServer, rpc_enum);
-    return (proxy_.get()->*func)(req, &resp, controller);
+    Status s = (proxy_.get()->*func)(req, &resp, controller);
+
+    if (log_detail)
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n "
+    << "status " << s.ToString()
+    << resp.DebugString();
+
+    return s;
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;

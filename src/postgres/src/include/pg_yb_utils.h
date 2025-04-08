@@ -616,9 +616,6 @@ extern int	StatementTimeout;
 /* Add stacktrace information to every YSQL error. */
 extern bool yb_debug_report_error_stacktrace;
 
-/* Log cache misses and cache refresh events. */
-extern bool yb_debug_log_catcache_events;
-
 /*
  * Log automatic statement (or transaction) restarts such as read-restarts and
  * schema-version restarts (e.g. catalog version mismatch errors).

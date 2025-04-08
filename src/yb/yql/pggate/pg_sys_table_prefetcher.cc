@@ -45,6 +45,7 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(
@@ -410,11 +411,22 @@ class Loader {
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
+    if (yb_debug_log_catcache_events) {
+      std::set<std::string> table_names;
+      for (const auto& op : op_info_) {
+        table_names.insert(op.table->table_name().table_name());
+      }
+      LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
+    }
       auto response = VERIFY_RESULT(Run(arena_.get(), session_, op_info_, options_));
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
           [&response, data_container](OperationInfo& op_info) -> Result<bool> {
+            if (yb_debug_log_catcache_events) {
+              LOG(INFO) << "Completed prefetch for op for table "
+                        << op_info.table->table_name().table_name();
+            }
             auto sidecar = VERIFY_RESULT(response->GetSidecarHolder(
                 op_info.operation->response()->rows_data_sidecar()));
             InsertData(data_container,

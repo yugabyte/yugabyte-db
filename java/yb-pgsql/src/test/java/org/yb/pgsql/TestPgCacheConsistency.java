@@ -707,54 +707,55 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     Statement stmt2 = connection2.createStatement()) {
 
       stmt1.executeUpdate("CREATE TABLE parent(a int, b text, c int, d int)");
-      stmt1.executeUpdate("INSERT INTO parent values (1,'parent',1, 1);");
+      stmt1.executeUpdate("INSERT INTO parent values (1,'parent',1, 1)");
       stmt1.executeUpdate("CREATE TABLE child(ch_a int) inherits (parent)");
       stmt1.executeUpdate("INSERT INTO child values (100,'child',100, 100, 100)");
-      assertEquals(getRowList(stmt2, "SELECT a FROM parent").size(), 2);
+      waitForTServerHeartbeat();
+      assertEquals(2, getRowList(stmt2, "SELECT a FROM parent").size());
 
 
-    // drop col from parent, verify write on child is aborted
-    final String[] abort_errors =
-    { "expired or aborted by a conflict", "Transaction aborted: kAborted" };
+      // drop col from parent, verify write on child is aborted
+      final String[] abort_errors =
+      { "expired or aborted by a conflict", "Transaction aborted: kAborted" };
 
-    stmt2.execute("BEGIN");
-    stmt2.executeUpdate("INSERT INTO child VALUES (101, 'child', 101, 101, 101)");
-    stmt1.executeUpdate("ALTER TABLE parent DROP COLUMN d");
-    runInvalidQuery(stmt2, "COMMIT", abort_errors);
-    waitForTServerHeartbeat();
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 2);
-    stmt2.executeUpdate("INSERT INTO child VALUES (101, 'child', 101, 101)");
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 3);
+      stmt2.execute("BEGIN");
+      stmt2.executeUpdate("INSERT INTO child VALUES (101, 'child', 101, 101, 101)");
+      stmt1.executeUpdate("ALTER TABLE parent DROP COLUMN d");
+      runInvalidQuery(stmt2, "COMMIT", abort_errors);
+      waitForTServerHeartbeat();
+      assertEquals(2, getRowList(stmt2, "SELECT * FROM parent").size());
+      stmt2.executeUpdate("INSERT INTO child VALUES (101, 'child', 101, 101)");
+      assertEquals(3, getRowList(stmt2, "SELECT * FROM parent").size());
 
 
-    // drop col from only parent, verify write on child is unaffected
-    stmt2.execute("BEGIN");
-    stmt2.executeUpdate("INSERT INTO child VALUES (102, 'child', 102, 102)");
-    stmt1.executeUpdate("ALTER TABLE ONLY parent DROP COLUMN c");
-    stmt2.execute("COMMIT");
-    waitForTServerHeartbeat();
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 4);
+      // drop col from only parent, verify write on child is unaffected
+      stmt2.execute("BEGIN");
+      stmt2.executeUpdate("INSERT INTO child VALUES (102, 'child', 102, 102)");
+      stmt1.executeUpdate("ALTER TABLE ONLY parent DROP COLUMN c");
+      stmt2.execute("COMMIT");
+      waitForTServerHeartbeat();
+      assertEquals(4, getRowList(stmt2, "SELECT * FROM parent").size());
 
-    // remove inheritance, verify select does not read child
-    stmt1.executeUpdate("ALTER TABLE child NO INHERIT parent");
-    waitForTServerHeartbeat();
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 1);
+      // remove inheritance, verify select does not read child
+      stmt1.executeUpdate("ALTER TABLE child NO INHERIT parent");
+      waitForTServerHeartbeat();
+      assertEquals(1, getRowList(stmt2, "SELECT * FROM parent").size());
 
-    // add inheritance, verify select reads all rows
-    stmt1.executeUpdate("ALTER TABLE child INHERIT parent");
-    waitForTServerHeartbeat();
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 4);
+      // add inheritance, verify select reads all rows
+      stmt1.executeUpdate("ALTER TABLE child INHERIT parent");
+      waitForTServerHeartbeat();
+      assertEquals(4, getRowList(stmt2, "SELECT * FROM parent").size());
 
-    // create table inherits, verify select reads all rows
-    stmt1.executeUpdate("CREATE TABLE newchild(newch_a int) INHERITS (parent)");
-    stmt1.executeUpdate("INSERT INTO newchild VALUES (200, 'newchild', 200)");
-    waitForTServerHeartbeat();
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 5);
+      // create table inherits, verify select reads all rows
+      stmt1.executeUpdate("CREATE TABLE newchild(newch_a int) INHERITS (parent)");
+      stmt1.executeUpdate("INSERT INTO newchild VALUES (200, 'newchild', 200)");
+      waitForTServerHeartbeat();
+      assertEquals(5, getRowList(stmt2, "SELECT * FROM parent").size());
 
-    // drop table, verify select does not read child
-    stmt1.executeUpdate("DROP TABLE child");
-    waitForTServerHeartbeat();
-    assertEquals(getRowList(stmt2, "SELECT * FROM parent").size(), 2);
+      // drop table, verify select does not read child
+      stmt1.executeUpdate("DROP TABLE child");
+      waitForTServerHeartbeat();
+      assertEquals(2, getRowList(stmt2, "SELECT * FROM parent").size());
 
     }
   }

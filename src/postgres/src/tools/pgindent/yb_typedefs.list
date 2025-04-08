@@ -25,6 +25,7 @@ YBTableSpaceOpts
 YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
+YbAdditionalNegCacheIds
 YbAsh
 YbAshNestedQueryIdStack
 YbAshTrackNestedQueries

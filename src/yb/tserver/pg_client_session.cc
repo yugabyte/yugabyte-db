@@ -2248,6 +2248,8 @@ class PgClientSession::Impl {
     }
 
     if (options.has_caching_info()) {
+      VLOG_WITH_PREFIX(3) << "Executing read from response cache for session "
+      << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
           options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
       if (!data->cache_setter) {
