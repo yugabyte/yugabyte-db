@@ -41,7 +41,7 @@ Download the application and provide settings specific to your deployment:
    cd news-app-ui/ && npm install
    ```
 
-1. Configure the application environment variables in `{project_directory/backend/index.js}`.
+1. Configure the database connection parameters in `{project_directory/backend/index.js}`.
 
 ## Set up YugabyteDB
 
