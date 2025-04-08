@@ -156,7 +156,7 @@ For more details on the usage of schema registry, refer to the [Confluent docume
 1. Start the Kafka Connect cluster:
 
     ```sh
-    docker-compose up
+    docker compose up
     ```
 
 1. Deploy the connector. For more information, refer to [Deployment](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#deployment).

@@ -17,10 +17,10 @@ This tutorial shows how you can use [Ollama](https://ollama.com/) to generate te
 
 ## Prerequisites
 
-- Install [YugabyteDB v2.19+](https://download.yugabyte.com/)
-- Install [Ollama](https://ollama.com/)
-- Install Node.js V18+
-- Install Docker
+- [YugabyteDB v2.19+](https://download.yugabyte.com/)
+- [Ollama](https://ollama.com/)
+- Node.js V18+
+- Docker
 
 ## Set up the application
 
@@ -41,7 +41,7 @@ Download the application and provide settings specific to your deployment:
    cd news-app-ui/ && npm install
    ```
 
-1. Configure the db config in `{project_directory/backend/index.js}`.
+1. Configure the database connection parameters in `{project_directory/backend/index.js}`.
 
 ## Set up YugabyteDB
 
@@ -244,7 +244,7 @@ app.get("/api/search", async (req, res) => {
 
 The `/api/search` endpoint specifies the embedding model and prompt to be sent to Ollama to generate a vector representation. This is done using the Ollama JavaScript library. The response is then used to execute a cosine similarity search against the dataset stored in YugabyteDB using pgvector. Latency is reduced by pre-filtering by news category, thus reducing the search space.
 
-This application is quite straightforward, but before executing similarity searches, embeddings need to be generated for each news story and subsequently stored in the database. You can see how this is done in the `generate_embeddings.js` script.
+This application is quite straightforward. Before executing similarity searches, embeddings need to be generated for each news story and subsequently stored in the database. You can see how this is done in the `generate_embeddings.js` script.
 
 ```javascript
 # generate_embeddings.py
