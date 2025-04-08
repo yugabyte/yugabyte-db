@@ -39,13 +39,13 @@ yb-voyager only disables the constraint checks and triggers in the internal sess
 
 Use one or more of the following techniques to improve import data performance:
 
-- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time. On YugabyteDB 2.20 and above, yb-voyager adapts the value of N depending on the resource usage (CPU/memory) of the cluster, with the goal of maintaining an optimal CPU usage (<70%).
+- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time. On YugabyteDB v2.20 and above, yb-voyager adapts the value of N depending on the resource usage (CPU/memory) of the cluster, with the goal of maintaining an optimal CPU usage (<70%). By default, the upper bound of N is set to half the total number of cores in the YugabyteDB cluster. Use the --adaptive-parallelism-max flag to override this default value.
 
   Against older YugabyteDB versions, N is equal to one-fourth of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage.
 
-  Use the [--parallel-jobs](../../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting based on your cluster configuration and observation.
-
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
+
+  Use the [--parallel-jobs](../../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting based on your cluster configuration and observation.
 
    {{< note title="Note" >}}
 
