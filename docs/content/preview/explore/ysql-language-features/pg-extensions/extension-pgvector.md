@@ -212,7 +212,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 - Concurrent index creation is not supported yet.
 - Partial indexes on vector columns are not supported yet.
 
-## Read more
+## Learn more
 
 - Tutorial: [Build and Learn](/preview/tutorials/build-and-learn/)
 - Tutorial: [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](/preview/tutorials/azure/azure-openai/)
