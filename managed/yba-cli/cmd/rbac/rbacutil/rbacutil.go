@@ -5,11 +5,13 @@
 package rbacutil
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	ybav2client "github.com/yugabyte/platform-go-client/v2"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 
@@ -64,6 +66,131 @@ func CheckRBACEnablementOnYBA(
 	}
 }
 
+// RoleResourceDefinition - Structure to hold role resource definition
+// This structure is used to parse the role resource definition string
+// and to build the role resource definition object
+type RoleResourceDefinition struct {
+	RoleUUID      string
+	ResourceType  string
+	ResourceUUIDs []string
+	AllowAll      bool
+}
+
+// parseroleResourceDefinitionString - Parse the role resource definition string
+func parseroleResourceDefinitionString(roleResourceDefinitionString string) RoleResourceDefinition {
+	roleResourceDefinition := RoleResourceDefinition{}
+	for _, roleInfo := range strings.Split(roleResourceDefinitionString, util.Separator) {
+		kvp := strings.Split(roleInfo, "=")
+		if len(kvp) != 2 {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Incorrect format in role resource definition description.\n",
+					formatter.RedColor))
+		}
+		key := kvp[0]
+		val := kvp[1]
+		switch key {
+		case "role-uuid":
+			if len(strings.TrimSpace(val)) != 0 {
+				roleResourceDefinition.RoleUUID = val
+			} else {
+				providerutil.ValueNotFoundForKeyError(key)
+			}
+		case "resource-type":
+			if len(strings.TrimSpace(val)) != 0 {
+				roleResourceDefinition.ResourceType = strings.ToUpper(val)
+			} else {
+				providerutil.ValueNotFoundForKeyError(key)
+			}
+		case "allow-all":
+			if len(strings.TrimSpace(val)) != 0 {
+				var err error
+				roleResourceDefinition.AllowAll, err = strconv.ParseBool(val)
+				if err != nil {
+					errMessage := err.Error() +
+						" Invalid value provided for 'allow-all'. Setting it to 'false'.\n"
+					logrus.Errorln(
+						formatter.Colorize(errMessage, formatter.YellowColor),
+					)
+					roleResourceDefinition.AllowAll = false
+				}
+			} else {
+				providerutil.ValueNotFoundForKeyError(key)
+			}
+		case "resource-uuid":
+			if len(strings.TrimSpace(val)) != 0 {
+				resourceUUIDs := strings.Split(val, ",")
+				for i := 0; i < len(resourceUUIDs); i++ {
+					resourceUUID := strings.TrimSpace(resourceUUIDs[i])
+					if len(resourceUUID) != 0 {
+						roleResourceDefinition.ResourceUUIDs = append(
+							roleResourceDefinition.ResourceUUIDs,
+							resourceUUID,
+						)
+					} else {
+						providerutil.ValueNotFoundForKeyError(key)
+					}
+				}
+			} else {
+				providerutil.ValueNotFoundForKeyError(key)
+			}
+		default:
+			logrus.Fatalln(
+				formatter.Colorize(
+					fmt.Sprintf("Unknown key %s in role resource definition description.\n", key),
+					formatter.RedColor))
+		}
+	}
+	if roleResourceDefinition.RoleUUID == "" {
+		logrus.Fatalln(
+			formatter.Colorize(
+				"Role UUID not specified in role resource definition description.\n",
+				formatter.RedColor))
+	}
+	if len(roleResourceDefinition.ResourceUUIDs) == 0 {
+		roleResourceDefinition.AllowAll = true
+	}
+	return roleResourceDefinition
+}
+
+// validateRoleResourceDefinitionForSytemRoles - Validate role resource definition for system roles
+func validateRoleResourceDefinitionForSytemRoles(roleResourceDefinition RoleResourceDefinition) {
+	if len(roleResourceDefinition.ResourceUUIDs) > 0 {
+		logrus.Fatalln(
+			formatter.Colorize(
+				"System role cannot have resource uuids\n",
+				formatter.RedColor))
+	}
+	if len(roleResourceDefinition.ResourceType) > 0 {
+		logrus.Fatalln(
+			formatter.Colorize(
+				"System role cannot have resource type\n",
+				formatter.RedColor))
+	}
+}
+
+// IsSystemRole - Check if the role is a system role
+func IsSystemRole(
+	authAPI *ybaAuthClient.AuthAPIClient,
+	roleUUID string,
+	callsite string,
+) bool {
+	role, response, err := authAPI.GetRole(roleUUID).Execute()
+	if err != nil {
+		errMessage := util.ErrorFromHTTPResponse(
+			response,
+			err,
+			callsite,
+			"Get Role",
+		)
+		logrus.Fatalln(
+			formatter.Colorize(
+				errMessage.Error()+"\n",
+				formatter.RedColor))
+	}
+	return role.GetRoleType() == util.SystemRoleType
+}
+
 // BuildResourceRoleDefinition - Build resource role definition
 func BuildResourceRoleDefinition(
 	authAPI *ybaAuthClient.AuthAPIClient,
@@ -74,107 +201,21 @@ func BuildResourceRoleDefinition(
 	res := make([]ybaclient.RoleResourceDefinition, 0)
 
 	for _, roleResourceDefinitionString := range roleResourceDefinitionStrings {
-		roleBinding := map[string]string{}
-		for _, roleInfo := range strings.Split(roleResourceDefinitionString, util.Separator) {
-			kvp := strings.Split(roleInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize(
-						"Incorrect format in role resource definition description.\n",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "role-uuid":
-				if len(strings.TrimSpace(val)) != 0 {
-					roleBinding["role-uuid"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "resource-type":
-				if len(strings.TrimSpace(val)) != 0 {
-					roleBinding["resource-type"] = strings.ToUpper(val)
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "allow-all":
-				if len(strings.TrimSpace(val)) != 0 {
-					roleBinding["allow-all"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "resource-uuid":
-				if len(strings.TrimSpace(val)) != 0 {
-					roleBinding["resource-uuid"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := roleBinding["role-uuid"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize(
-					"Role UUID not specified in role resource definition description.\n",
-					formatter.RedColor))
-		}
-
-		allowAll, err := strconv.ParseBool(roleBinding["allow-all"])
-		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'allow-all'. Setting it to 'false'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			allowAll = false
-		}
-		resourceUUIDs := strings.Split(roleBinding["resource-uuid"], ",")
-		if len(resourceUUIDs) == 1 && resourceUUIDs[0] == "" {
-			resourceUUIDs = []string{}
-		}
-		if len(resourceUUIDs) == 0 {
-			allowAll = true
-		}
-
-		role, response, err := authAPI.GetRole(roleBinding["role-uuid"]).Execute()
-		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"RBAC: Role Binding",
-				"Add - Get Role",
-			)
-			logrus.Fatalln(
-				formatter.Colorize(
-					errMessage.Error()+"\n",
-					formatter.RedColor))
-		}
-
-		systemRole := false
-		if role.GetRoleType() == util.SystemRoleType {
-			systemRole = true
-			if len(resourceUUIDs) > 0 {
-				logrus.Fatalln(
-					formatter.Colorize(
-						"System role cannot have resource uuids\n",
-						formatter.RedColor))
-			}
-			if len(roleBinding["resource-type"]) > 0 {
-				logrus.Fatalln(
-					formatter.Colorize(
-						"System role cannot have resource type\n",
-						formatter.RedColor))
-			}
+		roleResourceDefinition := parseroleResourceDefinitionString(roleResourceDefinitionString)
+		systemRole := IsSystemRole(authAPI, roleResourceDefinition.RoleUUID, "RBAC: Role Binding")
+		if systemRole {
+			validateRoleResourceDefinitionForSytemRoles(roleResourceDefinition)
 		}
 
 		resourceDefinition := ybaclient.ResourceDefinition{
-			AllowAll:        util.GetBoolPointer(allowAll),
-			ResourceType:    util.GetStringPointer(roleBinding["resource-type"]),
-			ResourceUUIDSet: &resourceUUIDs,
+			AllowAll:        util.GetBoolPointer(roleResourceDefinition.AllowAll),
+			ResourceType:    util.GetStringPointer(roleResourceDefinition.ResourceType),
+			ResourceUUIDSet: &roleResourceDefinition.ResourceUUIDs,
 		}
+
 		exists := false
 		for i, value := range res {
-			if strings.Compare(value.GetRoleUUID(), roleBinding["role-uuid"]) == 0 {
+			if strings.Compare(value.GetRoleUUID(), roleResourceDefinition.RoleUUID) == 0 {
 				exists = true
 				if !systemRole {
 					valueResourceGroup := value.GetResourceGroup()
@@ -197,7 +238,7 @@ func BuildResourceRoleDefinition(
 				ResourceDefinitionSet: []ybaclient.ResourceDefinition{resourceDefinition},
 			}
 			roleResourceDefinition := ybaclient.RoleResourceDefinition{
-				RoleUUID: roleBinding["role-uuid"],
+				RoleUUID: roleResourceDefinition.RoleUUID,
 			}
 			if !systemRole {
 				roleResourceDefinition.SetResourceGroup(resourceGroup)
@@ -208,4 +249,98 @@ func BuildResourceRoleDefinition(
 		}
 	}
 	return res
+}
+
+// BuildResourceRoleDefinitionV2 - Build resource role definition for v2
+// This function is used to build the role resource definition for v2 APIs
+// used in group mapping
+func BuildResourceRoleDefinitionV2(
+	authAPI *ybaAuthClient.AuthAPIClient,
+	roleResourceDefinitionStrings []string,
+	existingRoleResourceDefinitions []ybav2client.RoleResourceDefinition,
+) []ybav2client.RoleResourceDefinition {
+	if len(roleResourceDefinitionStrings) == 0 {
+		return nil
+	}
+
+	if existingRoleResourceDefinitions == nil {
+		existingRoleResourceDefinitions = make([]ybav2client.RoleResourceDefinition, 0)
+	}
+
+	for _, roleResourceDefinitionString := range roleResourceDefinitionStrings {
+		roleResourceDefinition := parseroleResourceDefinitionString(roleResourceDefinitionString)
+		systemRole := IsSystemRole(
+			authAPI,
+			roleResourceDefinition.RoleUUID,
+			"Authentication: Group Mapping",
+		)
+		if systemRole {
+			validateRoleResourceDefinitionForSytemRoles(roleResourceDefinition)
+		}
+
+		resourceDefinition := ybav2client.ResourceDefinition{
+			AllowAll:        roleResourceDefinition.AllowAll,
+			ResourceType:    roleResourceDefinition.ResourceType,
+			ResourceUuidSet: &roleResourceDefinition.ResourceUUIDs,
+		}
+
+		exists := false
+		for i, value := range existingRoleResourceDefinitions {
+			if strings.Compare(value.GetRoleUuid(), roleResourceDefinition.RoleUUID) == 0 {
+				exists = true
+				if !systemRole {
+					valueResourceGroup := value.GetResourceGroup()
+					valueResourceDefinitionSet := valueResourceGroup.GetResourceDefinitionSet()
+					valueResourceDefinitionSet = append(
+						valueResourceDefinitionSet,
+						resourceDefinition,
+					)
+					valueResourceGroup.SetResourceDefinitionSet(valueResourceDefinitionSet)
+					value.SetResourceGroup(valueResourceGroup)
+				} else {
+					value.ResourceGroup = nil
+				}
+				existingRoleResourceDefinitions[i] = value
+				break
+			}
+		}
+		if !exists {
+			resourceGroup := ybav2client.ResourceGroup{
+				ResourceDefinitionSet: []ybav2client.ResourceDefinition{resourceDefinition},
+			}
+			roleResourceDefinitionV2 := ybav2client.RoleResourceDefinition{
+				RoleUuid: roleResourceDefinition.RoleUUID,
+			}
+			if !systemRole {
+				roleResourceDefinitionV2.SetResourceGroup(resourceGroup)
+			} else {
+				roleResourceDefinitionV2.ResourceGroup = nil
+			}
+			existingRoleResourceDefinitions = append(
+				existingRoleResourceDefinitions,
+				roleResourceDefinitionV2,
+			)
+		}
+	}
+	return existingRoleResourceDefinitions
+}
+
+// ModifyExistingRoleResourceDefinitionV2 - Modify existing role resource definition list
+func ModifyExistingRoleResourceDefinitionV2(
+	authAPI *ybaAuthClient.AuthAPIClient,
+	roleResourceDefinitionStrings []string,
+	existingRoleResourceDefinitions []ybav2client.RoleResourceDefinition,
+) []ybav2client.RoleResourceDefinition {
+	return BuildResourceRoleDefinitionV2(
+		authAPI,
+		roleResourceDefinitionStrings,
+		existingRoleResourceDefinitions,
+	)
+}
+
+// BuildNewRoleResourceDefinitionV2 - Build new role resource definition list
+func BuildNewRoleResourceDefinitionV2(
+	authAPI *ybaAuthClient.AuthAPIClient,
+	roleResourceDefinitionStrings []string) []ybav2client.RoleResourceDefinition {
+	return BuildResourceRoleDefinitionV2(authAPI, roleResourceDefinitionStrings, nil)
 }

@@ -41,6 +41,7 @@ yba [flags]
 * [yba customer](yba_customer.md)	 - Manage YugabyteDB Anywhere customers
 * [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
+* [yba group](yba_group.md)	 - Manage YugabyteDB Anywhere groups
 * [yba host](yba_host.md)	 - Refer to YugabyteDB Anywhere host details
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers

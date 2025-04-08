@@ -19,6 +19,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	ybav2client "github.com/yugabyte/platform-go-client/v2"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
@@ -32,6 +33,7 @@ var hostVersion = "0.1.0"
 type AuthAPIClient struct {
 	RestClient   *RestAPIClient
 	APIClient    *ybaclient.APIClient
+	APIv2Client  *ybav2client.APIClient
 	CustomerUUID string
 	ctx          context.Context
 	stop         context.CancelFunc
@@ -102,6 +104,7 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, error) {
 
 	cfg := ybaclient.NewConfiguration()
+	cfgV2 := ybav2client.NewConfiguration()
 	restAPIClient := &RestAPIClient{
 		Client: &http.Client{Timeout: 30 * time.Second},
 		Host:   url.Host,
@@ -127,18 +130,34 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 		cfg.Scheme = util.HTTPURLScheme
 		restAPIClient.Scheme = util.HTTPURLScheme
 	}
+	cfgV2.Host = url.Host
+	cfgV2.Scheme = url.Scheme
+	if url.Scheme == "https" {
+		cfgV2.Scheme = "https"
+		restAPIClient.Scheme = "https"
+		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		cfgV2.HTTPClient = &http.Client{Transport: tr}
+	} else {
+		cfgV2.Scheme = "http"
+	}
 
 	cfg.DefaultHeader = map[string]string{
 		"X-AUTH-YW-API-TOKEN": apiToken,
 	}
 
+	cfgV2.DefaultHeader = map[string]string{
+		"X-AUTH-YW-API-TOKEN": apiToken,
+	}
+
 	apiClient := ybaclient.NewAPIClient(cfg)
+	apiV2Client := ybav2client.NewAPIClient(cfgV2)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	return &AuthAPIClient{
 		restAPIClient,
 		apiClient,
+		apiV2Client,
 		"",
 		ctx,
 		stop,
