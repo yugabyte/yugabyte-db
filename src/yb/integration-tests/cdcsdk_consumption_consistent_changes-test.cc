@@ -4323,5 +4323,27 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
   }
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBlockDropTableWhenPartOfPublication) {
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (id int primary key)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_2 (id int primary key)"));
+
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_1 FOR TABLE test_1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_2 FOR ALL TABLES"));
+
+  // We should be able to drop the table test_2 as it is only part of pub_2 which is an ALL TABLES
+  // publication.
+  ASSERT_OK(conn.Execute("DROP TABLE test_2"));
+
+  // Attempt to drop table test_1 should fail since it is also part of pub_1.
+  ASSERT_NOK(conn.Execute("DROP TABLE test_1"));
+
+  // Drop the table test_1 from pub_1. Now the drop table should succeed.
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 DROP TABLE test_1"));
+  ASSERT_OK(conn.Execute("DROP TABLE test_1"));
+}
+
 }  // namespace cdc
 }  // namespace yb

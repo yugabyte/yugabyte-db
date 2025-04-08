@@ -124,6 +124,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_policy.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_shdepend.h"
@@ -559,6 +560,8 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 									  AlteredTableInfo *tab);
 static void YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds);
+static bool YbIsTablePartOfPublication(Oid relOid);
+
 /* ----------------------------------------------------------------
  *		DefineRelation
  *				Creates a new relation.
@@ -1490,6 +1493,12 @@ RemoveRelations(DropStmt *drop)
 			DropErrorMsgNonExistent(rel, relkind, drop->missing_ok);
 			continue;
 		}
+
+		if (IsYugaByteEnabled() && YbIsTablePartOfPublication(relOid))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("cannot drop a table which is part of a publication."),
+					 errhint("Use pg_publication_tables to find all such publications and retry after dropping the table from them.")));
 
 		only_temp_tables = only_temp_tables &&
 						   get_rel_persistence(relOid) == RELPERSISTENCE_TEMP;
@@ -19371,4 +19380,33 @@ static void YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds)
 			RelationClose(rel);
 		}
 	}
+}
+ 
+/*
+ * Used in YB during DROP TABLE to check whether a table belongs to a publication. This does not
+ * check if the given table is part of any ALL TABLES publication.
+ */
+static bool
+YbIsTablePartOfPublication(Oid relOid)
+{
+	Relation pubrel;
+	SysScanDesc scan;
+	ScanKeyData key;
+	bool is_part_of_pub = false;
+
+	pubrel = heap_open(PublicationRelRelationId, AccessShareLock);
+	ScanKeyInit(&key, Anum_pg_publication_rel_prrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relOid));
+	scan = systable_beginscan(pubrel, PublicationRelPrrelidPrpubidIndexId,
+							true, NULL, 1, &key);
+
+	/* If we get at least one tuple, a publication exists for this relation. */
+	if ((systable_getnext(scan)) != NULL)
+		is_part_of_pub = true;
+
+	systable_endscan(scan);
+	heap_close(pubrel, AccessShareLock);
+
+	return is_part_of_pub;
 }
