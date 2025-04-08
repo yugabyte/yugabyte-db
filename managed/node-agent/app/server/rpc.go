@@ -290,7 +290,31 @@ func (server *RPCServer) SubmitTask(
 			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
 			return res, status.Errorf(codes.Internal, err.Error())
 		}
+		res.TaskId = taskID
 		return res, nil
+	}
+	configureServiceInput := req.GetConfigureServiceInput()
+	if configureServiceInput != nil {
+		switch configureServiceInput.GetService() {
+		case pb.Service_EARLYOOM:
+			configureHandler := task.NewConfigureServiceHandler(
+				configureServiceInput.GetConfig(),
+				configureServiceInput.GetEnabled(),
+			)
+			err2 := task.GetTaskManager().Submit(ctx, taskID, configureHandler)
+			if err2 != nil {
+				util.FileLogger().
+					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
+				return res, status.Errorf(codes.Internal, err2.Error())
+			}
+			res.TaskId = taskID
+			return res, nil
+		default:
+			return res, status.Errorf(
+				codes.Unimplemented,
+				fmt.Sprintf("Unsupported type: %s", configureServiceInput.GetService()),
+			)
+		}
 	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")
 }
