@@ -44,7 +44,7 @@ The following illustration describes the workflow for live migration using YB Vo
 | | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
 | | [Prepare source-replica DB](#prepare-source-replica-database) | Deploy a database (a replica of your original source database) and create a user with necessary privileges. |
-| ASSESS | [Assess Migration](#assess-migration) | Assess the migration complexity and get schema changes, data distribution and cluster sizing recommendations using the `yb-voyager assess` command. |
+| ASSESS | [Assess Migration](#assess-migration) | Assess the migration complexity, and get schema changes, data distribution, and cluster sizing recommendations using the `yb-voyager assess-migration` command. |
 | SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
@@ -661,9 +661,9 @@ CREATE USER ybvoyager_ff with password 'password' superuser;
 
 </div>
 
-## Assess Migration
+## Assess migration
 
-This step is optional and only required for PostgreSQL and Orcale Database Migration. Assess migration assess the migration complexity and get schema changes, data distribution and cluster sizing recommendations using the `yb-voyager assess` command.
+This step is optional and only applicable to PostgreSQL and Oracle database migrations. Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
 
 Refer to [Migration assessment](../../migrate/assess-migration/) for details.
 
