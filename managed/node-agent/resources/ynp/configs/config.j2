@@ -52,6 +52,10 @@ chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 
 [ConfigureClockbound]
 
+{% if ynp_config['ynp'].configure_thp_settings %}
+[ConfigureTHP]
+{% endif %}
+
 [CreateYugabyteUser]
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
