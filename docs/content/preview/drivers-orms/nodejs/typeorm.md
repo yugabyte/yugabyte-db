@@ -35,7 +35,7 @@ type: docs
   </li>
 </ul>
 
-[TypeORM](https://typeorm.io/) is an ORM that can run in NodeJS, Browser, Cordova, PhoneGap, Ionic, React Native, NativeScript, Expo, and Electron platforms and can be used with TypeScript and JavaScript (ES2021). It supports both Active Record and Data Mapper patterns, unlike all other JavaScript ORMs currently in existence, which means you can write high-quality, loosely coupled, scalable, maintainable applications in the most productive way.
+[TypeORM](https://typeorm.io/) is an ORM that can run in NodeJS, Browser, Cordova, PhoneGap, Ionic, React Native, NativeScript, Expo, and Electron platforms, and can be used with TypeScript and JavaScript (ES2021). Unlike other current JavaScript ORMs, it supports both Active Record and Data Mapper patterns, which means you can write high-quality, loosely coupled, scalable, maintainable applications in the most productive way.
 
 Because YugabyteDB is PostgreSQL-compatible, TypeORM supports the YugabyteDB YSQL API.
 
@@ -51,9 +51,9 @@ The following steps demonstrate how to perform common tasks required for Node.js
 
 ### Step 1: Create a Node.js project and install TypeORM package
 
-Before proceeding with the next steps, you need to have Node.js installed on your machine. Refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
+Before proceeding, you need to install Node.js on your machine. Refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm) in the npm documentation.
 
-To create a basic Node.js project and install the `TypeORM` package, do the following:
+To create a basic Node.js project and install the `typeorm` package, do the following:
 
 1. Create a new directory and initialize a Node.js project. This creates a `package.json` file.
 
@@ -84,7 +84,7 @@ To create a basic Node.js project and install the `TypeORM` package, do the foll
     }
     ```
 
-1. Install the typeorm package and its related dependency packages, along with typescript and the pg driver.
+1. Install the `typeorm` package and its related dependency packages, along with typescript and the pg driver.
 
     ```sh
     npm install typeorm pg reflect-metadata
