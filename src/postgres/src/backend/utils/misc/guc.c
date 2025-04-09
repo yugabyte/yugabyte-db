@@ -2956,7 +2956,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_walsender_poll_sleep_duration_empty_ms,
-		1 * 1000, 0, INT_MAX,
+		10, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

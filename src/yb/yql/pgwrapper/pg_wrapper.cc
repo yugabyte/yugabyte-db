@@ -282,7 +282,7 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_nonempty_ms, 1, 
     "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
     "the CDC service in case the last received response was non-empty.");
 
-DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 1000,  // 1 sec
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  // 10 ms
     "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
