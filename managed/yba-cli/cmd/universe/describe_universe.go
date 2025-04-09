@@ -7,10 +7,12 @@ package universe
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -51,6 +53,14 @@ var describeUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
+		if len(r) < 1 {
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No universes with name: %s found\n", universeName),
+					formatter.RedColor,
+				))
+		}
+
 		universe.Certificates, response, err = authAPI.GetListOfCertificates().Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -81,6 +91,22 @@ var describeUniverseCmd = &cobra.Command{
 			universe.KMSConfigs = append(universe.KMSConfigs, kmsConfig)
 		}
 
+		outputType, err := cmd.Flags().GetString("output")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		outputType = strings.ToLower(outputType)
+		if strings.Contains(outputType, "cli") {
+			outputFormat := util.GetCLIOutputFormat(outputType)
+			universeutil.PopulateDescribeUniverseCLIOutput(
+				createUniverseCmd.Flags(),
+				r[0],
+				outputFormat,
+			)
+			return
+		}
+		viper.Set("output", outputType)
+
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullUniverseContext := *universe.NewFullUniverseContext()
 			fullUniverseContext.Output = os.Stdout
@@ -88,14 +114,6 @@ var describeUniverseCmd = &cobra.Command{
 			fullUniverseContext.SetFullUniverse(r[0])
 			fullUniverseContext.Write()
 			return
-		}
-
-		if len(r) < 1 {
-			logrus.Fatalf(
-				formatter.Colorize(
-					fmt.Sprintf("No universes with name: %s found\n", universeName),
-					formatter.RedColor,
-				))
 		}
 
 		universeCtx := formatter.Context{
@@ -113,4 +131,8 @@ func init() {
 	describeUniverseCmd.Flags().StringP("name", "n", "",
 		"[Required] The name of the universe to be described.")
 	describeUniverseCmd.MarkFlagRequired("name")
+
+	describeUniverseCmd.Flags().StringP("output", "o", formatter.TableFormatKey,
+		"Select the desired output format. Allowed values: table, json, pretty, cli-flag, cli-json, cli-yaml.")
+
 }

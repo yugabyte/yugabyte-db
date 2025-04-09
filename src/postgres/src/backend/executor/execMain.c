@@ -43,6 +43,7 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_publication.h"
@@ -86,14 +87,12 @@ static void InitPlan(QueryDesc *queryDesc, int eflags);
 static void CheckValidRowMarkRel(Relation rel, RowMarkType markType);
 static void ExecPostprocessPlan(EState *estate);
 static void ExecEndPlan(PlanState *planstate, EState *estate);
-static void ExecutePlan(EState *estate, PlanState *planstate,
-						bool use_parallel_mode,
+static void ExecutePlan(QueryDesc *queryDesc,
 						CmdType operation,
 						bool sendTuples,
 						uint64 numberTuples,
 						ScanDirection direction,
-						DestReceiver *dest,
-						bool execute_once);
+						DestReceiver *dest);
 static bool ExecCheckRTEPerms(RangeTblEntry *rte);
 static bool ExecCheckRTEPermsModified(Oid relOid, Oid userid,
 									  Bitmapset *modifiedCols,
@@ -135,10 +134,12 @@ void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	/*
-	 * In some cases (e.g. an EXECUTE statement) a query execution will skip
-	 * parse analysis, which means that the query_id won't be reported.  Note
-	 * that it's harmless to report the query_id multiple time, as the call
-	 * will be ignored if the top level query_id has already been reported.
+	 * In some cases (e.g. an EXECUTE statement or an execute message with the
+	 * extended query protocol) the query_id won't be reported, so do it now.
+	 *
+	 * Note that it's harmless to report the query_id multiple times, as the
+	 * call will be ignored if the top level query_id has already been
+	 * reported.
 	 */
 	pgstat_report_query_id(queryDesc->plannedstmt->queryId, false);
 
@@ -290,6 +291,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
  *		retrieved tuples, not for instance to those inserted/updated/deleted
  *		by a ModifyTable plan node.
  *
+ *		execute_once is ignored, and is present only to avoid an API break
+ *		in stable branches.
+ *
  *		There is no return value, but output tuples (if any) are sent to
  *		the destination receiver specified in the QueryDesc; and the number
  *		of tuples processed at the top level can be found in
@@ -363,21 +367,12 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	 * run plan
 	 */
 	if (!ScanDirectionIsNoMovement(direction))
-	{
-		if (execute_once && queryDesc->already_executed)
-			elog(ERROR, "can't re-execute query flagged for single execution");
-		queryDesc->already_executed = true;
-
-		ExecutePlan(estate,
-					queryDesc->planstate,
-					queryDesc->plannedstmt->parallelModeNeeded,
+		ExecutePlan(queryDesc,
 					operation,
 					sendTuples,
 					count,
 					direction,
-					dest,
-					execute_once);
-	}
+					dest);
 
 	/*
 	 * shutdown tuple receiver, if we started it
@@ -1029,6 +1024,10 @@ CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation)
 	TriggerDesc *trigDesc = resultRel->trigdesc;
 	FdwRoutine *fdwroutine;
 
+	/* Expect a fully-formed ResultRelInfo from InitResultRelInfo(). */
+	Assert(resultRelInfo->ri_needLockTagTuple ==
+		   IsInplaceUpdateRelation(resultRel));
+
 	switch (resultRel->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
@@ -1237,6 +1236,8 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_NumIndices = 0;
 	resultRelInfo->ri_IndexRelationDescs = NULL;
 	resultRelInfo->ri_IndexRelationInfo = NULL;
+	resultRelInfo->ri_needLockTagTuple =
+		IsInplaceUpdateRelation(resultRelationDesc);
 	/* make a copy so as not to depend on relcache info not changing... */
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(resultRelationDesc->trigdesc);
 	if (resultRelInfo->ri_TrigDesc)
@@ -1614,22 +1615,19 @@ ExecCloseRangeTableRelations(EState *estate)
  *		moving in the specified direction.
  *
  *		Runs to completion if numberTuples is 0
- *
- * Note: the ctid attribute is a 'junk' attribute that is removed before the
- * user can see it
  * ----------------------------------------------------------------
  */
 static void
-ExecutePlan(EState *estate,
-			PlanState *planstate,
-			bool use_parallel_mode,
+ExecutePlan(QueryDesc *queryDesc,
 			CmdType operation,
 			bool sendTuples,
 			uint64 numberTuples,
 			ScanDirection direction,
-			DestReceiver *dest,
-			bool execute_once)
+			DestReceiver *dest)
 {
+	EState	   *estate = queryDesc->estate;
+	PlanState  *planstate = queryDesc->planstate;
+	bool		use_parallel_mode;
 	TupleTableSlot *slot;
 	uint64		current_tuple_count;
 
@@ -1644,11 +1642,17 @@ ExecutePlan(EState *estate,
 	estate->es_direction = direction;
 
 	/*
-	 * If the plan might potentially be executed multiple times, we must force
-	 * it to run without parallelism, because we might exit early.
+	 * Set up parallel mode if appropriate.
+	 *
+	 * Parallel mode only supports complete execution of a plan.  If we've
+	 * already partially executed it, or if the caller asks us to exit early,
+	 * we must force the plan to run without parallelism.
 	 */
-	if (!execute_once)
+	if (queryDesc->already_executed || numberTuples != 0)
 		use_parallel_mode = false;
+	else
+		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
+	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
 	if (use_parallel_mode)
@@ -2517,7 +2521,7 @@ ExecBuildAuxRowMark(ExecRowMark *erm, List *targetlist)
  *	relation - table containing tuple
  *	rti - rangetable index of table containing tuple
  *	inputslot - tuple for processing - this can be the slot from
- *		EvalPlanQualSlot(), for the increased efficiency.
+ *		EvalPlanQualSlot() for this rel, for increased efficiency.
  *
  * This tests whether the tuple in inputslot still matches the relevant
  * quals. For that result to be useful, typically the input tuple has to be
@@ -2552,6 +2556,14 @@ EvalPlanQual(EPQState *epqstate, Relation relation,
 		ExecCopySlot(testslot, inputslot);
 
 	/*
+	 * Mark that an EPQ tuple is available for this relation.  (If there is
+	 * more than one result relation, the others remain marked as having no
+	 * tuple available.)
+	 */
+	epqstate->relsubs_done[rti - 1] = false;
+	epqstate->epqExtra->relsubs_blocked[rti - 1] = false;
+
+	/*
 	 * Run the EPQ query.  We assume it will return at most one tuple.
 	 */
 	slot = EvalPlanQualNext(epqstate);
@@ -2567,11 +2579,12 @@ EvalPlanQual(EPQState *epqstate, Relation relation,
 		ExecMaterializeSlot(slot);
 
 	/*
-	 * Clear out the test tuple.  This is needed in case the EPQ query is
-	 * re-used to test a tuple for a different relation.  (Not clear that can
-	 * really happen, but let's be safe.)
+	 * Clear out the test tuple, and mark that no tuple is available here.
+	 * This is needed in case the EPQ state is re-used to test a tuple for a
+	 * different target relation.
 	 */
 	ExecClearTuple(testslot);
+	epqstate->epqExtra->relsubs_blocked[rti - 1] = true;
 
 	return slot;
 }
@@ -2587,11 +2600,33 @@ void
 EvalPlanQualInit(EPQState *epqstate, EState *parentestate,
 				 Plan *subplan, List *auxrowmarks, int epqParam)
 {
+	EvalPlanQualInitExt(epqstate, parentestate,
+						subplan, auxrowmarks, epqParam, NIL);
+}
+
+/*
+ * EvalPlanQualInitExt -- same, but allow specification of resultRelations
+ *
+ * If the caller intends to use EvalPlanQual(), resultRelations should be
+ * a list of RT indexes of potential target relations for EvalPlanQual(),
+ * and we will arrange that the other listed relations don't return any
+ * tuple during an EvalPlanQual() call.  Otherwise resultRelations
+ * should be NIL.
+ */
+void
+EvalPlanQualInitExt(EPQState *epqstate, EState *parentestate,
+					Plan *subplan, List *auxrowmarks,
+					int epqParam, List *resultRelations)
+{
 	Index		rtsize = parentestate->es_range_table_size;
+
+	/* create some extra space to avoid ABI break */
+	epqstate->epqExtra = (EPQStateExtra *) palloc(sizeof(EPQStateExtra));
 
 	/* initialize data not changing over EPQState's lifetime */
 	epqstate->parentestate = parentestate;
 	epqstate->epqParam = epqParam;
+	epqstate->epqExtra->resultRelations = resultRelations;
 
 	/*
 	 * Allocate space to reference a slot for each potential rti - do so now
@@ -2600,7 +2635,7 @@ EvalPlanQualInit(EPQState *epqstate, EState *parentestate,
 	 * that *may* need EPQ later, without forcing the overhead of
 	 * EvalPlanQualBegin().
 	 */
-	epqstate->tuple_table = NIL;
+	epqstate->epqExtra->tuple_table = NIL;
 	epqstate->relsubs_slot = (TupleTableSlot **)
 		palloc0(rtsize * sizeof(TupleTableSlot *));
 
@@ -2614,6 +2649,7 @@ EvalPlanQualInit(EPQState *epqstate, EState *parentestate,
 	epqstate->recheckplanstate = NULL;
 	epqstate->relsubs_rowmark = NULL;
 	epqstate->relsubs_done = NULL;
+	epqstate->epqExtra->relsubs_blocked = NULL;
 }
 
 /*
@@ -2654,7 +2690,7 @@ EvalPlanQualSlot(EPQState *epqstate,
 		MemoryContext oldcontext;
 
 		oldcontext = MemoryContextSwitchTo(epqstate->parentestate->es_query_cxt);
-		*slot = table_slot_create(relation, &epqstate->tuple_table);
+		*slot = table_slot_create(relation, &epqstate->epqExtra->tuple_table);
 		MemoryContextSwitchTo(oldcontext);
 	}
 
@@ -2671,12 +2707,14 @@ bool
 EvalPlanQualFetchRowMark(EPQState *epqstate, Index rti, TupleTableSlot *slot)
 {
 	ExecAuxRowMark *earm = epqstate->relsubs_rowmark[rti - 1];
-	ExecRowMark *erm = earm->rowmark;
+	ExecRowMark *erm;
 	Datum		datum;
 	bool		isNull;
 
 	Assert(earm != NULL);
 	Assert(epqstate->origslot != NULL);
+
+	erm = earm->rowmark;
 
 	if (RowMarkRequiresRowShareLock(erm->markType))
 		elog(ERROR, "EvalPlanQual doesn't support locking rowmarks");
@@ -2811,7 +2849,13 @@ EvalPlanQualBegin(EPQState *epqstate)
 		Index		rtsize = parentestate->es_range_table_size;
 		PlanState  *rcplanstate = epqstate->recheckplanstate;
 
-		MemSet(epqstate->relsubs_done, 0, rtsize * sizeof(bool));
+		/*
+		 * Reset the relsubs_done[] flags to equal relsubs_blocked[], so that
+		 * the EPQ run will never attempt to fetch tuples from blocked target
+		 * relations.
+		 */
+		memcpy(epqstate->relsubs_done, epqstate->epqExtra->relsubs_blocked,
+			   rtsize * sizeof(bool));
 
 		/* Recopy current values of parent parameters */
 		if (parentestate->es_plannedstmt->paramExecTypes != NIL)
@@ -2978,10 +3022,22 @@ EvalPlanQualStart(EPQState *epqstate, Plan *planTree)
 	}
 
 	/*
-	 * Initialize per-relation EPQ tuple states to not-fetched.
+	 * Initialize per-relation EPQ tuple states.  Result relations, if any,
+	 * get marked as blocked; others as not-fetched.
 	 */
-	epqstate->relsubs_done = (bool *)
-		palloc0(rtsize * sizeof(bool));
+	epqstate->relsubs_done = palloc_array(bool, rtsize);
+	epqstate->epqExtra->relsubs_blocked = palloc0_array(bool, rtsize);
+
+	foreach(l, epqstate->epqExtra->resultRelations)
+	{
+		int			rtindex = lfirst_int(l);
+
+		Assert(rtindex > 0 && rtindex <= rtsize);
+		epqstate->epqExtra->relsubs_blocked[rtindex - 1] = true;
+	}
+
+	memcpy(epqstate->relsubs_done, epqstate->epqExtra->relsubs_blocked,
+		   rtsize * sizeof(bool));
 
 	/*
 	 * Initialize the private state information for all the nodes in the part
@@ -3018,12 +3074,12 @@ EvalPlanQualEnd(EPQState *epqstate)
 	 * We may have a tuple table, even if EPQ wasn't started, because we allow
 	 * use of EvalPlanQualSlot() without calling EvalPlanQualBegin().
 	 */
-	if (epqstate->tuple_table != NIL)
+	if (epqstate->epqExtra->tuple_table != NIL)
 	{
 		memset(epqstate->relsubs_slot, 0,
 			   rtsize * sizeof(TupleTableSlot *));
-		ExecResetTupleTable(epqstate->tuple_table, true);
-		epqstate->tuple_table = NIL;
+		ExecResetTupleTable(epqstate->epqExtra->tuple_table, true);
+		epqstate->epqExtra->tuple_table = NIL;
 	}
 
 	/* EPQ wasn't started, nothing further to do */
@@ -3057,4 +3113,5 @@ EvalPlanQualEnd(EPQState *epqstate)
 	epqstate->recheckplanstate = NULL;
 	epqstate->relsubs_rowmark = NULL;
 	epqstate->relsubs_done = NULL;
+	epqstate->epqExtra->relsubs_blocked = NULL;
 }

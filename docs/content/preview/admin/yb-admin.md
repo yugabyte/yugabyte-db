@@ -532,7 +532,7 @@ Use this command to create custom placement policies only for YCQL tables or tra
 
 #### create_transaction_table
 
-Creates a transaction status table to be used in a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly-created transaction status table.
+Creates a transaction status table to be used in a region. This command should always be followed by [modify_table_placement_info](#modify-table-placement-info) to set the placement information for the newly-created transaction status table.
 
 **Syntax**
 
@@ -600,7 +600,7 @@ yb-admin \
     add_transaction_tablet 000033eb000030008000000000004002
 ```
 
-To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
+To verify that the new status tablet has been created, run the [list_tablets](#list-tablets) command.
 
 #### flush_table
 
@@ -737,7 +737,7 @@ When this command runs, a `snapshot_id` is generated and printed.
     create_database_snapshot
 ```
 
-To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list-snapshots) command.
+To see if the database snapshot creation has completed, run the [yb-admin list_snapshots](#list-snapshots) command.
 
 #### create_keyspace_snapshot
 
@@ -764,7 +764,7 @@ When this command runs, a `snapshot_id` is generated and printed.
     create_keyspace_snapshot
 ```
 
-To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list-snapshots) command.
+To see if the database snapshot creation has completed, run the [yb-admin list_snapshots](#list-snapshots) command.
 
 #### list_snapshots
 
@@ -850,9 +850,9 @@ Creates a snapshot of the specified YCQL tables and their indexes. Prior to v.2.
 
 {{< note title="Snapshots don't auto-expire" >}}
 
-Snapshots you create via `create_snapshot` persist on disk until you remove them using the [`delete_snapshot`](#delete-snapshot) command.
+Snapshots you create via `create_snapshot` persist on disk until you remove them using the [delete_snapshot](#delete-snapshot) command.
 
-Use the [`create_snapshot_schedule`](#create-snapshot-schedule) command to create snapshots that expire after a specified time interval.
+Use the [create_snapshot_schedule](#create-snapshot-schedule) command to create snapshots that expire after a specified time interval.
 
 {{</ note >}}
 
@@ -890,7 +890,7 @@ Flushing complete: SUCCESS
 Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`](#list-snapshots) command.
+To see if the snapshot creation has finished, run the [yb-admin list_snapshots](#list-snapshots) command.
 
 #### restore_snapshot
 
@@ -921,7 +921,7 @@ Started restoring snapshot: 72ad2eb1-65a2-4e88-a448-7ef4418bc469
 Restoration id: 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6
 ```
 
-To see if the snapshot was successfully restored, you can run the [`yb-admin list_snapshots`](#list-snapshots) command.
+To see if the snapshot was successfully restored, you can run the [yb-admin list_snapshots](#list-snapshots) command.
 
 ```sh
 ./bin/yb-admin list_snapshots
@@ -1370,7 +1370,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 {{< note title="Note" >}}
 
-* Make sure you've already run [`modify_placement_info`](#modify-placement-info) command beforehand.
+* Make sure you've already run [modify_placement_info](#modify-placement-info) command beforehand.
 
 * By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
@@ -1604,7 +1604,7 @@ yb-admin \
 
 {{< note title="Note" >}}
 
-After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) command and enable encryption using the [`rotate_universe_key_in_memory`](#rotate-universe-key-in-memory) command.
+After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the [all_masters_have_universe_key_in_memory](#all-masters-have-universe-key-in-memory) command and enable encryption using the [rotate_universe_key_in_memory](#rotate-universe-key-in-memory) command.
 
 {{< /note >}}
 
@@ -1626,7 +1626,7 @@ Rotates the in-memory universe key to start encrypting newly-written data files 
 
 {{< note title="Note" >}}
 
-The [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) value must be true for the universe key to be successfully rotated and enabled).
+The [all_masters_have_universe_key_in_memory](#all-masters-have-universe-key-in-memory) value must be true for the universe key to be successfully rotated and enabled).
 
 {{< /note >}}
 
@@ -2010,12 +2010,13 @@ Use the `remove_table` subcommand to remove one or more tables from the existing
 ```sh
 yb-admin -master_addresses <target-master-addresses> \
     alter_universe_replication <replication-group-id> \
-    remove_table <source-table-ids>
+    remove_table <source-table-ids> [ignore-errors]
 ```
 
 * *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* `ignore-errors`: Execute the command, ignoring any errors. It is recommended that you contact support before using this option.
 
 Use the `rename_id` subcommand to rename xCluster replication streams.
 
@@ -2118,7 +2119,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *stream-ids*: Comma-separated list of stream IDs.
 * timestamp: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* `minus <interval>`: The same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
+* `minus <interval>`: The same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [restore_snapshot_schedule](#restore-snapshot-schedule).
 
 **Example**
 
@@ -2147,7 +2148,7 @@ Lists the xCluster outbound streams.
 
 {{< note title="Tip" >}}
 
-Use this command when setting up xCluster replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+Use this command when setting up xCluster replication to verify if any tables are configured for replication. If not, run [setup_universe_replication](#setup-universe-replication); if tables are already configured for replication, use [alter_universe_replication](#alter-universe-replication) to add more tables.
 
 {{< /note >}}
 
@@ -2218,7 +2219,7 @@ table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9e
 ```
 
 {{< note title="Note" >}}
-The xCluster bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
+The xCluster bootstrap ids are the ones that should be used with [setup_universe_replication](#setup-universe-replication) and [alter_universe_replication](#alter-universe-replication).
 {{< /note >}}
 
 #### get_replication_status

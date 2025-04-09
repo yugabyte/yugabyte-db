@@ -13,7 +13,7 @@
 
  <para>
   JSON data types are for storing JSON (JavaScript Object Notation)
-  data, as specified in <ulink url="https://tools.ietf.org/html/rfc7159">RFC
+  data, as specified in <ulink url="https://datatracker.ietf.org/doc/html/rfc7159">RFC
   7159</ulink>. Such data can also be stored as <type>text</type>, but
   the JSON data types have the advantage of enforcing that each
   stored value is valid according to the JSON rules.  There are also
@@ -584,12 +584,13 @@ SELECT jdoc->'guid', jdoc->'name' FROM api WHERE jdoc @@ '$.tags[*] == "qui"';
     The <literal>btree</literal> ordering for <type>jsonb</type> datums is seldom
     of great interest, but for completeness it is:
 <synopsis>
-<replaceable>Object</replaceable> > <replaceable>Array</replaceable> > <replaceable>Boolean</replaceable> > <replaceable>Number</replaceable> > <replaceable>String</replaceable> > <replaceable>Null</replaceable>
+<replaceable>Object</replaceable> > <replaceable>Array</replaceable> > <replaceable>Boolean</replaceable> > <replaceable>Number</replaceable> > <replaceable>String</replaceable> > <replaceable>null</replaceable>
 
 <replaceable>Object with n pairs</replaceable> > <replaceable>object with n - 1 pairs</replaceable>
 
 <replaceable>Array with n elements</replaceable> > <replaceable>array with n - 1 elements</replaceable>
 </synopsis>
+      with the exception that (for historical reasons) an empty top level array sorts less than <replaceable>null</replaceable>.
       Objects with equal numbers of pairs are compared in the order:
 <synopsis>
 <replaceable>key-1</replaceable>, <replaceable>value-1</replaceable>, <replaceable>key-2</replaceable> ...
@@ -791,21 +792,20 @@ UPDATE table_name SET jsonb_field[1]['a'] = '1';
    In particular, the way to write a double quote within an embedded string
    literal is <literal>\"</literal>, and to write a backslash itself, you
    must write <literal>\\</literal>.  Other special backslash sequences
-   include those recognized in JSON strings:
+   include those recognized in JavaScript strings:
    <literal>\b</literal>,
    <literal>\f</literal>,
    <literal>\n</literal>,
    <literal>\r</literal>,
    <literal>\t</literal>,
    <literal>\v</literal>
-   for various ASCII control characters, and
-   <literal>\u<replaceable>NNNN</replaceable></literal> for a Unicode
-   character identified by its 4-hex-digit code point.  The backslash
-   syntax also includes two cases not allowed by JSON:
+   for various ASCII control characters,
    <literal>\x<replaceable>NN</replaceable></literal> for a character code
-   written with only two hex digits, and
-   <literal>\u{<replaceable>N...</replaceable>}</literal> for a character
-   code written with 1 to 6 hex digits.
+   written with only two hex digits,
+   <literal>\u<replaceable>NNNN</replaceable></literal> for a Unicode
+   character identified by its 4-hex-digit code point, and
+   <literal>\u{<replaceable>N...</replaceable>}</literal> for a Unicode
+   character code point written with 1 to 6 hex digits.
   </para>
 
   <para>

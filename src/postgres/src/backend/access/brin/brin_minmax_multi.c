@@ -2075,13 +2075,15 @@ brin_minmax_multi_distance_uuid(PG_FUNCTION_ARGS)
 Datum
 brin_minmax_multi_distance_date(PG_FUNCTION_ARGS)
 {
+	float8		delta = 0;
 	DateADT		dateVal1 = PG_GETARG_DATEADT(0);
 	DateADT		dateVal2 = PG_GETARG_DATEADT(1);
 
-	if (DATE_NOT_FINITE(dateVal1) || DATE_NOT_FINITE(dateVal2))
-		PG_RETURN_FLOAT8(0);
+	delta = (float8) dateVal2 - (float8) dateVal1;
 
-	PG_RETURN_FLOAT8(dateVal1 - dateVal2);
+	Assert(delta >= 0);
+
+	PG_RETURN_FLOAT8(delta);
 }
 
 /*
@@ -2135,10 +2137,7 @@ brin_minmax_multi_distance_timestamp(PG_FUNCTION_ARGS)
 	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
 
-	if (TIMESTAMP_NOT_FINITE(dt1) || TIMESTAMP_NOT_FINITE(dt2))
-		PG_RETURN_FLOAT8(0);
-
-	delta = dt2 - dt1;
+	delta = (float8) dt2 - (float8) dt1;
 
 	Assert(delta >= 0);
 
@@ -2155,34 +2154,9 @@ brin_minmax_multi_distance_interval(PG_FUNCTION_ARGS)
 
 	Interval   *ia = PG_GETARG_INTERVAL_P(0);
 	Interval   *ib = PG_GETARG_INTERVAL_P(1);
-	Interval   *result;
 
 	int64		dayfraction;
 	int64		days;
-
-	result = (Interval *) palloc(sizeof(Interval));
-
-	result->month = ib->month - ia->month;
-	/* overflow check copied from int4mi */
-	if (!SAMESIGN(ib->month, ia->month) &&
-		!SAMESIGN(result->month, ib->month))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-
-	result->day = ib->day - ia->day;
-	if (!SAMESIGN(ib->day, ia->day) &&
-		!SAMESIGN(result->day, ib->day))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-
-	result->time = ib->time - ia->time;
-	if (!SAMESIGN(ib->time, ia->time) &&
-		!SAMESIGN(result->time, ib->time))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
 
 	/*
 	 * Delta is (fractional) number of days between the intervals. Assume
@@ -2190,10 +2164,10 @@ brin_minmax_multi_distance_interval(PG_FUNCTION_ARGS)
 	 * don't need to be exact, in the worst case we'll build a bit less
 	 * efficient ranges. But we should not contradict interval_cmp.
 	 */
-	dayfraction = result->time % USECS_PER_DAY;
-	days = result->time / USECS_PER_DAY;
-	days += result->month * INT64CONST(30);
-	days += result->day;
+	dayfraction = (ib->time % USECS_PER_DAY) - (ia->time % USECS_PER_DAY);
+	days = (ib->time / USECS_PER_DAY) - (ia->time / USECS_PER_DAY);
+	days += (int64) ib->day - (int64) ia->day;
+	days += ((int64) ib->month - (int64) ia->month) * INT64CONST(30);
 
 	/* convert to double precision */
 	delta = (double) days + dayfraction / (double) USECS_PER_DAY;
@@ -2364,14 +2338,14 @@ brin_minmax_multi_distance_inet(PG_FUNCTION_ARGS)
 		unsigned char mask;
 		int			nbits;
 
-		nbits = lena - (i * 8);
+		nbits = Max(0, lena - (i * 8));
 		if (nbits < 8)
 		{
 			mask = (0xFF << (8 - nbits));
 			addra[i] = (addra[i] & mask);
 		}
 
-		nbits = lenb - (i * 8);
+		nbits = Max(0, lenb - (i * 8));
 		if (nbits < 8)
 		{
 			mask = (0xFF << (8 - nbits));

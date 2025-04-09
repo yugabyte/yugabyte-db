@@ -826,7 +826,7 @@ ExecInitRangeTable(EState *estate, List *rangeTable)
  * ExecGetRangeTableRelation
  *		Open the Relation for a range table entry, if not already done
  *
- * The Relations will be closed again in ExecEndPlan().
+ * The Relations will be closed in ExecEndPlan().
  */
 Relation
 ExecGetRangeTableRelation(EState *estate, Index rti)
@@ -1379,7 +1379,7 @@ ExecGetExtraUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 	{
 		ListCell   *lc;
 
-		/* In some code paths we can reach here before initializing the info */
+		/* Compute the info if we didn't already */
 		if (relinfo->ri_GeneratedExprs == NULL)
 			ExecInitStoredGenerated(relinfo, estate, CMD_UPDATE);
 		foreach(lc, estate->es_resultrelinfo_extra)
@@ -1394,10 +1394,25 @@ ExecGetExtraUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 	return NULL;
 }
 
-/* Return columns being updated, including generated columns */
+/*
+ * Return columns being updated, including generated columns
+ *
+ * The bitmap is allocated in per-tuple memory context. It's up to the caller to
+ * copy it into a different context with the appropriate lifespan, if needed.
+ */
 Bitmapset *
 ExecGetAllUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 {
-	return bms_union(ExecGetUpdatedCols(relinfo, estate),
-					 ExecGetExtraUpdatedCols(relinfo, estate));
+
+	Bitmapset	   *ret;
+	MemoryContext	oldcxt;
+
+	oldcxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
+	ret = bms_union(ExecGetUpdatedCols(relinfo, estate),
+					ExecGetExtraUpdatedCols(relinfo, estate));
+
+	MemoryContextSwitchTo(oldcxt);
+
+	return ret;
 }

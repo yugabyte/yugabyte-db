@@ -134,18 +134,26 @@
   tags:
     - ybc-install
 
-- block:
-  # Remove old cron job and its tasks that start yb-controller
-  - name: Remove old cron job that starts controller (for upgrades)
-    cron:
-      name: "Check liveness of controller"
-      user: "yugabyte"
-      state: absent
-    tags:
-      - override_ybc_gflags
-      - systemd_upgrade
-      - ybc-install
+- name: Check if crontab is available
+  command: which crontab
+  register: crontab_exists
+  changed_when: false
+  ignore_errors: yes
   when: systemd_option
+
+- name: Remove old cron job that starts controller (for upgrades)
+  when:
+    - systemd_option
+    - crontab_exists is defined
+    - crontab_exists.rc == 0
+  cron:
+    name: "Check liveness of controller"
+    user: "yugabyte"
+    state: absent
+  tags:
+    - override_ybc_gflags
+    - systemd_upgrade
+    - ybc-install
 
 - block:
   - set_fact:

@@ -238,16 +238,6 @@ class UniverseDetail extends Component {
         });
       }
     }
-    if (
-      currentUniverse?.data?.universeDetails?.updatingTaskUUID !== undefined &&
-      currentUniverse?.data?.universeDetails?.updatingTaskUUID !==
-        prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID
-    ) {
-      this.props.showUniverseTaskBanner(
-        currentUniverse.data.universeDetails.updatingTaskUUID,
-        currentUniverse.data.universeUUID
-      );
-    }
   }
 
   onResize(dimensions) {
@@ -1633,7 +1623,6 @@ class UniverseDetail extends Component {
           />
         </div>
         <TaskDetailBanner
-          taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID}
           universeUUID={currentUniverse.data.universeUUID}
         />
         <RollingUpgradeFormContainer

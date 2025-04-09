@@ -57,7 +57,7 @@ public class MetricUrlProvider {
   }
 
   public String getExpressionUrl(List<String> queryExpr, Long startUnixTime, Long endUnixTime) {
-    return getExpressionUrl(queryExpr, startUnixTime, endUnixTime);
+    return getExpressionUrl(queryExpr, startUnixTime, endUnixTime, null);
   }
 
   public String getExpressionUrl(

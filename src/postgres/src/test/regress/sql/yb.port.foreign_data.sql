@@ -641,10 +641,8 @@ CREATE TABLE fd_pt1 (
 CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
   SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
 DROP FOREIGN TABLE ft2;
-*/ -- YB
 \d+ fd_pt1
 CREATE FOREIGN TABLE ft2 (
 	c1 integer NOT NULL,
@@ -654,7 +652,6 @@ CREATE FOREIGN TABLE ft2 (
 \d+ ft2
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
 CREATE TABLE ct3() INHERITS(ft2);
 CREATE FOREIGN TABLE ft3 (
@@ -666,7 +663,6 @@ CREATE FOREIGN TABLE ft3 (
 \d+ ft2
 \d+ ct3
 \d+ ft3
-*/ -- YB
 
 -- add attributes recursively
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
@@ -675,18 +671,16 @@ ALTER TABLE fd_pt1 ADD COLUMN c6 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c7 integer NOT NULL;
 ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
 \d+ ct3
 \d+ ft3
-*/ -- YB
 
 -- alter attributes recursively
 ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
 ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
 ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
-ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR -- YB: output differs due to INHERITS not supported above
+ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
@@ -694,9 +688,7 @@ ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
 
 -- drop attributes recursively
 ALTER TABLE fd_pt1 DROP COLUMN c4;
@@ -705,9 +697,7 @@ ALTER TABLE fd_pt1 DROP COLUMN c6;
 ALTER TABLE fd_pt1 DROP COLUMN c7;
 ALTER TABLE fd_pt1 DROP COLUMN c8;
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
 
 -- add constraints recursively
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk1 CHECK (c1 > 0) NO INHERIT;
@@ -719,25 +709,23 @@ SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
   ORDER BY 1,2;
 -- child does not inherit NO INHERIT constraints
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
-DROP FOREIGN TABLE ft2; -- ERROR -- YB: does not fail because above queries fail/commented-out
-DROP FOREIGN TABLE ft2 CASCADE; -- YB: fails because the above DROP succeeds
+DROP FOREIGN TABLE ft2; -- ERROR
+\set VERBOSITY terse \\ -- YB: suppress cascade details
+DROP FOREIGN TABLE ft2 CASCADE;
+\set VERBOSITY default \\ -- YB
 CREATE FOREIGN TABLE ft2 (
 	c1 integer NOT NULL,
 	c2 text,
 	c3 date
 ) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
 -- child must have parent's INHERIT constraints
-/* YB: uncomment when INHERITS is supported
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;                            -- ERROR
 ALTER FOREIGN TABLE ft2 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 -- child does not inherit NO INHERIT constraints
 \d+ fd_pt1
 \d+ ft2
-*/ -- YB
 
 -- drop constraints recursively
 ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk1 CASCADE;
@@ -747,15 +735,11 @@ ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk2 CASCADE;
 INSERT INTO fd_pt1 VALUES (1, 'fd_pt1'::text, '1994-01-01'::date);
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
 \d+ fd_pt1
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
 
 -- changes name of an attribute recursively
 ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
@@ -763,13 +747,10 @@ ALTER TABLE fd_pt1 RENAME COLUMN c2 TO f2;
 ALTER TABLE fd_pt1 RENAME COLUMN c3 TO f3;
 -- changes name of a constraint recursively
 ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
-\d+ fd_pt1 \\ -- YB: output differs with the original test due to failed ALTER TABLE above
-/* YB: uncomment when INHERITS is supported
+\d+ fd_pt1
 \d+ ft2
-*/ -- YB
 
 DROP TABLE fd_pt1 CASCADE;
-DROP FOREIGN TABLE ft2; -- YB: workaround for above DROP CASCADE since ft2 never got linked under fd_pt1 due to lack of INHERITS support
 
 -- IMPORT FOREIGN SCHEMA
 IMPORT FOREIGN SCHEMA s1 FROM SERVER s9 INTO public; -- ERROR

@@ -3,7 +3,6 @@ title: VPC network
 headerTitle: VPC network
 linkTitle: VPC network
 description: Configure VPC networking in YugabyteDB Aeon.
-image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications
 aliases:
   - /preview/yugabyte-cloud/cloud-network/vpc-peers/

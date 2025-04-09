@@ -283,7 +283,6 @@ ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_conn_mgr-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
-ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_pgregress-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 

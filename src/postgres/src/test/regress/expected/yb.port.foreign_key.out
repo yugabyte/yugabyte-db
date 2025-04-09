@@ -866,34 +866,31 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY 
 ptest3) REFERENCES pktable);
 ERROR:  foreign key constraint "pktable_ptest4_ptest3_fkey" cannot be implemented
 DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: text and integer.
--- TODO: YugaByte does not yet support table inheritance.
---       Leaving the first failing statement uncommented so that this test
---       will fail when the feature is implemented (the full test should
---       be uncommented then).
 --
 -- Now some cases with inheritance
 -- Basic 2 table case: 1 column of matching types.
 create table pktable_base (base1 int not null);
 create table pktable (ptest1 int, primary key(base1), unique(base1, ptest1)) inherits (pktable_base);
-ERROR:  INHERITS not supported yet
-LINE 1: ...1 int, primary key(base1), unique(base1, ptest1)) inherits (...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-/*
 create table fktable (ftest1 int references pktable(base1));
 -- now some ins, upd, del
 insert into pktable(base1) values (1);
 insert into pktable(base1) values (2);
 --  let's insert a non-existent fktable value
 insert into fktable(ftest1) values (3);
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_ftest1_fkey"
+DETAIL:  Key (ftest1)=(3) is not present in table "pktable".
 --  let's make a valid row for that
 insert into pktable(base1) values (3);
 insert into fktable(ftest1) values (3);
 -- let's try removing a row that should fail from pktable
 delete from pktable where base1>2;
+ERROR:  update or delete on table "pktable" violates foreign key constraint "fktable_ftest1_fkey" on table "fktable"
+DETAIL:  Key (base1)=(3) is still referenced from table "fktable".
 -- okay, let's try updating all of the base1 values to *4
 -- which should fail.
 update pktable set base1=base1*4;
+ERROR:  update or delete on table "pktable" violates foreign key constraint "fktable_ftest1_fkey" on table "fktable"
+DETAIL:  Key (base1)=(3) is still referenced from table "fktable".
 -- okay, let's try an update that should work.
 update pktable set base1=base1*4 where base1<3;
 -- and a delete that should work
@@ -901,7 +898,6 @@ delete from pktable where base1>3;
 -- cleanup
 drop table fktable;
 delete from pktable;
-
 -- Now 2 columns 2 tables, matching types
 create table fktable (ftest1 int, ftest2 int, foreign key(ftest1, ftest2) references pktable(base1, ptest1));
 -- now some ins, upd, del
@@ -909,14 +905,20 @@ insert into pktable(base1, ptest1) values (1, 1);
 insert into pktable(base1, ptest1) values (2, 2);
 --  let's insert a non-existent fktable value
 insert into fktable(ftest1, ftest2) values (3, 1);
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_ftest1_ftest2_fkey"
+DETAIL:  Key (ftest1, ftest2)=(3, 1) is not present in table "pktable".
 --  let's make a valid row for that
 insert into pktable(base1,ptest1) values (3, 1);
 insert into fktable(ftest1, ftest2) values (3, 1);
 -- let's try removing a row that should fail from pktable
 delete from pktable where base1>2;
+ERROR:  update or delete on table "pktable" violates foreign key constraint "fktable_ftest1_ftest2_fkey" on table "fktable"
+DETAIL:  Key (base1, ptest1)=(3, 1) is still referenced from table "fktable".
 -- okay, let's try updating all of the base1 values to *4
 -- which should fail.
 update pktable set base1=base1*4;
+ERROR:  update or delete on table "pktable" violates foreign key constraint "fktable_ftest1_ftest2_fkey" on table "fktable"
+DETAIL:  Key (base1, ptest1)=(3, 1) is still referenced from table "fktable".
 -- okay, let's try an update that should work.
 update pktable set base1=base1*4 where base1<3;
 -- and a delete that should work
@@ -925,7 +927,6 @@ delete from pktable where base1>3;
 drop table fktable;
 drop table pktable;
 drop table pktable_base;
-
 -- Now we'll do one all in 1 table with 2 columns of matching types
 create table pktable_base(base1 int not null, base2 int);
 create table pktable(ptest1 int, ptest2 int, primary key(base1, ptest1), foreign key(base2, ptest2) references
@@ -936,41 +937,63 @@ insert into pktable (base1, ptest1, base2, ptest2) values (2, 2, 2, 1);
 insert into pktable (base1, ptest1, base2, ptest2) values (1, 3, 2, 2);
 -- fails (3,2) isn't in base1, ptest1
 insert into pktable (base1, ptest1, base2, ptest2) values (2, 3, 3, 2);
+ERROR:  insert or update on table "pktable" violates foreign key constraint "pktable_base2_ptest2_fkey"
+DETAIL:  Key (base2, ptest2)=(3, 2) is not present in table "pktable".
 -- fails (2,2) is being referenced
 delete from pktable where base1=2;
+ERROR:  update or delete on table "pktable" violates foreign key constraint "pktable_base2_ptest2_fkey" on table "pktable"
+DETAIL:  Key (base1, ptest1)=(2, 2) is still referenced from table "pktable".
 -- fails (1,1) is being referenced (twice)
 update pktable set base1=3 where base1=1;
+ERROR:  update or delete on table "pktable" violates foreign key constraint "pktable_base2_ptest2_fkey" on table "pktable"
+DETAIL:  Key (base1, ptest1)=(1, 1) is still referenced from table "pktable".
 -- this sequence of two deletes will work, since after the first there will be no (2,*) references
 delete from pktable where base2=2;
 delete from pktable where base1=2;
 drop table pktable;
 drop table pktable_base;
-
 -- 2 columns (2 tables), mismatched types
 create table pktable_base(base1 int not null);
-create table pktable(ptest1 inet, primary key(base1, ptest1)) inherits (pktable_base);
+create table pktable(ptest1 text, primary key(base1, ptest1)) inherits (pktable_base); -- YB: #17017: replace INET with TEXT because indexes on INET are not supported
 -- just generally bad types (with and without column references on the referenced table)
 create table fktable(ftest1 cidr, ftest2 int[], foreign key (ftest1, ftest2) references pktable);
+ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and integer.
 create table fktable(ftest1 cidr, ftest2 int[], foreign key (ftest1, ftest2) references pktable(base1, ptest1));
+ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and integer.
 -- let's mix up which columns reference which
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) references pktable);
+ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
+DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) references pktable(base1, ptest1));
+ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
+DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest1, ftest2) references pktable(ptest1, base1));
+ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: integer and text.
 drop table pktable;
 drop table pktable_base;
-
 -- 2 columns (1 table), mismatched types
 create table pktable_base(base1 int not null, base2 int);
-create table pktable(ptest1 inet, ptest2 inet[], primary key(base1, ptest1), foreign key(base2, ptest2) references
+create table pktable(ptest1 text, ptest2 text[], primary key(base1, ptest1), foreign key(base2, ptest2) references -- YB: #17017: replace INET with TEXT because indexes on INET are not supported
                                              pktable(base1, ptest1)) inherits (pktable_base);
-create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(base2, ptest2) references
+ERROR:  foreign key constraint "pktable_base2_ptest2_fkey" cannot be implemented
+DETAIL:  Key columns "ptest2" and "ptest1" are of incompatible types: text[] and text.
+create table pktable(ptest1 text, ptest2 text, primary key(base1, ptest1), foreign key(base2, ptest2) references -- YB: #17017: replace INET with TEXT because indexes on INET are not supported
                                              pktable(ptest1, base1)) inherits (pktable_base);
-create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(ptest2, base2) references
+ERROR:  foreign key constraint "pktable_base2_ptest2_fkey" cannot be implemented
+DETAIL:  Key columns "base2" and "ptest1" are of incompatible types: integer and text.
+create table pktable(ptest1 text, ptest2 text, primary key(base1, ptest1), foreign key(ptest2, base2) references -- YB: #17017: replace INET with TEXT because indexes on INET are not supported
                                              pktable(base1, ptest1)) inherits (pktable_base);
-create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(ptest2, base2) references
+ERROR:  foreign key constraint "pktable_ptest2_base2_fkey" cannot be implemented
+DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: text and integer.
+create table pktable(ptest1 text, ptest2 text, primary key(base1, ptest1), foreign key(ptest2, base2) references -- YB: #17017: replace INET with TEXT because indexes on INET are not supported
                                              pktable(base1, ptest1)) inherits (pktable_base);
+ERROR:  foreign key constraint "pktable_ptest2_base2_fkey" cannot be implemented
+DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: text and integer.
 drop table pktable;
-*/
+ERROR:  table "pktable" does not exist
 drop table pktable_base;
 --
 -- Deferrable constraints

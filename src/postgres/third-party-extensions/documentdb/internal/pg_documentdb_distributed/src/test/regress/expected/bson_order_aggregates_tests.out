@@ -1,0 +1,1647 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 71000;
+SET documentdb.next_collection_id TO 7100;
+SET documentdb.next_collection_index_id TO 7100;
+-- Insert an a.b, a.c matrix
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 1, "a" : { "b" : 1, "c" : 1 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 2, "a" : { "b" : 1, "c" : 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 3, "a" : { "b" : 1, "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 4, "a" : { "b" : 2, "c" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 5, "a" : { "b" : 2, "c" : 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 6, "a" : { "b" : 2, "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 7, "a" : { "b" : 3, "c" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 8, "a" : { "b" : 3, "c" : 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 9, "a" : { "b" : 3, "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}'::bson, '{"a.c":1}'::bson])
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[])
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[])
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONLASTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                             bsonlastonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONFIRSTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                            bsonfirstonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONLASTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                             bsonlastonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT BSONFIRSTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                            bsonfirstonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- last/first field not present
+SELECT bson_repath_and_build('firstonsorted'::text, BSONFIRSTONSORTED(bson_expression_get(document, '{ "": "$a.f" }')))
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+   bson_repath_and_build    
+---------------------------------------------------------------------
+ { "firstonsorted" : null }
+ { "firstonsorted" : null }
+ { "firstonsorted" : null }
+(3 rows)
+
+SELECT bson_repath_and_build('last'::text, BSONLAST(bson_expression_get(document, '{ "": "$a.f" }'),  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]))
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+ bson_repath_and_build 
+---------------------------------------------------------------------
+ { "last" : null }
+ { "last" : null }
+ { "last" : null }
+(3 rows)
+
+-- Test the different order combinations
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+-- Test with null results from the sort spec
+SELECT BSONFIRST(document, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+-- Test null ordering 
+SELECT documentdb_api.insert_one('db','bsonorderaggregates', '{"_id": 11, "a" : { "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                  bsonfirst                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                  bsonfirst                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.c":1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.c":1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.c":-1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                  bsonfirst                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.c":-1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                  bsonlast                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                  bsonlast                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.c":1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.c":1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                  bsonlast                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.c":-1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.c":-1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off)  
+SELECT BSONLAST(document, ARRAY['{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+$Q$);
+                  mask_plan_id_from_distributed_subplan                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_7100_71000 collection
+                     Recheck Cond: (shard_key_value = '7100'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '7100'::bigint)
+(10 rows)
+
+END;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "bsonorderaggregates", "indexes": [{"key": {"a.b": 1}, "name": "a_dot_b"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off)  
+SELECT BSONLAST(document, ARRAY['{"a.b":-1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonorderaggregates');
+$Q$);
+                   mask_plan_id_from_distributed_subplan                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Index Scan using _id_ on documents_7100_71000 collection
+                     Index Cond: (shard_key_value = '7100'::bigint)
+(8 rows)
+
+END;
+-- Shard the collection
+SELECT documentdb_api.shard_collection('db','bsonorderaggregates', '{"_id":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}'::bson,'{"a.c":1}'::bson])
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONLAST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                 bsonlast                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(4 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+(4 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(4 rows)
+
+SELECT BSONFIRST(document, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                bsonfirst                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }
+(4 rows)
+
+SELECT BSONLASTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                             bsonlastonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT BSONFIRSTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                            bsonfirstonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+(4 rows)
+
+SELECT BSONLASTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                             bsonlastonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+(4 rows)
+
+SELECT BSONFIRSTONSORTED(document) 
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                            bsonfirstonsorted                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+(4 rows)
+
+-- last/first field not present
+SELECT bson_repath_and_build('firstonsorted'::text, BSONFIRSTONSORTED(bson_expression_get(document, '{ "": "$a.f" }')))
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+   bson_repath_and_build    
+---------------------------------------------------------------------
+ { "firstonsorted" : null }
+ { "firstonsorted" : null }
+ { "firstonsorted" : null }
+(3 rows)
+
+SELECT bson_repath_and_build('last'::text, BSONLAST(bson_expression_get(document, '{ "": "$a.f" }'),  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]))
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+ bson_repath_and_build 
+---------------------------------------------------------------------
+ { "last" : null }
+ { "last" : null }
+ { "last" : null }
+(3 rows)
+
+SELECT bson_repath_and_build(
+    'lastNull'::text, bson_expression_get(BSONLAST(document,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]), '{ "": "$a.f" }', true),
+    'first'::text, bson_expression_get(BSONFIRST(document,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]), '{ "": "$a.b" }', true),
+    'firstNull'::text, bson_expression_get(BSONFIRST(document,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]), '{ "": "$a.x" }', true)
+    )
+FROM documentdb_api.collection('db', 'bsonorderaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                            bson_repath_and_build                            
+---------------------------------------------------------------------
+ { "lastNull" : null, "first" : { "$numberInt" : "3" }, "firstNull" : null }
+ { "lastNull" : null, "first" : { "$numberInt" : "3" }, "firstNull" : null }
+ { "lastNull" : null, "first" : { "$numberInt" : "3" }, "firstNull" : null }
+(3 rows)
+
+-- regression test for crash in BSONFIRST/BSONLAST when the first documents are small and we need to choose a larger document in byte size
+SELECT documentdb_api.insert_one('db', 'bsonFirstLastCrash', '{"_id": 1, "a": "z", "b": "z", "c": "z"}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'bsonFirstLastCrash', FORMAT('{"_id": 2, "a": "%s", "b": "%s", "c": "%s"}', repeat('aaa', 10), repeat('bbb', 10), repeat('dd', 10))::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT BSONFIRST(document, ARRAY['{ "a": 1}', '{"c": 1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstLastCrash');
+                                                                    bsonfirst                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "c" : "dddddddddddddddddddd" }
+(1 row)
+
+SELECT BSONLAST(document, ARRAY['{ "a": -1}', '{"c": -1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstLastCrash');
+                                                                     bsonlast                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "c" : "dddddddddddddddddddd" }
+(1 row)
+
+--
+-- BEGIN FIRSTN/LASTN Testing
+--
+-- Insert an a.b, a.c matrix
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 1, "a" : { "b" : 1, "c" : 1 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 2, "a" : { "b" : 1, "c" : 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 3, "a" : { "b" : 1, "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 4, "a" : { "b" : 2, "c" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 5, "a" : { "b" : 2, "c" : 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 6, "a" : { "b" : 2, "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 7, "a" : { "b" : 3, "c" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 8, "a" : { "b" : 3, "c" : 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 9, "a" : { "b" : 3, "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":1}'::bson, '{"a.c":1}'::bson])
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[])
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 4, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                       bsonlastn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                       bsonlastn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":1}'::bson, '{"a.c":1}'::bson])
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 4, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                      bsonfirstn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                      bsonfirstn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONLASTNONSORTED(document, 2) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                        bsonlastnonsorted                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTNONSORTED(document, 2) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                                                                       bsonfirstnonsorted                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+(3 rows)
+
+SELECT BSONLASTNONSORTED(document, 4) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                                                                                                                             bsonlastnonsorted                                                                                                                                                             
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTNONSORTED(document, 4) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                                                                                                                            bsonfirstnonsorted                                                                                                                                                             
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(3 rows)
+
+-- last/first field not present
+SELECT bson_repath_and_build('firstonsorted'::text, BSONFIRSTNONSORTED(bson_expression_get(document, '{ "": "$a.f" }'), 1))
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+     bson_repath_and_build      
+---------------------------------------------------------------------
+ { "firstonsorted" : [ {  } ] }
+ { "firstonsorted" : [ {  } ] }
+ { "firstonsorted" : [ {  } ] }
+(3 rows)
+
+SELECT bson_repath_and_build('last'::text, BSONLASTN(bson_expression_get(document, '{ "": "$a.f" }'), 1,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]))
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+ bson_repath_and_build 
+---------------------------------------------------------------------
+ { "last" : [ {  } ] }
+ { "last" : [ {  } ] }
+ { "last" : [ {  } ] }
+(3 rows)
+
+-- Test the different order combinations
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+-- Test with null results from the sort spec
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "f":1}', '{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{ "f":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}', '{ "f":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+-- Test null ordering 
+SELECT documentdb_api.insert_one('db','bsonordernaggregates', '{"_id": 11, "a" : { "c" : 3 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                  bsonfirstn                                                                                                                                                  
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                  bsonfirstn                                                                                                                                                  
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.c":1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.c":1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.c":-1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                  bsonfirstn                                                                                                                                                  
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.c":-1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                  bsonlastn                                                                                                                                                   
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                  bsonlastn                                                                                                                                                   
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.c":1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.c":1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                  bsonlastn                                                                                                                                                   
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.c":-1}', '{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.c":-1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off)  
+SELECT BSONLASTN(document, 1, ARRAY['{"a.b":1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+$Q$);
+                  mask_plan_id_from_distributed_subplan                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_7102_71044 collection
+                     Recheck Cond: (shard_key_value = '7102'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '7102'::bigint)
+(10 rows)
+
+END;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "bsonordernaggregates", "indexes": [{"key": {"a.b": 1}, "name": "a_dot_b"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off)  
+SELECT BSONLASTN(document, 1, ARRAY['{"a.b":-1}', '{"a.b":-1}']::bson[]) FROM documentdb_api.collection('db', 'bsonordernaggregates');
+$Q$);
+                   mask_plan_id_from_distributed_subplan                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Index Scan using _id_ on documents_7102_71044 collection
+                     Index Cond: (shard_key_value = '7102'::bigint)
+(8 rows)
+
+END;
+-- Shard the collection
+SELECT documentdb_api.shard_collection('db','bsonordernaggregates', '{"_id":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":1}'::bson, '{"a.c":1}'::bson])
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 4, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                       bsonlastn                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                       bsonlastn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                       bsonlastn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 2, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                            bsonlastn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                 bsonlastn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                       bsonlastn                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                       bsonlastn                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":1}'::bson, '{"a.c":1}'::bson])
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 4, ARRAY['{ "a.b":1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                       bsonfirstn                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                      bsonfirstn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 1, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                      bsonfirstn                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 2, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                           bsonfirstn                                                                                                            
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 3, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                bsonfirstn                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                       bsonfirstn                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTN(document, 4, ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                       bsonfirstn                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONLASTNONSORTED(document, 2) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                        bsonlastnonsorted                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+SELECT BSONFIRSTNONSORTED(document, 2) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                                                                       bsonfirstnonsorted                                                                                                        
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ] }
+(4 rows)
+
+SELECT BSONLASTNONSORTED(document, 4) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                                                                                                                             bsonlastnonsorted                                                                                                                                                             
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } ] }
+(4 rows)
+
+SELECT BSONFIRSTNONSORTED(document, 4) 
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.b" }');
+                                                                                                                                                            bsonfirstnonsorted                                                                                                                                                             
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } } ] }
+(4 rows)
+
+-- last/first field not present
+SELECT bson_repath_and_build('firstonsorted'::text, BSONFIRSTNONSORTED(bson_expression_get(document, '{ "": "$a.f" }'), 1))
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+     bson_repath_and_build      
+---------------------------------------------------------------------
+ { "firstonsorted" : [ {  } ] }
+ { "firstonsorted" : [ {  } ] }
+ { "firstonsorted" : [ {  } ] }
+(3 rows)
+
+SELECT bson_repath_and_build('last'::text, BSONLASTN(bson_expression_get(document, '{ "": "$a.f" }'), 1,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]))
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+ bson_repath_and_build 
+---------------------------------------------------------------------
+ { "last" : [ {  } ] }
+ { "last" : [ {  } ] }
+ { "last" : [ {  } ] }
+(3 rows)
+
+SELECT bson_repath_and_build(
+    'lastNull'::text, BSONLASTN(document, 2,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]),
+    'first'::text, BSONFIRSTN(document, 2,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[]),
+    'firstNull'::text, BSONFIRSTN(document, 2,  ARRAY['{ "a.b":-1}', '{"a.c":-1}']::bson[])
+    )
+FROM documentdb_api.collection('db', 'bsonordernaggregates') 
+GROUP BY bson_expression_get(document, '{ "": "$a.c" }');
+                                                                                                                                                                                                                                                                                                                                              bson_repath_and_build                                                                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "lastNull" : [ { "_id" : { "$numberInt" : "11" }, "a" : { "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "3" } } } ], "first" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ], "firstNull" : [ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } }, { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } } } ] }
+ { "lastNull" : [ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ], "first" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ], "firstNull" : [ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "2" } } }, { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } } ] }
+ { "lastNull" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ], "first" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ], "firstNull" : [ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "1" } } }, { "_id" : { "$numberInt" : "4" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "1" } } } ] }
+(3 rows)
+
+-- regression test for crash in BSONFIRSTN/BSONLASTN when the first documents are small and we need to choose a larger document in byte size
+SELECT documentdb_api.insert_one('db', 'bsonFirstNLastNCrash', '{"_id": 1, "a": "z", "b": "z", "c": "z"}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'bsonFirstNLastNCrash', FORMAT('{"_id": 2, "a": "%s", "b": "%s", "c": "%s"}', repeat('aaa', 10), repeat('bbb', 10), repeat('dd', 10))::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT BSONFIRSTN(document, 1, ARRAY['{ "a": 1}', '{"c": 1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstNLastNCrash');
+                                                                          bsonfirstn                                                                           
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "c" : "dddddddddddddddddddd" } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 1, ARRAY['{ "a": -1}', '{"c": -1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstNLastNCrash');
+                                                                           bsonlastn                                                                           
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "c" : "dddddddddddddddddddd" } ] }
+(1 row)
+
+-- regression test for allocating too much memory
+SELECT BSONFIRSTN(document, 9999999999999, ARRAY['{ "a": 1}', '{"c": 1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstNLastNCrash');
+                                                                                                             bsonfirstn                                                                                                             
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "c" : "dddddddddddddddddddd" }, { "_id" : { "$numberInt" : "1" }, "a" : "z", "b" : "z", "c" : "z" } ] }
+(1 row)
+
+SELECT BSONLASTN(document, 9999999999999, ARRAY['{ "a": -1}', '{"c": -1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstNLastNCrash');
+                                                                                                             bsonlastn                                                                                                              
+---------------------------------------------------------------------
+ { "" : [ { "_id" : { "$numberInt" : "2" }, "a" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "c" : "dddddddddddddddddddd" }, { "_id" : { "$numberInt" : "1" }, "a" : "z", "b" : "z", "c" : "z" } ] }
+(1 row)
+
+-- regression test for NULL pointer
+SELECT BSONFIRSTN(NULL, 1, ARRAY['{ "a": 1}', '{"c": 1}']::bson[]);
+    bsonfirstn     
+---------------------------------------------------------------------
+ { "" : [ null ] }
+(1 row)
+
+SELECT BSONFIRSTNONSORTED(NULL, 1);
+ bsonfirstnonsorted 
+---------------------------------------------------------------------
+ { "" : [ null ] }
+(1 row)
+
+SELECT BSONLASTN(NULL, 3, ARRAY['{ "a": 1}', '{"c": 1}']::bson[]) FROM documentdb_api.collection('db', 'bsonFirstNLastNCrash');
+        bsonlastn        
+---------------------------------------------------------------------
+ { "" : [ null, null ] }
+(1 row)
+
+SELECT BSONLASTNONSORTED(NULL, 3) FROM documentdb_api.collection('db', 'bsonFirstNLastNCrash');
+    bsonlastnonsorted    
+---------------------------------------------------------------------
+ { "" : [ null, null ] }
+(1 row)
+

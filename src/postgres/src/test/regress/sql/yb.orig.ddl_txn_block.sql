@@ -84,3 +84,17 @@ BEGIN ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test7 VALUES (1, 1);
 COMMIT;
 SELECT * FROM test7;
+
+SET allow_system_table_mods = on;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate system table inside a transaction block.
+TRUNCATE pg_extension;
+ROLLBACK;
+RESET allow_system_table_mods;
+
+SET yb_enable_alter_table_rewrite = off;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate user table inside a transaction block with table rewrite disabled.
+TRUNCATE test7;
+ROLLBACK;
+RESET yb_enable_alter_table_rewrite;

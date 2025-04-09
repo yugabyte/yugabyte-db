@@ -1126,7 +1126,7 @@ class PgClientSession::Impl {
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
-        big_shared_mem_expiration_task_(&scheduler),
+        big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
@@ -2131,6 +2131,10 @@ class PgClientSession::Impl {
     big_shared_mem_expiration_task_.StartShutdown();
   }
 
+  bool ReadyToShutdown() {
+    return big_shared_mem_expiration_task_.ReadyToShutdown();
+  }
+
   void CompleteShutdown() {
     big_shared_mem_expiration_task_.CompleteShutdown();
   }
@@ -2273,7 +2277,7 @@ class PgClientSession::Impl {
     }
     ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
 
-    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, options);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -3042,11 +3046,13 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
+  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
+                                              const PgPerformOptionsPB& options) {
     auto* read_point = result.session_data.session->read_point();
     if (!result.is_plain ||
         result.session_data.transaction ||
-        (read_point && read_point->GetReadTime())) {
+        (read_point && read_point->GetReadTime()) ||
+        options.non_transactional_buffered_write()) {
       return {};
     }
 
@@ -3121,6 +3127,10 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
 
 void PgClientSession::StartShutdown() {
   return impl_->StartShutdown();
+}
+
+bool PgClientSession::ReadyToShutdown() const {
+  return impl_->ReadyToShutdown();
 }
 
 void PgClientSession::CompleteShutdown() {

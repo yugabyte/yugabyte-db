@@ -1826,6 +1826,10 @@ pull_up_constant_function(PlannerInfo *root, Node *jtnode,
 	if (rtf->funccolcount != 1)
 		return jtnode;			/* definitely composite */
 
+	/* If it has a coldeflist, it certainly returns RECORD */
+	if (rtf->funccolnames != NIL)
+		return jtnode;			/* must be a one-column RECORD type */
+
 	functypclass = get_expr_result_type(rtf->funcexpr,
 										&funcrettype,
 										&tupdesc);
@@ -2475,8 +2479,13 @@ pullup_replace_vars_callback(Var *var,
 			else if (newnode && IsA(newnode, PlaceHolderVar) &&
 					 ((PlaceHolderVar *) newnode)->phlevelsup == 0)
 			{
-				/* No need to wrap a PlaceHolderVar with another one, either */
-				wrap = false;
+				/* The same rules apply for a PlaceHolderVar */
+				if (rcon->target_rte->lateral &&
+					!bms_is_subset(((PlaceHolderVar *) newnode)->phrels,
+								   rcon->relids))
+					wrap = true;
+				else
+					wrap = false;
 			}
 			else if (rcon->wrap_non_vars)
 			{

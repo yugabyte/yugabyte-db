@@ -13,6 +13,7 @@ import { useSelector } from 'react-redux';
 import { BackupList, Restore } from '..';
 import { YBTabsPanel } from '../../panels';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { TaskDetailDrawer } from '../../../redesign/features/tasks';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AccountLevelBackup.scss';
 
@@ -33,6 +34,7 @@ export const AccountLevelBackup: FC = () => {
             <Restore type="ACCOUNT_LEVEL" />
           </Tab>
         </YBTabsPanel>
+        <TaskDetailDrawer />
       </RbacValidator>
     );
   }

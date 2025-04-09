@@ -37,21 +37,21 @@ darwin_release_arm64
     </darwin_release_arm64>
   </build>
   <build version="2024.2.3.0">
-    <build_number>b64</build_number>
+    <build_number>b76</build_number>
     <linux_debug_x86>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b64/yugabyte-2024.2.3.0-29aedca3be506c38e466794666ae06b7001ea762-debug-clang17-centos-x86_64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-8151a102dfdd89f61eb5e2b470840df5f140dcbe-debug-clang17-centos-x86_64.tar.gz
     </linux_debug_x86>
     <linux_release_x86>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b64/yugabyte-2024.2.3.0-b64-centos-x86_64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-b76-centos-x86_64.tar.gz
     </linux_release_x86>
     <linux_release_aarch64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b64/yugabyte-2024.2.3.0-b64-almalinux8-aarch64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-b76-almalinux8-aarch64.tar.gz
     </linux_release_aarch64>
     <darwin_debug_arm64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b64/yugabyte-2024.2.3.0-29aedca3be506c38e466794666ae06b7001ea762-debug-clang-darwin-arm64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-8151a102dfdd89f61eb5e2b470840df5f140dcbe-debug-clang-darwin-arm64.tar.gz
     </darwin_debug_arm64>
     <darwin_release_arm64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b64/yugabyte-2024.2.3.0-b64-darwin-arm64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-b76-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
 </builds>

@@ -1118,15 +1118,29 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 		 */
 		if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 			return;
-		ereport(LOG,
-				(errmsg("waiting for shared catalog version to reach %" PRIu64,
-						version),
-				 errhidestmt(true),
-				 errhidecontext(true)));
+		/* Avoid flooding the log file, but always print for the first time. */
+		if (count % 20 == 1)
+			ereport(LOG,
+					(errmsg("waiting for shared catalog version to reach %" PRIu64,
+							version),
+					 errhidestmt(true),
+					 errhidecontext(true)));
 		/* wait 0.1 sec */
 		pg_usleep(100000L);
 		shared_catalog_version = YbGetSharedCatalogVersion();
 	}
+	if (shared_catalog_version >= version)
+		ereport(LOG,
+				(errmsg("shared catalog version has reached %" PRIu64,
+						shared_catalog_version),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+	else
+		ereport(WARNING,
+				(errmsg("shared catalog version %" PRIu64 " has not reached %" PRIu64,
+						shared_catalog_version, version),
+				 errhidestmt(true),
+				 errhidecontext(true)));
 }
 
 /*---------------------------------------------------------------------------*/
@@ -7119,23 +7133,37 @@ YbIsReadCommittedTxn()
 		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
 }
 
-YbReadTimePointHandle
-YbBuildCurrentReadTimePointHandle()
+static YbOptionalReadPointHandle
+YbMakeReadPointHandle(YbcReadPointHandle read_point)
 {
-	if (YbIsReadCommittedTxn())
-	{
-		return (YbReadTimePointHandle)
-		{
-			.has_value = true,
-				.value = YBCPgGetCurrentReadTimePoint(),
-		};
-	}
-	else
-	{
-		return (YbReadTimePointHandle)
-		{
-		};
-	}
+	return (YbOptionalReadPointHandle)
+		{ .has_value = true, .value = read_point };
+}
+
+YbOptionalReadPointHandle
+YbBuildCurrentReadPointHandle()
+{
+	return YbIsReadCommittedTxn()
+		? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
+		: (YbOptionalReadPointHandle) {};
+}
+
+void
+YbUseSnapshotReadTime(uint64_t read_time)
+{
+	HandleYBStatus(YBCPgRegisterSnapshotReadTime(read_time,
+												 true /* use_read_time */ ,
+												 NULL /* handle */ ));
+}
+
+YbOptionalReadPointHandle
+YbRegisterSnapshotReadTime(uint64_t read_time)
+{
+	YbcReadPointHandle handle = 0;
+	HandleYBStatus(YBCPgRegisterSnapshotReadTime(read_time,
+												 false /* use_read_time */ ,
+												 &handle));
+	return YbMakeReadPointHandle(handle);
 }
 
 /*
@@ -7190,12 +7218,23 @@ YbGetIndexKeySortOrdering(Relation indexRel)
 /*
  * Determine if the unsafe truncate (i.e., without table rewrite) should
  * be used for a given relation and its indexes.
+ * Also provide the reason why unsafe truncate is used. The reason is used to
+ * provide appropriate error messages to the users in case unsafe truncate
+ * cannot be used.
  */
-bool
+YbTruncateType
 YbUseUnsafeTruncate(Relation rel)
 {
-	return IsYBRelation(rel) &&
-		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
+	if (!IsYBRelation(rel))
+		return YB_SAFE_TRUNCATE;
+
+	if (IsSystemRelation(rel))
+		return YB_UNSAFE_TRUNCATE_SYSTEM_RELATION;
+
+	if (!yb_enable_alter_table_rewrite)
+		return YB_UNSAFE_TRUNCATE_TABLE_REWRITE_DISABLED;
+
+	return YB_SAFE_TRUNCATE;
 }
 
 

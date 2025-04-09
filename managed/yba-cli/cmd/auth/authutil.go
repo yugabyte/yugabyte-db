@@ -22,14 +22,14 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 	err := viper.WriteConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			fmt.Fprintln(os.Stdout, "No config was found a new one will be created.\n")
+			logrus.Info("No config was found a new one will be created.\n")
 			//Try to create the file
 			err = viper.SafeWriteConfig()
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(
 						"Error when writing new config file: "+err.Error()+".\n"+
-							"In case of permission errors, please run yba with --config flag to set the path.\n",
+							"In case of permission errors, please run yba with --config or --directory flag to set the path.\n",
 						formatter.RedColor))
 
 			}
@@ -41,17 +41,13 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 	}
 	configFileUsed := viper.GetViper().ConfigFileUsed()
 	if len(configFileUsed) > 0 {
-		logrus.Infof(
-			formatter.Colorize(
-				fmt.Sprintf("Configuration file '%v' sucessfully updated.\n",
-					configFileUsed), formatter.GreenColor))
 	} else {
-		configFileUsed = "$HOME/.yba-cli.yaml"
-		logrus.Infof(
-			formatter.Colorize(
-				fmt.Sprintf("Configuration file '%v' sucessfully updated.\n",
-					configFileUsed), formatter.GreenColor))
+		configFileUsed = "$HOME/.yba-cli/.yba-cli.yaml"
 	}
+	logrus.Infof(
+		formatter.Colorize(
+			fmt.Sprintf("Configuration file '%v' sucessfully updated.\n",
+				configFileUsed), formatter.GreenColor))
 
 	sessionCtx := formatter.Context{
 		Command: "auth",

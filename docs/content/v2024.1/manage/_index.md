@@ -17,7 +17,7 @@ type: indexpage
     title="Back up and restore"
     body="Back up and restore data in YugabyteDB."
     href="backup-restore/"
-    icon="fa-light fa-life-ring">}}
+    icon="fa-thin fa-life-ring">}}
 
   {{<index/item
     title="Migrate data"

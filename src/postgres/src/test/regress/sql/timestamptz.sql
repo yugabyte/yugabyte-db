@@ -234,6 +234,9 @@ FROM (
 -- shift bins using the origin parameter:
 SELECT date_bin('5 min'::interval, timestamptz '2020-02-01 01:01:01+00', timestamptz '2020-02-01 00:02:30+00');
 
+-- test roundoff edge case when source < origin
+SELECT date_bin('30 minutes'::interval, timestamptz '2024-02-01 15:00:00', timestamptz '2024-02-01 17:00:00');
+
 -- disallow intervals with months or years
 SELECT date_bin('5 months'::interval, timestamp with time zone '2020-02-01 01:01:01+00', timestamp with time zone '2001-01-01+00');
 SELECT date_bin('5 years'::interval,  timestamp with time zone '2020-02-01 01:01:01+00', timestamp with time zone '2001-01-01+00');
@@ -243,6 +246,11 @@ SELECT date_bin('0 days'::interval, timestamp with time zone '1970-01-01 01:00:0
 
 -- disallow negative intervals
 SELECT date_bin('-2 days'::interval, timestamp with time zone '1970-01-01 01:00:00+00' , timestamp with time zone '1970-01-01 00:00:00+00');
+
+-- test overflow cases
+select date_bin('15 minutes'::interval, timestamptz '294276-12-30', timestamptz '4000-12-20 BC');
+select date_bin('200000000 days'::interval, '2024-02-01'::timestamptz, '2024-01-01'::timestamptz);
+select date_bin('365000 days'::interval, '4400-01-01 BC'::timestamptz, '4000-01-01 BC'::timestamptz);
 
 -- Test casting within a BETWEEN qualifier
 SELECT d1 - timestamp with time zone '1997-01-02' AS diff
@@ -421,14 +429,18 @@ SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33, '+2') = '1973-07-15 08:15:5
 -- full timezone names
 SELECT make_timestamptz(2014, 12, 10, 0, 0, 0, 'Europe/Prague') = timestamptz '2014-12-10 00:00:00 Europe/Prague';
 SELECT make_timestamptz(2014, 12, 10, 0, 0, 0, 'Europe/Prague') AT TIME ZONE 'UTC';
-SELECT make_timestamptz(1846, 12, 10, 0, 0, 0, 'Asia/Manila') AT TIME ZONE 'UTC';
+SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Asia/Singapore') AT TIME ZONE 'UTC';
+SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Pacific/Honolulu') AT TIME ZONE 'UTC';
 SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Europe/Paris') AT TIME ZONE 'UTC';
 SELECT make_timestamptz(1910, 12, 24, 0, 0, 0, 'Nehwon/Lankhmar');
 
 -- abbreviations
 SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EST');
 SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EDT');
-SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT');
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'FOO8BAR');
+
+-- POSIX
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT,M3.2.0,M11.1.0');
 
 RESET TimeZone;
 

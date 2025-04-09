@@ -353,11 +353,12 @@ typedef struct YbUpdateAffectedEntities
  *		Apply rows produced by outer plan to result table(s),
  *		by inserting, updating, or deleting.
  *
- * If the originally named target table is a partitioned table, both
- * nominalRelation and rootRelation contain the RT index of the partition
- * root, which is not otherwise mentioned in the plan.  Otherwise rootRelation
- * is zero.  However, nominalRelation will always be set, as it's the rel that
- * EXPLAIN should claim is the INSERT/UPDATE/DELETE/MERGE target.
+ * If the originally named target table is a partitioned table or inheritance
+ * tree, both nominalRelation and rootRelation contain the RT index of the
+ * partition root or appendrel RTE, which is not otherwise mentioned in the
+ * plan.  Otherwise rootRelation is zero.  However, nominalRelation will
+ * always be set, as it's the rel that EXPLAIN should claim is the
+ * INSERT/UPDATE/DELETE/MERGE target.
  *
  * Note that rowMarks and epqParam are presumed to be valid for all the
  * table(s); they can't contain any info that varies across tables.
@@ -369,7 +370,7 @@ typedef struct ModifyTable
 	CmdType		operation;		/* INSERT, UPDATE, DELETE, or MERGE */
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	Index		nominalRelation;	/* Parent RT index for use of EXPLAIN */
-	Index		rootRelation;	/* Root RT index, if target is partitioned */
+	Index		rootRelation;	/* Root RT index, if partitioned/inherited */
 	bool		partColsUpdated;	/* some part key in hierarchy updated? */
 	List	   *resultRelations;	/* integer list of RT indexes */
 	List	   *updateColnosLists;	/* per-target-table update_colnos lists */
@@ -1383,7 +1384,7 @@ typedef struct Limit
  * doing a separate remote query to lock each selected row is usually pretty
  * unappealing, so early locking remains a credible design choice for FDWs.
  *
- * When doing UPDATE, DELETE, or SELECT FOR UPDATE/SHARE, we have to uniquely
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR UPDATE/SHARE, we have to uniquely
  * identify all the source rows, not only those from the target relations, so
  * that we can perform EvalPlanQual rechecking at need.  For plain tables we
  * can just fetch the TID, much as for a target relation; this case is
@@ -1412,7 +1413,7 @@ typedef enum RowMarkType
  * PlanRowMark -
  *	   plan-time representation of FOR [KEY] UPDATE/SHARE clauses
  *
- * When doing UPDATE, DELETE, or SELECT FOR UPDATE/SHARE, we create a separate
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR UPDATE/SHARE, we create a separate
  * PlanRowMark node for each non-target relation in the query.  Relations that
  * are not specified as FOR UPDATE/SHARE are marked ROW_MARK_REFERENCE (if
  * regular tables or supported foreign tables) or ROW_MARK_COPY (if not).

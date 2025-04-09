@@ -1068,14 +1068,14 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM
   (SELECT empno,
           salary,
-          count(empno) OVER (ORDER BY salary DESC) c
+          count(1) OVER (ORDER BY salary DESC) c
    FROM empsalary) emp
 WHERE c <= 3;
 
 SELECT * FROM
   (SELECT empno,
           salary,
-          count(empno) OVER (ORDER BY salary DESC) c
+          count(1) OVER (ORDER BY salary DESC) c
    FROM empsalary) emp
 WHERE c <= 3;
 
@@ -1131,13 +1131,13 @@ SELECT empno, depname FROM
    FROM empsalary) emp
 WHERE rn < 3;
 
--- likewise with count(empno) instead of row_number()
+-- likewise with count(1) instead of row_number()
 EXPLAIN (COSTS OFF)
 SELECT * FROM
   (SELECT empno,
           depname,
           salary,
-          count(empno) OVER (PARTITION BY depname ORDER BY salary DESC) c
+          count(1) OVER (PARTITION BY depname ORDER BY salary DESC) c
    FROM empsalary) emp
 WHERE c <= 3;
 
@@ -1146,7 +1146,7 @@ SELECT * FROM
   (SELECT empno,
           depname,
           salary,
-          count(empno) OVER (PARTITION BY depname ORDER BY salary DESC) c
+          count(1) OVER (PARTITION BY depname ORDER BY salary DESC) c
    FROM empsalary) emp
 WHERE c <= 3;
 
@@ -1157,15 +1157,22 @@ SELECT * FROM
   (SELECT empno,
           depname,
           salary,
-          count(empno) OVER () c
+          count(1) OVER () c
    FROM empsalary) emp
 WHERE c = 1;
+
+-- Try another case with a WindowFunc with a byref return type
+SELECT * FROM
+  (SELECT row_number() OVER (PARTITION BY salary) AS rn,
+          lead(depname) OVER (PARTITION BY salary) || ' Department' AS n_dep
+   FROM empsalary) emp
+WHERE rn < 1;
 
 -- Some more complex cases with multiple window clauses
 EXPLAIN (COSTS OFF)
 SELECT * FROM
   (SELECT *,
-          count(salary) OVER (PARTITION BY depname || '') c1, -- w1
+          count(1) OVER (PARTITION BY depname || '') c1, -- w1
           row_number() OVER (PARTITION BY depname) rn, -- w2
           count(*) OVER (PARTITION BY depname) c2, -- w2
           count(*) OVER (PARTITION BY '' || depname) c3 -- w3
@@ -1175,7 +1182,7 @@ SELECT * FROM
 -- Ensure we correctly filter out all of the run conditions from each window
 SELECT * FROM
   (SELECT *,
-          count(salary) OVER (PARTITION BY depname || '') c1, -- w1
+          count(1) OVER (PARTITION BY depname || '') c1, -- w1
           row_number() OVER (PARTITION BY depname) rn, -- w2
           count(*) OVER (PARTITION BY depname) c2, -- w2
           count(*) OVER (PARTITION BY '' || depname) c3 -- w3
@@ -1205,15 +1212,33 @@ SELECT * FROM
    FROM empsalary) emp
 WHERE 3 <= c;
 
--- Ensure we don't pushdown when there are multiple window clauses to evaluate
+-- Ensure we don't use a run condition when there's a volatile function in the
+-- WindowFunc
 EXPLAIN (COSTS OFF)
 SELECT * FROM
   (SELECT empno,
           salary,
-          count(*) OVER (ORDER BY empno DESC) c,
-          dense_rank() OVER (ORDER BY salary DESC) dr
+          count(random()) OVER (ORDER BY empno DESC) c
    FROM empsalary) emp
-WHERE dr = 1;
+WHERE c = 1;
+
+-- Ensure we don't use a run condition when the WindowFunc arg contains a Var
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(empno) OVER (ORDER BY empno DESC) c
+   FROM empsalary) emp
+WHERE c = 1;
+
+-- Ensure we don't use a run condition when the WindowFunc contains subplans
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count((SELECT 1)) OVER (ORDER BY empno DESC) c
+   FROM empsalary) emp
+WHERE c = 1;
 
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)

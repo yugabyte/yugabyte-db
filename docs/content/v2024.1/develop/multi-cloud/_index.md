@@ -65,12 +65,12 @@ YugabyteDB offers basic patterns to make this migration seamless. You can set up
     title="Multi-cloud setup"
     body="Set up a YugabyteDB universe across AWS, Azure, and GCP."
     href="./multicloud-setup"
-    icon="fa-brands fa-cloudflare">}}
+    icon="fa-thin fa-clouds">}}
 
 {{<index/item
     title="Multi-cloud migration"
     body="Migrate your data from one cloud to another."
-    icon="fa-solid fa-cloud-arrow-up"
+    icon="fa-thin fa-cloud-arrow-up"
     href="./multicloud-migration">}}
 
 {{<index/item

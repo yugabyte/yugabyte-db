@@ -857,6 +857,9 @@ CopyFrom(CopyFromState cstate)
 		 * Can't support multi-inserts if there are any volatile function
 		 * expressions in WHERE clause.  Similarly to the trigger case above,
 		 * such expressions may query the table we're inserting into.
+		 *
+		 * Note: the whereClause was already preprocessed in DoCopy(), so it's
+		 * okay to use contain_volatile_functions() directly.
 		 */
 		insertMethod = CIM_SINGLE;
 	}
@@ -1591,6 +1594,12 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->need_transcoding = true;
 		cstate->conversion_proc = FindDefaultConversionProc(cstate->file_encoding,
 															GetDatabaseEncoding());
+		if (!OidIsValid(cstate->conversion_proc))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("default conversion function for encoding \"%s\" to \"%s\" does not exist",
+							pg_encoding_to_char(cstate->file_encoding),
+							pg_encoding_to_char(GetDatabaseEncoding()))));
 	}
 
 	cstate->copy_src = COPY_FILE;	/* default */
@@ -1702,7 +1711,8 @@ BeginCopyFrom(ParseState *pstate,
 				 * known to be safe for use with the multi-insert
 				 * optimization. Hence we use this special case function
 				 * checker rather than the standard check for
-				 * contain_volatile_functions().
+				 * contain_volatile_functions().  Note also that we already
+				 * ran the expression through expression_planner().
 				 */
 				if (!volatile_defexprs)
 					volatile_defexprs = contain_volatile_functions_not_nextval((Node *) defexpr);

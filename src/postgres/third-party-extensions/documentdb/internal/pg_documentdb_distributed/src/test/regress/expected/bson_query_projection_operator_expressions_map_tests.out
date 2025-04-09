@@ -1,0 +1,439 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 245000;
+SET documentdb.next_collection_id TO 2450;
+SET documentdb.next_collection_index_id TO 2450;
+SELECT documentdb_api.insert_one('db','mapprojectexprs','{"array": [{"_id":"1", "a" : { "b" : 1 } },{"_id":"2", "a" : { "b" : [ 0, 1, 2]} },{"_id":"3", "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3}] },{"_id":"4", "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] },{"_id":"5", "a" : { "b" : [ { "1" : [ 1, 2, 3 ] } ] } },{"_id":"6", "a" : [ { "c" : 0 }, 2 ] },{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] },{"_id":"8", "a" : { "c" : 1 } },{"_id":"9", "c" : { "d" : 1 } }]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- field path expressions
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a" }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                           bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ { "field" : [ { "b" : { "$numberInt" : "1" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ], [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], { "c" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a.b" }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                          bson_expression_map                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "field" : [ { "$numberInt" : "1" }, [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ], [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ], [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], [  ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a.c" }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                         bson_expression_map                                                          
+---------------------------------------------------------------------
+ { "field" : [ [  ], [  ], [ { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], { "$numberInt" : "1" } ] }
+(1 row)
+
+-- field path expressions on bson_expression_get() with nullOnEmpty = true
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a" }', true) FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                              bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "field" : [ { "b" : { "$numberInt" : "1" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ], [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], { "c" : { "$numberInt" : "1" } }, null ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a.b" }', true) FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                bson_expression_map                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ { "field" : [ { "$numberInt" : "1" }, [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ], [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ], [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], [  ], [ { "$numberInt" : "2" } ], null, null ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a.c" }', true) FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                     bson_expression_map                                                                      
+---------------------------------------------------------------------
+ { "field" : [ null, null, [  ], [  ], null, [ { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], { "$numberInt" : "1" }, null ] }
+(1 row)
+
+-- field path expressions on bson_expression_get() with nullOnEmpty = false
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a" }', false) FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                           bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ { "field" : [ { "b" : { "$numberInt" : "1" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ], [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], { "c" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a.b" }', false) FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                          bson_expression_map                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "field" : [ { "$numberInt" : "1" }, [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ], [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ], [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], [  ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : "$a.c" }', false) FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                         bson_expression_map                                                          
+---------------------------------------------------------------------
+ { "field" : [ [  ], [  ], [ { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], { "$numberInt" : "1" } ] }
+(1 row)
+
+-- const value expressions
+SELECT bson_expression_map(document, 'array', '{ "field" : "someString" }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                              bson_expression_map                                                               
+---------------------------------------------------------------------
+ { "field" : [ "someString", "someString", "someString", "someString", "someString", "someString", "someString", "someString", "someString" ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : [ "1.0" ] }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                 bson_expression_map                                                 
+---------------------------------------------------------------------
+ { "field" : [ [ "1.0" ], [ "1.0" ], [ "1.0" ], [ "1.0" ], [ "1.0" ], [ "1.0" ], [ "1.0" ], [ "1.0" ], [ "1.0" ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$minKey": 1 } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                     bson_expression_map                                                                                     
+---------------------------------------------------------------------
+ { "field" : [ { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 }, { "$minKey" : 1 } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "nestedField": "fieldValue" } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                        bson_expression_map                                                                                                                                                         
+---------------------------------------------------------------------
+ { "field" : [ { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" }, { "nestedField" : "fieldValue" } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "nestedField": "fieldValue", "nestedField2": "fieldValue2" } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                        bson_expression_map                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "field" : [ { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" }, { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } ] }
+(1 row)
+
+-- literal expressions
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$literal": 1.0 } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                  bson_expression_map                                                                                                                                  
+---------------------------------------------------------------------
+ { "field" : [ { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "1.0" } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$literal": [1, 2, 3] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                     bson_expression_map                                                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ { "field" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$literal": "some literal" } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                                                                       bson_expression_map                                                                        
+---------------------------------------------------------------------
+ { "field" : [ "some literal", "some literal", "some literal", "some literal", "some literal", "some literal", "some literal", "some literal", "some literal" ] }
+(1 row)
+
+-- isArray expressions: top level expression
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": "some literal" } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": { "$literal": [ 1, 2, 3 ] } } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                          bson_expression_map                           
+---------------------------------------------------------------------
+ { "field" : [ true, true, true, true, true, true, true, true, true ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": { "$literal": "someLiteral" } } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": { "nestedObj": "someValue" } } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+-- project $a.b along with isArray to validate the values easily.
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray":  "$a.b" } }'), bson_expression_map(document, 'array', '{ "field" : "$a.b" }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                            bson_expression_map                            |                                                                                                                                                                                                                                                                          bson_expression_map                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "field" : [ false, true, true, true, true, true, true, false, false ] } | { "field" : [ { "$numberInt" : "1" }, [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ], [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ], [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], [  ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+-- test nested operator expansion (this should all be false since the inner operator returns true/false and is never an array)
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": { "$isArray":  "$a.b" } } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+-- isArray expressions: array declaration.
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ "some literal" ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ { "$literal": [ 1, 2, 3 ] } ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                          bson_expression_map                           
+---------------------------------------------------------------------
+ { "field" : [ true, true, true, true, true, true, true, true, true ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ { "$literal": "someLiteral" } ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ { "nestedObj": "someValue" } ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                               bson_expression_map                               
+---------------------------------------------------------------------
+ { "field" : [ false, false, false, false, false, false, false, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ "$a.b" ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                            bson_expression_map                            
+---------------------------------------------------------------------
+ { "field" : [ false, true, true, true, true, true, true, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ [1, 2, 3 ] ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+                          bson_expression_map                           
+---------------------------------------------------------------------
+ { "field" : [ true, true, true, true, true, true, true, true, true ] }
+(1 row)
+
+-- isArray expressions: array declaration invalid
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+ERROR:  Expression $isArray takes exactly 1 arguments. 0 were passed in.
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ 1, 2 ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+ERROR:  Expression $isArray takes exactly 1 arguments. 2 were passed in.
+-- unsupported operators
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$unknownop": "some literal" } }') FROM documentdb_api.collection('db', 'mapprojectexprs') ORDER BY object_id;
+ERROR:  Unknown expression $unknownop
+-- Array Expression and Nested Expression evaluation tests
+SELECT bson_expression_map(document, 'array', '{ "new" : ["$_id"]}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                       bson_expression_map                                       
+---------------------------------------------------------------------
+ { "new" : [ [ "1" ], [ "2" ], [ "3" ], [ "4" ], [ "5" ], [ "6" ], [ "7" ], [ "8" ], [ "9" ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "new" : ["$a"]}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                                                                                                                                                                                                               bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "new" : [ [ { "b" : { "$numberInt" : "1" } } ], [ { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ], [ [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] ], [ [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] ], [ { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } ], [ [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] ], [ [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] ], [ { "c" : { "$numberInt" : "1" } } ], [ null ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "new" : ["$a.b"]}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                                                                                 bson_expression_map                                                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "new" : [ [ { "$numberInt" : "1" } ], [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ], [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ], [ [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ], [ [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ], [ [  ] ], [ [ { "$numberInt" : "2" } ] ], [ null ], [ null ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "new" : {"val": ["$a.b"]}}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                                                                                                                                       bson_expression_map                                                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "new" : [ { "val" : [ { "$numberInt" : "1" } ] }, { "val" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "val" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ] }, { "val" : [ [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ] }, { "val" : [ [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] }, { "val" : [ [  ] ] }, { "val" : [ [ { "$numberInt" : "2" } ] ] }, { "val" : [ null ] }, { "val" : [ null ] } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "new" : {"val": ["1", "2", "$a.b"]}}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                                                                                                                                                                                    bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "new" : [ { "val" : [ "1", "2", { "$numberInt" : "1" } ] }, { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ] }, { "val" : [ "1", "2", [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ] }, { "val" : [ "1", "2", [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] }, { "val" : [ "1", "2", [  ] ] }, { "val" : [ "1", "2", [ { "$numberInt" : "2" } ] ] }, { "val" : [ "1", "2", null ] }, { "val" : [ "1", "2", null ] } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "new" : {"val": ["1", "2", "$a.b"], "val2": "$_id"}}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                   bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "new" : [ { "val" : [ "1", "2", { "$numberInt" : "1" } ], "val2" : "1" }, { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ], "val2" : "2" }, { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ], "val2" : "3" }, { "val" : [ "1", "2", [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ], "val2" : "4" }, { "val" : [ "1", "2", [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ], "val2" : "5" }, { "val" : [ "1", "2", [  ] ], "val2" : "6" }, { "val" : [ "1", "2", [ { "$numberInt" : "2" } ] ], "val2" : "7" }, { "val" : [ "1", "2", null ], "val2" : "8" }, { "val" : [ "1", "2", null ], "val2" : "9" } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ "$a.b" ] } }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                            bson_expression_map                            
+---------------------------------------------------------------------
+ { "field" : [ false, true, true, true, true, true, true, false, false ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : { "$isArray": [ "$a.b" ] , "a": 1.0} }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+ERROR:  an expression operator specification must contain exactly one field, found 2 fields '$isArray' and 'a'.
+SELECT bson_expression_map(document, 'array', '{ "field" : { "first": 1.0, "$isArray": [ "$a.b" ]} }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+SELECT bson_expression_map(document, 'array', '{ "field" : ["$_id", ["$a", "$b"], { "arrayobj" : [{},"$_id"]}] }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   bson_expression_map                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "field" : [ [ "1", [ { "b" : { "$numberInt" : "1" } }, null ], { "arrayobj" : [ {  }, "1" ] } ], [ "2", [ { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, null ], { "arrayobj" : [ {  }, "2" ] } ], [ "3", [ [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], null ], { "arrayobj" : [ {  }, "3" ] } ], [ "4", [ [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], null ], { "arrayobj" : [ {  }, "4" ] } ], [ "5", [ { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, null ], { "arrayobj" : [ {  }, "5" ] } ], [ "6", [ [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ], null ], { "arrayobj" : [ {  }, "6" ] } ], [ "7", [ [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], null ], { "arrayobj" : [ {  }, "7" ] } ], [ "8", [ { "c" : { "$numberInt" : "1" } }, null ], { "arrayobj" : [ {  }, "8" ] } ], [ "9", [ null, null ], { "arrayobj" : [ {  }, "9" ] } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : [{"$literal" : 3.12}] }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                                     bson_expression_map                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ { "field" : [ [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ], [ { "$numberDouble" : "3.1200000000000001066" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : [{"$isArray" : [1,2]}] }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+ERROR:  Expression $isArray takes exactly 1 arguments. 2 were passed in.
+SELECT bson_expression_map(document, 'array', '{ "field" : {"$literal" : 3.12} }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                                                                                                                                                                                                                   bson_expression_map                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" }, { "$numberDouble" : "3.1200000000000001066" } ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{ "field" : {"$isArray" : "$a.b"} }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+                            bson_expression_map                            
+---------------------------------------------------------------------
+ { "field" : [ false, true, true, true, true, true, true, false, false ] }
+(1 row)
+
+-- Expressions with undefined paths.
+SELECT documentdb_api.insert_one('db', 'mapprojectexprwithundefined','{"array": [{"_id":"1", "a": [ 1, 2 ] },{"_id":"2", "a": { "b": 1 } },{"_id":"3", "a" : [ { "b": 1 }, 2, 3 ] },{"_id":"4", "a" : { "b": [ 1, 2 ] } } ] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": "$z"}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+ bson_expression_map 
+---------------------------------------------------------------------
+ { "field" : [  ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": "$a.b.c"}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+        bson_expression_map         
+---------------------------------------------------------------------
+ { "field" : [ [  ], [  ], [  ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": ["$z", 2]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                   bson_expression_map                                                                    
+---------------------------------------------------------------------
+ { "field" : [ [ null, { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": ["$a.b.c", 2]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                   bson_expression_map                                                                    
+---------------------------------------------------------------------
+ { "field" : [ [ [  ], { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ], [ [  ], { "$numberInt" : "2" } ], [ [  ], { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": ["$a.x.y", 2]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                   bson_expression_map                                                                    
+---------------------------------------------------------------------
+ { "field" : [ [ [  ], { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ], [ [  ], { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": ["$z.x.y", 2]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                   bson_expression_map                                                                    
+---------------------------------------------------------------------
+ { "field" : [ [ null, { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ], [ null, { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": [ ["$a.x.y"], 2, ["$z"]]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                                               bson_expression_map                                                                                                
+---------------------------------------------------------------------
+ { "field" : [ [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ], [ [ null ], { "$numberInt" : "2" }, [ null ] ], [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ], [ [ null ], { "$numberInt" : "2" }, [ null ] ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": [ ["$a.x.y"], 2, [{"$arrayElemAt": [[1], 2]}]]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                                               bson_expression_map                                                                                                
+---------------------------------------------------------------------
+ { "field" : [ [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ], [ [ null ], { "$numberInt" : "2" }, [ null ] ], [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ], [ [ null ], { "$numberInt" : "2" }, [ null ] ] ] }
+(1 row)
+
+SELECT bson_expression_map(document, 'array', '{"field": [ ["$a.x.y"], 2, [{"$arrayElemAt": [[1], 0]}]]}') FROM documentdb_api.collection('db', 'mapprojectexprwithundefined');
+                                                                                                                                   bson_expression_map                                                                                                                                    
+---------------------------------------------------------------------
+ { "field" : [ [ [ [  ] ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ], [ [ null ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ], [ [ [  ] ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ], [ [ null ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ] ] }
+(1 row)
+
+-- Error cases when a field is an empty string
+SELECT bson_expression_map(document, 'array', '{ "field" : {"" : "$a.b"} }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+ERROR:  FieldPath cannot be constructed with empty string.
+SELECT bson_expression_map(document, 'array', '{ "new" : {"val": ["1", "2", {"": "hello"}], "val2": "$_id"}}') FROM documentdb_api.collection('db', 'mapprojectexprs');
+ERROR:  FieldPath cannot be constructed with empty string.
+SELECT bson_expression_map(document, 'array', '{ "field" : [{"literal" : [2, {"" : "empty"}]}] }') FROM documentdb_api.collection('db', 'mapprojectexprs');
+ERROR:  FieldPath cannot be constructed with empty string.
+-- Field not present or null, NullOnEmpty = false
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{ "": "$a" }', false), 
+bson_expression_map('{"array": [{"a" : null}]}', 'array', '{ "": "$a" }', false),
+bson_expression_map('{"array": [{}]}', 'array', '{ "": { "a" : "$a" }}', false),
+bson_expression_map('{"array": [{"a" : null}]}', 'array', '{ "": { "a" : "$a" }}', false);
+ bson_expression_map | bson_expression_map | bson_expression_map |     bson_expression_map     
+---------------------------------------------------------------------
+ { "" : [  ] }       | { "" : [ null ] }   | { "" : [ {  } ] }   | { "" : [ { "a" : null } ] }
+(1 row)
+
+-- Field not present or null, NullOnEmpty = true
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{ "": "$a" }', true), 
+bson_expression_map('{"array": [{"a" : null}]}', 'array', '{ "": "$a" }', true),
+bson_expression_map('{"array": [{}]}', 'array', '{ "": { "a" : "$a" }}', true),
+bson_expression_map('{"array": [{"a" : null}]}', 'array', '{ "": { "a" : "$a" }}', true);
+ bson_expression_map | bson_expression_map |     bson_expression_map     |     bson_expression_map     
+---------------------------------------------------------------------
+ { "" : [ null ] }   | { "" : [ null ] }   | { "" : [ { "a" : null } ] } | { "" : [ { "a" : null } ] }
+(1 row)
+
+-- Array not present or null or not an array
+SELECT bson_expression_map('{"array": {}}', 'array', '{ "": "$a" }', true);
+ERROR:  Input Array for bson_express_map of wrong type Name: 'array' Type: 'object'
+SELECT bson_expression_map('{"array": null}', 'array', '{ "": "$a" }', true);
+ERROR:  Input Array for bson_express_map of wrong type Name: 'array' Type: 'null'
+SELECT bson_expression_map('{"array": []}', 'array', '{ "": { "a" : "$a" }}', true);
+ bson_expression_map 
+---------------------------------------------------------------------
+ { "" : [  ] }
+(1 row)
+
+SELECT bson_expression_map('{"notarray": [{"a" : null}]}', 'array', '{ "": { "a" : "$a" }}', true);
+ERROR:  Missing Input Array for bson_expression_map: 'array'
+-- Document and array expressions with nested expressions that should be converted to a constant at the tree parse stage
+SET client_min_messages TO DEBUG3;
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"result": {"a": [ { "$literal" : "foo" } ] }}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing document expression into constant.
+          bson_expression_map           
+---------------------------------------------------------------------
+ { "result" : [ { "a" : [ "foo" ] } ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"result": [ { "$literal" : "foo" } ] }');
+DEBUG:  Optimizing array expression into constant.
+     bson_expression_map      
+---------------------------------------------------------------------
+ { "result" : [ [ "foo" ] ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"result": [ { "$undefined" : true } ] }');
+DEBUG:  Optimizing array expression into constant.
+     bson_expression_map     
+---------------------------------------------------------------------
+ { "result" : [ [ null ] ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"result": [ { "$literal" : "foo" }, {"$substr": ["wehello world", 2, -1]} ] }');
+DEBUG:  Optimizing array expression into constant.
+             bson_expression_map             
+---------------------------------------------------------------------
+ { "result" : [ [ "foo", "hello world" ] ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"result": {"a": [ { "$literal" : "foo" } ], "a": {"$const": "foo2"} }}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing document expression into constant.
+         bson_expression_map         
+---------------------------------------------------------------------
+ { "result" : [ { "a" : "foo2" } ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"} }}');
+DEBUG:  Optimizing document expression into constant.
+                         bson_expression_map                         
+---------------------------------------------------------------------
+ { "document" : [ { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" } ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"document": {"a": { "b" : {"a": "foo", "d": {"$substr": ["hello world", 6, -1]}} }, "c": {"$const": "c is 2"} }}');
+DEBUG:  Optimizing document expression into constant.
+                                   bson_expression_map                                   
+---------------------------------------------------------------------
+ { "document" : [ { "a" : { "b" : { "a" : "foo", "d" : "world" } }, "c" : "c is 2" } ] }
+(1 row)
+
+SELECT bson_expression_map('{"array": [{}]}', 'array', '{"document": {"a": {"d": { "$literal" : {"a": "$$REMOVE" } }, "c": [{"$literal": "$$REMOVE"}, true, false]}, "b": {"$const": "b is 2"}}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing document expression into constant.
+                                               bson_expression_map                                                
+---------------------------------------------------------------------
+ { "document" : [ { "a" : { "d" : { "a" : "$$REMOVE" }, "c" : [ "$$REMOVE", true, false ] }, "b" : "b is 2" } ] }
+(1 row)
+
+SET client_min_messages TO DEFAULT;

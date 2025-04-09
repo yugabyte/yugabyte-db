@@ -559,11 +559,11 @@ start_postmaster(void)
 		else
 			close(fd);
 
-		cmd = psprintf("\"%s\" /C \"\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1\"",
+		cmd = psprintf("\"%s\" /D /C \"\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1\"",
 					   comspec, exec_path, pgdata_opt, post_opts, DEVNULL, log_file);
 	}
 	else
-		cmd = psprintf("\"%s\" /C \"\"%s\" %s%s < \"%s\" 2>&1\"",
+		cmd = psprintf("\"%s\" /D /C \"\"%s\" %s%s < \"%s\" 2>&1\"",
 					   comspec, exec_path, pgdata_opt, post_opts, DEVNULL);
 
 	if (!CreateRestrictedProcess(cmd, &pi, false))
@@ -624,7 +624,7 @@ wait_for_postmaster_start(pgpid_t pm_pid, bool do_checkpoint)
 			 * Allow 2 seconds slop for possible cross-process clock skew.
 			 */
 			pmpid = atol(optlines[LOCK_FILE_LINE_PID - 1]);
-			pmstart = atol(optlines[LOCK_FILE_LINE_START_TIME - 1]);
+			pmstart = atoll(optlines[LOCK_FILE_LINE_START_TIME - 1]);
 			if (pmstart >= start_time - 2 &&
 #ifndef WIN32
 				pmpid == pm_pid

@@ -873,7 +873,7 @@ PQsslKeyPassHook_OpenSSL_type PQgetSSLKeyPassHook_OpenSSL(void);
     connection parameters.  There are two accepted formats for these strings:
     plain keyword/value strings
     and URIs.  URIs generally follow
-    <ulink url="https://tools.ietf.org/html/rfc3986">RFC
+    <ulink url="https://datatracker.ietf.org/doc/html/rfc3986">RFC
     3986</ulink>, except that multi-host connection strings are allowed
     as further described below.
    </para>
@@ -958,7 +958,7 @@ postgresql:///mydb?host=localhost&amp;port=5433
 
    <para>
     The connection <acronym>URI</acronym> needs to be encoded with <ulink
-    url="https://tools.ietf.org/html/rfc3986#section-2.1">percent-encoding</ulink>
+    url="https://datatracker.ietf.org/doc/html/rfc3986#section-2.1">percent-encoding</ulink>
     if it includes symbols with special meaning in any of its parts.  Here is
     an example where the equal sign (<literal>=</literal>) is replaced with
     <literal>%3D</literal> and the space character with
@@ -4775,7 +4775,7 @@ PGresult *PQgetResult(PGconn *conn);
        <literal>PGRES_PIPELINE_SYNC</literal> will be returned.
        The result of the next query after the synchronization point follows
        immediately (that is, no null pointer is returned after
-       the synchronization point.)
+       the synchronization point).
       </para>
 
       <note>
@@ -4934,11 +4934,12 @@ int PQsetnonblocking(PGconn *conn, int arg);
       </para>
 
       <para>
-       In the nonblocking state, calls to
+       In the nonblocking state, successful calls to
        <xref linkend="libpq-PQsendQuery"/>, <xref linkend="libpq-PQputline"/>,
        <xref linkend="libpq-PQputnbytes"/>, <xref linkend="libpq-PQputCopyData"/>,
-       and <xref linkend="libpq-PQendcopy"/> will not block but instead return
-       an error if they need to be called again.
+       and <xref linkend="libpq-PQendcopy"/> will not block;  their changes
+       are stored in the local output buffer until they are flushed.
+       Unsuccessful calls will return an error and must be retried.
       </para>
 
       <para>
@@ -8235,7 +8236,7 @@ user=admin
    LDAP query will be performed. The result must be a list of
    <literal>keyword = value</literal> pairs which will be used to set
    connection options.  The URL must conform to
-   <ulink url="https://tools.ietf.org/html/rfc1959">RFC 1959</ulink>
+   <ulink url="https://datatracker.ietf.org/doc/html/rfc1959">RFC 1959</ulink>
    and be of the form
 <synopsis>
 ldap://[<replaceable>hostname</replaceable>[:<replaceable>port</replaceable>]]/<replaceable>search_base</replaceable>?<replaceable>attribute</replaceable>?<replaceable>search_scope</replaceable>?<replaceable>filter</replaceable>
@@ -8379,7 +8380,7 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
    <para>
     For backward compatibility with earlier versions of PostgreSQL, the host
     IP address is verified in a manner different
-    from <ulink url="https://tools.ietf.org/html/rfc6125">RFC 6125</ulink>.
+    from <ulink url="https://datatracker.ietf.org/doc/html/rfc6125">RFC 6125</ulink>.
     The host IP address is always matched against <literal>dNSName</literal>
     SANs as well as <literal>iPAddress</literal> SANs, and can be matched
     against the Common Name attribute if no relevant SANs exist.
@@ -8730,6 +8731,8 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
    that the <literal>libssl</literal> and/or <literal>libcrypto</literal> libraries
    have been initialized by your application, so that
    <application>libpq</application> will not also initialize those libraries.
+   However, this is unnecessary when using <productname>OpenSSL</productname>
+   version 1.1.0 or later, as duplicate initializations are no longer problematic.
   </para>
 
   <para>

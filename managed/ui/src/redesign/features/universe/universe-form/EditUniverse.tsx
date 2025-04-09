@@ -54,6 +54,7 @@ import {
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
 import { providerQueryKey, api as helperApi } from '../../../helpers/api';
+import { TaskDetailDrawer } from '../../tasks';
 
 interface EditUniverseProps {
   uuid: string;
@@ -236,6 +237,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         universeUUID={uuid}
         isViewMode={isViewMode}
       />
+      <TaskDetailDrawer />
       {universePayload && (
         <>
           {showRNModal && (

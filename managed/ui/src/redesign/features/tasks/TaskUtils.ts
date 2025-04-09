@@ -113,3 +113,9 @@ export const isSoftwareUpgradeFailed = (task: Task, universe: IUniverse) => {
     universe?.universeDetails.softwareUpgradeState
   );
 };
+
+// for prechecks , display task typename and target
+// for other tasks, display task title
+export const getTaskTitle = (task: Task) => {
+  return task.typeName.includes('Validation') ? `${task.typeName} : ${task.title.split(":")?.[1]}` : task.title;
+};

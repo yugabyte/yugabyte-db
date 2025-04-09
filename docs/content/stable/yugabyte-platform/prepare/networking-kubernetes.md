@@ -38,7 +38,7 @@ In the general case, the following are the prerequisites for YugabyteDB Anywhere
 - There must be DNS connectivity between the clusters. ClusterIP and headless service FQDNs (including the individual pod FQDNs) exposed in one Kubernetes cluster must be resolvable in all the other Kubernetes clusters.
 - YugabyteDB Anywhere must have network connectivity to the control plane of all the Kubernetes clusters.
 
-To achieve network connectivity across multiple Kubernetes clusters, you can set up your networking to directly meet the requirements, or alternatively set up Multi-Cluster Services API (MCS) and/or Istio and configure YBA support to meet the same requirements. Note that MCS support in YugabyteDB Anywhere is currently in Early Access {{<tags/feature/ea>}}.
+To achieve network connectivity across multiple Kubernetes clusters, you can set up your networking to directly meet the requirements, or alternatively set up Multi-Cluster Services API (MCS) and/or Istio and configure YBA support to meet the same requirements. Note that MCS support in YugabyteDB Anywhere is currently in Early Access {{<tags/feature/ea idea="46">}}.
 
 ### Prepare Kubernetes clusters for GKE MCS
 

@@ -1080,7 +1080,7 @@ exec_command_edit(PsqlScanState scan_state, bool active_branch,
 				expand_tilde(&fname);
 				if (fname)
 				{
-					canonicalize_path(fname);
+					canonicalize_path_enc(fname, pset.encoding);
 					/* Always clear buffer if the file isn't modified */
 					discard_on_quit = true;
 				}
@@ -2682,7 +2682,7 @@ exec_command_write(PsqlScanState scan_state, bool active_branch,
 				}
 				else
 				{
-					canonicalize_path(fname);
+					canonicalize_path_enc(fname, pset.encoding);
 					fd = fopen(fname, "w");
 				}
 				if (!fd)
@@ -4093,7 +4093,7 @@ process_file(char *filename, bool use_relative_path)
 	}
 	else if (strcmp(filename, "-") != 0)
 	{
-		canonicalize_path(filename);
+		canonicalize_path_enc(filename, pset.encoding);
 
 		/*
 		 * If we were asked to resolve the pathname relative to the location
@@ -4107,7 +4107,7 @@ process_file(char *filename, bool use_relative_path)
 			strlcpy(relpath, pset.inputfile, sizeof(relpath));
 			get_parent_directory(relpath);
 			join_path_components(relpath, relpath, filename);
-			canonicalize_path(relpath);
+			canonicalize_path_enc(relpath, pset.encoding);
 
 			filename = relpath;
 		}
@@ -5032,14 +5032,20 @@ do_watch(PQExpBuffer query_buf, double sleep)
 
 	/*
 	 * For \watch, we ignore the size of the result and always use the pager
-	 * if PSQL_WATCH_PAGER is set.  We also ignore the regular PSQL_PAGER or
-	 * PAGER environment variables, because traditional pagers probably won't
-	 * be very useful for showing a stream of results.
+	 * as long as we're talking to a terminal and "\pset pager" is enabled.
+	 * However, we'll only use the pager identified by PSQL_WATCH_PAGER.  We
+	 * ignore the regular PSQL_PAGER or PAGER environment variables, because
+	 * traditional pagers probably won't be very useful for showing a stream
+	 * of results.
 	 */
 #ifdef HAVE_POSIX_DECL_SIGWAIT
 	pagerprog = getenv("PSQL_WATCH_PAGER");
+	/* if variable is empty or all-white-space, don't use pager */
+	if (pagerprog && strspn(pagerprog, " \t\r\n") == strlen(pagerprog))
+		pagerprog = NULL;
 #endif
-	if (pagerprog && myopt.topt.pager)
+	if (pagerprog && myopt.topt.pager &&
+		isatty(fileno(stdin)) && isatty(fileno(stdout)))
 	{
 		disable_sigpipe_trap();
 		pagerpipe = popen(pagerprog, "w");

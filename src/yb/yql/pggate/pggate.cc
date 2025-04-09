@@ -2273,13 +2273,18 @@ Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgApiImpl::GetCronLastMinute() { return pg_session_->GetCronLastMinute(); }
 
-uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
-  return pg_txn_manager_->GetCurrentReadTimePoint();
+YbcReadPointHandle PgApiImpl::GetCurrentReadPoint() const {
+  return pg_txn_manager_->GetCurrentReadPoint();
 }
 
-Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
   RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
+  return pg_txn_manager_->RestoreReadPoint(read_point);
+}
+
+Result<YbcReadPointHandle> PgApiImpl::RegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time) {
+  return pg_txn_manager_->RegisterSnapshotReadTime(read_time, use_read_time);
 }
 
 void PgApiImpl::DdlEnableForceCatalogModification() {
@@ -2316,16 +2321,15 @@ Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 //------------------------------------------------------------------------------------------------
 
 Result<std::string> PgApiImpl::ExportSnapshot(
-    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
+    const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
   return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
 }
 
-Result<std::optional<YbcPgTxnSnapshot>> PgApiImpl::SetTxnSnapshot(
-    PgTxnSnapshotDescriptor snapshot_descriptor) {
-  return pg_txn_manager_->SetTxnSnapshot(snapshot_descriptor);
+Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
+  return pg_txn_manager_->ImportSnapshot(snapshot_id);
 }
 
-bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }
+bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->has_exported_snapshots(); }
 
 void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
 

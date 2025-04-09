@@ -355,8 +355,10 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static void set_restrict_relation_kind(Archive *AH, const char *value);
-static bool catalogTableExists(Archive *fout, char *tablename);
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
+static bool forcePartitionRootLoad(const TableInfo *tbinfo);
+
+static bool catalogTableExists(Archive *fout, char *tablename);
 static Oid	getDatabaseOid(Archive *fout);
 static PGresult *ybQueryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 static void getYbTablePropertiesAndReloptions(Archive *fout,
@@ -1751,13 +1753,10 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 	addObjectDependency(dobj, ext->dobj.dumpId);
 
 	/*
-	 * In 9.6 and above, mark the member object to have any non-initial ACL,
-	 * policies, and security labels dumped.
-	 *
-	 * Note that any initial ACLs (see pg_init_privs) will be removed when we
-	 * extract the information about the object.  We don't provide support for
-	 * initial policies and security labels and it seems unlikely for those to
-	 * ever exist, but we may have to revisit this later.
+	 * In 9.6 and above, mark the member object to have any non-initial ACLs
+	 * dumped.  (Any initial ACLs will be removed later, using data from
+	 * pg_init_privs, so that we'll dump only the delta from the extension's
+	 * initial setup.)
 	 *
 	 * Prior to 9.6, we do not include any extension member components.
 	 *
@@ -1765,6 +1764,13 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 	 * individually, since the idea is to exactly reproduce the database
 	 * contents rather than replace the extension contents with something
 	 * different.
+	 *
+	 * Note: it might be interesting someday to implement storage and delta
+	 * dumping of extension members' RLS policies and/or security labels.
+	 * However there is a pitfall for RLS policies: trying to dump them
+	 * requires getting a lock on their tables, and the calling user might not
+	 * have privileges for that.  We need no lock to examine a table's ACLs,
+	 * so the current feature doesn't have a problem of that sort.
 	 */
 	if (fout->dopt->binary_upgrade || fout->dopt->include_yb_metadata)
 		dobj->dump = ext->dobj.dump;
@@ -1773,9 +1779,7 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 		if (fout->remoteVersion < 90600)
 			dobj->dump = DUMP_COMPONENT_NONE;
 		else
-			dobj->dump = ext->dobj.dump_contains & (DUMP_COMPONENT_ACL |
-													DUMP_COMPONENT_SECLABEL |
-													DUMP_COMPONENT_POLICY);
+			dobj->dump = ext->dobj.dump_contains & (DUMP_COMPONENT_ACL);
 	}
 
 	return true;
@@ -2112,6 +2116,26 @@ selectDumpablePublicationObject(DumpableObject *dobj, Archive *fout)
 }
 
 /*
+ * selectDumpableStatisticsObject: policy-setting subroutine
+ *		Mark an extended statistics object as to be dumped or not
+ *
+ * We dump an extended statistics object if the schema it's in and the table
+ * it's for are being dumped.  (This'll need more thought if statistics
+ * objects ever support cross-table stats.)
+ */
+static void
+selectDumpableStatisticsObject(StatsExtInfo *sobj, Archive *fout)
+{
+	if (checkExtensionMembership(&sobj->dobj, fout))
+		return;					/* extension membership overrides all else */
+
+	sobj->dobj.dump = sobj->dobj.namespace->dobj.dump_contains;
+	if (sobj->stattable == NULL ||
+		!(sobj->stattable->dobj.dump & DUMP_COMPONENT_DEFINITION))
+		sobj->dobj.dump = DUMP_COMPONENT_NONE;
+}
+
+/*
  * selectDumpableObject: policy-setting subroutine
  *		Mark a generic dumpable object as to be dumped or not
  *
@@ -2386,11 +2410,13 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 			insertStmt = createPQExpBuffer();
 
 			/*
-			 * When load-via-partition-root is set, get the root table name
-			 * for the partition table, so that we can reload data through the
-			 * root table.
+			 * When load-via-partition-root is set or forced, get the root
+			 * table name for the partition table, so that we can reload data
+			 * through the root table.
 			 */
-			if (dopt->load_via_partition_root && tbinfo->ispartition)
+			if (tbinfo->ispartition &&
+				(dopt->load_via_partition_root ||
+				 forcePartitionRootLoad(tbinfo)))
 				targettab = getRootTableInfo(tbinfo);
 			else
 				targettab = tbinfo;
@@ -2593,6 +2619,35 @@ getRootTableInfo(const TableInfo *tbinfo)
 }
 
 /*
+ * forcePartitionRootLoad
+ *     Check if we must force load_via_partition_root for this partition.
+ *
+ * This is required if any level of ancestral partitioned table has an
+ * unsafe partitioning scheme.
+ */
+static bool
+forcePartitionRootLoad(const TableInfo *tbinfo)
+{
+	TableInfo  *parentTbinfo;
+
+	Assert(tbinfo->ispartition);
+	Assert(tbinfo->numParents == 1);
+
+	parentTbinfo = tbinfo->parents[0];
+	if (parentTbinfo->unsafe_partitions)
+		return true;
+	while (parentTbinfo->ispartition)
+	{
+		Assert(parentTbinfo->numParents == 1);
+		parentTbinfo = parentTbinfo->parents[0];
+		if (parentTbinfo->unsafe_partitions)
+			return true;
+	}
+
+	return false;
+}
+
+/*
  * dumpTableData -
  *	  dump the contents of a single table
  *
@@ -2606,34 +2661,40 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 	PQExpBuffer copyBuf = createPQExpBuffer();
 	PQExpBuffer clistBuf = createPQExpBuffer();
 	DataDumperPtr dumpFn;
+	char	   *tdDefn = NULL;
 	char	   *copyStmt;
 	const char *copyFrom;
 
 	/* We had better have loaded per-column details about this table */
 	Assert(tbinfo->interesting);
 
+	/*
+	 * When load-via-partition-root is set or forced, get the root table name
+	 * for the partition table, so that we can reload data through the root
+	 * table.  Then construct a comment to be inserted into the TOC entry's
+	 * defn field, so that such cases can be identified reliably.
+	 */
+	if (tbinfo->ispartition &&
+		(dopt->load_via_partition_root ||
+		 forcePartitionRootLoad(tbinfo)))
+	{
+		TableInfo  *parentTbinfo;
+
+		parentTbinfo = getRootTableInfo(tbinfo);
+		copyFrom = fmtQualifiedDumpable(parentTbinfo);
+		printfPQExpBuffer(copyBuf, "-- load via partition root %s",
+						  copyFrom);
+		tdDefn = pg_strdup(copyBuf->data);
+	}
+	else
+		copyFrom = fmtQualifiedDumpable(tbinfo);
+
 	if (dopt->dump_inserts == 0)
 	{
 		/* Dump/restore using COPY */
 		dumpFn = dumpTableData_copy;
-
-		/*
-		 * When load-via-partition-root is set, get the root table name for
-		 * the partition table, so that we can reload data through the root
-		 * table.
-		 */
-		if (dopt->load_via_partition_root && tbinfo->ispartition)
-		{
-			TableInfo  *parentTbinfo;
-
-			parentTbinfo = getRootTableInfo(tbinfo);
-			copyFrom = fmtQualifiedDumpable(parentTbinfo);
-		}
-		else
-			copyFrom = fmtQualifiedDumpable(tbinfo);
-
 		/* must use 2 steps here 'cause fmtId is nonreentrant */
-		appendPQExpBuffer(copyBuf, "COPY %s ",
+		printfPQExpBuffer(copyBuf, "COPY %s ",
 						  copyFrom);
 		appendPQExpBuffer(copyBuf, "%s FROM stdin;\n",
 						  fmtCopyColumnList(tbinfo, clistBuf));
@@ -2661,6 +2722,7 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 									   .owner = tbinfo->rolname,
 									   .description = "TABLE DATA",
 									   .section = SECTION_DATA,
+									   .createStmt = tdDefn,
 									   .copyStmt = copyStmt,
 									   .deps = &(tbinfo->dobj.dumpId),
 									   .nDeps = 1,
@@ -6151,6 +6213,7 @@ getAggregates(Archive *fout, int *numAggs)
 						  agginfo[i].aggfn.argtypes,
 						  agginfo[i].aggfn.nargs);
 		}
+		agginfo[i].aggfn.postponed_def = false; /* might get set during sort */
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(agginfo[i].aggfn.dobj), fout);
@@ -6349,6 +6412,7 @@ getFuncs(Archive *fout, int *numFuncs)
 			parseOidArray(PQgetvalue(res, i, i_proargtypes),
 						  finfo[i].argtypes, finfo[i].nargs);
 		}
+		finfo[i].postponed_def = false; /* might get set during sort */
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(finfo[i].dobj), fout);
@@ -6929,20 +6993,15 @@ getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables)
 					 seqinfo->owning_tab, seqinfo->dobj.catId.oid);
 
 		/*
-		 * Only dump identity sequences if we're going to dump the table that
-		 * it belongs to.
-		 */
-		if (owning_tab->dobj.dump == DUMP_COMPONENT_NONE &&
-			seqinfo->is_identity_sequence)
-		{
-			seqinfo->dobj.dump = DUMP_COMPONENT_NONE;
-			continue;
-		}
-
-		/*
-		 * Otherwise we need to dump the components that are being dumped for
-		 * the table and any components which the sequence is explicitly
-		 * marked with.
+		 * For an identity sequence, dump exactly the same components for the
+		 * sequence as for the owning table.  This is important because we
+		 * treat the identity sequence as an integral part of the table.  For
+		 * example, there is not any DDL command that allows creation of such
+		 * a sequence independently of the table.
+		 *
+		 * For other owned sequences such as serial sequences, we need to dump
+		 * the components that are being dumped for the table and any
+		 * components that the sequence is explicitly marked with.
 		 *
 		 * We can't simply use the set of components which are being dumped
 		 * for the table as the table might be in an extension (and only the
@@ -6955,10 +7014,17 @@ getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables)
 		 * marked by checkExtensionMembership() and this will be a no-op as
 		 * the table will be equivalently marked.
 		 */
-		seqinfo->dobj.dump = seqinfo->dobj.dump | owning_tab->dobj.dump;
+		if (seqinfo->is_identity_sequence)
+			seqinfo->dobj.dump = owning_tab->dobj.dump;
+		else
+			seqinfo->dobj.dump |= owning_tab->dobj.dump;
 
+		/* Make sure that necessary data is available if we're dumping it */
 		if (seqinfo->dobj.dump != DUMP_COMPONENT_NONE)
+		{
 			seqinfo->interesting = true;
+			owning_tab->interesting = true;
+		}
 	}
 }
 
@@ -7006,6 +7072,76 @@ getInherits(Archive *fout, int *numInherits)
 	destroyPQExpBuffer(query);
 
 	return inhinfo;
+}
+
+/*
+ * getPartitioningInfo
+ *	  get information about partitioning
+ *
+ * For the most part, we only collect partitioning info about tables we
+ * intend to dump.  However, this function has to consider all partitioned
+ * tables in the database, because we need to know about parents of partitions
+ * we are going to dump even if the parents themselves won't be dumped.
+ *
+ * Specifically, what we need to know is whether each partitioned table
+ * has an "unsafe" partitioning scheme that requires us to force
+ * load-via-partition-root mode for its children.  Currently the only case
+ * for which we force that is hash partitioning on enum columns, since the
+ * hash codes depend on enum value OIDs which won't be replicated across
+ * dump-and-reload.  There are other cases in which load-via-partition-root
+ * might be necessary, but we expect users to cope with them.
+ */
+void
+getPartitioningInfo(Archive *fout)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	int			ntups;
+
+	/* hash partitioning didn't exist before v11 */
+	if (fout->remoteVersion < 110000)
+		return;
+	/* needn't bother if schema-only dump */
+	if (fout->dopt->dumpData)
+		return;
+
+	query = createPQExpBuffer();
+
+	/*
+	 * Unsafe partitioning schemes are exactly those for which hash enum_ops
+	 * appears among the partition opclasses.  We needn't check partstrat.
+	 *
+	 * Note that this query may well retrieve info about tables we aren't
+	 * going to dump and hence have no lock on.  That's okay since we need not
+	 * invoke any unsafe server-side functions.
+	 */
+	appendPQExpBufferStr(query,
+						 "SELECT partrelid FROM pg_partitioned_table WHERE\n"
+						 "(SELECT c.oid FROM pg_opclass c JOIN pg_am a "
+						 "ON c.opcmethod = a.oid\n"
+						 "WHERE opcname = 'enum_ops' "
+						 "AND opcnamespace = 'pg_catalog'::regnamespace "
+						 "AND amname = 'hash') = ANY(partclass)");
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	for (int i = 0; i < ntups; i++)
+	{
+		Oid			tabrelid = atooid(PQgetvalue(res, i, 0));
+		TableInfo  *tbinfo;
+
+		tbinfo = findTableByOid(tabrelid);
+		if (tbinfo == NULL)
+			pg_fatal("failed sanity check, table OID %u appearing in pg_partitioned_table not found",
+					 tabrelid);
+		tbinfo->unsafe_partitions = true;
+	}
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
 }
 
 /*
@@ -7349,6 +7485,7 @@ getExtendedStatistics(Archive *fout)
 	int			i_stxname;
 	int			i_stxnamespace;
 	int			i_stxowner;
+	int			i_stxrelid;
 	int			i_stattarget;
 	int			i;
 
@@ -7360,11 +7497,11 @@ getExtendedStatistics(Archive *fout)
 
 	if (fout->remoteVersion < 130000)
 		appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
-						  "stxnamespace, stxowner, (-1) AS stxstattarget "
+						  "stxnamespace, stxowner, stxrelid, (-1) AS stxstattarget "
 						  "FROM pg_catalog.pg_statistic_ext");
 	else
 		appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
-						  "stxnamespace, stxowner, stxstattarget "
+						  "stxnamespace, stxowner, stxrelid, stxstattarget "
 						  "FROM pg_catalog.pg_statistic_ext");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
@@ -7376,6 +7513,7 @@ getExtendedStatistics(Archive *fout)
 	i_stxname = PQfnumber(res, "stxname");
 	i_stxnamespace = PQfnumber(res, "stxnamespace");
 	i_stxowner = PQfnumber(res, "stxowner");
+	i_stxrelid = PQfnumber(res, "stxrelid");
 	i_stattarget = PQfnumber(res, "stxstattarget");
 
 	statsextinfo = (StatsExtInfo *) pg_malloc(ntups * sizeof(StatsExtInfo));
@@ -7390,10 +7528,12 @@ getExtendedStatistics(Archive *fout)
 		statsextinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_stxnamespace)));
 		statsextinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_stxowner));
+		statsextinfo[i].stattable =
+			findTableByOid(atooid(PQgetvalue(res, i, i_stxrelid)));
 		statsextinfo[i].stattarget = atoi(PQgetvalue(res, i, i_stattarget));
 
 		/* Decide whether we want to dump it */
-		selectDumpableObject(&(statsextinfo[i].dobj), fout);
+		selectDumpableStatisticsObject(&(statsextinfo[i]), fout);
 	}
 
 	PQclear(res);
@@ -12289,7 +12429,8 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 								  .namespace = finfo->dobj.namespace->dobj.name,
 								  .owner = finfo->rolname,
 								  .description = keyword,
-								  .section = SECTION_PRE_DATA,
+								  .section = finfo->postponed_def ?
+								  SECTION_POST_DATA : SECTION_PRE_DATA,
 								  .createStmt = q->data,
 								  .dropStmt = delqry->data));
 
@@ -13610,7 +13751,7 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 		}
 	}
 	else
-		pg_fatal("unrecognized collation provider '%c'", collprovider[0]);
+		pg_fatal("unrecognized collation provider: %s", collprovider);
 
 	/*
 	 * For binary upgrade, carry over the collation version.  For normal
@@ -17528,6 +17669,15 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 			appendPQExpBufferStr(query, "BY DEFAULT");
 		appendPQExpBuffer(query, " AS IDENTITY (\n    SEQUENCE NAME %s\n",
 						  fmtQualifiedDumpable(tbinfo));
+
+		/*
+		 * Emit persistence option only if it's different from the owning
+		 * table's.  This avoids using this new syntax unnecessarily.
+		 */
+		if (tbinfo->relpersistence != owning_tab->relpersistence)
+			appendPQExpBuffer(query, "    %s\n",
+							  tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
+							  "UNLOGGED" : "LOGGED");
 	}
 	else
 	{
@@ -17560,15 +17710,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 					  cache, (cycled ? "\n    CYCLE" : ""));
 
 	if (tbinfo->is_identity_sequence)
-	{
 		appendPQExpBufferStr(query, "\n);\n");
-		if (tbinfo->relpersistence != owning_tab->relpersistence)
-			appendPQExpBuffer(query,
-							  "ALTER SEQUENCE %s SET %s;\n",
-							  fmtQualifiedDumpable(tbinfo),
-							  tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
-							  "UNLOGGED" : "LOGGED");
-	}
 	else
 		appendPQExpBufferStr(query, ";\n");
 

@@ -1978,6 +1978,18 @@ select * from
   ) on c.q2 = ss2.q1,
   lateral (select ss2.y offset 0) ss3;
 
+-- another case requiring nested PlaceHolderVars
+explain (verbose, costs off)
+select * from
+  (select 0 as val0) as ss0
+  left join (select 1 as val) as ss1 on true
+  left join lateral (select ss1.val as val_filtered where false) as ss2 on true;
+
+select * from
+  (select 0 as val0) as ss0
+  left join (select 1 as val) as ss1 on true
+  left join lateral (select ss1.val as val_filtered where false) as ss2 on true;
+
 -- case that breaks the old ph_may_need optimization
 explain (verbose, costs off)
 select c.*,a.*,ss1.q1,ss2.q1,ss3.* from
@@ -2016,6 +2028,25 @@ select * from
    union all
    (select q1.v)
   ) as q2;
+
+-- check for generation of join EC conditions at wrong level (bug #18429)
+explain (costs off)
+select * from (
+  select arrayd.ad, coalesce(c.hundred, 0) as h
+  from unnest(array[1]) as arrayd(ad)
+  left join lateral (
+    select hundred from tenk1 where unique2 = arrayd.ad
+  ) c on true
+) c2
+where c2.h * c2.ad = c2.h * (c2.ad + 1);
+select * from (
+  select arrayd.ad, coalesce(c.hundred, 0) as h
+  from unnest(array[1]) as arrayd(ad)
+  left join lateral (
+    select hundred from tenk1 where unique2 = arrayd.ad
+  ) c on true
+) c2
+where c2.h * c2.ad = c2.h * (c2.ad + 1);
 
 -- check the number of columns specified
 SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);
@@ -2262,6 +2293,15 @@ inner join j2 on j1.id1 = j2.id1 where j1.id2 = 1;
 explain (verbose, costs off)
 select * from j1
 left join j2 on j1.id1 = j2.id1 where j1.id2 = 1;
+
+create unique index j1_id2_idx on j1(id2) where id2 is not null;
+
+-- ensure we don't use a partial unique index as unique proofs
+explain (verbose, costs off)
+select * from j1
+inner join j2 on j1.id2 = j2.id2;
+
+drop index j1_id2_idx;
 
 -- validate logic in merge joins which skips mark and restore.
 -- it should only do this if all quals which were used to detect the unique

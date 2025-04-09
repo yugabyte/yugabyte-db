@@ -176,6 +176,14 @@ join_is_removable(PlannerInfo *root, SpecialJoinInfo *sjinfo)
 	if (!bms_get_singleton_member(sjinfo->min_righthand, &innerrelid))
 		return false;
 
+	/*
+	 * Never try to eliminate a left join to the query result rel.  Although
+	 * the case is syntactically impossible in standard SQL, MERGE will build
+	 * a join tree that looks exactly like that.
+	 */
+	if (innerrelid == root->parse->resultRelation)
+		return false;
+
 	innerrel = find_base_rel(root, innerrelid);
 
 	/*
@@ -592,9 +600,9 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		/*
 		 * For a plain relation, we only know how to prove uniqueness by
 		 * reference to unique indexes.  Make sure there's at least one
-		 * suitable unique index.  It must be immediately enforced, and if
-		 * it's a partial index, it must match the query.  (Keep these
-		 * conditions in sync with relation_has_unique_index_for!)
+		 * suitable unique index.  It must be immediately enforced, and not a
+		 * partial index. (Keep these conditions in sync with
+		 * relation_has_unique_index_for!)
 		 */
 		ListCell   *lc;
 
@@ -613,8 +621,7 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		{
 			IndexOptInfo *ind = (IndexOptInfo *) lfirst(lc);
 
-			if (ind->unique && ind->immediate &&
-				(ind->indpred == NIL || ind->predOK))
+			if (ind->unique && ind->immediate && ind->indpred == NIL)
 				return true;
 		}
 	}

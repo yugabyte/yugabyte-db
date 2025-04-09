@@ -87,9 +87,67 @@ INSERT INTO trunc_f VALUES (1);
 INSERT INTO trunc_f VALUES (2);
 
 CREATE TABLE trunc_fa (col2a text) INHERITS (trunc_f);
--- YB: port remaining queries when INHERITS is supported
+INSERT INTO trunc_fa VALUES (3, 'three');
 
+CREATE TABLE trunc_fb (col2b int) INHERITS (trunc_f);
+INSERT INTO trunc_fb VALUES (4, 444);
+
+CREATE TABLE trunc_faa (col3 text) INHERITS (trunc_fa);
+INSERT INTO trunc_faa VALUES (5, 'five', 'FIVE');
+CREATE OR REPLACE PROCEDURE yb_reset_trunc_f()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM trunc_f;
+    INSERT INTO trunc_f VALUES (1);
+    INSERT INTO trunc_f VALUES (2);
+    INSERT INTO trunc_fa VALUES (3, 'three');
+    INSERT INTO trunc_fb VALUES (4, 444);
+    INSERT INTO trunc_faa VALUES (5, 'five', 'FIVE');
+END;
+$$;
+
+BEGIN;
+SELECT * FROM trunc_f;
+TRUNCATE trunc_f;
+SELECT * FROM trunc_f;
+ROLLBACK;
+
+CALL yb_reset_trunc_f(); -- YB: TRUNCATE is nontransactional so cannot be rolled back
+
+BEGIN;
+SELECT * FROM trunc_f;
+TRUNCATE ONLY trunc_f;
+SELECT * FROM trunc_f;
+ROLLBACK;
+
+CALL yb_reset_trunc_f(); -- YB: TRUNCATE is nontransactional so cannot be rolled back
+
+BEGIN;
+SELECT * FROM trunc_f;
+SELECT * FROM trunc_fa;
+SELECT * FROM trunc_faa;
+TRUNCATE ONLY trunc_fb, ONLY trunc_fa;
+SELECT * FROM trunc_f;
+SELECT * FROM trunc_fa;
+SELECT * FROM trunc_faa;
+ROLLBACK;
+
+CALL yb_reset_trunc_f(); -- YB: TRUNCATE is nontransactional so cannot be rolled back
+
+BEGIN;
+SELECT * FROM trunc_f;
+SELECT * FROM trunc_fa;
+SELECT * FROM trunc_faa;
+TRUNCATE ONLY trunc_fb, trunc_fa;
+SELECT * FROM trunc_f;
+SELECT * FROM trunc_fa;
+SELECT * FROM trunc_faa;
+ROLLBACK;
+
+\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP TABLE trunc_f CASCADE;
+\set VERBOSITY default \\ -- YB
 
 -- Test ON TRUNCATE triggers
 

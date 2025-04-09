@@ -1,0 +1,656 @@
+SET search_path to documentdb_api_catalog;
+SET citus.next_shard_id TO 10980000;
+SET documentdb.next_collection_id TO 10980;
+SET documentdb.next_collection_index_id TO 10980;
+SELECT documentdb_api.create_collection('db', 'bsonquery');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- insert documents with different compositions of keys and types
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 1, "a" : { "c" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 2, "a" : { "d" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 3, "a" : { "b" : 1 }, "b": "xyz" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 4, "a" : { "b" : { "$undefined": true } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 5, "a" : { "b" : "xxx" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 6, "a" : { "c" : "xxx" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsonquery', '{"_id": 7, "a" : { "e" : 1, "f": 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create indexes with partial filter expressions
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "bsonquery",
+     "indexes": [
+       {
+         "key": {"a.b": 1}, "name": "my_idx_1",
+         "partialFilterExpression":
+         {
+           "a.b": {"$exists": true }
+         }
+       },
+       {
+         "key": {"a.c": 1}, "name": "my_idx_2",
+         "partialFilterExpression":
+         {
+           "a.c": {"$gte": "abc" }
+         }
+       },
+       {
+         "key": {"a.e": 1, "a.f": 1}, "name": "my_idx_3",
+         "partialFilterExpression":
+        {
+           "a.e": 1,
+           "a.f": 1
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT collection_id AS collid FROM documentdb_api_catalog.collections
+WHERE collection_name = 'bsonquery' AND database_name = 'db' \gset
+\d documentdb_data.documents_:collid
+                   Table "documentdb_data.documents_10980"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | documentdb_core.bson     |           | not null | 
+ document        | documentdb_core.bson     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_10980" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_10981" documentdb_rum (document bson_rum_single_path_ops (path='a.b', tl='2699')) WHERE document #>= '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery
+    "documents_rum_index_10982" documentdb_rum (document bson_rum_single_path_ops (path='a.c', tl='2699')) WHERE document #>= '{ "a.c" : "abc" }'::documentdb_core.bsonquery
+    "documents_rum_index_10983" documentdb_rum (document bson_rum_single_path_ops (path='a.e', tl='2691'), document bson_rum_single_path_ops (path='a.f', tl='2691')) WHERE document #= '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery AND document #= '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '10980'::bigint)
+
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "bsonquery" }') ORDER BY 1;
+                                                                                                                                                                       bson_dollar_unwind                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "partialFilterExpression" : { "a.b" : { "$exists" : true } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.c" : { "$numberInt" : "1" } }, "name" : "my_idx_2", "partialFilterExpression" : { "a.c" : { "$gte" : "abc" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.e" : { "$numberInt" : "1" }, "a.f" : { "$numberInt" : "1" } }, "name" : "my_idx_3", "partialFilterExpression" : { "a.e" : { "$numberInt" : "1" }, "a.f" : { "$numberInt" : "1" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','bsonquery');;
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL documentdb.forceUseIndexIfAvailable to true;
+-- should push down to pfe index since types match
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
+                                                                                                        QUERY PLAN                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson)
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "c" : "xxx" } }
+(1 row)
+
+-- should not push to pfe index due to type mismatch
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  1 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- should push to $exists pfe index using minkey
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
+                                                                                                              QUERY PLAN                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson)
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "xxx" } }
+(1 row)
+
+-- should not push to $exists pfe index due to key mismatch
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.d": { "$gte" :  "a" }}';
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.d" : "a" }'::documentdb_core.bson)
+(7 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.d": { "$gte" :  "a" }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- should push to pfe index when $ne is present
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
+                                                                                                                                                                 QUERY PLAN                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Bitmap Index Scan on my_idx_3
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } } }
+(1 row)
+
+-- should not push to pfe index due to missing key
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1}';
+                                                                                                          QUERY PLAN                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+(7 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1}';
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } } }
+(1 row)
+
+-- should not push to pfe index since $eq: null cannot match $exists: true
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": null }';
+                                                                                                 QUERY PLAN                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$ne": null } }';
+                                                                                                 QUERY PLAN                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$gt": null } }';
+                                                                                                 QUERY PLAN                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$lt": null } }';
+                                                                                                 QUERY PLAN                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$gte": null } }';
+                                                                                                 QUERY PLAN                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$lte": null } }';
+                                                                                                 QUERY PLAN                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+-- test PFE pushdown for $in 
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$in" : [ 1, 2, 3 ] } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
+(9 rows)
+
+-- cannot push down (fails PFE)
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "aa1" ] } }';
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "aaa", "aa1" ] }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "bbb" ] } }';
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "aaa", "bbb" ] }'::documentdb_core.bson)
+(7 rows)
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "ccc", "bbb" ] } }';
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "abc", "bbb" ] } }';
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson)
+(9 rows)
+
+-- cannot push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] } }';
+                                                                          QUERY PLAN                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.f": { "$in": [ 3, 4 ]} }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.g": { "$in": [ 3, 4 ]} }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.g" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] }, "a.f": { "$in": [ 3, 1 ]} }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980001 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "3" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(7 rows)
+
+-- can push down
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 1, 1 ] }, "a.f": { "$in": [ 1, 1 ]} }';
+                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980001 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_3
+                     Index Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(9 rows)
+
+ROLLBACK;
+-- shard the collection
+SELECT documentdb_api.shard_collection('db', 'bsonquery', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- rerun the queries
+BEGIN;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL documentdb.forceUseIndexIfAvailable to true;
+-- should push down to pfe index since types match
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
+                                                                                                        QUERY PLAN                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980016 documents_10980
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson)
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "c" : "xxx" } }
+(1 row)
+
+-- should not push to pfe index due to type mismatch
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  1 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- should push to $exists pfe index using minkey
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
+                                                                                                              QUERY PLAN                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980016 documents_10980
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
+               ->  Bitmap Index Scan on my_idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson)
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "xxx" } }
+(1 row)
+
+-- should not push to $exists pfe index due to key mismatch
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.d": { "$gte" :  "a" }}';
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.d" : "a" }'::documentdb_core.bson)
+(7 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.d": { "$gte" :  "a" }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- should push to pfe index when $ne is present
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
+                                                                                                                                                                 QUERY PLAN                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10980_10980016 documents_10980
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Bitmap Index Scan on my_idx_3
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } } }
+(1 row)
+
+-- should not push to pfe index due to missing key
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1}';
+                                                                                                          QUERY PLAN                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+(7 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1}';
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } } }
+(1 row)
+
+-- should not push to pfe index since $eq: null cannot match $exists: true
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": null }';
+                                                                                                 QUERY PLAN                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$ne": null } }';
+                                                                                                 QUERY PLAN                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$gt": null } }';
+                                                                                                 QUERY PLAN                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$lt": null } }';
+                                                                                                 QUERY PLAN                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$gte": null } }';
+                                                                                                 QUERY PLAN                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.b": { "$lte": null } }';
+                                                                                                 QUERY PLAN                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_10980_10980016 documents_10980
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : null }'::documentdb_core.bson))
+(7 rows)
+
+ROLLBACK;

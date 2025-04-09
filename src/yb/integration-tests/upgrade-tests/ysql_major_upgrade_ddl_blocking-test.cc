@@ -67,12 +67,6 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
   }
 
   Status RunTempTableDdls(std::optional<size_t> node_index) {
-    // YB_TODO: Enable this for all states after the previous version has been updated with the
-    // fix.
-    if (upgrade_state_ != UpgradeState::kAfterUpgrade) {
-      return Status::OK();
-    }
-
     // Run twice to force drop of the temporary table.
     for (int i = 0; i < 2; i++) {
       auto conn = VERIFY_RESULT(CreateConnToTs(node_index));

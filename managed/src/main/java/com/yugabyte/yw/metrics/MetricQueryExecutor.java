@@ -95,7 +95,8 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private String getDirectURL(List<String> queryExpr) {
     long endUnixTime = Long.parseLong(queryParam.getOrDefault("end", "0"));
     long startUnixTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
-    Long step = Long.parseLong(queryParam.get("step"));
+    String stepStr = queryParam.get("step");
+    Long step = stepStr != null ? Long.parseLong(stepStr) : null;
 
     return metricUrlProvider.getExpressionUrl(queryExpr, startUnixTime, endUnixTime, step);
   }
@@ -168,9 +169,8 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         }
         JsonNode queryResponseJson = getMetrics();
         if (queryResponseJson == null) {
-          responseJson.set("data", Json.toJson(new ArrayList<>()));
-
-          return responseJson;
+          responseJson.put("error", "Metric storage response for " + metric + " is empty");
+          break;
         }
         MetricQueryResponse queryResponse =
             Json.fromJson(queryResponseJson, MetricQueryResponse.class);

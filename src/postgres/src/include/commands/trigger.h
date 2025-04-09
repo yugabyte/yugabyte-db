@@ -174,6 +174,9 @@ extern Oid	get_trigger_oid(Oid relid, const char *name, bool missing_ok);
 
 extern ObjectAddress renametrig(RenameStmt *stmt);
 
+extern void EnableDisableTriggerNew2(Relation rel, const char *tgname, Oid tgparent,
+									 char fires_when, bool skip_system, bool recurse,
+									 LOCKMODE lockmode);
 extern void EnableDisableTriggerNew(Relation rel, const char *tgname,
 									char fires_when, bool skip_system, bool recurse,
 									LOCKMODE lockmode);
@@ -212,6 +215,14 @@ extern void ExecBSDeleteTriggers(EState *estate,
 extern void ExecASDeleteTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
+extern bool ExecBRDeleteTriggersNew(EState *estate,
+									EPQState *epqstate,
+									ResultRelInfo *relinfo,
+									ItemPointer tupleid,
+									HeapTuple fdw_trigtuple,
+									TupleTableSlot **epqslot,
+									TM_Result *tmresult,
+									TM_FailureData *tmfd);
 extern bool ExecBRDeleteTriggers(EState *estate,
 								 EPQState *epqstate,
 								 ResultRelInfo *relinfo,
@@ -232,6 +243,14 @@ extern void ExecBSUpdateTriggers(EState *estate,
 extern void ExecASUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
+extern bool ExecBRUpdateTriggersNew(EState *estate,
+									EPQState *epqstate,
+									ResultRelInfo *relinfo,
+									ItemPointer tupleid,
+									HeapTuple fdw_trigtuple,
+									TupleTableSlot *newslot,
+									TM_Result *tmresult,
+									TM_FailureData *tmfd);
 extern bool ExecBRUpdateTriggers(EState *estate,
 								 EPQState *epqstate,
 								 ResultRelInfo *relinfo,

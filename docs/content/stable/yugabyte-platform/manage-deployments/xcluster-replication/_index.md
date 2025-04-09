@@ -63,19 +63,19 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
     title="Set up xCluster Replication"
     body="Designate a universe to act as a source."
     href="xcluster-replication-setup/"
-    icon="fa-light fa-copy">}}
+    icon="fa-thin fa-copy">}}
 
   {{<index/item
     title="Manage tables and indexes"
     body="Perform DDL changes to databases in replication."
     href="xcluster-replication-ddl/"
-    icon="fa-light fa-table">}}
+    icon="fa-thin fa-table">}}
 
   {{<index/item
     title="Bidirectional"
     body="Configure bidirectional replication."
     href="bidirectional-replication/"
-    icon="fa-light fa-arrows-left-right">}}
+    icon="fa-thin fa-arrows-left-right">}}
 
 {{</index/block>}}
 

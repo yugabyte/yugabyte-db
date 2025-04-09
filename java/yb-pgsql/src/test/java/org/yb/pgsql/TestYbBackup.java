@@ -112,6 +112,7 @@ public class TestYbBackup extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_inheritance", "true");
+    flagMap.put("ysql_num_tablets", "2");
     return flagMap;
   }
   @Override

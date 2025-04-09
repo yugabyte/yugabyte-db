@@ -81,19 +81,19 @@ To learn more about the various metrics than you can monitor, see [Observability
     title="Distribute data across nodes"
     body="Automatic data distribution across a universe's nodes using transparent sharding of tables."
     href="data-distribution/"
-    icon="fa-solid fa-building">}}
+    icon="fa-thin fa-building">}}
 
   {{<index/item
     title="Horizontal vs vertical scaling"
     body="Understand the differences between horizontal and vertical scaling."
     href="horizontal-vs-vertical-scaling/"
-    icon="fa-solid fa-circle-nodes">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="Scale out by adding nodes"
     body="Seamlessly scale your cluster on demand by adding new nodes to the cluster."
     href="node-addition/"
-    icon="fa-solid fa-circle-nodes">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="Reads"
@@ -105,7 +105,7 @@ To learn more about the various metrics than you can monitor, see [Observability
     title="Writes"
     body="See how writes scale in YugabyteDB."
     href="scaling-writes/"
-    icon="fa-solid fa-pen">}}
+    icon="fa-thin fa-pen">}}
 
   {{<index/item
     title="Transactions"
@@ -117,12 +117,12 @@ To learn more about the various metrics than you can monitor, see [Observability
     title="Large datasets"
     body="See how large datasets scale in YugabyteDB."
     href="scaling-large-datasets/"
-    icon="fa-solid fa-weight-hanging">}}
+    icon="fa-thin fa-weight-hanging">}}
 
   {{<index/item
     title="Scale out a universe"
     body="Try it out for yourself by following an example."
     href="scaling-universe/"
-    icon="fa-solid fa-circle-nodes">}}
+    icon="fa-thin fa-circle-nodes">}}
 
 {{</index/block>}}

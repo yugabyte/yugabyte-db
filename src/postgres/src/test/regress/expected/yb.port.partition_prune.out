@@ -1070,20 +1070,25 @@ explain (costs off) select * from boolpart where a is true or a is not true;
          Filter: ((a IS TRUE) OR (a IS NOT TRUE))
    ->  Seq Scan on boolpart_t boolpart_2
          Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-(5 rows)
+   ->  Seq Scan on boolpart_default boolpart_3
+         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+(7 rows)
 
 explain (costs off) select * from boolpart where a is not true;
-           QUERY PLAN            
----------------------------------
- Seq Scan on boolpart_f boolpart
-   Filter: (a IS NOT TRUE)
-(2 rows)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Append
+   ->  Seq Scan on boolpart_f boolpart_1
+         Filter: (a IS NOT TRUE)
+   ->  Seq Scan on boolpart_default boolpart_2
+         Filter: (a IS NOT TRUE)
+(5 rows)
 
 explain (costs off) select * from boolpart where a is not true and a is not false;
-        QUERY PLAN        
---------------------------
- Result boolpart
-   One-Time Filter: false
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on boolpart_default boolpart
+   Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
 (2 rows)
 
 explain (costs off) select * from boolpart where a is unknown;
