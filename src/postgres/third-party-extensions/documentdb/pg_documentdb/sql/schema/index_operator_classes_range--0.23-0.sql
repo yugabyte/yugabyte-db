@@ -1,0 +1,5 @@
+ALTER OPERATOR FAMILY __API_CATALOG_SCHEMA__.bson_rum_single_path_ops USING __EXTENSION_OBJECT__(_rum)
+    ADD OPERATOR 25 __API_CATALOG_SCHEMA__.@<> (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson);
+
+ALTER OPERATOR FAMILY __API_CATALOG_SCHEMA__.bson_rum_wildcard_project_path_ops USING __EXTENSION_OBJECT__(_rum)
+    ADD OPERATOR 25 __API_CATALOG_SCHEMA__.@<> (__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson);

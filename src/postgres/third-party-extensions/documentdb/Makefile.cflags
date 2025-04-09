@@ -1,0 +1,139 @@
+
+
+LIBBSON := $(shell pkg-config --cflags libbson-static-1.0)
+INTEL_DECIMAL_MATH_LIB = $(shell pkg-config --cflags intelmathlib)
+PCRE2_LIB = $(shell pkg-config --cflags libpcre2-8)
+
+DOCUMENTDB_CORE_DIR = $(OSS_SRC_DIR)/pg_documentdb_core
+DOCUMENTDB_DIR = $(OSS_SRC_DIR)/pg_documentdb
+DOCUMENTDB_DISTRIBUTED_DIR= $(OSS_SRC_DIR)/internal/pg_documentdb_distributed
+
+DOCUMENTDB_CORE_INC_DIR = $(DOCUMENTDB_CORE_DIR)/include
+DOCUMENTDB_INC_DIR = $(DOCUMENTDB_DIR)/include
+DOCUMENTDB_DISTRIBUTED_INC_DIR = $(DOCUMENTDB_DISTRIBUTED_DIR)/include
+
+
+PG_CPPFLAGS = $(LIBBSON) -I$(libpq_srcdir) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB) -Isrc -Iinclude -Ibuild/include/
+PG_LDFLAGS = $(shell pkg-config --static --libs --cflags libbson-static-1.0) $(shell pkg-config --static --libs --cflags intelmathlib) $(shell pkg-config --static --libs --cflags libpcre2-8) -L/usr/lib
+PG_LDFLAGS += -Wl,-rpath=$(shell $(PG_CONFIG) --pkglibdir)
+
+ifeq ($(USE_DOCUMENTDB_CORE),1)
+DOCUMENTDB_CORE_LIB = $(DOCUMENTDB_CORE_DIR)/pg_documentdb_core.so
+PG_CPPFLAGS += -I$(DOCUMENTDB_CORE_INC_DIR)
+PG_LDFLAGS += -l:pg_documentdb_core.so -L $(DOCUMENTDB_CORE_DIR)
+endif
+
+ifeq ($(USE_DOCUMENTDB),1)
+DOCUMENTDB_LIB = $(DOCUMENTDB_DIR)/pg_documentdb.so
+PG_CPPFLAGS += -I$(DOCUMENTDB_INC_DIR)
+PG_LDFLAGS += -l:pg_documentdb.so -L $(DOCUMENTDB_DIR)
+endif
+
+ifeq ($(USE_DOCUMENTDB_DISTRIBUTED),1)
+DOCUMENTDB_DISTRIBUTED_LIB = $(DOCUMENTDB_DISTRIBUTED_DIR)/pg_documentdb_distributed.so
+PG_CPPFLAGS += -I$(DOCUMENTDB_DISTRIBUTED_INC_DIR)
+PG_LDFLAGS += -l:pg_documentdb_distributed.so -L $(DOCUMENTDB_DISTRIBUTED_DIR)
+endif
+
+ifeq ($(CC),gcc)
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
+else
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
+endif
+
+ifneq ($(SKIP_API_SCHEMA),yes)
+    ifndef API_SCHEMA_NAME
+    $(error API_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_SCHEMA_NAME_V2
+    $(error API_SCHEMA_NAME_V2 is not set)
+    endif
+
+    ifndef API_SCHEMA_INTERNAL_NAME
+    $(error API_SCHEMA_INTERNAL_NAME is not set)
+    endif
+
+    ifndef API_SCHEMA_INTERNAL_NAME_V2
+    $(error API_SCHEMA_INTERNAL_NAME_V2 is not set)
+    endif
+
+    ifndef API_CATALOG_SCHEMA_NAME
+    $(error API_CATALOG_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_CATALOG_SCHEMA_NAME_V2
+    $(error API_CATALOG_SCHEMA_NAME_V2 is not set)
+    endif
+
+    ifndef API_DATA_SCHEMA_NAME
+    $(error API_DATA_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_ADMIN_ROLE
+    $(error API_ADMIN_ROLE is not set)
+    endif
+
+    ifndef API_ADMIN_ROLE_V2
+    API_ADMIN_ROLE_V2=$(API_ADMIN_ROLE)
+    endif
+
+    ifndef API_READONLY_ROLE
+    $(error API_READONLY_ROLE is not set)
+    endif
+
+    ifndef POSTGIS_SCHEMA_NAME
+    $(error POSTGIS_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_GUC_PREFIX
+    $(error API_GUC_PREFIX is not set)
+    endif
+
+    EXTENSION_SQL_ONLY_DEFINES = -D__API_CATALOG_SCHEMA__=$(API_CATALOG_SCHEMA_NAME) \
+                                 -D__API_CATALOG_SCHEMA_V2__=$(API_CATALOG_SCHEMA_NAME_V2) \
+                                 -D__API_SCHEMA__=$(API_SCHEMA_NAME) \
+                                 -D__API_SCHEMA_V2__=$(API_SCHEMA_NAME_V2) \
+                                 -D__API_SCHEMA_INTERNAL__=$(API_SCHEMA_INTERNAL_NAME) \
+                                 -D__API_SCHEMA_INTERNAL_V2__=$(API_SCHEMA_INTERNAL_NAME_V2) \
+                                 -D__API_DATA_SCHEMA__=$(API_DATA_SCHEMA_NAME) \
+                                 -D__API_ADMIN_ROLE__=$(API_ADMIN_ROLE) \
+                                 -D__API_ADMIN_ROLE_V2__=$(API_ADMIN_ROLE_V2) \
+                                 -D__API_READONLY_ROLE__=$(API_READONLY_ROLE) \
+                                 -D__POSTGIS_SCHEMA_NAME__=$(POSTGIS_SCHEMA_NAME) \
+                                 -D__API_GUC_PREFIX__=$(API_GUC_PREFIX)
+endif
+
+ifdef API_DISTRIBUTED_SCHEMA_NAME
+    EXTENSION_SQL_ONLY_DEFINES += -D__API_DISTRIBUTED_SCHEMA__=$(API_DISTRIBUTED_SCHEMA_NAME)
+endif
+
+ifndef CORE_SCHEMA_NAME
+    $(error CORE_SCHEMA_NAME is not set)
+endif
+
+ifndef EXTENSION_OBJECT_PREFIX
+    $(error EXTENSION_OBJECT_PREFIX is not set)
+endif
+
+ifndef EXTENSION_OBJECT_PREFIX_V2
+    EXTENSION_OBJECT_PREFIX_V2=$(EXTENSION_OBJECT_PREFIX)
+endif
+
+# Use CORE_SCHEMA_NAME_V2 in the SQL file if the internal extension code that shipped
+# uses the initial public OSS schema for the type.
+ifndef CORE_SCHEMA_NAME_V2
+    CORE_SCHEMA_NAME_V2=$(CORE_SCHEMA_NAME)
+endif
+
+
+EXTENSION_SQL_ONLY_DEFINES += -D__EXTENSION_OBJECT_PREFIX__=$(EXTENSION_OBJECT_PREFIX)
+EXTENSION_SQL_ONLY_DEFINES += -D__EXTENSION_OBJECT_PREFIX_V2__=$(EXTENSION_OBJECT_PREFIX_V2)
+EXTENSION_SQL_ONLY_DEFINES += -D__CORE_SCHEMA__=$(CORE_SCHEMA_NAME)
+EXTENSION_SQL_ONLY_DEFINES += -D__CORE_SCHEMA_V2__=$(CORE_SCHEMA_NAME_V2)
+
+SQL_DEFINES = $(EXTENSION_SQL_ONLY_DEFINES)
+
+ifneq ($(EXTRA_INCLUDE),)
+include $(EXTRA_INCLUDE)
+endif
