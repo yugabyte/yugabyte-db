@@ -91,7 +91,10 @@ const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
 
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
-    "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED'"
+    "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED' " +
+    "ORDER BY invocation_sequence DESC " +
+    "LIMIT 1"
+
 
 const RETRIEVE_IMPORT_SCHEMA_STATUS string = "SELECT status " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
