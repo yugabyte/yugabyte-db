@@ -15,7 +15,7 @@ ynp:
 
   # Install node_agent as part of provisioning.
   is_install_node_agent: true
-
+  configure_thp_settings: true
 yba:
   url: <url>
   customer_uuid: <customer_uuid>
