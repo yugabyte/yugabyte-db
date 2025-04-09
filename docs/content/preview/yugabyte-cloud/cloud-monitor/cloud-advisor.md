@@ -1,7 +1,7 @@
 ---
-title: YugabyteDB Aeon Performance Advisor
-headerTitle: Performance Advisor
-linkTitle: Performance Advisor
+title: YugabyteDB Aeon Performance Insights
+headerTitle: Insights
+linkTitle: Insights
 description: Scan your cluster to discover performance optimizations.
 headcontent: Scan your cluster to discover performance optimizations
 menu:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use Performance Advisor to scan your cluster for potential optimizations.
+Use Insights to scan your cluster for potential optimizations.
 
 {{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Aeon clusters with Performance Monitor" >}}
 
@@ -20,15 +20,15 @@ For meaningful results, run your workload for at least an hour before running th
 
 To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
 
-![Performance Advisor](/images/yb-cloud/managed-monitor-advisor.png)
+![Insights](/images/yb-cloud/managed-monitor-advisor.png)
 
 ## Recommendations
 
-Performance Advisor provides recommendations for a number of issues.
+Insights provides recommendations for a number of issues.
 
 ### Index suggestions
 
-Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/15/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
+Insights suggests dropping unused indexes to improve write performance and increase storage space. Insights uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/15/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
 
 Indexes take up storage space on the same disk volume as the main table. They also increase the size of backups and can add to backup and restore time.
 
