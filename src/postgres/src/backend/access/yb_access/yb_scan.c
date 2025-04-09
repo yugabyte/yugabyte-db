@@ -492,15 +492,14 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 
 		if (status && !IsolationIsSerializable())
 		{
-			const uint16_t txn_error = YBCStatusTransactionError(status);
-			if (ybScan->exec_params != NULL && YBCIsTxnConflictError(txn_error))
+			const uint32_t err_code = YBCStatusPgsqlError(status);
+
+			if (ybScan->exec_params != NULL && err_code == ERRCODE_YB_TXN_CONFLICT)
 			{
 				elog(DEBUG2, "Error when trying to lock row. "
-					 "pg_wait_policy=%d docdb_wait_policy=%d "
-					 "txn_errcode=%d message=%s",
+					 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
 					 ybScan->exec_params->pg_wait_policy,
 					 ybScan->exec_params->docdb_wait_policy,
-					 txn_error,
 					 YBCStatusMessageBegin(status));
 				YBCFreeStatus(status);
 				status = NULL;
@@ -511,11 +510,10 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 									RelationGetRelationName(ybScan->relation))));
 				else
 					ereport(ERROR,
-							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							 errmsg("could not serialize access due to concurrent update"),
-							 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+							(errcode(ERRCODE_YB_TXN_CONFLICT),
+							 errmsg("could not serialize access due to concurrent update")));
 			}
-			else if (YBCIsTxnSkipLockingError(txn_error))
+			else if (err_code == ERRCODE_YB_TXN_SKIP_LOCKING)
 			{
 				/* For skip locking, it's correct to simply return no results. */
 				has_data = false;
@@ -3709,9 +3707,11 @@ void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 {
 	if (wait_policy == LockWaitError)
 	{
-		// In case the user has specified NOWAIT, the intention is to error out immediately. If
-		// we raise TransactionErrorCode::kConflict, the statement might be retried by our
-		// retry logic in yb_attempt_to_restart_on_error().
+		/*
+		 * In case the user has specified NOWAIT, the intention is to error out
+		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
+		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
+		 */
 
 		if (rel)
 			ereport(ERROR,
@@ -3730,17 +3730,17 @@ void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 	}
 
 	ereport(ERROR,
-			(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-				errmsg("could not serialize access due to concurrent update"),
-				yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+			(errcode(ERRCODE_YB_TXN_CONFLICT),
+			 errmsg("could not serialize access due to concurrent update")));
 }
 
 static bool
 YBCIsExplicitRowLockConflictStatus(YBCStatus status)
 {
 	Assert(status);
-	const uint16_t txn_error = YBCStatusTransactionError(status);
-	return YBCIsTxnConflictError(txn_error) || YBCIsTxnAbortedError(txn_error);
+	const uint32_t err_code = YBCStatusPgsqlError(status);
+
+	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
 }
 
 static void
@@ -3838,15 +3838,16 @@ YBCLockTuple(
 		ErrorData* edata = CopyErrorData();
 
 		elog(DEBUG2, "Error when trying to lock row. "
-			 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
+			 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
 			 lock_params.pg_wait_policy, lock_params.docdb_wait_policy,
-			 edata->yb_txn_errcode, edata->message);
+			 edata->message);
 
-		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+		if (edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
 			res = HeapTupleUpdated;
-		else if (YBCIsTxnSkipLockingError(edata->yb_txn_errcode))
+		else if (edata->sqlerrcode == ERRCODE_YB_TXN_SKIP_LOCKING)
 			res = HeapTupleWouldBlock;
-		else {
+		else
+		{
 			YBCPgDeleteStatement(ybc_stmt);
 			MemoryContextSwitchTo(error_context);
 			PG_RE_THROW();

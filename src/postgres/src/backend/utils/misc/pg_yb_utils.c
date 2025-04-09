@@ -770,8 +770,7 @@ FetchUniqueConstraintName(Oid relation_id)
  * message arguments.
  */
 void
-GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
-							   uint16_t txn_err_code, YBCStatus s,
+GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 							   const char **msg_buf, size_t *msg_nargs,
 							   const char ***msg_args, const char **detail_buf,
 							   size_t *detail_nargs, const char ***detail_args)
@@ -788,49 +787,34 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 	*detail_buf = NULL;
 	*detail_nargs = 0;
 	*detail_args = NULL;
-	elog(DEBUG2,
-			 "status_msg=%s txn_err_code=%d pg_err_code=%d", status_msg, txn_err_code, pg_err_code);
+	elog(DEBUG2, "status_msg=%s pg_err_code=%d", status_msg, pg_err_code);
 
 	switch(pg_err_code)
 	{
-		case ERRCODE_T_R_SERIALIZATION_FAILURE:
-			if(YBCIsTxnConflictError(txn_err_code))
-			{
-				*msg_buf = "could not serialize access due to concurrent update";
-				*msg_nargs = 0;
-				*msg_args = NULL;
-
-				*detail_buf = status_msg;
-				*detail_nargs = status_nargs;
-				*detail_args = status_args;
-			}
-			else if(YBCIsTxnAbortedError(txn_err_code))
-			{
-				*msg_buf = "current transaction is expired or aborted";
-				*msg_nargs = 0;
-				*msg_args = NULL;
-
-				*detail_buf = status_msg;
-				*detail_nargs = status_nargs;
-				*detail_args = status_args;
-			}
-			break;
 		case ERRCODE_UNIQUE_VIOLATION:
 			*msg_buf = "duplicate key value violates unique constraint \"%s\"";
 			*msg_nargs = 1;
 			*msg_args = (const char **) palloc(sizeof(const char *));
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
 			break;
-		case ERRCODE_T_R_DEADLOCK_DETECTED:
-			if (YBCIsTxnDeadlockError(txn_err_code)) {
-				*msg_buf = "deadlock detected";
-				*msg_nargs = 0;
-				*msg_args = NULL;
+		case ERRCODE_YB_TXN_ABORTED:
+		case ERRCODE_YB_TXN_CONFLICT:
+			*msg_buf = "could not serialize access due to concurrent update";
+			*msg_nargs = 0;
+			*msg_args = NULL;
 
-				*detail_buf = status_msg;
-				*detail_nargs = status_nargs;
-				*detail_args = status_args;
-			}
+			*detail_buf = status_msg;
+			*detail_nargs = status_nargs;
+			*detail_args = status_args;
+			break;
+		case ERRCODE_YB_DEADLOCK:
+			*msg_buf = "deadlock detected";
+			*msg_nargs = 0;
+			*msg_args = NULL;
+
+			*detail_buf = status_msg;
+			*detail_nargs = status_nargs;
+			*detail_args = status_args;
 			break;
 		default:
 			break;
@@ -1526,7 +1510,9 @@ bool yb_silence_advisory_locks_not_supported_error = false;
 
 bool yb_use_hash_splitting_by_default = true;
 
-const char*
+bool yb_enable_extended_sql_codes = false;
+
+const char *
 YBDatumToString(Datum datum, Oid typid)
 {
 	Oid			typoutput = InvalidOid;

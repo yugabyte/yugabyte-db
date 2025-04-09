@@ -216,15 +216,11 @@ typedef struct YbgErrorData
 	const char **errargs;
 	int			nargs;
 	int			argsize;
-	int			sqlerrcode; /* encoded ERRSTATE */
-	uint16_t yb_txn_errcode; /* YB transaction error cast to uint16, as returned
-							  * by static_cast of TransactionErrorTag::Decode of
-							  * Status::ErrorData(TransactionErrorTag::kCategory)
-							  */
-	const char *filename;	/* __FILE__ of ereport() call */
-	int			lineno;		/* __LINE__ of ereport() call */
-	const char *funcname;	/* __func__ of ereport() call */
-	int			saved_errno; /* errno at entry */
+	int			sqlerrcode;		/* encoded ERRSTATE */
+	const char *filename;		/* __FILE__ of ereport() call */
+	int			lineno;			/* __LINE__ of ereport() call */
+	const char *funcname;		/* __func__ of ereport() call */
+	int			saved_errno;	/* errno at entry */
 	int			errordata_stack_depth;
 	struct YbgErrorData *previous; /* next stack frame */
 } YbgErrorData;
@@ -854,18 +850,20 @@ errcode(int sqlerrcode)
 }
 
 int
-yb_txn_errcode(uint16_t txn_errcode)
+yb_external_errcode(int sqlerrcode)
 {
-	RETURN_IF_MULTITHREADED_MODE();
+	if (yb_enable_extended_sql_codes)
+		return sqlerrcode;
 
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+	if (sqlerrcode == ERRCODE_YB_TXN_ABORTED ||
+		sqlerrcode == ERRCODE_YB_RESTART_READ ||
+		sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
+		return ERRCODE_T_R_SERIALIZATION_FAILURE;
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+	if (sqlerrcode == ERRCODE_YB_DEADLOCK)
+		return ERRCODE_T_R_DEADLOCK_DETECTED;
 
-	edata->yb_txn_errcode = txn_errcode;
-
-	return 0;					/* return value does not matter */
+	return sqlerrcode;
 }
 
 

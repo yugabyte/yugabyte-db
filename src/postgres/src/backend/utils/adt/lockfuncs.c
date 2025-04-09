@@ -37,7 +37,6 @@ YbPreventAdvisoryLocks(void)
 				    "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
 }
 
-/* This must match enum LockTagType! */
 const char *const LockTagTypeNames[] = {
 	"relation",
 	"extend",
