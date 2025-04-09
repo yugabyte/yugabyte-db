@@ -46,6 +46,10 @@ node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
 [ConfigureChrony]
 chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 
+{% if ynp_config['ynp'].configure_thp_settings %}
+[ConfigureTHP]
+{% endif %}
+
 [CreateYugabyteUser]
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
