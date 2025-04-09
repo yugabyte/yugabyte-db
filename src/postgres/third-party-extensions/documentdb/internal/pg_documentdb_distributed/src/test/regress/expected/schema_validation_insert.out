@@ -1,0 +1,837 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 17771000;
+SET documentdb.next_collection_id TO 177710;
+SET documentdb.next_collection_index_id TO 177710;
+set documentdb.enableSchemaValidation = true;
+--------------------------------------Need $jsonSchema--------------------------------------
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}, "validationLevel": "strict", "validationAction": "error"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col", "documents":[{"_id":"1", "a":1}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- required not supported yet, so this should be inserted
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col", "documents":[{"_id":"2", "b":1}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- type mismatch
+SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col", "documents":[{"_id":"3", "a":"hello"}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- batch insert
+SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col", "documents":[{"_id":"4", "a":2},{"_id":"5", "a":3}, {"_id":"6", "a":"tt"}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""2"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- 0 documents should be inserted
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                   document                    
+---------------------------------------------------------------------
+          177711 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177711 | { "" : "2" } | { "_id" : "2", "b" : { "$numberInt" : "1" } }
+          177711 | { "" : "4" } | { "_id" : "4", "a" : { "$numberInt" : "2" } }
+          177711 | { "" : "5" } | { "_id" : "5", "a" : { "$numberInt" : "3" } }
+(4 rows)
+
+-- set validationAction to warn
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col', '{"collMod":"col", "validationAction": "warn"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col", "documents":[{"_id":"7", "a":"hello"}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- 1 document should be inserted
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                   document                    
+---------------------------------------------------------------------
+          177711 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177711 | { "" : "2" } | { "_id" : "2", "b" : { "$numberInt" : "1" } }
+          177711 | { "" : "4" } | { "_id" : "4", "a" : { "$numberInt" : "2" } }
+          177711 | { "" : "5" } | { "_id" : "5", "a" : { "$numberInt" : "3" } }
+          177711 | { "" : "7" } | { "_id" : "7", "a" : "hello" }
+(5 rows)
+
+---------------------------------------------Need top level operator-----------------------------------------------------
+-- $expr
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col1", "validator": { "$expr": {"$eq": [ "$a", "$b" ] } } }');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col1", "documents":[{"_id":"1", "a":1, "b":1, "c":1}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col1", "documents":[{"_id":"2", "a":3, "b":1, "c":2}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- $and
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col2", "validator": { "$and": [ { "a": { "$gt": 2 } }, {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "maximum":5}}}} ] } }');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"1", "a":4}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- expect to throw error as 6 > 5 (maximum)
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"3", "a":6}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+set documentdb.enableBypassDocumentValidation = true;
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}], "bypassDocumentValidation": true}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+---------------------------------------------simple case-----------------------------------------------------
+-- field 
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col3", "validator": {"a":{"$type":"int"}}}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "documents":[{"_id":"1", "a":1}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "documents":[{"_id":"2", "a":"hello"}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+--$merge
+SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col_", "documents":[{"_id":"1001","a":"world"}]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col_", "documents":[{"_id":"1002","a":2}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select documentdb_api.insert('schema_validation_insertion', '{"insert":"col_", "documents":[{"_id":"1003","a":11}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- whenNotMatch is insert
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id":"1001"}}, {"$merge" : { "into": "col3" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id":"1002"}}, {"$merge" : { "into": "col3" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                     document                     
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- WhenNotMatched is discard
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id":"1003"}}, {"$merge" : { "into": "col3", "whenNotMatched": "discard" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                     document                     
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- whenMatched is merge
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":22}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                     document                      
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : { "$numberInt" : "22" } }
+(2 rows)
+
+---- don't throw error as source and target schema is same
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"merge_same"}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"merge_same"}}}],"bypassDocumentValidation": true}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                   document                    
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : "merge_same" }
+(2 rows)
+
+---- throw error as source and target schema is different since key is same but value is different
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":22}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+-- whenMatched is replace
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":222, "b":1}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                                     document                                     
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : { "$numberInt" : "222" }, "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+---- don't throw error as source and target schema is same
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"replace_same"}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"replace_same"}}}],"bypassDocumentValidation": true}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                                document                                
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : "replace_same", "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+---- throw error as source and target schema is different 
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":222, "b":1}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+-- validationLevel is moderate
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"test"}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                                     document                                     
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : { "$numberInt" : "222" }, "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "moderate"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+select documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"test_3"}}}]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"test_3"}}}], "bypassDocumentValidation": true}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                            document                            
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : "test", "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_", "updates":[{"q":{"_id":"1002"},"u":{"$set":{"a":"ttt"}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "_id": "1002" }}, {"$merge" : { "into": "col3", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                           document                            
+---------------------------------------------------------------------
+          177714 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+          177714 | { "" : "1002" } | { "_id" : "1002", "a" : "ttt", "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+--$out
+select documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col5"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "string" }}}, {"$out": "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col5') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                           document                            
+---------------------------------------------------------------------
+          177716 | { "" : "1001" } | { "_id" : "1001", "a" : "world" }
+          177716 | { "" : "1002" } | { "_id" : "1002", "a" : "ttt", "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "int" }}}, {"$out": "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col5') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                     document                      
+---------------------------------------------------------------------
+          177716 | { "" : "1003" } | { "_id" : "1003", "a" : { "$numberInt" : "11" } }
+(1 row)
+
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col5', '{"collMod":"col5", "validator": {"a":{"$type":"int"}}}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "string" }}}, {"$out" : "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_", "pipeline": [ { "$match": { "a": { "$type": "int" }}}, {"$out" : "col5" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                      cursorpage                                                                       | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col5') ORDER BY shard_key_value, object_id;
+ shard_key_value |    object_id    |                     document                      
+---------------------------------------------------------------------
+          177716 | { "" : "1003" } | { "_id" : "1003", "a" : { "$numberInt" : "11" } }
+(1 row)
+
+-- sharded collection test
+SELECT documentdb_api.shard_collection('schema_validation_insertion', 'col3', '{ "a": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "documents":[{"_id":"1", "a":"hello"}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "documents":[{"_id":"2", "a":5}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col3", "documents":[{"_id":"3", "a":2}, {"_id":"4", "a":3}, {"_id":"5", "a":4}, {"_id":"6", "a":"string"}]}');
+                                                                                                                        insert                                                                                                                        
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- 5 documents should be inserted
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+   shard_key_value    |    object_id    |                           document                            
+---------------------------------------------------------------------
+ -8397265933852323338 | { "" : "1002" } | { "_id" : "1002", "a" : "ttt", "b" : { "$numberInt" : "1" } }
+ -4918719581749358852 | { "" : "4" }    | { "_id" : "4", "a" : { "$numberInt" : "3" } }
+ -1389566185330078543 | { "" : "3" }    | { "_id" : "3", "a" : { "$numberInt" : "2" } }
+  1786987034919379147 | { "" : "2" }    | { "_id" : "2", "a" : { "$numberInt" : "5" } }
+  4004935074940511305 | { "" : "5" }    | { "_id" : "5", "a" : { "$numberInt" : "4" } }
+  4322365043291501017 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+(6 rows)
+
+-- set validationAction to warn
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationAction": "warn"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion','{"insert":"col3", "documents":[{"_id":"7", "a":"hello"}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- 6 document should be inserted
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+   shard_key_value    |    object_id    |                           document                            
+---------------------------------------------------------------------
+ -8397265933852323338 | { "" : "1002" } | { "_id" : "1002", "a" : "ttt", "b" : { "$numberInt" : "1" } }
+ -4918719581749358852 | { "" : "4" }    | { "_id" : "4", "a" : { "$numberInt" : "3" } }
+ -1389566185330078543 | { "" : "3" }    | { "_id" : "3", "a" : { "$numberInt" : "2" } }
+  1786987034919379147 | { "" : "2" }    | { "_id" : "2", "a" : { "$numberInt" : "5" } }
+  3587377943449965360 | { "" : "7" }    | { "_id" : "7", "a" : "hello" }
+  4004935074940511305 | { "" : "5" }    | { "_id" : "5", "a" : { "$numberInt" : "4" } }
+  4322365043291501017 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
+(7 rows)
+
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "strict"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+---------------------------------------------update-----------------------------------------------------
+-- sharded collection test
+-- will succeed as validationAction is warn
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a": 1},"u":{"$set":{"a":"one"}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- set validation action to error
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationAction": "error"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- should throw error
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":4},"u":{"$set":{"a":"four"}}}]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":3},"u":{"$set":{"a":300}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- upsert succeeded
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"abc"},"u":{"$set":{"_id":500, "a":500}}, "upsert":true}]}');
+                                                                                                                   update                                                                                                                    
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""500"" } } ] }",t)
+(1 row)
+
+-- upsert failed
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"abc"},"u":{"$set":{"a":"abcd"}}, "upsert":true}]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed with bypassDocumentValidation
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":4},"u":{"$set":{"a":"four"}}}], "bypassDocumentValidation": true}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- multiple updates
+-- throw error as multi update is not allowed on sharded collection
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":2},"u":{"$set":{"a":200}}, "multi":true} ]}');
+                                                                                                                                                                              update                                                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3');
+   shard_key_value    |             object_id             |                               document                               
+---------------------------------------------------------------------
+ -1389566185330078543 | { "" : "3" }                      | { "_id" : "3", "a" : { "$numberInt" : "2" } }
+  2996843418540442358 | { "" : "4" }                      | { "_id" : "4", "a" : { "$numberInt" : "300" } }
+ -8397265933852323338 | { "" : "1002" }                   | { "_id" : "1002", "a" : "ttt", "b" : { "$numberInt" : "1" } }
+  5126337298865006124 | { "" : "5" }                      | { "_id" : "5", "a" : "four" }
+  6587320470102004679 | { "" : { "$numberInt" : "500" } } | { "_id" : { "$numberInt" : "500" }, "a" : { "$numberInt" : "500" } }
+  3587377943449965360 | { "" : "7" }                      | { "_id" : "7", "a" : "hello" }
+  1786987034919379147 | { "" : "2" }                      | { "_id" : "2", "a" : { "$numberInt" : "5" } }
+  1872533437322552880 | { "" : "1" }                      | { "_id" : "1", "a" : "one" }
+(8 rows)
+
+-- will throw error as validationLevel is strict
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}} ]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- moderate case
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "moderate"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- will succeed as validationLevel is moderate
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}} ]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col3');
+   shard_key_value    |             object_id             |                               document                               
+---------------------------------------------------------------------
+  3501436727987220735 | { "" : "5" }                      | { "_id" : "5", "a" : "fourty" }
+ -1389566185330078543 | { "" : "3" }                      | { "_id" : "3", "a" : { "$numberInt" : "2" } }
+  2996843418540442358 | { "" : "4" }                      | { "_id" : "4", "a" : { "$numberInt" : "300" } }
+ -8397265933852323338 | { "" : "1002" }                   | { "_id" : "1002", "a" : "ttt", "b" : { "$numberInt" : "1" } }
+  6587320470102004679 | { "" : { "$numberInt" : "500" } } | { "_id" : { "$numberInt" : "500" }, "a" : { "$numberInt" : "500" } }
+  3587377943449965360 | { "" : "7" }                      | { "_id" : "7", "a" : "hello" }
+  1786987034919379147 | { "" : "2" }                      | { "_id" : "2", "a" : { "$numberInt" : "5" } }
+  1872533437322552880 | { "" : "1" }                      | { "_id" : "1", "a" : "one" }
+(8 rows)
+
+-- batch update
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":500},"u":{"$set":{"a":5000}}}, {"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}}, {"q":{"a":6},"u":{"$set":{"a":600, "_id":600}}, "upsert": true}, {"q":{"a":"string"},"u":{"$set":{"a":"str"}}, "upsert":true} ]}');
+                                                                                                                                                                                                  update                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""2"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""2"" }, ""_id"" : { ""$numberInt"" : ""600"" } } ], ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+ 
+--unsharded collection test
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col4", "validator": {"a":{"$type":"int"}}, "validationLevel": "strict", "validationAction": "warn"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col4", "documents":[{"_id":"1", "a":1}, {"_id":"2", "a":2}, {"_id":"3", "a":3}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col4", "documents":[{"_id":"4", "a":"hello"}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- will succeed as validationAction is warn
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":1},"u":{"$set":{"a":"one"}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod":"col4", "validationAction": "error"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- should throw error
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":2},"u":{"$set":{"a":"one"}}}]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":3},"u":{"$set":{"a":300}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- upsert succeeded
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"abc"},"u":{"$set":{"_id":500, "a":500}}, "upsert":true}]}');
+                                                                                                                   update                                                                                                                    
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""500"" } } ] }",t)
+(1 row)
+
+-- upsert failed
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"abc"},"u":{"$set":{"a":"abcd"}}, "upsert":true}]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed with bypassDocumentValidation
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":2},"u":{"$set":{"a":"one"}}}], "bypassDocumentValidation": true}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- multiple updates
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"one"},"u":{"$set":{"a":200}}, "multi":true} ]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2"" }, ""n"" : { ""$numberLong"" : ""2"" } }",t)
+(1 row)
+
+-- will throw error 
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":300},"u":{"$set":{"a":"th"}}, "multi":true} ]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- will throw error as validationLevel is strict
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"world"}}} ]}');
+                                                                                                                                               update                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- moderate case
+SELECT documentdb_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod":"col4", "validationLevel": "moderate"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- will succeed as validationLevel is moderate
+SELECT documentdb_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"ten"}}} ]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col4');
+ shard_key_value |             object_id             |                               document                               
+---------------------------------------------------------------------
+          177717 | { "" : "1" }                      | { "_id" : "1", "a" : { "$numberInt" : "200" } }
+          177717 | { "" : "2" }                      | { "_id" : "2", "a" : { "$numberInt" : "200" } }
+          177717 | { "" : "3" }                      | { "_id" : "3", "a" : { "$numberInt" : "300" } }
+          177717 | { "" : "4" }                      | { "_id" : "4", "a" : "ten" }
+          177717 | { "" : { "$numberInt" : "500" } } | { "_id" : { "$numberInt" : "500" }, "a" : { "$numberInt" : "500" } }
+(5 rows)
+
+-------------------------------merge/out more case---------------------------------------------------------------
+-- top level operator in schema information
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col_merge_tar", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "minimum": 5}}}}}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col_source", "documents":[{"_id":"1", "a":5}]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col_source", "documents":[{"_id":"2", "a":2}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('schema_validation_insertion', '{"insert":"col_source", "documents":[{"_id":"3", "a":"hello"}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- $merge 
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$merge" : { "into": "col_merge_tar", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                         cursorpage                                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "2" }}, {"$merge" : { "into": "col_merge_tar", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "3" }}, {"$merge" : { "into": "col_merge_tar", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_merge_tar') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                   document                    
+---------------------------------------------------------------------
+          177718 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "5" } }
+(1 row)
+
+-- merge with whenMatched
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_source", "updates":[{"q":{"_id":"1"},"u":{"$set":{"a":11, "b":1}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$merge" : { "into": "col_merge_tar", "whenMatched": "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                         cursorpage                                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_merge_tar') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                                   document                                   
+---------------------------------------------------------------------
+          177718 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "11" }, "b" : { "$numberInt" : "1" } }
+(1 row)
+
+select documentdb_api.update('schema_validation_insertion', '{"update":"col_source", "updates":[{"q":{"_id":"1"},"u":{"$set":{"a":111}, "$unset":{"b":""}}}]}');
+                                                                update                                                                
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$merge" : { "into": "col_merge_tar", "whenMatched": "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                         cursorpage                                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_merge_tar') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                    document                     
+---------------------------------------------------------------------
+          177718 | { "" : "1" } | { "_id" : "1", "a" : { "$numberInt" : "111" } }
+(1 row)
+
+-- $out
+SELECT documentdb_api.create_collection_view('schema_validation_insertion', '{ "create": "col_out_tar", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int", "maximum": 5}}}}}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "2" }}, {"$out" : "col_out_tar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                         cursorpage                                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation_insertion.col_source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_out_tar') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                   document                    
+---------------------------------------------------------------------
+          177720 | { "" : "2" } | { "_id" : "2", "a" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('schema_validation_insertion', '{ "aggregate": "col_source", "pipeline": [ { "$match": { "_id": "1" }}, {"$out" : "col_out_tar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  PlanExecutor error during aggregation :: caused by :: Document failed validation
+SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation_insertion','col_out_tar') ORDER BY shard_key_value, object_id;
+ shard_key_value |  object_id   |                   document                    
+---------------------------------------------------------------------
+          177720 | { "" : "2" } | { "_id" : "2", "a" : { "$numberInt" : "2" } }
+(1 row)
+
+set documentdb.enableBypassDocumentValidation = false;
+set documentdb.enableSchemaValidation = false;

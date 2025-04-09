@@ -1,0 +1,7 @@
+s/test: bson_query_operator_tests_explain_runtime//g
+s/test: bson_query_operator_tests_explain_index//g
+s/bson_aggregation_date_operators_tests //g
+s/bson_aggregation_stage_inversematch_tests //g
+s/bson_unique_index//g
+s/commands_create_indexes //g
+s/schema_validation_insert//g
