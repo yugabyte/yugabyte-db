@@ -174,7 +174,7 @@ public class BackupGarbageCollector {
           }
         }
         MetricLabelsBuilder metricLabelsBuilder =
-            MetricLabelsBuilder.create().appendCustomer(customer).appendSource(customer);
+            MetricLabelsBuilder.create().appendSource(customer);
         DELETE_BACKUP_FAILURE
             .labels(metricLabelsBuilder.getPrometheusValues())
             .set(failedToDeleteBackupCount);
