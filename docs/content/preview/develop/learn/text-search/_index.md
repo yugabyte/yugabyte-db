@@ -99,7 +99,7 @@ To learn more about pattern matching, see [Phonetic Search](./phonetic-matching)
 {{<index/item
     title="Full-Text Search"
     body="Search engine like search"
-    icon="fa-brands fa-searchengin"
+    icon="fa-thin fa-magnifying-glass"
     href="full-text-search">}}
 
 {{<index/item
