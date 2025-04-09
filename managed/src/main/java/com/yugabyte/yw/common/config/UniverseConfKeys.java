@@ -1581,4 +1581,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Whether to alert for unexpected masters/tservers in universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> verifyClusterUUIDOnStart =
+      new ConfKeyInfo<>(
+          "yb.checks.verify_cluster_uuid.enabled",
+          ScopeType.UNIVERSE,
+          "Check if process has correct gflag on start",
+          "Check if process has correct gflag on start",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

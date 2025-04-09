@@ -453,6 +453,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
     settableRuntimeConfigFactory
         .globalRuntimeConf()
+        .setValue("yb.checks.verify_cluster_uuid.enabled", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
         .setValue("yb.universe.consistency_check.enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
