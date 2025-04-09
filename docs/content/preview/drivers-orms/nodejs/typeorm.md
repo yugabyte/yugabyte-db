@@ -8,7 +8,7 @@ aliases:
   - /integrations/typeorm/
 menu:
   preview:
-    identifier: typeorm-1
+    identifier: node-orm-3-typeorm
     parent: nodejs-drivers
     weight: 600
 type: docs
@@ -39,11 +39,7 @@ type: docs
 
 Because YugabyteDB is PostgreSQL-compatible, TypeORM supports the YugabyteDB YSQL API.
 
-This page provides details for getting started with TypeORM for connecting to YugabyteDB.
-
-## Working with domain objects
-
-This section describes how to use Node.js models (domain objects) to store and retrieve data from a YugabyteDB cluster.
+Use this guide to get started using TypeORM for connecting to YugabyteDB.
 
 ## CRUD operations
 
@@ -70,7 +66,7 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
 
 1. Update the `tsconfig.json` file.
 
-    ```
+    ```json
     {
       "compilerOptions": {
         "target": "ES2021",
@@ -94,7 +90,7 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
 ### Step 2: Implement ORM mapping for YugabyteDB
 
 1. To start with TypeORM, in your project directory, create a directory `src` with the following structure:
-    
+
     ```sh
     mkdir src
     touch src/data-source.ts
@@ -146,7 +142,7 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
     ```
 
 1. After the setup is done, you can connect to the database and perform the CRUD operation. In the `index.ts` file, add the following:
-    
+
     ```js
     import { AppDataSource } from "./data-source"
     import { User } from "./entity/User"
@@ -169,11 +165,13 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
     ```
 
 Run the `index.ts` file:
+
 ``` sh
 npx ts-node src/index.ts
 ```
 
 The following output is expected:
+
 ```text
 Inserting a new user into the database...
 Saved a new user with id: 1
@@ -183,6 +181,4 @@ Loaded users:  [ User { id: 1, firstname: 'Timber', lastname: 'Saw', age: 25 } ]
 
 ## Learn more
 
-- Build Node.js applications using [Prisma ORM](../prisma/)
-- Build Node.js applications using [Sequelize ORM](../sequelize/)
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

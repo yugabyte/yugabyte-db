@@ -6,7 +6,7 @@ description: Node.js Prisma ORM support for YugabyteDB
 headcontent: Node.js ORM support for YugabyteDB
 menu:
   v2.20:
-    identifier: prisma-1
+    identifier: node-orm-2-prisma
     parent: nodejs-drivers
     weight: 600
 type: docs
@@ -270,6 +270,4 @@ Open [http://localhost:5555](http://localhost:5555) in your browser to see the t
 
 ## Learn more
 
-- Build Node.js applications using [Sequelize ORM](../sequelize/)
-- Build Node.js applications using [TypeORM](../typeorm/)
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
