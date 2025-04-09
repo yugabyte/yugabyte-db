@@ -73,10 +73,12 @@ CREATE DATABASE clone_db TEMPLATE original_db;
 
 In this example, `clone_db` is created as a clone of `original_db`, and contains the latest schema and data of `original_db` as of current time.
 
-To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify the [Unix timestamp](https://www.unixtimestamp.com/) in microseconds using the `AS OF` option as follows:
+To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify a timestamp using the `AS OF` option. The timestamp may be either a [Unix timestamp](https://www.unixtimestamp.com/) in microseconds (as below), or a [PostgreSQL TIMESTAMP](https://www.postgresql.org/docs/current/datatype-datetime.html) in single quotes.
 
 ```sql
 CREATE DATABASE clone_db TEMPLATE original_db AS OF 1723146703674480;
+# Alternatively:
+CREATE DATABASE clone_db TEMPLATE original_db AS OF '2024-08-08 19:51:43.674480';
 ```
 
 ### Clone a YCQL keyspace
