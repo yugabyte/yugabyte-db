@@ -157,6 +157,9 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
                   newMigrationAPI?.summary?.migration_complexity || migration?.complexity || "N/A"
                 }
                 estimatedMigrationTime={newMigrationAPI?.summary?.estimated_migration_time || "N/A"}
+                migrationComplexityExplanation={
+                  newMigrationAPI?.summary?.migration_comlexity_explanation
+                }
               />
             </Box>
             <Box flexBasis="100%">
