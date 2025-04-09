@@ -152,6 +152,22 @@ jobs:
             sleep 1
           done
 
+      - name: Start fake-gcs-server for Google Cloud Storage emulator tests
+        run: |
+          docker run -d \
+            --env-file .devcontainer/.env \
+            -p 4443:4443 \
+            tustvold/fake-gcs-server -scheme http -public-host localhost:4443
+
+          while ! curl $GOOGLE_SERVICE_ENDPOINT; do   
+            echo "Waiting for $GOOGLE_SERVICE_ENDPOINT..."
+            sleep 1
+          done
+
+          # create bucket
+          curl -v -X POST --data-binary "{\"name\":\"$GOOGLE_TEST_BUCKET\"}" -H "Content-Type: application/json" "$GOOGLE_SERVICE_ENDPOINT/storage/v1/b"
+          curl -v -X POST --data-binary "{\"name\":\"${GOOGLE_TEST_BUCKET}2\"}" -H "Content-Type: application/json" "$GOOGLE_SERVICE_ENDPOINT/storage/v1/b"
+
       - name: Run tests
         run: |
           # Run tests with coverage tool

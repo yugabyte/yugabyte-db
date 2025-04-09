@@ -12,6 +12,7 @@ services:
       - ${USERPROFILE}${HOME}/.gitconfig:/home/rust/.gitconfig:ro
       - ${USERPROFILE}${HOME}/.aws:/home/rust/.aws:rw
       - ${USERPROFILE}${HOME}/.azure:/home/rust/.azure:rw
+      - ${USERPROFILE}${HOME}/.config/gcloud:/home/rust/.config/gcloud:rw
       - ./entrypoint.sh:/entrypoint.sh
     env_file:
       - .env
@@ -21,6 +22,7 @@ services:
       - minio
       - azurite
       - webdav
+      - fake-gcs-server
 
   minio:
     image: minio/minio
@@ -61,3 +63,16 @@ services:
       interval: 6s
       timeout: 2s
       retries: 3
+
+  fake-gcs-server:
+     image: tustvold/fake-gcs-server
+     env_file:
+       - .env
+     network_mode: host
+     command: -scheme http -public-host localhost:4443
+     restart: unless-stopped
+     healthcheck:
+       test: ["CMD", "nc", "-z", "localhost", "4443"]
+       interval: 6s
+       timeout: 2s
+       retries: 3

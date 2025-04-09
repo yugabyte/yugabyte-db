@@ -5,7 +5,9 @@ use aws_credential_types::provider::ProvideCredentials;
 use object_store::aws::AmazonS3Builder;
 use url::Url;
 
-use super::{object_store_cache::ObjectStoreWithExpiration, PG_BACKEND_TOKIO_RUNTIME};
+use crate::PG_BACKEND_TOKIO_RUNTIME;
+
+use super::object_store_cache::ObjectStoreWithExpiration;
 
 // create_s3_object_store creates an AmazonS3 object store with the given bucket name.
 // It is configured by environment variables and aws config files as fallback method.

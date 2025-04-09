@@ -552,7 +552,7 @@ mod tests {
         );
 
         let copy_to_command = format!(
-            "COPY (SELECT i FROM generate_series(1,10) i) TO '{}' WITH (format parquet);;",
+            "COPY (SELECT i FROM generate_series(1,10) i) TO '{}' WITH (format parquet);",
             azure_blob_uri
         );
         Spi::run(copy_to_command.as_str()).unwrap();
@@ -582,7 +582,7 @@ mod tests {
         );
 
         let copy_to_command = format!(
-            "COPY (SELECT i FROM generate_series(1,10) i) TO '{}' WITH (format parquet);;",
+            "COPY (SELECT i FROM generate_series(1,10) i) TO '{}' WITH (format parquet);",
             azure_blob_uri
         );
         Spi::run(copy_to_command.as_str()).unwrap();
@@ -651,14 +651,46 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "relative path not allowed")]
-    fn test_copy_to_unsupported_scheme() {
+    fn test_gcs_from_env() {
         object_store_cache_clear();
 
-        let create_table = "create table test_table(id int);";
-        Spi::run(create_table).unwrap();
+        let test_bucket_name: String =
+            std::env::var("GOOGLE_TEST_BUCKET").expect("GOOGLE_TEST_BUCKET not found");
 
-        Spi::run("copy test_table to 'gs://testbucket/dummy.parquet';").unwrap();
+        let gcs_uri = format!("gs://{}/pg_parquet_test.parquet", test_bucket_name);
+
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(gcs_uri);
+
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "404 Not Found")]
+    fn test_gcs_write_wrong_bucket() {
+        object_store_cache_clear();
+
+        let s3_uri = "gs://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
+
+        let copy_to_command = format!(
+            "COPY (SELECT i FROM generate_series(1,10) i) TO '{}';",
+            s3_uri
+        );
+        Spi::run(copy_to_command.as_str()).unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "404 Not Found")]
+    fn test_gcs_read_wrong_bucket() {
+        object_store_cache_clear();
+
+        let gcs_uri = "gs://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
+
+        let create_table_command = "CREATE TABLE test_table (a int);";
+        Spi::run(create_table_command).unwrap();
+
+        let copy_from_command = format!("COPY test_table FROM '{}';", gcs_uri);
+        Spi::run(copy_from_command.as_str()).unwrap();
     }
 
     #[pg_test]
@@ -780,6 +812,58 @@ mod tests {
             ]
         );
 
+        // gs scheme and bucket
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_uri("gs://testbucket/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("GoogleCloudStorage", "testbucket", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
+
+        // gs scheme and same bucket
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_uri("gs://testbucket/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("GoogleCloudStorage", "testbucket", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
+
+        // gs scheme and different bucket
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_uri("gs://testbucket2/test1.parquet".into());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        assert_eq!(
+            object_store_cache_items(),
+            vec![
+                ("AmazonS3", "testbucket", None),
+                ("AmazonS3", "testbucket2", None),
+                ("GoogleCloudStorage", "testbucket", None),
+                ("GoogleCloudStorage", "testbucket2", None),
+                ("MicrosoftAzure", "testcontainer", None),
+                ("MicrosoftAzure", "testcontainer2", None)
+            ]
+        );
+
         // https scheme and base uri
         let http_uri =
             "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-03.parquet";
@@ -790,6 +874,8 @@ mod tests {
             vec![
                 ("AmazonS3", "testbucket", None),
                 ("AmazonS3", "testbucket2", None),
+                ("GoogleCloudStorage", "testbucket", None),
+                ("GoogleCloudStorage", "testbucket2", None),
                 ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
                 ("MicrosoftAzure", "testcontainer", None),
                 ("MicrosoftAzure", "testcontainer2", None)
@@ -806,6 +892,8 @@ mod tests {
             vec![
                 ("AmazonS3", "testbucket", None),
                 ("AmazonS3", "testbucket2", None),
+                ("GoogleCloudStorage", "testbucket", None),
+                ("GoogleCloudStorage", "testbucket2", None),
                 ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
                 ("MicrosoftAzure", "testcontainer", None),
                 ("MicrosoftAzure", "testcontainer2", None)
@@ -821,6 +909,8 @@ mod tests {
             vec![
                 ("AmazonS3", "testbucket", None),
                 ("AmazonS3", "testbucket2", None),
+                ("GoogleCloudStorage", "testbucket", None),
+                ("GoogleCloudStorage", "testbucket2", None),
                 ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
                 ("Http", "https://www.filesampleshub.com", None),
                 ("MicrosoftAzure", "testcontainer", None),

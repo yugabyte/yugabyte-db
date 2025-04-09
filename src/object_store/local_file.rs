@@ -3,7 +3,9 @@ use std::sync::Arc;
 use object_store::local::LocalFileSystem;
 use url::Url;
 
-use super::{object_store_cache::ObjectStoreWithExpiration, uri_as_string};
+use crate::arrow_parquet::uri_utils::uri_as_string;
+
+use super::object_store_cache::ObjectStoreWithExpiration;
 
 // create_local_file_object_store creates a LocalFileSystem object store with the given path.
 pub(crate) fn create_local_file_object_store(
