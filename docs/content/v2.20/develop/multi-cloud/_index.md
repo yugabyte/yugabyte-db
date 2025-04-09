@@ -70,7 +70,7 @@ YugabyteDB offers basic patterns to make this migration seamless. You can set up
 {{<index/item
     title="Multi-cloud migration"
     body="Migrate your data from one cloud to another."
-    icon="fa-solid fa-cloud-arrow-up"
+    icon="fa-thin fa-cloud-arrow-up"
     href="./multicloud-migration">}}
 
 {{<index/item
