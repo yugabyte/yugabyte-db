@@ -106,7 +106,7 @@ Run the Kafka connector with the following command:
 curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{
   "name": "cdc-demo",
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
     "database.hostname": "'$IP'",
     "database.port": "5433",
     "tasks.max": "3",
