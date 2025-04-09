@@ -906,6 +906,62 @@ INSERT into pk VALUES (1000);
 EXPLAIN(costs off) UPDATE pk SET a = 1002 WHERE a = 1000;
 UPDATE pk SET a = 1002 WHERE a = 1000;
 
+-- Test single-shard transactions in a partition table.
+-- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
+-- of single-shard transactions.
+CREATE TABLE p_test (k INT, v INT, PRIMARY KEY (k)) PARTITION BY RANGE (k);
+CREATE TABLE p_test_1 PARTITION OF p_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE p_test_2 PARTITION OF p_test FOR VALUES FROM (10) TO (20);
+CREATE TABLE p_test_3 PARTITION OF p_test FOR VALUES FROM (20) TO (30);
+
+-- Create an index on one of the partitions to ensure that it is not applicable
+-- for single-shard transactions.
+CREATE INDEX NONCONCURRENTLY ON p_test_3 (v);
+
+-- Inserting a single row into a single partition (without indexes) should be
+-- eligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (1, 1);
+-- Inserting multiple rows should not be eligible for single-shard, even if all
+-- inserts may end up in the same partition.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (11, 11), (12, 12);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test_1 VALUES (2, 2), (3, 3);
+-- Inserts spanning multiple partitions should be ineligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (4, 4), (13, 13);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (14, 14), (5, 5);
+-- Inserts involving p_test_3 should be ineligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (21, 21);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (15, 15), (22, 22);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (23, 23), (16, 16);
+-- Plans having multiple modify-table operations should be ineligible for single-shard.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test VALUES (6, 6) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 1, cte.k + 1 FROM cte);
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test_2 VALUES (17, 17) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 1, cte.k + 1 FROM cte);
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test VALUES (9, 9) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 10, cte.k + 10 FROM cte);
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+WITH cte AS (INSERT INTO p_test VALUES (8, 8) RETURNING k)
+INSERT INTO p_test (SELECT cte.k + 20, cte.k + 20 FROM cte);
+
+SELECT * FROM p_test ORDER BY k;
+DELETE FROM p_test WHERE k % 10 >= 5;
+
+-- Cross partition updates should never be eligible for single-shard.
+-- Row movement between partitions that have no indexes or triggers.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k IN (2, 3);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 15) % 20 WHERE k IN (4, 14);
+-- Row movement between partitions, one of which has indexes or triggers.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k IN (13, 23);
+INSERT INTO p_test VALUES (1, 1);
+DELETE FROM p_test WHERE k % 10 = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k IN (21, 1, 11);
+
+SELECT * FROM p_test ORDER BY k;
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -933,6 +989,7 @@ DROP TABLE array_t2;
 DROP TABLE array_t3;
 DROP TABLE array_t4;
 DROP TABLE json_t1;
+DROP TABLE p_test;
 DROP TABLE pk;
 DROP TYPE rt;
 DROP TYPE two_int;

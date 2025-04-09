@@ -97,6 +97,25 @@ SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
 CREATE TEMP TABLE z (b TEXT, PRIMARY KEY(aa, b)) inherits (a);
 INSERT INTO z VALUES (NULL, 'text'); -- should fail
 
+-- Check inherited UPDATE with first child excluded
+create table some_tab (f1 int, f2 int, f3 int, check (f1 < 10) no inherit);
+create table some_tab_child () inherits(some_tab);
+insert into some_tab_child select i, i+1, 0 from generate_series(1,1000) i;
+create index on some_tab_child(f1, f2);
+-- while at it, also check that statement-level triggers fire
+create function some_tab_stmt_trig_func() returns trigger as
+$$begin raise notice 'updating some_tab'; return NULL; end;$$
+language plpgsql;
+create trigger some_tab_stmt_trig
+  before update on some_tab execute function some_tab_stmt_trig_func();
+
+explain (costs off)
+update some_tab set f3 = 11 where f1 = 12 and f2 = 13;
+update some_tab set f3 = 11 where f1 = 12 and f2 = 13;
+
+drop table some_tab cascade;
+drop function some_tab_stmt_trig_func();
+
 -- Check inherited UPDATE with all children excluded
 create table some_tab (a int, b int);
 create table some_tab_child () inherits (some_tab);
@@ -353,6 +372,15 @@ ALTER TABLE inhts RENAME d TO dd;
 
 DROP TABLE inhts;
 
+-- Test for adding a column to a parent table with complex inheritance
+CREATE TABLE inhta ();
+CREATE TABLE inhtb () INHERITS (inhta);
+CREATE TABLE inhtc () INHERITS (inhtb);
+CREATE TABLE inhtd () INHERITS (inhta, inhtb, inhtc);
+ALTER TABLE inhta ADD COLUMN i int;
+\d+ inhta
+DROP TABLE inhta, inhtb, inhtc, inhtd;
+
 -- Test for renaming in diamond inheritance
 CREATE TABLE inht2 (x int) INHERITS (inht1);
 CREATE TABLE inht3 (y int) INHERITS (inht1);
@@ -533,6 +561,14 @@ explain (verbose, costs off) select min(1-id) from matest0;
 select min(1-id) from matest0;
 reset enable_seqscan;
 reset enable_parallel_append;
+
+explain (verbose, costs off)  -- bug #18652
+select 1 - id as c from
+(select id from matest3 t1 union all select id * 2 from matest3 t2) ss
+order by c;
+select 1 - id as c from
+(select id from matest3 t1 union all select id * 2 from matest3 t2) ss
+order by c;
 
 drop table matest0 cascade;
 

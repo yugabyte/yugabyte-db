@@ -19,7 +19,7 @@ Welcome to the Build and Learn tutorial! You are going to learn the essential ca
 
 Throughout the following five chapters, you'll gain practical experience in these areas:
 
-* [Chapter 1: Debuting with PostgreSQL](../chapter1-debuting-with-postgres) - Deploy the first version of the YugaPlus movie recommendation service on PostgreSQL. You'll also understand how YugaPlus uses the PostgreSQL pgvector extension and the full-text search capabilities to provide movie recommendations.
+* [Chapter 1: Debuting with PostgreSQL](../chapter1-debuting-with-postgres) - Deploy the first version of the YugaPlus movie recommendation service on PostgreSQL. You'll also understand how YugaPlus uses the PostgreSQL [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/) and the full-text search capabilities to provide movie recommendations.
 
 * [Chapter 2: Scaling with YugabyteDB](../chapter2-scaling-with-yugabytedb) - Learn how YugabyteDB distributes data and workloads while migrating YugaPlus to a multi-node YugabyteDB cluster. Additionally, you'll witness YugabyteDB's PostgreSQL compatibility in action as the application is migrated without any code changes.
 

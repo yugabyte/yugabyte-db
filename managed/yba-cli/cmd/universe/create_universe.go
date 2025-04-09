@@ -416,12 +416,10 @@ func init() {
 	createUniverseCmd.Flags().Int("dedicated-master-throughput", 125,
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
 			"supported only for AWS.")
-	createUniverseCmd.Flags().Float64Slice("k8s-master-mem-size", []float64{4, 4},
-		"[Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size "+
-			"for each cluster as a separate flag or as comma separated values.")
-	createUniverseCmd.Flags().Float64Slice("k8s-master-cpu-core-count", []float64{2, 2},
-		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
-			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64("k8s-master-mem-size", 4,
+		"[Optional] Memory size of the kubernetes master node in GB.")
+	createUniverseCmd.Flags().Float64("k8s-master-cpu-core-count", 2,
+		"[Optional] CPU core count of the kubernetes master node.")
 
 	createUniverseCmd.Flags().Bool("use-spot-instance", false,
 		"[Optional] Use spot instances for cloud provider based universe nodes. (default false)")

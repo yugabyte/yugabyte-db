@@ -111,6 +111,12 @@ typedef struct LogicalDecodingContext
 	bool		end_xact;
 
 	/*
+	 * True if the logical decoding context being used for the creation
+	 * of a logical replication slot.
+	 */
+	bool		in_create;
+
+	/*
 	 * Don't replay commits from an LSN < this LSN. This is the YB equivalent of
 	 * start_decoding_at of SnapBuild struct. We have this field here because we
 	 * do not use the snapbuild mechanism.

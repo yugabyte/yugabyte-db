@@ -97,7 +97,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status SetupPerformOptions(
       tserver::PgPerformOptionsPB* options,
-      EnsureReadTimeIsSet ensure_read_time = EnsureReadTimeIsSet::kFalse);
+      EnsureReadTimeIsSet ensure_read_time = EnsureReadTimeIsSet::kFalse,
+      bool non_transactional_buffered_write = false);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;

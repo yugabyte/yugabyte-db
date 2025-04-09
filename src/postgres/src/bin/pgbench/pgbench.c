@@ -734,7 +734,8 @@ typedef struct
 	pg_time_usec_t txn_begin;	/* used for measuring schedule lag times */
 	pg_time_usec_t stmt_begin;	/* used for measuring statement latencies */
 
-	bool		prepared[MAX_SCRIPTS];	/* whether client prepared the script */
+	/* whether client prepared each command of each script */
+	bool	  **prepared;
 
 	/*
 	 * For processing failures and repeating transactions with serialization
@@ -859,7 +860,8 @@ static const char *QUERYMODE[] = {"simple", "extended", "prepared"};
  * argv			Command arguments, the first of which is the command or SQL
  *				string itself.  For SQL commands, after post-processing
  *				argv[0] is the same as 'lines' with variables substituted.
- * varprefix 	SQL commands terminated with \gset or \aset have this set
+ * prepname		The name that this command is prepared under, in prepare mode
+ * varprefix	SQL commands terminated with \gset or \aset have this set
  *				to a non NULL value.  If nonempty, it's used to prefix the
  *				variable name that receives the value.
  * aset			do gset on all possible queries of a combined query (\;).
@@ -877,6 +879,7 @@ typedef struct Command
 	MetaCommand meta;
 	int			argc;
 	char	   *argv[MAX_ARGS];
+	char	   *prepname;
 	char	   *varprefix;
 	PgBenchExpr *expr;
 	SimpleStats stats;
@@ -3773,13 +3776,6 @@ YbRunShellCommand(Variables *variables, char *variable, char **argv, int argc)
 	return true;
 }
 
-#define MAX_PREPARE_NAME		32
-static void
-preparedStatementName(char *buffer, int file, int state)
-{
-	sprintf(buffer, "P%d_%d", file, state);
-}
-
 /*
  * Report the abortion of the client when processing SQL commands.
  */
@@ -3865,6 +3861,99 @@ chooseScript(TState *thread)
 	return 0;
 }
 
+/*
+ * Allocate space for CState->prepared: we need one boolean for each command
+ * of each script.
+ */
+static void
+allocCStatePrepared(CState *st)
+{
+	Assert(st->prepared == NULL);
+
+	st->prepared = pg_malloc(sizeof(bool *) * num_scripts);
+	for (int i = 0; i < num_scripts; i++)
+	{
+		ParsedScript *script = &sql_script[i];
+		int			numcmds;
+
+		for (numcmds = 0; script->commands[numcmds] != NULL; numcmds++)
+			;
+		st->prepared[i] = pg_malloc0(sizeof(bool) * numcmds);
+	}
+}
+
+/*
+ * Prepare the SQL command from st->use_file at command_num.
+ */
+static void
+prepareCommand(CState *st, int command_num)
+{
+	Command    *command = sql_script[st->use_file].commands[command_num];
+
+	/* No prepare for non-SQL commands */
+	if (command->type != SQL_COMMAND)
+		return;
+
+	if (!st->prepared)
+		allocCStatePrepared(st);
+
+	if (!st->prepared[st->use_file][command_num])
+	{
+		PGresult   *res;
+
+		pg_log_debug("client %d preparing %s", st->id, command->prepname);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d preparing %s", st->id, command->prepname)));
+		res = PQprepare(st->con, command->prepname,
+						command->argv[0], command->argc - 1, NULL);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		{
+			pg_log_error("%s", PQerrorMessage(st->con));
+			ereport(ELEVEL_LOG_MAIN, (errmsg("%s", PQerrorMessage(st->con))));
+		}
+		PQclear(res);
+		st->prepared[st->use_file][command_num] = true;
+	}
+}
+
+/*
+ * Prepare all the commands in the script that come after the \startpipeline
+ * that's at position st->command, and the first \endpipeline we find.
+ *
+ * This sets the ->prepared flag for each relevant command as well as the
+ * \startpipeline itself, but doesn't move the st->command counter.
+ */
+static void
+prepareCommandsInPipeline(CState *st)
+{
+	int			j;
+	Command   **commands = sql_script[st->use_file].commands;
+
+	Assert(commands[st->command]->type == META_COMMAND &&
+		   commands[st->command]->meta == META_STARTPIPELINE);
+
+	if (!st->prepared)
+		allocCStatePrepared(st);
+
+	/*
+	 * We set the 'prepared' flag on the \startpipeline itself to flag that we
+	 * don't need to do this next time without calling prepareCommand(), even
+	 * though we don't actually prepare this command.
+	 */
+	if (st->prepared[st->use_file][st->command])
+		return;
+
+	for (j = st->command + 1; commands[j] != NULL; j++)
+	{
+		if (commands[j]->type == META_COMMAND &&
+			commands[j]->meta == META_ENDPIPELINE)
+			break;
+
+		prepareCommand(st, j);
+	}
+
+	st->prepared[st->use_file][st->command] = true;
+}
+
 /* Send a SQL command, using the chosen querymode */
 static bool
 sendCommand(CState *st, Command *command)
@@ -3897,60 +3986,14 @@ sendCommand(CState *st, Command *command)
 	}
 	else if (querymode == QUERY_PREPARED)
 	{
-		char		name[MAX_PREPARE_NAME];
 		const char *params[MAX_ARGS];
 
-		if (!st->prepared[st->use_file])
-		{
-			int			j;
-			Command   **commands = sql_script[st->use_file].commands;
-
-			for (j = 0; commands[j] != NULL; j++)
-			{
-				PGresult   *res;
-				char		name[MAX_PREPARE_NAME];
-
-				if (commands[j]->type != SQL_COMMAND)
-					continue;
-				preparedStatementName(name, st->use_file, j);
-				if (PQpipelineStatus(st->con) == PQ_PIPELINE_OFF)
-				{
-					res = PQprepare(st->con, name,
-									commands[j]->argv[0], commands[j]->argc - 1, NULL);
-					if (PQresultStatus(res) != PGRES_COMMAND_OK)
-					{
-						pg_log_error("%s", PQerrorMessage(st->con));
-						ereport(ELEVEL_LOG_MAIN,
-								(errmsg("%s", PQerrorMessage(st->con))));
-
-					}
-					PQclear(res);
-				}
-				else
-				{
-					/*
-					 * In pipeline mode, we use asynchronous functions. If a
-					 * server-side error occurs, it will be processed later
-					 * among the other results.
-					 */
-					if (!PQsendPrepare(st->con, name,
-									   commands[j]->argv[0], commands[j]->argc - 1, NULL))
-					{
-						pg_log_error("%s", PQerrorMessage(st->con));
-						ereport(ELEVEL_LOG_MAIN,
-								(errmsg("%s", PQerrorMessage(st->con))));
-					}
-				}
-			}
-			st->prepared[st->use_file] = true;
-		}
-
+		prepareCommand(st, st->command);
 		getQueryParams(&st->variables, command, params);
-		preparedStatementName(name, st->use_file, st->command);
 
-		pg_log_debug("client %d sending %s", st->id, name);
-		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, name)));
-		r = PQsendQueryPrepared(st->con, name, command->argc - 1,
+		pg_log_debug("client %d sending %s", st->id, command->prepname);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, command->prepname)));
+		r = PQsendQueryPrepared(st->con, command->prepname, command->argc - 1,
 								params, NULL, NULL, 0);
 	}
 	else						/* unknown sql mode */
@@ -4729,7 +4772,8 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 					thread->conn_duration += now - start;
 
 					/* Reset session-local state */
-					memset(st->prepared, 0, sizeof(st->prepared));
+					pg_free(st->prepared);
+					st->prepared = NULL;
 				}
 
 #ifdef YB_TODO
@@ -4854,9 +4898,13 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 			case CSTATE_START_COMMAND:
 				command = sql_script[st->use_file].commands[st->command];
 
-				/* Transition to script end processing if done */
+				/*
+				 * Transition to script end processing if done, but close up
+				 * shop if a pipeline is open at this point.
+				 */
 				if (command == NULL)
 				{
+#ifdef YB_TODO
 					if (st->first_failure.status == NO_FAILURE)
 					{
 						st->state = CSTATE_END_TX;
@@ -4866,6 +4914,16 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						/* check if we can retry the failure */
 						st->state = CSTATE_RETRY;
 					}
+#endif
+					if (PQpipelineStatus(st->con) == PQ_PIPELINE_OFF)
+						st->state = CSTATE_END_TX;
+					else
+					{
+						pg_log_error("client %d aborted: end of script reached with pipeline open",
+									 st->id);
+						st->state = CSTATE_ABORTED;
+					}
+
 					break;
 				}
 
@@ -4965,8 +5023,14 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						switch (conditional_stack_peek(st->cstack))
 						{
 							case IFSTATE_FALSE:
-								if (command->meta == META_IF ||
-									command->meta == META_ELIF)
+								if (command->meta == META_IF)
+								{
+									/* nested if in skipped branch - ignore */
+									conditional_stack_push(st->cstack,
+														   IFSTATE_IGNORED);
+									st->command++;
+								}
+								else if (command->meta == META_ELIF)
 								{
 									/* we must evaluate the condition */
 									st->state = CSTATE_START_COMMAND;
@@ -4985,11 +5049,7 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 									conditional_stack_pop(st->cstack);
 									if (conditional_active(st->cstack))
 										st->state = CSTATE_START_COMMAND;
-
-									/*
-									 * else state remains in
-									 * CSTATE_SKIP_COMMAND
-									 */
+									/* else state remains CSTATE_SKIP_COMMAND */
 									st->command++;
 								}
 								break;
@@ -5697,6 +5757,16 @@ executeMetaCommand(CState *st, pg_time_usec_t *now, YbFailureStatus *failure_sta
 			return CSTATE_FAILURE;
 		}
 
+		/*
+		 * If we're in prepared-query mode, we need to prepare all the
+		 * commands that are inside the pipeline before we actually start the
+		 * pipeline itself.  This solves the problem that running BEGIN
+		 * ISOLATION LEVEL SERIALIZABLE in a pipeline would fail due to a
+		 * snapshot having been acquired by the prepare within the pipeline.
+		 */
+		if (querymode == QUERY_PREPARED)
+			prepareCommandsInPipeline(st);
+
 		if (PQpipelineStatus(st->con) != PQ_PIPELINE_OFF)
 		{
 			commandFailed(st, "startpipeline", "already in pipeline mode",
@@ -6204,6 +6274,8 @@ initGenerateDataClientSide(PGconn *con)
 	PGresult   *res;
 	int			i;
 	int64		k;
+	int			chars = 0;
+	int			prev_chars = 0;
 	char	   *copy_statement;
 
 	/* used to track elapsed time and estimate of the remaining time */
@@ -6294,19 +6366,29 @@ initGenerateDataClientSide(PGconn *con)
 			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
 			double		remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
 
-			fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c",
-					j, (int64) naccounts * scale,
-					(int) (((int64) j * 100) / (naccounts * (int64) scale)),
-					elapsed_sec, remaining_sec, eol);
+			chars = fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)",
+							j, (int64) naccounts * scale,
+							(int) (((int64) j * 100) / (naccounts * (int64) scale)),
+							elapsed_sec, remaining_sec);
 
 			/*
 			 * YB_TODO(neil@yugabyte) ereport is no longer used in Pg13
 			 */
 			ereport(ELEVEL_LOG_MAIN,
-					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c\n",
+					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
 							j, (int64) naccounts * scale,
 							(int) (((int64) j * 100) / (naccounts * (int64) scale)),
-							elapsed_sec, remaining_sec, eol)));
+							elapsed_sec, remaining_sec)));
+
+			/*
+			 * If the previous progress message is longer than the current
+			 * one, add spaces to the current line to fully overwrite any
+			 * remaining characters from the previous message.
+			 */
+			if (prev_chars > chars)
+				fprintf(stderr, "%*c", prev_chars - chars, ' ');
+			fputc(eol, stderr);
+			prev_chars = chars;
 		}
 		/* let's not call the timing for each row, but only each 100 rows */
 		else if (use_quiet && (j % 100 == 0))
@@ -6317,9 +6399,19 @@ initGenerateDataClientSide(PGconn *con)
 			/* have we reached the next interval (or end)? */
 			if ((j == scale * naccounts) || (elapsed_sec >= log_interval * LOG_STEP_SECONDS))
 			{
-				fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c",
-						j, (int64) naccounts * scale,
-						(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec, eol);
+				chars = fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)",
+								j, (int64) naccounts * scale,
+								(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec);
+
+				/*
+				 * If the previous progress message is longer than the current
+				 * one, add spaces to the current line to fully overwrite any
+				 * remaining characters from the previous message.
+				 */
+				if (prev_chars > chars)
+					fprintf(stderr, "%*c", prev_chars - chars, ' ');
+				fputc(eol, stderr);
+				prev_chars = chars;
 
 				/*
 				 * YB_TODO(neil@yugabyte) ereport is no longer used in Pg13
@@ -6872,6 +6964,7 @@ create_sql_command(PQExpBuffer buf, const char *source)
 	my_command->varprefix = NULL;	/* allocated later, if needed */
 	my_command->expr = NULL;
 	initSimpleStats(&my_command->stats);
+	my_command->prepname = NULL;	/* set later, if needed */
 
 	return my_command;
 }
@@ -6903,6 +6996,7 @@ static void
 postprocess_sql_command(Command *my_command)
 {
 	char		buffer[128];
+	static int	prepnum = 0;
 
 	Assert(my_command->type == SQL_COMMAND);
 
@@ -6911,15 +7005,18 @@ postprocess_sql_command(Command *my_command)
 	buffer[strcspn(buffer, "\n\r")] = '\0';
 	my_command->first_line = pg_strdup(buffer);
 
-	/* parse query if necessary */
+	/* Parse query and generate prepared statement name, if necessary */
 	switch (querymode)
 	{
 		case QUERY_SIMPLE:
 			my_command->argv[0] = my_command->lines.data;
 			my_command->argc++;
 			break;
-		case QUERY_EXTENDED:
 		case QUERY_PREPARED:
+			my_command->prepname = psprintf("P_%d", prepnum++);
+			/* fall through */
+			switch_fallthrough();	/* YB added */
+		case QUERY_EXTENDED:
 			if (!parseQuery(my_command))
 				exit(1);
 			break;
@@ -9299,14 +9396,23 @@ clear_socket_set(socket_set *sa)
 static void
 add_socket_to_set(socket_set *sa, int fd, int idx)
 {
+	/* See connect_slot() for background on this code. */
+#ifdef WIN32
+	if (sa->fds.fd_count + 1 >= FD_SETSIZE)
+	{
+		pg_log_error("too many concurrent database clients for this platform: %d",
+					 sa->fds.fd_count + 1);
+		exit(1);
+	}
+#else
 	if (fd < 0 || fd >= FD_SETSIZE)
 	{
-		/*
-		 * Doing a hard exit here is a bit grotty, but it doesn't seem worth
-		 * complicating the API to make it less grotty.
-		 */
-		pg_fatal("too many client connections for select()");
+		pg_log_error("socket file descriptor out of range for select(): %d",
+					 fd);
+		pg_log_error_hint("Try fewer concurrent database clients.");
+		exit(1);
 	}
+#endif
 	FD_SET(fd, &sa->fds);
 	if (fd > sa->maxfd)
 		sa->maxfd = fd;

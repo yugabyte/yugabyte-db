@@ -1494,6 +1494,12 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	replorigin_drop_by_name(originname, true, false);
 
 	/*
+	 * Tell the cumulative stats system that the subscription is getting
+	 * dropped.
+	 */
+	pgstat_drop_subscription(subid);
+
+	/*
 	 * If there is no slot associated with the subscription, we can finish
 	 * here.
 	 */
@@ -1579,12 +1585,6 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 		walrcv_disconnect(wrconn);
 	}
 	PG_END_TRY();
-
-	/*
-	 * Tell the cumulative stats system that the subscription is getting
-	 * dropped.
-	 */
-	pgstat_drop_subscription(subid);
 
 	table_close(rel, NoLock);
 }
@@ -1860,7 +1860,8 @@ ReportSlotConnectionError(List *rstates, Oid subid, char *slotname, char *err)
 			 errmsg("could not connect to publisher when attempting to drop replication slot \"%s\": %s",
 					slotname, err),
 	/* translator: %s is an SQL ALTER command */
-			 errhint("Use %s to disassociate the subscription from the slot.",
+			 errhint("Use %s to disable the subscription, and then use %s to disassociate it from the slot.",
+					 "ALTER SUBSCRIPTION ... DISABLE",
 					 "ALTER SUBSCRIPTION ... SET (slot_name = NONE)")));
 }
 

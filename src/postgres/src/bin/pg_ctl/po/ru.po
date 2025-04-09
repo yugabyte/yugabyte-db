@@ -6,21 +6,21 @@
 # Sergey Burladyan <eshkinkot@gmail.com>, 2009, 2012.
 # Andrey Sudnik <sudnikand@gmail.com>, 2010.
 # Dmitriy Olshevskiy <olshevskiy87@bk.ru>, 2014.
-# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022.
+# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024.
 msgid ""
 msgstr ""
 "Project-Id-Version: pg_ctl (PostgreSQL current)\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-08-27 14:52+0300\n"
-"PO-Revision-Date: 2022-09-05 13:35+0300\n"
+"POT-Creation-Date: 2025-02-08 07:45+0200\n"
+"PO-Revision-Date: 2024-09-07 06:47+0300\n"
 "Last-Translator: Alexander Lakhin <exclusion@gmail.com>\n"
 "Language-Team: Russian <pgsql-ru-general@postgresql.org>\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
-"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: ../../common/exec.c:149 ../../common/exec.c:266 ../../common/exec.c:312
 #, c-format
@@ -63,7 +63,7 @@ msgstr "нехватка памяти"
 
 #: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
 #: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:162
-#: ../../port/path.c:753 ../../port/path.c:791 ../../port/path.c:808
+#: ../../port/path.c:830 ../../port/path.c:868 ../../port/path.c:885
 #, c-format
 msgid "out of memory\n"
 msgstr "нехватка памяти\n"
@@ -101,9 +101,9 @@ msgstr "дочерний процесс завершён по сигналу %d:
 #: ../../common/wait_error.c:72
 #, c-format
 msgid "child process exited with unrecognized status %d"
-msgstr "дочерний процесс завершился с нераспознанным состоянием %d"
+msgstr "дочерний процесс завершился с нераспознанным кодом состояния %d"
 
-#: ../../port/path.c:775
+#: ../../port/path.c:852
 #, c-format
 msgid "could not get current working directory: %s\n"
 msgstr "не удалось определить текущий рабочий каталог: %s\n"
@@ -116,7 +116,7 @@ msgstr "%s: каталог \"%s\" не существует\n"
 #: pg_ctl.c:263
 #, c-format
 msgid "%s: could not access directory \"%s\": %s\n"
-msgstr "%s: ошибка доступа к каталогу \"%s\": %s\n"
+msgstr "%s: ошибка при обращении к каталогу \"%s\": %s\n"
 
 #: pg_ctl.c:276
 #, c-format
@@ -183,8 +183,8 @@ msgstr "%s: не удалось отправить сигнал остановк
 #: pg_ctl.c:889
 #, c-format
 msgid ""
-"program \"%s\" is needed by %s but was not found in the same directory as \""
-"%s\"\n"
+"program \"%s\" is needed by %s but was not found in the same directory as "
+"\"%s\"\n"
 msgstr "программа \"%s\" нужна для %s, но она не найдена в каталоге \"%s\"\n"
 
 #: pg_ctl.c:892
@@ -698,8 +698,8 @@ msgstr "  -c, --core-files       неприменимо на этой платф
 #, c-format
 msgid "  -l, --log=FILENAME     write (or append) server log to FILENAME\n"
 msgstr ""
-"  -l, --log=ФАЙЛ         записывать (или добавлять) протокол сервера в ФАЙЛ."
-"\n"
+"  -l, --log=ФАЙЛ         записывать (или добавлять) протокол сервера в "
+"ФАЙЛ.\n"
 
 #: pg_ctl.c:2100
 #, c-format
@@ -815,8 +815,8 @@ msgstr ""
 msgid ""
 "  auto       start service automatically during system startup (default)\n"
 msgstr ""
-"  auto       запускать службу автоматически при старте системы (по умолчанию)"
-"\n"
+"  auto       запускать службу автоматически при старте системы (по "
+"умолчанию)\n"
 
 #: pg_ctl.c:2123
 #, c-format
@@ -963,8 +963,8 @@ msgstr ""
 #~ "(The default is to wait for shutdown, but not for start or restart.)\n"
 #~ "\n"
 #~ msgstr ""
-#~ "(По умолчанию ожидание имеет место при остановке, но не при (пере)"
-#~ "запуске.)\n"
+#~ "(По умолчанию ожидание имеет место при остановке, но не при "
+#~ "(пере)запуске.)\n"
 #~ "\n"
 
 #~ msgid ""

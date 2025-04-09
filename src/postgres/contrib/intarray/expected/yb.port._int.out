@@ -461,13 +461,13 @@ SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
 SELECT count(*) from test__int WHERE a @@ '20 | !21';
  count 
 -------
-  6566
+  6567
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '!20 & !21';
  count 
 -------
-  6343
+  6344
 (1 row)
 
 SET enable_seqscan = off;  -- not all of these would use index by default

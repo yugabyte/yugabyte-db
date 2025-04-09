@@ -504,6 +504,8 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_T
 SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
 
+-- YB: Remove the tables from publication before dropping them.
+DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT schemaname, tablename FROM pg_publication_tables WHERE pubname = 'partman_test_publication' LOOP EXECUTE format('ALTER PUBLICATION partman_test_publication DROP TABLE %I.%I', r.schemaname, r.tablename); END LOOP; END $$;
 -- Test that maintenance will catch up
 DO $$
 BEGIN

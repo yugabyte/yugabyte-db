@@ -75,13 +75,7 @@ var resizeNodeCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
 
-		var cluster ybaclient.Cluster
-		for _, c := range clusters {
-			if strings.EqualFold(c.GetClusterType(), util.PrimaryClusterType) {
-				cluster = c
-				break
-			}
-		}
+		cluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
 
 		if cluster == (ybaclient.Cluster{}) {
 			err := fmt.Errorf(

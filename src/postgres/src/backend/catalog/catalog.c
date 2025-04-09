@@ -152,6 +152,36 @@ IsCatalogRelationOid(Oid relid)
 }
 
 /*
+ * IsInplaceUpdateRelation
+ *		True iff core code performs inplace updates on the relation.
+ *
+ *		This is used for assertions and for making the executor follow the
+ *		locking protocol described at README.tuplock section "Locking to write
+ *		inplace-updated tables".  Extensions may inplace-update other heap
+ *		tables, but concurrent SQL UPDATE on the same table may overwrite
+ *		those modifications.
+ *
+ *		The executor can assume these are not partitions or partitioned and
+ *		have no triggers.
+ */
+bool
+IsInplaceUpdateRelation(Relation relation)
+{
+	return IsInplaceUpdateOid(RelationGetRelid(relation));
+}
+
+/*
+ * IsInplaceUpdateOid
+ *		Like the above, but takes an OID as argument.
+ */
+bool
+IsInplaceUpdateOid(Oid relid)
+{
+	return (relid == RelationRelationId ||
+			relid == DatabaseRelationId);
+}
+
+/*
  * IsToastRelation
  *		True iff relation is a TOAST support relation (or index).
  *

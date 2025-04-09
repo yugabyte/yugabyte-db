@@ -7218,12 +7218,23 @@ YbGetIndexKeySortOrdering(Relation indexRel)
 /*
  * Determine if the unsafe truncate (i.e., without table rewrite) should
  * be used for a given relation and its indexes.
+ * Also provide the reason why unsafe truncate is used. The reason is used to
+ * provide appropriate error messages to the users in case unsafe truncate
+ * cannot be used.
  */
-bool
+YbTruncateType
 YbUseUnsafeTruncate(Relation rel)
 {
-	return IsYBRelation(rel) &&
-		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
+	if (!IsYBRelation(rel))
+		return YB_SAFE_TRUNCATE;
+
+	if (IsSystemRelation(rel))
+		return YB_UNSAFE_TRUNCATE_SYSTEM_RELATION;
+
+	if (!yb_enable_alter_table_rewrite)
+		return YB_UNSAFE_TRUNCATE_TABLE_REWRITE_DISABLED;
+
+	return YB_SAFE_TRUNCATE;
 }
 
 

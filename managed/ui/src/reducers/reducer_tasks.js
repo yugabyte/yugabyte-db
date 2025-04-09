@@ -12,9 +12,6 @@ import {
   PATCH_TASKS_FOR_CUSTOMER,
   SHOW_TASK_IN_DRAWER,
   HIDE_TASK_IN_DRAWER,
-  SHOW_TASK_BANNER,
-  HIDE_TASK_BANNER,
-  HIDE_ALL_TASK_BANNERS
 } from '../actions/tasks';
 import moment from 'moment';
 import { get, mapValues, set } from 'lodash';
@@ -109,42 +106,6 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, showTaskInDrawer: action.payload };
     case HIDE_TASK_IN_DRAWER:
       return { ...state, showTaskInDrawer: '' };
-    case SHOW_TASK_BANNER: {
-      const bannerInfos = {
-        ...state.taskBannerInfo
-      };
-      const alreadyExists = get(bannerInfos, [
-        action.payload.universeUUID,
-        action.payload.taskUUID
-      ]);
-      if (!alreadyExists || alreadyExists.visible !== false) {
-        set(bannerInfos, [action.payload.universeUUID, action.payload.taskUUID], {
-          visible: true,
-          timestamp: Date.now(),
-          taskUUID: action.payload.taskUUID
-        });
-      }
-      return { ...state, taskBannerInfo: bannerInfos };
-    }
-    case HIDE_TASK_BANNER:
-      set(
-        state.taskBannerInfo,
-        [action.payload.universeUUID, action.payload.taskUUID, 'visible'],
-        false
-      );
-      return {
-        ...state
-      };
-    case HIDE_ALL_TASK_BANNERS:
-      state.taskBannerInfo[action.payload.universeUUID] = mapValues(
-        state.taskBannerInfo[action.payload.universeUUID],
-        (value) => {
-          return { ...value, visible: false };
-        }
-      );
-      return {
-        ...state
-      };
     default:
       return state;
   }

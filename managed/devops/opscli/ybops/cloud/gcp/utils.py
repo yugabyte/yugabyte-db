@@ -690,6 +690,25 @@ class GoogleCloudAdmin():
                                                         deviceName=name).execute()
         return self.waiter.wait(operation, zone=zone)
 
+    def get_disk(self, zone, instance, volume_id):
+        logging.info("Retrieving the disk {}".format(volume_id))
+        try:
+            instance = self.compute.instances().get(project=self.project,
+                                                    zone=zone,
+                                                    instance=instance).execute()
+            for disk in instance.get("disks", []):
+                if disk.get("deviceName").strip().lower() == volume_id.strip().lower():
+                    disk_name = disk.get("source").split("/")[-1]
+
+                    # Fetch disk details separately to get the status
+                    disk_details = self.compute.disks().get(project=self.project,
+                                                            zone=zone,
+                                                            disk=disk_name).execute()
+                    return disk_details
+        except Exception as e:
+            logging.warning(f"Error checking GCP disk attachment: {e}")
+            return None
+
     def update_disk(self, args, instance):
         zone = args.zone
         instance_info = self.compute.instances().get(project=self.project, zone=zone,

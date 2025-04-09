@@ -401,7 +401,6 @@ vacuum_one_database(ConnParams *cparams,
 	int			ntups;
 	bool		failed = false;
 	bool		tables_listed = false;
-	bool		has_where = false;
 	const char *initcmd;
 	const char *stage_commands[] = {
 		"SET default_statistics_target=1; SET vacuum_cost_delay=0;",
@@ -462,16 +461,25 @@ vacuum_one_database(ConnParams *cparams,
 	}
 
 	if (vacopts->min_xid_age != 0 && PQserverVersion(conn) < 90600)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--min-xid-age", "9.6");
+	}
 
 	if (vacopts->min_mxid_age != 0 && PQserverVersion(conn) < 90600)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--min-mxid-age", "9.6");
+	}
 
 	if (vacopts->parallel_workers >= 0 && PQserverVersion(conn) < 130000)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--parallel", "13");
+	}
 
 	if (!quiet)
 	{
@@ -551,10 +559,21 @@ vacuum_one_database(ConnParams *cparams,
 						 " LEFT JOIN pg_catalog.pg_class t"
 						 " ON c.reltoastrelid OPERATOR(pg_catalog.=) t.oid\n");
 
-	/* Used to match the tables listed by the user */
+	/*
+	 * Used to match the tables listed by the user, completing the JOIN
+	 * clause.
+	 */
 	if (tables_listed)
 		appendPQExpBufferStr(&catalog_query, " JOIN listed_tables"
 							 " ON listed_tables.table_oid OPERATOR(pg_catalog.=) c.oid\n");
+
+	/*
+	 * Exclude temporary tables, beginning the WHERE clause.
+	 */
+	appendPQExpBufferStr(&catalog_query,
+						 " WHERE c.relpersistence OPERATOR(pg_catalog.!=) "
+						 CppAsString2(RELPERSISTENCE_TEMP) "\n");
+
 
 	/*
 	 * If no tables were listed, filter for the relevant relation types.  If
@@ -564,10 +583,9 @@ vacuum_one_database(ConnParams *cparams,
 	 */
 	if (!tables_listed)
 	{
-		appendPQExpBufferStr(&catalog_query, " WHERE c.relkind OPERATOR(pg_catalog.=) ANY (array["
+		appendPQExpBufferStr(&catalog_query, " AND c.relkind OPERATOR(pg_catalog.=) ANY (array["
 							 CppAsString2(RELKIND_RELATION) ", "
 							 CppAsString2(RELKIND_MATVIEW) "])\n");
-		has_where = true;
 	}
 
 	/*
@@ -580,25 +598,23 @@ vacuum_one_database(ConnParams *cparams,
 	if (vacopts->min_xid_age != 0)
 	{
 		appendPQExpBuffer(&catalog_query,
-						  " %s GREATEST(pg_catalog.age(c.relfrozenxid),"
+						  " AND GREATEST(pg_catalog.age(c.relfrozenxid),"
 						  " pg_catalog.age(t.relfrozenxid)) "
 						  " OPERATOR(pg_catalog.>=) '%d'::pg_catalog.int4\n"
 						  " AND c.relfrozenxid OPERATOR(pg_catalog.!=)"
 						  " '0'::pg_catalog.xid\n",
-						  has_where ? "AND" : "WHERE", vacopts->min_xid_age);
-		has_where = true;
+						  vacopts->min_xid_age);
 	}
 
 	if (vacopts->min_mxid_age != 0)
 	{
 		appendPQExpBuffer(&catalog_query,
-						  " %s GREATEST(pg_catalog.mxid_age(c.relminmxid),"
+						  " AND GREATEST(pg_catalog.mxid_age(c.relminmxid),"
 						  " pg_catalog.mxid_age(t.relminmxid)) OPERATOR(pg_catalog.>=)"
 						  " '%d'::pg_catalog.int4\n"
 						  " AND c.relminmxid OPERATOR(pg_catalog.!=)"
 						  " '0'::pg_catalog.xid\n",
-						  has_where ? "AND" : "WHERE", vacopts->min_mxid_age);
-		has_where = true;
+						  vacopts->min_mxid_age);
 	}
 
 	/*
@@ -742,7 +758,7 @@ vacuum_all_databases(ConnParams *cparams,
 
 	conn = connectMaintenanceDatabase(cparams, progname, echo);
 	result = executeQuery(conn,
-						  "SELECT datname FROM pg_database WHERE datallowconn ORDER BY 1;",
+						  "SELECT datname FROM pg_database WHERE datallowconn AND datconnlimit <> -2 ORDER BY 1;",
 						  echo);
 	PQfinish(conn);
 

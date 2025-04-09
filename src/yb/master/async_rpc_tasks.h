@@ -1116,6 +1116,7 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
 
  protected:
   void HandleResponse(int attempt) override;
+  void Finished(const Status& status) override;
   bool SendRequest(int attempt) override;
   MonoTime ComputeDeadline() override;
   // Not associated with a tablet.

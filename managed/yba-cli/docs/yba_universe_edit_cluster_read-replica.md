@@ -41,8 +41,9 @@ yba universe edit cluster --name <universe-name> read-replica --num-nodes 1 --re
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -f, --force              [Optional] Bypass the prompt for non-interactive usage.
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")

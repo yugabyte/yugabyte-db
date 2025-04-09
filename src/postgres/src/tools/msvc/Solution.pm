@@ -226,7 +226,6 @@ sub GenerateFiles
 		HAVE_ATOMICS               => 1,
 		HAVE_ATOMIC_H              => undef,
 		HAVE_BACKTRACE_SYMBOLS     => undef,
-		HAVE_BIO_GET_DATA          => undef,
 		HAVE_BIO_METH_NEW          => undef,
 		HAVE_CLOCK_GETTIME         => undef,
 		HAVE_COMPUTED_GOTO         => undef,
@@ -365,7 +364,7 @@ sub GenerateFiles
 		HAVE_SHM_OPEN                            => undef,
 		HAVE_SOCKLEN_T                           => 1,
 		HAVE_SPINLOCKS                           => 1,
-		HAVE_STDBOOL_H                           => 1,
+		HAVE_SSL_CTX_SET_NUM_TICKETS             => undef,
 		HAVE_STDINT_H                            => 1,
 		HAVE_STDLIB_H                            => 1,
 		HAVE_STRERROR_R                          => undef,
@@ -433,8 +432,8 @@ sub GenerateFiles
 		HAVE_WCTYPE_H                            => 1,
 		HAVE_WRITEV                              => undef,
 		HAVE_X509_GET_SIGNATURE_NID              => 1,
+		HAVE_X509_GET_SIGNATURE_INFO             => undef,
 		HAVE_X86_64_POPCNTQ                      => undef,
-		HAVE__BOOL                               => undef,
 		HAVE__BUILTIN_BSWAP16                    => undef,
 		HAVE__BUILTIN_BSWAP32                    => undef,
 		HAVE__BUILTIN_BSWAP64                    => undef,
@@ -553,12 +552,19 @@ sub GenerateFiles
 
 		my ($digit1, $digit2, $digit3) = $self->GetOpenSSLVersion();
 
-		# More symbols are needed with OpenSSL 1.1.0 and above.
+		# Symbols needed with OpenSSL 1.1.1 and above.
+		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
+			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '1'))
+		{
+			$define{HAVE_X509_GET_SIGNATURE_INFO} = 1;
+			$define{HAVE_SSL_CTX_SET_NUM_TICKETS} = 1;
+		}
+
+		# Symbols needed with OpenSSL 1.1.0 and above.
 		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
 			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0'))
 		{
 			$define{HAVE_ASN1_STRING_GET0_DATA} = 1;
-			$define{HAVE_BIO_GET_DATA}          = 1;
 			$define{HAVE_BIO_METH_NEW}          = 1;
 			$define{HAVE_HMAC_CTX_FREE}         = 1;
 			$define{HAVE_HMAC_CTX_NEW}          = 1;

@@ -151,3 +151,18 @@ SELECT * FROM test7;
  1 | 1
 (1 row)
 
+SET allow_system_table_mods = on;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate system table inside a transaction block.
+TRUNCATE pg_extension;
+ERROR:  cannot TRUNCATE system relations in a transaction block.
+ROLLBACK;
+RESET allow_system_table_mods;
+SET yb_enable_alter_table_rewrite = off;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate user table inside a transaction block with table rewrite disabled.
+TRUNCATE test7;
+ERROR:  unsafe TRUNCATE cannot be executed in a transaction block.
+HINT:  Set yb_enable_alter_table_rewrite to true.
+ROLLBACK;
+RESET yb_enable_alter_table_rewrite;

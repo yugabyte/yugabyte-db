@@ -130,26 +130,37 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
         </Paper>
       </Box>
 
-      {paginatedObjects?.map(({ object_name, sql_statement }) => (
+      {paginatedObjects?.map(({ object_name, object_type, sql_statement }) => (
         (object_name || sql_statement) && (
           <Box key={object_name} className={classes.borderForNameAndSQL}
             sx={{ mb: 2, p: 2, borderRadius: 2 }}>
-            {object_name && (
-              <Typography>
-                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+            {(object_name || object_type) && (
+              <Box>
+                {object_name && (
+                  <Typography>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
                       "objectName")}
-                {object_name}
-              </Typography>
+                    {object_name}
+                  </Typography>
+                )}
+                {object_type && (
+                  <Typography>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                      "objectTypeColon")}
+                    {object_type}
+                  </Typography>
+                )}
+              </Box>
             )}
             {sql_statement && (
               <Box sx={{ mt: 2 }}>
                 <YBCodeBlock text={sql_statement} />
               </Box>
             )}
-
           </Box>
         )
       ))}
+
       <Box ml="auto">
         <TablePagination
           component="div"

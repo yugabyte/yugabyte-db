@@ -18,8 +18,9 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
@@ -58,7 +59,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
-      if (!confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning)) {
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Customer customer = Customer.get(universe.getCustomerId());
+      if (!confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)) {
         for (Cluster cluster : taskParams().clusters) {
           // Local provider can still use cron.
           if (!cluster.userIntent.useSystemd

@@ -245,9 +245,10 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 	/*
 	 * An insertion to the pending list could logically belong anywhere in the
 	 * tree, so it conflicts with all serializable scans.  All scans acquire a
-	 * predicate lock on the metabuffer to represent that.
+	 * predicate lock on the metabuffer to represent that.  Therefore we'll
+	 * check for conflicts in, but not until we have the page locked and are
+	 * ready to modify the page.
 	 */
-	CheckForSerializableConflictIn(index, NULL, GIN_METAPAGE_BLKNO);
 
 	if (collector->sumsize + collector->ntuples * sizeof(ItemIdData) > GinListPageSize)
 	{
@@ -290,6 +291,8 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 		 */
 		LockBuffer(metabuffer, GIN_EXCLUSIVE);
 		metadata = GinPageGetMeta(metapage);
+
+		CheckForSerializableConflictIn(index, NULL, GIN_METAPAGE_BLKNO);
 
 		if (metadata->head == InvalidBlockNumber)
 		{
@@ -352,6 +355,8 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 					tupsize;
 		char	   *ptr;
 		char	   *collectordata;
+
+		CheckForSerializableConflictIn(index, NULL, GIN_METAPAGE_BLKNO);
 
 		buffer = ReadBuffer(index, metadata->tail);
 		LockBuffer(buffer, GIN_EXCLUSIVE);
@@ -1030,7 +1035,6 @@ gin_clean_pending_list(PG_FUNCTION_ARGS)
 	Oid			indexoid = PG_GETARG_OID(0);
 	Relation	indexRel = index_open(indexoid, RowExclusiveLock);
 	IndexBulkDeleteResult stats;
-	GinState	ginstate;
 
 	if (RecoveryInProgress())
 		ereport(ERROR,
@@ -1062,8 +1066,26 @@ gin_clean_pending_list(PG_FUNCTION_ARGS)
 					   RelationGetRelationName(indexRel));
 
 	memset(&stats, 0, sizeof(stats));
-	initGinState(&ginstate, indexRel);
-	ginInsertCleanup(&ginstate, true, true, true, &stats);
+
+	/*
+	 * Can't assume anything about the content of an !indisready index.  Make
+	 * those a no-op, not an error, so users can just run this function on all
+	 * indexes of the access method.  Since an indisready&&!indisvalid index
+	 * is merely awaiting missed aminsert calls, we're capable of processing
+	 * it.  Decline to do so, out of an abundance of caution.
+	 */
+	if (indexRel->rd_index->indisvalid)
+	{
+		GinState	ginstate;
+
+		initGinState(&ginstate, indexRel);
+		ginInsertCleanup(&ginstate, true, true, true, &stats);
+	}
+	else
+		ereport(DEBUG1,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("index \"%s\" is not valid",
+						RelationGetRelationName(indexRel))));
 
 	index_close(indexRel, RowExclusiveLock);
 

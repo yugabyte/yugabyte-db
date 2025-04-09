@@ -247,7 +247,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           return [{
             issue_name: name,
             issue_type: type,
-            count,
+            count: filteredObjects.length,
             objects: filteredObjects,
             docs_link,
             category: formatSnakeCase(category ?? ""),

@@ -2453,8 +2453,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Must use ansible provisioning for non-systemd universes
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean useAnsibleProvisioning =
-        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning) || !userIntent.useSystemd;
+        confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
+            || !userIntent.useSystemd;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.

@@ -23,10 +23,24 @@ extern "C"
 
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/Function.h>
+#if LLVM_VERSION_MAJOR < 17
 #include <llvm/MC/SubtargetFeature.h>
+#endif
+#if LLVM_VERSION_MAJOR > 16
+#include <llvm/TargetParser/Host.h>
+#else
 #include <llvm/Support/Host.h>
+#endif
 
 #include "jit/llvmjit.h"
+#include "jit/llvmjit_backport.h"
+
+#ifdef USE_LLVM_BACKPORT_SECTION_MEMORY_MANAGER
+#include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#include "jit/SectionMemoryManager.h"
+#include <llvm/Support/CBindingWrapping.h>
+#endif
 
 
 /*
@@ -76,3 +90,35 @@ LLVMGetAttributeCountAtIndexPG(LLVMValueRef F, uint32 Idx)
 	 */
 	return LLVMGetAttributeCountAtIndex(F, Idx);
 }
+
+LLVMTypeRef
+LLVMGetFunctionReturnType(LLVMValueRef r)
+{
+	return llvm::wrap(llvm::unwrap<llvm::Function>(r)->getReturnType());
+}
+
+LLVMTypeRef
+LLVMGetFunctionType(LLVMValueRef r)
+{
+	return llvm::wrap(llvm::unwrap<llvm::Function>(r)->getFunctionType());
+}
+
+#if LLVM_VERSION_MAJOR < 8
+LLVMTypeRef
+LLVMGlobalGetValueType(LLVMValueRef g)
+{
+	return llvm::wrap(llvm::unwrap<llvm::GlobalValue>(g)->getValueType());
+}
+#endif
+
+#ifdef USE_LLVM_BACKPORT_SECTION_MEMORY_MANAGER
+DEFINE_SIMPLE_CONVERSION_FUNCTIONS(llvm::orc::ExecutionSession, LLVMOrcExecutionSessionRef)
+DEFINE_SIMPLE_CONVERSION_FUNCTIONS(llvm::orc::ObjectLayer, LLVMOrcObjectLayerRef);
+
+LLVMOrcObjectLayerRef
+LLVMOrcCreateRTDyldObjectLinkingLayerWithSafeSectionMemoryManager(LLVMOrcExecutionSessionRef ES)
+{
+	return wrap(new llvm::orc::RTDyldObjectLinkingLayer(
+		*unwrap(ES), [] { return std::make_unique<llvm::backport::SectionMemoryManager>(nullptr, true); }));
+}
+#endif

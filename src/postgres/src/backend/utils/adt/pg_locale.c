@@ -102,6 +102,9 @@ char	   *localized_full_days[7 + 1];
 char	   *localized_abbrev_months[12 + 1];
 char	   *localized_full_months[12 + 1];
 
+/* is the databases's LC_CTYPE the C locale? */
+bool		database_ctype_is_c = false;
+
 /* indicates whether locale information cache is valid */
 static bool CurrentLocaleConvValid = false;
 static bool CurrentLCTimeValid = false;
@@ -1736,7 +1739,7 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 		locale_t	loc;
 
 		/* Look up FreeBSD collation version. */
-		loc = newlocale(LC_COLLATE, collcollate, NULL);
+		loc = newlocale(LC_COLLATE_MASK, collcollate, NULL);
 		if (loc)
 		{
 			collversion =
@@ -1774,7 +1777,7 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 							collcollate,
 							GetLastError())));
 		}
-		collversion = psprintf("%d.%d,%d.%d",
+		collversion = psprintf("%lu.%lu,%lu.%lu",
 							   (version.dwNLSVersion >> 8) & 0xFFFF,
 							   version.dwNLSVersion & 0xFF,
 							   (version.dwDefinedVersion >> 8) & 0xFFFF,

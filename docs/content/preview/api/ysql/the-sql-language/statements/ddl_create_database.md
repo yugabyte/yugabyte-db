@@ -70,6 +70,10 @@ Specify `true` if tables (and their indexes) for this database should be colocat
 
 Default is `false` and every table in the database will have its own set of tablets.
 
+### AS OF
+
+Specify the [Unix timestamp](https://www.unixtimestamp.com/) (in microseconds) to create a clone of the original database at a specific point in time, within the history retention period specified when creating the snapshot schedule for the database. See [Instant database cloning](../../../../../manage/backup-restore/instant-db-cloning/).
+
 ## Examples
 
 ### Create a colocated database

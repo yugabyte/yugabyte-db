@@ -23,6 +23,7 @@
  */
 #include "postgres.h"
 
+#include "access/heaptoast.h"
 #include "access/htup_details.h"
 #include "access/nbtree.h"
 #include "access/table.h"
@@ -31,6 +32,7 @@
 #include "access/xact.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_opfamily_d.h"
 #include "commands/tablecmds.h"
 #include "common/pg_prng.h"
 #include "lib/bloomfilter.h"
@@ -149,6 +151,9 @@ static void bt_check_every_level(Relation rel, Relation heaprel,
 								 bool rootdescend);
 static BtreeLevel bt_check_level_from_leftmost(BtreeCheckState *state,
 											   BtreeLevel level);
+static bool bt_leftmost_ignoring_half_dead(BtreeCheckState *state,
+										   BlockNumber start,
+										   BTPageOpaque start_opaque);
 static void bt_recheck_sibling_links(BtreeCheckState *state,
 									 BlockNumber btpo_prev_from_target,
 									 BlockNumber leftcurrent);
@@ -340,10 +345,20 @@ bt_index_check_internal(Oid indrelid, bool parentcheck, bool heapallindexed,
 					 errmsg("index \"%s\" metapage has equalimage field set on unsupported nbtree version",
 							RelationGetRelationName(indrel))));
 		if (allequalimage && !_bt_allequalimage(indrel, false))
+		{
+			bool		has_interval_ops = false;
+
+			for (int i = 0; i < IndexRelationGetNumberOfKeyAttributes(indrel); i++)
+				if (indrel->rd_opfamily[i] == INTERVAL_BTREE_FAM_OID)
+					has_interval_ops = true;
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg("index \"%s\" metapage incorrectly indicates that deduplication is safe",
-							RelationGetRelationName(indrel))));
+							RelationGetRelationName(indrel)),
+					 has_interval_ops
+					 ? errhint("This is known of \"interval\" indexes last built on a version predating 2023-11.")
+					 : 0));
+		}
 
 		/* Check index, possibly against table it is an index on */
 		bt_check_every_level(indrel, heaprel, heapkeyspace, parentcheck,
@@ -767,7 +782,7 @@ bt_check_level_from_leftmost(BtreeCheckState *state, BtreeLevel level)
 			 */
 			if (state->readonly)
 			{
-				if (!P_LEFTMOST(opaque))
+				if (!bt_leftmost_ignoring_half_dead(state, current, opaque))
 					ereport(ERROR,
 							(errcode(ERRCODE_INDEX_CORRUPTED),
 							 errmsg("block %u is not leftmost in index \"%s\"",
@@ -821,8 +836,16 @@ bt_check_level_from_leftmost(BtreeCheckState *state, BtreeLevel level)
 			 */
 		}
 
-		/* Sibling links should be in mutual agreement */
-		if (opaque->btpo_prev != leftcurrent)
+		/*
+		 * Sibling links should be in mutual agreement.  There arises
+		 * leftcurrent == P_NONE && btpo_prev != P_NONE when the left sibling
+		 * of the parent's low-key downlink is half-dead.  (A half-dead page
+		 * has no downlink from its parent.)  Under heavyweight locking, the
+		 * last bt_leftmost_ignoring_half_dead() validated this btpo_prev.
+		 * Without heavyweight locking, validation of the P_NONE case remains
+		 * unimplemented.
+		 */
+		if (opaque->btpo_prev != leftcurrent && leftcurrent != P_NONE)
 			bt_recheck_sibling_links(state, opaque->btpo_prev, leftcurrent);
 
 		/* Check level */
@@ -904,6 +927,66 @@ nextpage:
 }
 
 /*
+ * Like P_LEFTMOST(start_opaque), but accept an arbitrarily-long chain of
+ * half-dead, sibling-linked pages to the left.  If a half-dead page appears
+ * under state->readonly, the database exited recovery between the first-stage
+ * and second-stage WAL records of a deletion.
+ */
+static bool
+bt_leftmost_ignoring_half_dead(BtreeCheckState *state,
+							   BlockNumber start,
+							   BTPageOpaque start_opaque)
+{
+	BlockNumber reached = start_opaque->btpo_prev,
+				reached_from = start;
+	bool		all_half_dead = true;
+
+	/*
+	 * To handle the !readonly case, we'd need to accept BTP_DELETED pages and
+	 * potentially observe nbtree/README "Page deletion and backwards scans".
+	 */
+	Assert(state->readonly);
+
+	while (reached != P_NONE && all_half_dead)
+	{
+		Page		page = palloc_btree_page(state, reached);
+		BTPageOpaque reached_opaque = BTPageGetOpaque(page);
+
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * Try to detect btpo_prev circular links.  _bt_unlink_halfdead_page()
+		 * writes that side-links will continue to point to the siblings.
+		 * Check btpo_next for that property.
+		 */
+		all_half_dead = P_ISHALFDEAD(reached_opaque) &&
+			reached != start &&
+			reached != reached_from &&
+			reached_opaque->btpo_next == reached_from;
+		if (all_half_dead)
+		{
+			XLogRecPtr	pagelsn = PageGetLSN(page);
+
+			/* pagelsn should point to an XLOG_BTREE_MARK_PAGE_HALFDEAD */
+			ereport(DEBUG1,
+					(errcode(ERRCODE_NO_DATA),
+					 errmsg_internal("harmless interrupted page deletion detected in index \"%s\"",
+									 RelationGetRelationName(state->rel)),
+					 errdetail_internal("Block=%u right block=%u page lsn=%X/%X.",
+										reached, reached_from,
+										LSN_FORMAT_ARGS(pagelsn))));
+
+			reached_from = reached;
+			reached = reached_opaque->btpo_prev;
+		}
+
+		pfree(page);
+	}
+
+	return all_half_dead;
+}
+
+/*
  * Raise an error when target page's left link does not point back to the
  * previous target page, called leftcurrent here.  The leftcurrent page's
  * right link was followed to get to the current target page, and we expect
@@ -943,6 +1026,9 @@ bt_recheck_sibling_links(BtreeCheckState *state,
 						 BlockNumber btpo_prev_from_target,
 						 BlockNumber leftcurrent)
 {
+	/* passing metapage to BTPageGetOpaque() would give irrelevant findings */
+	Assert(leftcurrent != P_NONE);
+
 	if (!state->readonly)
 	{
 		Buffer		lbuf;
@@ -1926,7 +2012,8 @@ bt_child_highkey_check(BtreeCheckState *state,
 		opaque = BTPageGetOpaque(page);
 
 		/* The first page we visit at the level should be leftmost */
-		if (first && !BlockNumberIsValid(state->prevrightlink) && !P_LEFTMOST(opaque))
+		if (first && !BlockNumberIsValid(state->prevrightlink) &&
+			!bt_leftmost_ignoring_half_dead(state, blkno, opaque))
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg("the first child of leftmost target page is not leftmost of its level in index \"%s\"",
@@ -2558,7 +2645,7 @@ bt_normalize_tuple(BtreeCheckState *state, IndexTuple itup)
 	TupleDesc	tupleDescriptor = RelationGetDescr(state->rel);
 	Datum		normalized[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
-	bool		toast_free[INDEX_MAX_KEYS];
+	bool		need_free[INDEX_MAX_KEYS];
 	bool		formnewtup = false;
 	IndexTuple	reformed;
 	int			i;
@@ -2577,7 +2664,7 @@ bt_normalize_tuple(BtreeCheckState *state, IndexTuple itup)
 		att = TupleDescAttr(tupleDescriptor, i);
 
 		/* Assume untoasted/already normalized datum initially */
-		toast_free[i] = false;
+		need_free[i] = false;
 		normalized[i] = index_getattr(itup, att->attnum,
 									  tupleDescriptor,
 									  &isnull[i]);
@@ -2596,15 +2683,48 @@ bt_normalize_tuple(BtreeCheckState *state, IndexTuple itup)
 							ItemPointerGetBlockNumber(&(itup->t_tid)),
 							ItemPointerGetOffsetNumber(&(itup->t_tid)),
 							RelationGetRelationName(state->rel))));
+		else if (!VARATT_IS_COMPRESSED(DatumGetPointer(normalized[i])) &&
+				 VARSIZE(DatumGetPointer(normalized[i])) > TOAST_INDEX_TARGET &&
+				 (att->attstorage == TYPSTORAGE_EXTENDED ||
+				  att->attstorage == TYPSTORAGE_MAIN))
+		{
+			/*
+			 * This value will be compressed by index_form_tuple() with the
+			 * current storage settings.  We may be here because this tuple
+			 * was formed with different storage settings.  So, force forming.
+			 */
+			formnewtup = true;
+		}
 		else if (VARATT_IS_COMPRESSED(DatumGetPointer(normalized[i])))
 		{
 			formnewtup = true;
 			normalized[i] = PointerGetDatum(PG_DETOAST_DATUM(normalized[i]));
-			toast_free[i] = true;
+			need_free[i] = true;
+		}
+
+		/*
+		 * Short tuples may have 1B or 4B header. Convert 4B header of short
+		 * tuples to 1B
+		 */
+		else if (VARATT_CAN_MAKE_SHORT(DatumGetPointer(normalized[i])))
+		{
+			/* convert to short varlena */
+			Size		len = VARATT_CONVERTED_SHORT_SIZE(DatumGetPointer(normalized[i]));
+			char	   *data = palloc(len);
+
+			SET_VARSIZE_SHORT(data, len);
+			memcpy(data + 1, VARDATA(DatumGetPointer(normalized[i])), len - 1);
+
+			formnewtup = true;
+			normalized[i] = PointerGetDatum(data);
+			need_free[i] = true;
 		}
 	}
 
-	/* Easier case: Tuple has varlena datums, none of which are compressed */
+	/*
+	 * Easier case: Tuple has varlena datums, none of which are compressed or
+	 * short with 4B header
+	 */
 	if (!formnewtup)
 		return itup;
 
@@ -2614,6 +2734,11 @@ bt_normalize_tuple(BtreeCheckState *state, IndexTuple itup)
 	 * (normalized input datums).  This is rather naive, but shouldn't be
 	 * necessary too often.
 	 *
+	 * In the heap, tuples may contain short varlena datums with both 1B
+	 * header and 4B headers.  But the corresponding index tuple should always
+	 * have such varlena's with 1B headers.  So, if there is a short varlena
+	 * with 4B header, we need to convert it for for fingerprinting.
+	 *
 	 * Note that we rely on deterministic index_form_tuple() TOAST compression
 	 * of normalized input.
 	 */
@@ -2622,7 +2747,7 @@ bt_normalize_tuple(BtreeCheckState *state, IndexTuple itup)
 
 	/* Cannot leak memory here */
 	for (i = 0; i < tupleDescriptor->natts; i++)
-		if (toast_free[i])
+		if (need_free[i])
 			pfree(DatumGetPointer(normalized[i]));
 
 	return reformed;

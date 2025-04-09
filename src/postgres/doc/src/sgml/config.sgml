@@ -656,10 +656,15 @@ include_dir 'conf.d'
          <literal>::</literal> allows listening for all IPv6 addresses.
          If the list is empty, the server does not listen on any IP interface
          at all, in which case only Unix-domain sockets can be used to connect
-         to it.
+         to it.  If the list is not empty, the server will start if it
+         can listen on at least one TCP/IP address.  A warning will be
+         emitted for any TCP/IP address which cannot be opened.
          The default value is <systemitem class="systemname">localhost</systemitem>,
          which allows only local TCP/IP <quote>loopback</quote> connections to be
-         made.  While client authentication (<xref
+         made.
+       </para>
+       <para>
+         While client authentication (<xref
          linkend="client-authentication"/>) allows fine-grained control
          over who can access the server, <varname>listen_addresses</varname>
          controls which interfaces accept connection attempts, which
@@ -1422,11 +1427,11 @@ include_dir 'conf.d'
        </para>
 
        <para>
-        Older PostgreSQL versions do not have this setting and always use the
-        client's preferences.  This setting is mainly for backward
-        compatibility with those versions.  Using the server's preferences is
-        usually better because it is more likely that the server is appropriately
-        configured.
+        <productname>PostgreSQL</productname> versions before 9.4 do not have
+        this setting and always use the client's preferences.  This setting is
+        mainly for backward compatibility with those versions.  Using the
+        server's preferences is usually better because it is more likely that
+        the server is appropriately configured.
        </para>
       </listitem>
      </varlistentry>
@@ -1819,9 +1824,10 @@ include_dir 'conf.d'
         (such as a sort or hash table) before writing to temporary disk files.
         If this value is specified without units, it is taken as kilobytes.
         The default value is four megabytes (<literal>4MB</literal>).
-        Note that for a complex query, several sort or hash operations might be
-        running in parallel; each operation will generally be allowed
-        to use as much memory as this value specifies before it starts
+        Note that a complex query might perform several sort and hash
+        operations at the same time, with each operation generally being
+        allowed to use as much memory as this value specifies before
+        it starts
         to write data into temporary files.  Also, several running
         sessions could be doing such operations concurrently.
         Therefore, the total memory used could be many times the value
@@ -1829,14 +1835,13 @@ include_dir 'conf.d'
         fact in mind when choosing the value.  Sort operations are used
         for <literal>ORDER BY</literal>, <literal>DISTINCT</literal>,
         and merge joins.
-        Hash tables are used in hash joins, hash-based aggregation, result
-        cache nodes and hash-based processing of <literal>IN</literal>
-        subqueries.
+        Hash tables are used in hash joins, hash-based aggregation, memoize
+        nodes and hash-based processing of <literal>IN</literal> subqueries.
        </para>
        <para>
         Hash-based operations are generally more sensitive to memory
         availability than equivalent sort-based operations.  The
-        memory available for hash tables is computed by multiplying
+        memory limit for a hash table is computed by multiplying
         <varname>work_mem</varname> by
         <varname>hash_mem_multiplier</varname>.  This makes it
         possible for hash-based operations to use an amount of memory
@@ -5109,8 +5114,9 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </term>
       <listitem>
        <para>
-        Enables or disables the query planner's use of index-scan plan
-        types. The default is <literal>on</literal>.
+        Enables or disables the query planner's use of index-scan and
+        index-only-scan plan types.  The default is <literal>on</literal>.
+        Also see <xref linkend="guc-enable-indexonlyscan"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -5125,7 +5131,9 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
        <para>
         Enables or disables the query planner's use of index-only-scan plan
         types (see <xref linkend="indexes-index-only-scans"/>).
-        The default is <literal>on</literal>.
+        The default is <literal>on</literal>.  The
+        <xref linkend="guc-enable-indexscan"/> setting must also be
+        enabled to have the query planner consider index-only-scans.
        </para>
       </listitem>
      </varlistentry>
@@ -5257,9 +5265,13 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         joining the matching partitions.  Partitionwise join currently applies
         only when the join conditions include all the partition keys, which
         must be of the same data type and have one-to-one matching sets of
-        child partitions.  Because partitionwise join planning can use
-        significantly more CPU time and memory during planning, the default is
-        <literal>off</literal>.
+        child partitions.  With this setting enabled, the number of nodes
+        whose memory usage is restricted by <varname>work_mem</varname>
+        appearing in the final plan can increase linearly according to the
+        number of partitions being scanned.  This can result in a large
+        increase in overall memory consumption during the execution of the
+        query.  Query planning also becomes significantly more expensive in
+        terms of memory and CPU.  The default value is <literal>off</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -5273,13 +5285,18 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       <listitem>
        <para>
         Enables or disables the query planner's use of partitionwise grouping
-        or aggregation, which allows grouping or aggregation on a partitioned
-        tables performed separately for each partition.  If the <literal>GROUP
-        BY</literal> clause does not include the partition keys, only partial
-        aggregation can be performed on a per-partition basis, and
-        finalization must be performed later.  Because partitionwise grouping
-        or aggregation can use significantly more CPU time and memory during
-        planning, the default is <literal>off</literal>.
+        or aggregation, which allows grouping or aggregation on partitioned
+        tables to be performed separately for each partition.  If the
+        <literal>GROUP BY</literal> clause does not include the partition
+        keys, only partial aggregation can be performed on a per-partition
+        basis, and finalization must be performed later.  With this setting
+        enabled, the number of nodes whose memory usage is restricted by
+        <varname>work_mem</varname> appearing in the final plan can increase
+        linearly according to the number of partitions being scanned.  This
+        can result in a large increase in overall memory consumption during
+        the execution of the query.  Query planning also becomes significantly
+        more expensive in terms of memory and CPU.  The default value is
+        <literal>off</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -7860,7 +7877,7 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         various purposes.  The cluster name appears in the process title for
         all server processes in this cluster.  Moreover, it is the default
         application name for a standby connection (see <xref
-        linkend="guc-synchronous-standby-names"/>.)
+        linkend="guc-synchronous-standby-names"/>).
        </para>
 
        <para>
@@ -8064,8 +8081,9 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         called. When set to <literal>snapshot</literal>, the first statistics
         access caches all statistics accessible in the current database, until
         the end of the transaction unless
-        <function>pg_stat_clear_snapshot()</function> is called. The default
-        is <literal>cache</literal>.
+        <function>pg_stat_clear_snapshot()</function> is called. Changing this
+        parameter in a transaction discards the statistics snapshot.
+        The default is <literal>cache</literal>.
        </para>
        <note>
         <para>
@@ -9379,9 +9397,9 @@ SET XML OPTION { DOCUMENT | CONTENT };
      </term>
      <listitem>
       <para>
-       This variable specifies relation kind to which access is restricted.
-       It contains a comma-separated list of relation kind.  Currently, the
-       supported relation kinds are <literal>view</literal> and
+       Set relation kinds for which access to non-system relations is prohibited.
+       The value takes the form of a comma-separated list of relation kinds.
+       Currently, the supported relation kinds are <literal>view</literal> and
        <literal>foreign-table</literal>.
       </para>
      </listitem>

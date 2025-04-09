@@ -399,6 +399,7 @@ CREATE UNIQUE INDEX ON mv(t);
 REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
 -- concurrent refreshes should not bump catalog version.
+INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
 

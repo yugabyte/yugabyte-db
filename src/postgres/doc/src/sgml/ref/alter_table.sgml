@@ -134,7 +134,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
 
 <phrase><replaceable class="parameter">exclude_element</replaceable> in an <literal>EXCLUDE</literal> constraint is:</phrase>
 
-{ <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
+{ <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ COLLATE <replaceable class="parameter">collation</replaceable> ] [ <replaceable class="parameter">opclass</replaceable> [ ( <replaceable class="parameter">opclass_parameter</replaceable> = <replaceable class="parameter">value</replaceable> [, ... ] ) ] ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
 
 <phrase><replaceable class="parameter">referential_action</replaceable> in a <literal>FOREIGN KEY</literal>/<literal>REFERENCES</literal> constraint is:</phrase>
 
@@ -572,12 +572,12 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      <para>
       These forms configure the firing of trigger(s) belonging to the table.
       A disabled trigger is still known to the system, but is not executed
-      when its triggering event occurs.  For a deferred trigger, the enable
+      when its triggering event occurs.  (For a deferred trigger, the enable
       status is checked when the event occurs, not when the trigger function
-      is actually executed.  One can disable or enable a single
+      is actually executed.)  One can disable or enable a single
       trigger specified by name, or all triggers on the table, or only
       user triggers (this option excludes internally generated constraint
-      triggers such as those that are used to implement foreign key
+      triggers, such as those that are used to implement foreign key
       constraints or deferrable uniqueness and exclusion constraints).
       Disabling or enabling internally generated constraint triggers
       requires superuser privileges; it should be done with caution since
@@ -599,12 +599,18 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       The effect of this mechanism is that in the default configuration,
       triggers do not fire on replicas.  This is useful because if a trigger
       is used on the origin to propagate data between tables, then the
-      replication system will also replicate the propagated data, and the
+      replication system will also replicate the propagated data; so the
       trigger should not fire a second time on the replica, because that would
       lead to duplication.  However, if a trigger is used for another purpose
       such as creating external alerts, then it might be appropriate to set it
       to <literal>ENABLE ALWAYS</literal> so that it is also fired on
       replicas.
+     </para>
+
+     <para>
+      When this command is applied to a partitioned table, the states of
+      corresponding clone triggers in the partitions are updated too,
+      unless <literal>ONLY</literal> is specified.
      </para>
 
      <para>
@@ -974,20 +980,18 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      <para>
       A partition using <literal>FOR VALUES</literal> uses same syntax for
       <replaceable class="parameter">partition_bound_spec</replaceable> as
-      <link linkend="sql-createtable"><command>CREATE TABLE</command></link>.  The partition bound specification
+      <link linkend="sql-createtable"><command>CREATE TABLE</command></link>.
+      The partition bound specification
       must correspond to the partitioning strategy and partition key of the
       target table.  The table to be attached must have all the same columns
       as the target table and no more; moreover, the column types must also
       match.  Also, it must have all the <literal>NOT NULL</literal> and
-      <literal>CHECK</literal> constraints of the target table.  Currently
+      <literal>CHECK</literal> constraints of the target table, not marked
+      <literal>NO INHERIT</literal>.  Currently
       <literal>FOREIGN KEY</literal> constraints are not considered.
       <literal>UNIQUE</literal> and <literal>PRIMARY KEY</literal> constraints
       from the parent table will be created in the partition, if they don't
       already exist.
-      If any of the <literal>CHECK</literal> constraints of the table being
-      attached are marked <literal>NO INHERIT</literal>, the command will fail;
-      such constraints must be recreated without the
-      <literal>NO INHERIT</literal> clause.
      </para>
 
      <para>
@@ -1234,7 +1238,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
        <para>
         Disable or enable all triggers belonging to the table.
         (This requires superuser privilege if any of the triggers are
-        internally generated constraint triggers such as those that are used
+        internally generated constraint triggers, such as those that are used
         to implement foreign key constraints or deferrable uniqueness and
         exclusion constraints.)
        </para>
@@ -1246,7 +1250,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       <listitem>
        <para>
         Disable or enable all triggers belonging to the table except for
-        internally generated constraint triggers such as those that are used
+        internally generated constraint triggers, such as those that are used
         to implement foreign key constraints or deferrable uniqueness and
         exclusion constraints.
        </para>
@@ -1499,9 +1503,12 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     The actions for identity columns (<literal>ADD
     GENERATED</literal>, <literal>SET</literal> etc., <literal>DROP
     IDENTITY</literal>), as well as the actions
-    <literal>TRIGGER</literal>, <literal>CLUSTER</literal>, <literal>OWNER</literal>,
+    <literal>CLUSTER</literal>, <literal>OWNER</literal>,
     and <literal>TABLESPACE</literal> never recurse to descendant tables;
     that is, they always act as though <literal>ONLY</literal> were specified.
+    Actions affecting trigger states recurse to partitions of partitioned
+    tables (unless <literal>ONLY</literal> is specified), but never to
+    traditional-inheritance descendants.
     Adding a constraint recurses only for <literal>CHECK</literal> constraints
     that are not marked <literal>NO INHERIT</literal>.
    </para>
