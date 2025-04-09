@@ -1944,28 +1944,7 @@ SearchCatCacheMiss(CatCache *cache,
 				if (attnum > 0)
 					typid = TupleDescAttr(cache->cc_tupdesc, attnum - 1)->atttypid;
 				if (OidIsValid(MyDatabaseId))
-				{
-					Datum v;
-					switch (i)
-					{
-						case 0:
-							v = v1;
-							break;
-						case 1:
-							v = v2;
-							break;
-						case 2:
-							v = v3;
-							break;
-						case 3:
-							v = v4;
-							break;
-						default:
-							elog(FATAL, "wrong number of hash keys: %d", nkeys);
-							break;
-					}
-					appendStringInfoString(&buf, YBDatumToString(v, typid));
-				}
+					appendStringInfoString(&buf, YBDatumToString(arguments[i], typid));
 				else
 					appendStringInfo(&buf, "typid=%u value=<not logged>", typid);
 			}

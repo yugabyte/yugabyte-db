@@ -3232,9 +3232,12 @@ explain (verbose, costs off)
 select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
 */ -- YB
 select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
-ERROR:  FETCH BACKWARD not supported yet
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
-CONTEXT:  remote SQL command: MOVE BACKWARD ALL IN c1
+ c2 | sum 
+----+-----
+  1 |   2
+  2 |   4
+(2 rows)
+
 reset enable_hashagg;
 -- bug #15613: bad plan for foreign table scan with lateral reference
 EXPLAIN (VERBOSE, COSTS OFF)

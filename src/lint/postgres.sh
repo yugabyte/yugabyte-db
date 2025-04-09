@@ -149,7 +149,8 @@ else
       | while read -r hunk_start_lineno; do
           echo 'error:upstream_include_missing:'\
 'An upstream include in this area is missing'\
-"$upstream_commit_message_suffix:$hunk_start_lineno:$(sed -n "$lineno"p "$1")"
+"$upstream_commit_message_suffix":\
+"$hunk_start_lineno:$(sed -n "$hunk_start_lineno"p "$1")"
         done
 
     # Find YB-side hunks that match "/* YB includes */" or "#include...".
@@ -275,7 +276,8 @@ if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
         "$1" == src/postgres/src/include/snowball/libstemmer/* ||
         "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
   grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
-    | sed 's/^/error:leading_whitespace:Remove leading whitespace:/'
+    | sed 's/^/error:leading_whitespace:'\
+'Use tabs followed by 0-3 spaces for leading whitespace:/'
 fi
 
 # there are three cases to catch:
