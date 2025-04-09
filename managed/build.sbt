@@ -645,6 +645,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
     target := file("client/java/target/v2"),
   )
 
@@ -714,6 +715,7 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
     target := file("client/go/target/v2"),
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
 
 // Compile generated go v1 and v2 clients
@@ -853,6 +855,7 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     // style plugin configurations
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
 
 // copy over the ignore file manually since openApiIgnoreFileOverride does not work

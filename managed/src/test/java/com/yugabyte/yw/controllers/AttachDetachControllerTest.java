@@ -36,13 +36,13 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.UniverseSpec;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -326,7 +326,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     Result result = detachUniverse(bodyJson);
     assertEquals(OK, result.status());
     byte[] detachUniverseContent = contentAsBytes(result, mat).toArray();
-    String specName = UniverseSpec.generateSpecName(true);
+    String specName = AttachDetachSpec.generateSpecName(true);
     String tarFileBase = "/tmp/" + specName;
     String tarFileLocation = tarFileBase + ".tar.gz";
     File tarFile = new File(tarFileLocation);
@@ -336,7 +336,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     // Extract tarball and validate required files exist.
     Util.extractFilesFromTarGZ(tarFile.toPath(), tarFileBase);
     File specFolder = new File(tarFileBase);
-    File universeJsonFile = new File(tarFileBase + "/universe-spec.json");
+    File universeJsonFile = new File(tarFileBase + "/attach-detach-spec.json");
     File accessKeyFolder = new File(tarFileBase + "/keys");
     assertTrue(specFolder.exists());
     assertTrue(universeJsonFile.exists());
