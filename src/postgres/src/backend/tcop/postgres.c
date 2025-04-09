@@ -4332,6 +4332,80 @@ YBRefreshCache()
 	finish_xact_command();
 }
 
+static void
+YBRefreshCacheWrapper(uint64_t catalog_master_version)
+{
+	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
+	uint64_t local_catalog_version = YbGetCatalogCacheVersion();
+	uint32_t num_catalog_versions =
+		shared_catalog_version - local_catalog_version;
+	YbcCatalogMessageLists message_lists = {0};
+	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	if (enable_inval_messages)
+	{
+		if (catalog_master_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+			catalog_master_version = YbGetMasterCatalogVersion();
+		if (shared_catalog_version < catalog_master_version)
+		{
+			YbUpdateLastKnownCatalogCacheVersion(catalog_master_version);
+
+			/*
+			 * This can happen when another session executes many DDLs
+			 * in a batch, when we see a new shared catalog version has
+			 * arrived in shared memory, master may have got a even newer
+			 * version. See comments in YbWaitForSharedCatalogVersionToCatchup
+			 * for a scenario that this wait can help.
+			 */
+			YbWaitForSharedCatalogVersionToCatchup(catalog_master_version);
+			shared_catalog_version = YbGetSharedCatalogVersion();
+			num_catalog_versions = shared_catalog_version - local_catalog_version;
+		}
+		/*
+		 * When num_catalog_versions == 0, it means that local_catalog_version
+		 * and shared_catalog_version are the same. This can happen when we come
+		 * here due to error (e.g., catalog version mismatch) when a master
+		 * already has a newer version. It is possible that heartbeat failed
+		 * due to network partition and YbWaitForSharedCatalogVersionToCatchup
+		 * returns after timeout without shared_catalog_version catching up
+		 * catalog_master_version. We cannot do incremental catalog refresh in
+		 * this case because tserver does not have the invalidation messages of
+		 * catalog_master_version yet.
+		 */
+		if (num_catalog_versions > 0)
+		{
+			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
+															local_catalog_version,
+															num_catalog_versions,
+															&message_lists));
+			elog(DEBUG1, "message_lists: num_lists: %u (%" PRIu64 ", %u)",
+				 message_lists.num_lists, local_catalog_version,
+				 num_catalog_versions);
+		}
+	}
+	if (message_lists.num_lists > 0 && YbApplyInvalidationMessages(&message_lists))
+	{
+		YbNumCatalogCacheDeltaRefreshes++;
+		elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+			 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+			 message_lists.num_lists,
+			 local_catalog_version, shared_catalog_version);
+		YbUpdateCatalogCacheVersion(shared_catalog_version);
+		if (yb_test_delay_after_applying_inval_message_ms > 0)
+			pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
+		/* TODO(myang): only invalidate affected entries in the pggate cache? */
+		HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+		yb_need_cache_refresh = false;
+		return;
+	}
+
+	ereport(enable_inval_messages ? LOG : DEBUG1,
+			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
+					message_lists.num_lists, local_catalog_version,
+					shared_catalog_version, num_catalog_versions)));
+	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
+	YBRefreshCache();
+}
+
 static bool
 YBTableSchemaVersionMismatchError(ErrorData *edata, char **table_id)
 {
@@ -4405,10 +4479,11 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * below YbGetMasterCatalogVersion() is not expected to succeed either as it
 	 * would be using the same transaction as the failed operation.
 	*/
+	uint64_t catalog_master_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 	if (!yb_non_ddl_txn_for_sys_tables_allowed)
 	{
 		YBCPgResetCatalogReadTime();
-		const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+		catalog_master_version = YbGetMasterCatalogVersion();
 
 		if (YbGetCatalogCacheVersion() != catalog_master_version)
 		{
@@ -4485,7 +4560,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
-			YBRefreshCache();
+			YBRefreshCacheWrapper(catalog_master_version);
 
 		*need_retry = true;
 	}
@@ -4687,57 +4762,7 @@ YBCheckSharedCatalogCacheVersion()
 						__func__, shared_catalog_version)));
 	}
 	if (need_global_cache_refresh)
-	{
-		uint32_t num_catalog_versions =
-			shared_catalog_version - local_catalog_version;
-		YbcCatalogMessageLists message_lists = {0};
-		const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
-		if (enable_inval_messages)
-		{
-			const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
-			if (shared_catalog_version < catalog_master_version)
-			{
-				/*
-				 * This can happen when another session executes many DDLs
-				 * in a batch, when we see a new shared catalog version has
-				 * arrived in shared memory, master may have got a even newer
-				 * version. See comments in YbWaitForSharedCatalogVersionToCatchup
-				 * for a scenario that this wait can help.
-				 */
-				YbWaitForSharedCatalogVersionToCatchup(catalog_master_version);
-				shared_catalog_version = YbGetSharedCatalogVersion();
-				num_catalog_versions = shared_catalog_version - local_catalog_version;
-			}
-			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
-															local_catalog_version,
-															num_catalog_versions,
-															&message_lists));
-			elog(DEBUG1, "message_lists: num_lists: %u (%" PRIu64 ", %u)",
-				 message_lists.num_lists, local_catalog_version,
-				 num_catalog_versions);
-		}
-		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
-		if (message_lists.num_lists > 0 && YbApplyInvalidationMessages(&message_lists))
-		{
-			YbNumCatalogCacheDeltaRefreshes++;
-			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
-				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
-				 message_lists.num_lists,
-				 local_catalog_version, shared_catalog_version);
-			YbUpdateCatalogCacheVersion(shared_catalog_version);
-			if (yb_test_delay_after_applying_inval_message_ms > 0)
-				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-			/* TODO(myang): only invalidate affected entries in the pggate cache? */
-			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
-			return;
-		}
-
-		ereport(enable_inval_messages ? LOG : DEBUG1,
-				(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
-						message_lists.num_lists, local_catalog_version,
-						shared_catalog_version, num_catalog_versions)));
-		YBRefreshCache();
-	}
+		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED);
 }
 
 /*
@@ -6119,10 +6144,8 @@ PostgresMain(const char *dbname, const char *username)
 			{
 				long		stats_timeout;
 
-				if (IsYugaByteEnabled() && yb_need_cache_refresh)
-				{
-					YBRefreshCache();
-				}
+				if (yb_need_cache_refresh)
+					YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED);
 
 				/*
 				 * Process incoming notifies (including self-notifies), if
