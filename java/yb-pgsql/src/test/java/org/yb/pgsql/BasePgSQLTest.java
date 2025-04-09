@@ -153,7 +153,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "the tests with connection manager";
 
   protected static final String DUMMY_LABEL_NOT_LOADED_ON_ALL_BACKENDS =
-      "Skipping this test with Ysql Connection Manager as security labels of \'dummy'\ provider " +
+      "Skipping this test with Ysql Connection Manager as security labels of \'dummy\' provider " +
       "are not loaded on all backends, except for where create extension has been executed. " +
       "Therefore in random mode of conn mgr, while loading security labels on different " +
       "backend it throws error. Skipping this test untill bug is fixed tracked by GH: #26650";
