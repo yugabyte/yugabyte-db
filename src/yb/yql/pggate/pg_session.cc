@@ -558,33 +558,26 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropTable(const PgObjectId& table_id) {
+Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transaction_block) {
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
 Status PgSession::DropIndex(
     const PgObjectId& index_id,
+    bool use_regular_transaction_block,
     client::YBTableName* indexed_table_name) {
   tserver::PgDropTableRequestPB req;
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
   }
   return Status::OK();
-}
-
-Status PgSession::DropTablegroup(const PgOid database_oid,
-                                 PgOid tablegroup_oid) {
-  tserver::PgDropTablegroupRequestPB req;
-  PgObjectId tablegroup_id(database_oid, tablegroup_oid);
-  tablegroup_id.ToPB(req.mutable_tablegroup_id());
-  Status s = pg_client_.DropTablegroup(&req, CoarseTimePoint());
-  InvalidateTableCache(PgObjectId(database_oid, tablegroup_oid), InvalidateOnPgClient::kFalse);
-  return s;
 }
 
 //--------------------------------------------------------------------------------------------------

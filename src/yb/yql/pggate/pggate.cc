@@ -1027,7 +1027,9 @@ Status PgApiImpl::NewDropTable(const PgObjectId& table_id, bool if_exist, PgStat
          IllegalState,
          "Table is being dropped outside of DDL mode");
   return AddToCurrentPgMemctx(
-      std::make_unique<PgDropTable>(pg_session_, table_id, if_exist), handle);
+      std::make_unique<PgDropTable>(
+          pg_session_, table_id, if_exist, pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
 
 Status PgApiImpl::NewTruncateTable(const PgObjectId& table_id, PgStatement** handle) {
@@ -1178,7 +1180,10 @@ Status PgApiImpl::NewDropIndex(
     const PgObjectId& index_id, bool if_exist, bool ddl_rollback_enabled, PgStatement** handle) {
   SCHECK(pg_txn_manager_->IsDdlMode(), IllegalState, "Index is being dropped outside of DDL mode");
   return AddToCurrentPgMemctx(
-      std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist, ddl_rollback_enabled), handle);
+      std::make_unique<PgDropIndex>(
+          pg_session_, index_id, if_exist, ddl_rollback_enabled,
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
 
 Status PgApiImpl::ExecPostponedDdlStmt(PgStatement* handle) {
