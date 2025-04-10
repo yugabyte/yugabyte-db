@@ -3977,7 +3977,7 @@ renameatt(RenameStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCRename(stmt, relid);
+		YBCRename(relid, stmt->renameType, stmt->newname, stmt->subname);
 		if (stmt->renameType == OBJECT_COLUMN)
 		{
 			ListCell   *child;
@@ -3988,7 +3988,8 @@ renameatt(RenameStmt *stmt)
 				Oid			childrelid = lfirst_oid(child);
 
 				if (childrelid != relid)
-					YBCRename(stmt, childrelid);
+					YBCRename(childrelid, stmt->renameType, stmt->newname,
+							  stmt->subname);
 			}
 		}
 	}
@@ -4085,8 +4086,13 @@ rename_constraint_internal(Oid myrelid,
 		&& (con->contype == CONSTRAINT_PRIMARY
 			|| con->contype == CONSTRAINT_UNIQUE
 			|| con->contype == CONSTRAINT_EXCLUSION))
+	{
 		/* rename the index; this renames the constraint as well */
 		RenameRelationInternal(con->conindid, newconname, false, true);
+		/* in YB, rename the DocDB table for the index */
+		if (IsYBRelationById(con->conindid) && con->contype != CONSTRAINT_PRIMARY)
+			YBCRename(con->conindid, OBJECT_INDEX, newconname, NULL /* colname */ );
+	}
 	else
 		RenameConstraintById(constraintOid, newconname);
 
@@ -4221,16 +4227,16 @@ RenameRelation(RenameStmt *stmt, bool yb_is_internal_clone_rename)
 	/* YB rename is not needed for a primary key dummy index. */
 	rel = RelationIdGetRelation(relid);
 	needs_yb_rename = (IsYBRelation(rel) &&
-					   !(rel->rd_rel->relkind == RELKIND_INDEX &&
+					   !((rel->rd_rel->relkind == RELKIND_INDEX ||
+						  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 						 rel->rd_index->indisprimary) &&
-					   rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX &&
 					   !yb_is_internal_clone_rename);
 	RelationClose(rel);
 
 	/* Do the work */
 	if (needs_yb_rename)
 	{
-		YBCRename(stmt, relid);
+		YBCRename(relid, stmt->renameType, stmt->newname, stmt->subname);
 	}
 
 	ObjectAddressSet(address, RelationRelationId, relid);
@@ -9674,6 +9680,10 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 				(errmsg("ALTER TABLE / ADD CONSTRAINT USING INDEX will rename index \"%s\" to \"%s\"",
 						indexName, constraintName)));
 		RenameRelationInternal(index_oid, constraintName, false, true);
+		/* in YB, rename the DocDB table for the index */
+		if (IsYBRelationById(index_oid) && !stmt->primary)
+			YBCRename(index_oid, OBJECT_INDEX, constraintName,
+					  NULL /* colname */ );
 	}
 
 	/* Extra checks needed if making primary key */

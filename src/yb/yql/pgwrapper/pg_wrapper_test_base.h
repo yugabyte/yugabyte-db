@@ -54,12 +54,15 @@ class PgCommandTestBase : public PgWrapperTestBase {
   }
 
   YB_STRONGLY_TYPED_BOOL(TuplesOnly);
+  YB_STRONGLY_TYPED_BOOL(CheckErrorString);
 
   Result<std::string> RunPsqlCommand(
-      const std::string &statement, TuplesOnly tuples_only = TuplesOnly::kFalse);
+      const std::string &statement, TuplesOnly tuples_only = TuplesOnly::kFalse,
+      CheckErrorString check_error_string = CheckErrorString::kFalse);
 
   void RunPsqlCommand(
-      const std::string &statement, const std::string &expected_output, bool tuples_only = false);
+      const std::string &statement, const std::string &expected_output, bool tuples_only = false,
+      CheckErrorString check_error_string = CheckErrorString::kFalse);
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override;
 
