@@ -23,12 +23,12 @@ type: indexpage
     title="Metrics"
     body="Learn about selecting and using YugabyteDB metrics."
     href="metrics/"
-    icon="fa-light fa-chart-bar">}}
+    icon="fa-thin fa-chart-bar">}}
 
   {{<index/item
     title="Monitor xCluster"
     body="Monitor the state and health of xCluster replication."
     href="xcluster-monitor/"
-    icon="fa-light fa-clone">}}
+    icon="fa-thin fa-clone">}}
 
 {{</index/block>}}
