@@ -44,17 +44,26 @@ namespace {
 
 class AllocatedSegment : public boost::intrusive::list_base_hook<> {
  public:
-  explicit AllocatedSegment(const std::string& instance_id, uint64_t id, size_t size)
+  explicit AllocatedSegment(const std::string& instance_id, uint64_t id)
       : id_(id),
         shared_memory_object_(boost::interprocess::create_only,
                               MakeSharedMemoryBigSegmentName(instance_id, id).c_str(),
                               boost::interprocess::read_write) {
-    shared_memory_object_.truncate(size);
-    mapped_region_ = boost::interprocess::mapped_region(
-        shared_memory_object_, boost::interprocess::read_write);
   }
 
   AllocatedSegment(AllocatedSegment&& rhs) = default;
+
+  Status Init(size_t size) {
+    try {
+      shared_memory_object_.truncate(size);
+      mapped_region_ = boost::interprocess::mapped_region(
+          shared_memory_object_, boost::interprocess::read_write);
+    } catch (boost::interprocess::interprocess_exception& exc) {
+      return STATUS_FORMAT(
+          RuntimeError, "Failed to allocate segment of size $0: $1", size, exc.what());
+    }
+    return Status::OK();
+  }
 
   ~AllocatedSegment() {
     if (shared_memory_object_.get_mapping_handle().handle ==
@@ -140,7 +149,12 @@ class PgSharedMemoryPool::Impl : public SharedMemorySegmentHolder {
       return {};
     }
     auto id = ++id_serial_no_;
-    AllocatedSegment segment(instance_id_, id, segment_size);
+    AllocatedSegment segment(instance_id_, id);
+    auto status = segment.Init(segment_size);
+    if (!status.ok()) {
+      LOG(WARNING) << status;
+      return {};
+    }
     SharedMemorySegmentHandle result(*this, segment);
     {
       std::lock_guard lock(mutex_);
