@@ -83,6 +83,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -179,6 +180,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
+  protected GFlagsAuditHandler mockGFlagsAuditHandler;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -295,6 +297,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
     mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
+    mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -336,6 +339,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
+                .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))

@@ -113,6 +113,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             mockGFlagsValidation,
             null,
             mockOperatorStatusUpdaterFactory,
+            null,
+            null,
             null);
   }
 

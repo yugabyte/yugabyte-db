@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.PreUpgradeValidationResponse;
@@ -761,12 +760,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.getName(),
         universe.getUniverseUUID(),
         customer.getUuid());
-    JsonNode additionalDetails = null;
-    if (GFlagsUpgradeParams.class.isAssignableFrom(type)) {
-      log.debug("setting up gflag audit logging");
-      additionalDetails =
-          gFlagsAuditHandler.constructGFlagAuditPayload((GFlagsUpgradeParams) requestParams);
-    }
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     auditService()
         .createAuditEntryWithReqBody(
@@ -775,8 +768,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             universeUuid.toString(),
             auditActionType,
             request.body().asJson(),
-            taskUuid,
-            additionalDetails);
+            taskUuid);
     return new YBPTask(taskUuid, universe.getUniverseUUID()).asResult();
   }
 

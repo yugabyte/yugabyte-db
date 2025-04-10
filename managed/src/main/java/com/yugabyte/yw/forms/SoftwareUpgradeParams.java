@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -13,7 +13,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -85,8 +84,6 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
     RuntimeConfigFactory runtimeConfigFactory =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
-    GFlagsValidation gFlagsValidation =
-        StaticInjectorHolder.injector().instanceOf(GFlagsValidation.class);
 
     // Defaults to false, but we need to extract the variable in case the user wishes to perform a
     // downgrade with a runtime configuration override. We perform this check before verifying the
@@ -124,20 +121,6 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
                   + "(using the script set-runtime-config.sh if necessary).",
               ybSoftwareVersion, currentVersion);
       throw new PlatformServiceException(Status.BAD_REQUEST, msg);
-    }
-
-    boolean isYsqlMajorVersionUpgrade =
-        gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, ybSoftwareVersion);
-
-    if (isYsqlMajorVersionUpgrade
-        && currentIntent.enableYSQL
-        && Util.compareYBVersions(
-                currentVersion, "2024.2.1.0-b1", "2.25.0.0-b1", true /* suppressFormatError */)
-            < 0) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "YSQL major version upgrade is only supported from 2024.2.1.0-b1. Please upgrade to a"
-              + " version >= 2024.2.1.0-b1 before proceeding with the upgrade.");
     }
   }
 
