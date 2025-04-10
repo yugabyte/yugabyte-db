@@ -47,7 +47,6 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/env.h"
-#include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
 

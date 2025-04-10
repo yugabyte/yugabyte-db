@@ -150,7 +150,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           }
 
           if (ysqlMajorVersionUpgrade && !catalogUpgradeCompleted) {
-            createPGUpgradeTServerCheckTask(newVersion);
 
             if (password != null) {
               createManageCatalogUpgradeSuperUserTask(Action.CREATE_PG_PASS_FILE, password);

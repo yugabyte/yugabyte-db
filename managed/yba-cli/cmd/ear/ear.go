@@ -28,6 +28,7 @@ func init() {
 	EARCmd.AddCommand(listEARCmd)
 	EARCmd.AddCommand(describeEARCmd)
 	EARCmd.AddCommand(deleteEARCmd)
+	EARCmd.AddCommand(refreshEARCmd)
 	EARCmd.AddCommand(aws.AWSEARCmd)
 	EARCmd.AddCommand(azu.AzureEARCmd)
 	EARCmd.AddCommand(gcp.GCPEARCmd)

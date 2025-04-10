@@ -74,7 +74,6 @@ static	PLpgSQL_expr	*read_sql_construct(int until,
 											RawParseMode parsemode,
 											bool isexpression,
 											bool valid_sql,
-											bool trim,
 											int *startloc,
 											int *endtoken);
 static	PLpgSQL_expr	*read_sql_expression(int until,
@@ -84,7 +83,8 @@ static	PLpgSQL_expr	*read_sql_expression2(int until, int until2,
 											  int *endtoken);
 static	PLpgSQL_expr	*read_sql_stmt(void);
 static	PLpgSQL_type	*read_datatype(int tok);
-static	PLpgSQL_stmt	*make_execsql_stmt(int firsttoken, int location);
+static	PLpgSQL_stmt	*make_execsql_stmt(int firsttoken, int location,
+										   PLword *word);
 static	PLpgSQL_stmt_fetch *read_fetch_direction(void);
 static	void			 complete_direction(PLpgSQL_stmt_fetch *fetch,
 											bool *check_FROM);
@@ -935,7 +935,7 @@ stmt_perform	: K_PERFORM
 						 */
 						new->expr = read_sql_construct(';', 0, 0, ";",
 													   RAW_PARSE_DEFAULT,
-													   false, false, true,
+													   false, false,
 													   &startloc, NULL);
 						/* overwrite "perform" ... */
 						memcpy(new->expr->query, " SELECT", 7);
@@ -1021,7 +1021,7 @@ stmt_assign		: T_DATUM
 						plpgsql_push_back_token(T_DATUM);
 						new->expr = read_sql_construct(';', 0, 0, ";",
 													   pmode,
-													   false, true, true,
+													   false, true,
 													   NULL, NULL);
 
 						$$ = (PLpgSQL_stmt *) new;
@@ -1510,7 +1510,6 @@ for_control		: for_variable K_IN
 													   RAW_PARSE_DEFAULT,
 													   true,
 													   false,
-													   true,
 													   &expr1loc,
 													   &tok);
 
@@ -1915,7 +1914,7 @@ stmt_raise		: K_RAISE
 									expr = read_sql_construct(',', ';', K_USING,
 															  ", or ; or USING",
 															  RAW_PARSE_PLPGSQL_EXPR,
-															  true, true, true,
+															  true, true,
 															  NULL, &tok);
 									new->params = lappend(new->params, expr);
 								}
@@ -2009,15 +2008,15 @@ loop_body		: proc_sect K_END K_LOOP opt_label ';'
  */
 stmt_execsql	: K_IMPORT
 					{
-						$$ = make_execsql_stmt(K_IMPORT, @1);
+						$$ = make_execsql_stmt(K_IMPORT, @1, NULL);
 					}
 				| K_INSERT
 					{
-						$$ = make_execsql_stmt(K_INSERT, @1);
+						$$ = make_execsql_stmt(K_INSERT, @1, NULL);
 					}
 				| K_MERGE
 					{
-						$$ = make_execsql_stmt(K_MERGE, @1);
+						$$ = make_execsql_stmt(K_MERGE, @1, NULL);
 					}
 				| T_WORD
 					{
@@ -2028,7 +2027,7 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							word_is_not_variable(&($1), @1);
-						$$ = make_execsql_stmt(T_WORD, @1);
+						$$ = make_execsql_stmt(T_WORD, @1, &($1));
 					}
 				| T_CWORD
 					{
@@ -2039,7 +2038,7 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							cword_is_not_variable(&($1), @1);
-						$$ = make_execsql_stmt(T_CWORD, @1);
+						$$ = make_execsql_stmt(T_CWORD, @1, NULL);
 					}
 				;
 
@@ -2052,7 +2051,7 @@ stmt_dynexecute : K_EXECUTE
 						expr = read_sql_construct(K_INTO, K_USING, ';',
 												  "INTO or USING or ;",
 												  RAW_PARSE_PLPGSQL_EXPR,
-												  true, true, true,
+												  true, true,
 												  NULL, &endtoken);
 
 						new = palloc(sizeof(PLpgSQL_stmt_dynexecute));
@@ -2091,7 +2090,7 @@ stmt_dynexecute : K_EXECUTE
 									expr = read_sql_construct(',', ';', K_INTO,
 															  ", or ; or INTO",
 															  RAW_PARSE_PLPGSQL_EXPR,
-															  true, true, true,
+															  true, true,
 															  NULL, &endtoken);
 									new->params = lappend(new->params, expr);
 								} while (endtoken == ',');
@@ -2676,7 +2675,7 @@ read_sql_expression(int until, const char *expected)
 {
 	return read_sql_construct(until, 0, 0, expected,
 							  RAW_PARSE_PLPGSQL_EXPR,
-							  true, true, true, NULL, NULL);
+							  true, true, NULL, NULL);
 }
 
 /* Convenience routine to read an expression with two possible terminators */
@@ -2686,7 +2685,7 @@ read_sql_expression2(int until, int until2, const char *expected,
 {
 	return read_sql_construct(until, until2, 0, expected,
 							  RAW_PARSE_PLPGSQL_EXPR,
-							  true, true, true, NULL, endtoken);
+							  true, true, NULL, endtoken);
 }
 
 /* Convenience routine to read a SQL statement that must end with ';' */
@@ -2695,7 +2694,7 @@ read_sql_stmt(void)
 {
 	return read_sql_construct(';', 0, 0, ";",
 							  RAW_PARSE_DEFAULT,
-							  false, true, true, NULL, NULL);
+							  false, true, NULL, NULL);
 }
 
 /*
@@ -2708,7 +2707,6 @@ read_sql_stmt(void)
  * parsemode:	raw_parser() mode to use
  * isexpression: whether to say we're reading an "expression" or a "statement"
  * valid_sql:   whether to check the syntax of the expr
- * trim:		trim trailing whitespace
  * startloc:	if not NULL, location of first token is stored at *startloc
  * endtoken:	if not NULL, ending token is stored at *endtoken
  *				(this is only interesting if until2 or until3 isn't zero)
@@ -2721,7 +2719,6 @@ read_sql_construct(int until,
 				   RawParseMode parsemode,
 				   bool isexpression,
 				   bool valid_sql,
-				   bool trim,
 				   int *startloc,
 				   int *endtoken)
 {
@@ -2729,6 +2726,7 @@ read_sql_construct(int until,
 	StringInfoData ds;
 	IdentifierLookup save_IdentifierLookup;
 	int			startlocation = -1;
+	int			endlocation = -1;
 	int			parenlevel = 0;
 	PLpgSQL_expr *expr;
 
@@ -2779,6 +2777,8 @@ read_sql_construct(int until,
 								expected),
 						 parser_errposition(yylloc)));
 		}
+		/* Remember end+1 location of last accepted token */
+		endlocation = yylloc + plpgsql_token_length();
 	}
 
 	plpgsql_IdentifierLookup = save_IdentifierLookup;
@@ -2789,7 +2789,7 @@ read_sql_construct(int until,
 		*endtoken = tok;
 
 	/* give helpful complaint about empty input */
-	if (startlocation >= yylloc)
+	if (startlocation >= endlocation)
 	{
 		if (isexpression)
 			yyerror("missing expression");
@@ -2797,14 +2797,14 @@ read_sql_construct(int until,
 			yyerror("missing SQL statement");
 	}
 
-	plpgsql_append_source_text(&ds, startlocation, yylloc);
-
-	/* trim any trailing whitespace, for neatness */
-	if (trim)
-	{
-		while (ds.len > 0 && scanner_isspace(ds.data[ds.len - 1]))
-			ds.data[--ds.len] = '\0';
-	}
+	/*
+	 * We save only the text from startlocation to endlocation-1.  This
+	 * suppresses the "until" token as well as any whitespace or comments
+	 * following the last accepted token.  (We used to strip such trailing
+	 * whitespace by hand, but that causes problems if there's a "-- comment"
+	 * in front of said whitespace.)
+	 */
+	plpgsql_append_source_text(&ds, startlocation, endlocation);
 
 	expr = palloc0(sizeof(PLpgSQL_expr));
 	expr->query = pstrdup(ds.data);
@@ -2957,8 +2957,13 @@ read_datatype(int tok)
 	return result;
 }
 
+/*
+ * Read a generic SQL statement.  We have already read its first token;
+ * firsttoken is that token's code and location its starting location.
+ * If firsttoken == T_WORD, pass its yylval value as "word", else pass NULL.
+ */
 static PLpgSQL_stmt *
-make_execsql_stmt(int firsttoken, int location)
+make_execsql_stmt(int firsttoken, int location, PLword *word)
 {
 	StringInfoData ds;
 	IdentifierLookup save_IdentifierLookup;
@@ -2971,8 +2976,15 @@ make_execsql_stmt(int firsttoken, int location)
 	bool		have_strict = false;
 	int			into_start_loc = -1;
 	int			into_end_loc = -1;
+	int			paren_depth = 0;
+	int			begin_depth = 0;
+	bool		in_routine_definition = false;
+	int			token_count = 0;
+	char		tokens[4];		/* records the first few tokens */
 
 	initStringInfo(&ds);
+
+	memset(tokens, 0, sizeof(tokens));
 
 	/* special lookup mode for identifiers within the SQL text */
 	save_IdentifierLookup = plpgsql_IdentifierLookup;
@@ -2981,6 +2993,12 @@ make_execsql_stmt(int firsttoken, int location)
 	/*
 	 * Scan to the end of the SQL command.  Identify any INTO-variables
 	 * clause lurking within it, and parse that via read_into_target().
+	 *
+	 * The end of the statement is defined by a semicolon ... except that
+	 * semicolons within parentheses or BEGIN/END blocks don't terminate a
+	 * statement.  We follow psql's lead in not recognizing BEGIN/END except
+	 * after CREATE [OR REPLACE] {FUNCTION|PROCEDURE}.  END can also appear
+	 * within a CASE construct, so we treat CASE/END like BEGIN/END.
 	 *
 	 * Because INTO is sometimes used in the main SQL grammar, we have to be
 	 * careful not to take any such usage of INTO as a PL/pgSQL INTO clause.
@@ -3007,13 +3025,50 @@ make_execsql_stmt(int firsttoken, int location)
 	 * break this logic again ... beware!
 	 */
 	tok = firsttoken;
+	if (tok == T_WORD && strcmp(word->ident, "create") == 0)
+		tokens[token_count] = 'c';
+	token_count++;
+
 	for (;;)
 	{
 		prev_tok = tok;
 		tok = yylex();
 		if (have_into && into_end_loc < 0)
 			into_end_loc = yylloc;		/* token after the INTO part */
-		if (tok == ';')
+		/* Detect CREATE [OR REPLACE] {FUNCTION|PROCEDURE} */
+		if (tokens[0] == 'c' && token_count < sizeof(tokens))
+		{
+			if (tok == K_OR)
+				tokens[token_count] = 'o';
+			else if (tok == T_WORD &&
+					 strcmp(yylval.word.ident, "replace") == 0)
+				tokens[token_count] = 'r';
+			else if (tok == T_WORD &&
+					 strcmp(yylval.word.ident, "function") == 0)
+				tokens[token_count] = 'f';
+			else if (tok == T_WORD &&
+					 strcmp(yylval.word.ident, "procedure") == 0)
+				tokens[token_count] = 'f';	/* treat same as "function" */
+			if (tokens[1] == 'f' ||
+				(tokens[1] == 'o' && tokens[2] == 'r' && tokens[3] == 'f'))
+				in_routine_definition = true;
+			token_count++;
+		}
+		/* Track paren nesting (needed for CREATE RULE syntax) */
+		if (tok == '(')
+			paren_depth++;
+		else if (tok == ')' && paren_depth > 0)
+			paren_depth--;
+		/* We need track BEGIN/END nesting only in a routine definition */
+		if (in_routine_definition && paren_depth == 0)
+		{
+			if (tok == K_BEGIN || tok == K_CASE)
+				begin_depth++;
+			else if (tok == K_END && begin_depth > 0)
+				begin_depth--;
+		}
+		/* Command-ending semicolon? */
+		if (tok == ';' && paren_depth == 0 && begin_depth == 0)
 			break;
 		if (tok == 0)
 			yyerror("unexpected end of function definition");
@@ -3177,11 +3232,11 @@ read_fetch_direction(void)
 	{
 		/*
 		 * Assume it's a count expression with no preceding keyword.
-		 * Note: we allow this syntax because core SQL does, but we don't
-		 * document it because of the ambiguity with the omitted-direction
-		 * case.  For instance, "MOVE n IN c" will fail if n is a variable.
-		 * Perhaps this can be improved someday, but it's hardly worth a
-		 * lot of work.
+		 * Note: we allow this syntax because core SQL does, but it's
+		 * ambiguous with the case of an omitted direction clause; for
+		 * instance, "MOVE n IN c" will fail if n is a variable, because the
+		 * preceding else-arm will trigger.  Perhaps this can be improved
+		 * someday, but it hardly seems worth a lot of work.
 		 */
 		plpgsql_push_back_token(tok);
 		fetch->expr = read_sql_expression2(K_FROM, K_IN,
@@ -3890,16 +3945,12 @@ read_cursor_args(PLpgSQL_var *cursor, int until)
 		 * Read the value expression. To provide the user with meaningful
 		 * parse error positions, we check the syntax immediately, instead of
 		 * checking the final expression that may have the arguments
-		 * reordered. Trailing whitespace must not be trimmed, because
-		 * otherwise input of the form (param -- comment\n, param) would be
-		 * translated into a form where the second parameter is commented
-		 * out.
+		 * reordered.
 		 */
 		item = read_sql_construct(',', ')', 0,
 								  ",\" or \")",
 								  RAW_PARSE_PLPGSQL_EXPR,
 								  true, true,
-								  false, /* do not trim */
 								  NULL, &endtoken);
 
 		argv[argpos] = item->query;

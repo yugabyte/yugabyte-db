@@ -1514,6 +1514,10 @@ YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size) {
   return ToYBCStatus(pgapi->DmlANNSetPrefetchSize(handle, prefetch_size));
 }
 
+YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search) {
+  return ToYBCStatus(pgapi->DmlHnswSetReadOptions(handle, ef_search));
+}
+
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YbcPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
@@ -2463,12 +2467,14 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgOid database_oid,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
+                                        YbcOrderingMode ordering_mode,
                                         YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      plugin_name,
                                                      database_oid,
                                                      snapshot_action,
                                                      lsn_type,
+                                                     ordering_mode,
                                                      handle));
 }
 
@@ -3045,12 +3051,19 @@ YbcStatus YBCGetCronLastMinute(int64_t* last_minute) {
   return YBCStatusOK();
 }
 
-uint64_t YBCPgGetCurrentReadTimePoint() {
-  return pgapi->GetCurrentReadTimePoint();
+YbcReadPointHandle YBCPgGetCurrentReadPoint() {
+  return pgapi->GetCurrentReadPoint();
 }
 
-YbcStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
-  return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
+YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point) {
+  return ToYBCStatus(pgapi->RestoreReadPoint(read_point));
+}
+
+YbcStatus YBCPgRegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle) {
+  YbcReadPointHandle tmp_handle;
+  return ExtractValueFromResult(
+      pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
 }
 
 void YBCDdlEnableForceCatalogModification() {
@@ -3075,34 +3088,18 @@ YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 YbcStatus YBCPgExportSnapshot(
-    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time) {
-  std::optional<uint64_t> explicit_read_time_opt = std::nullopt;
-  if (explicit_read_time) {
-    explicit_read_time_opt = *explicit_read_time;
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const YbcReadPointHandle* read_point) {
+  std::optional<YbcReadPointHandle> read_point_handle;
+  if (read_point) {
+    read_point_handle = *read_point;
   }
   return ExtractValueFromResult(
-      pgapi->ExportSnapshot(*snapshot, explicit_read_time_opt),
+      pgapi->ExportSnapshot(*snapshot, read_point_handle),
       [snapshot_id](auto value) { *snapshot_id = YBCPAllocStdString(value); });
 }
 
-YbcStatus PgSetTxnSnapshotImpl(
-    const PgTxnSnapshotDescriptor& descriptor, YbcPgTxnSnapshot* snapshot) {
-  return ExtractValueFromResult(
-      pgapi->SetTxnSnapshot(descriptor), [snapshot](const std::optional<YbcPgTxnSnapshot>& value) {
-        if (snapshot) {
-          DCHECK(value.has_value());
-          *snapshot = value.value();
-        }
-      });
-}
-
 YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot) {
-  return PgSetTxnSnapshotImpl(snapshot_id, snapshot);
-}
-
-YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time) {
-  DCHECK_NE(explicit_read_time, 0);
-  return PgSetTxnSnapshotImpl(explicit_read_time, nullptr);
+  return ExtractValueFromResult(pgapi->ImportSnapshot({snapshot_id}), snapshot);
 }
 
 bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }

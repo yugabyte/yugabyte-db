@@ -20,6 +20,7 @@
 | "Enable Certificate Config Validation" | "yb.tls.enable_config_validation" | "CUSTOMER" | "Certificate configuration validation during the addition of new certificates." | "Boolean" |
 | "Default Metric Graph Point Count" | "yb.metrics.default_points" | "CUSTOMER" | "Default Metric Graph Point Count, if step is not defined in the query" | "Integer" |
 | "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
+| "Use Ansible for provisioning" | "yb.node_agent.use_ansible_provisioning" | "CUSTOMER" | "If enabled use Ansible for provisioning" | "Boolean" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -93,6 +94,7 @@
 | "Shell Output Max Directory Size" | "yb.logs.shell.output_dir_max_size" | "GLOBAL" | "Output logs for shell commands are written to tmp folder.This setting defines rotation policy based on directory size." | "Bytes" |
 | "Max Size of each log message" | "yb.logs.max_msg_size" | "GLOBAL" | "We limit the length of each log line as sometimes we dump entire output of script. If you want to debug something specific and the script output isgetting truncated in application log then increase this limit" | "Bytes" |
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
+| "Percentage of Hashicorp vault TTL to renew the token after" | "yb.kms.hcv_token_renew_percent" | "GLOBAL" | "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token after it has used the specified percentage of its original TTL. Default: 70%." | "Integer" |
 | "Start Master On Stop Node" | "yb.start_master_on_stop_node" | "GLOBAL" | "Auto-start master process on a similar available node on stopping a master node" | "Boolean" |
 | "Start Master On Remove Node" | "yb.start_master_on_remove_node" | "GLOBAL" | "Auto-start master process on a similar available node on removal of a master node" | "Boolean" |
 | "Server certificate verification for LDAPs/LDAP-TLS" | "yb.security.ldap.enforce_server_cert_verification" | "GLOBAL" | "Enforce server certificate verification for LDAPs/LDAP-TLS" | "Boolean" |
@@ -126,9 +128,6 @@
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
 | "Node destroy command timeout" | "yb.node_ops.destroy_server_timeout" | "GLOBAL" | "Timeout for node destroy command before failing." | "Duration" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
-| "Prometheus auth enabled" | "yb.metrics.auth" | "GLOBAL" | "Enables basic authentication for Prometheus web UI/APIs access" | "Boolean" |
-| "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
-| "Prometheus auth password" | "yb.metrics.auth_password" | "GLOBAL" | "Password, used for request authentication against embedded Prometheus" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
 | "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
 | "Enable safe mode to ignore preview YBA APIs" | "yb.api.mode.safe" | "GLOBAL" | "Will ignore preview APIs" | "Boolean" |
@@ -160,7 +159,6 @@
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
-| "Use Ansible for provisioning" | "yb.node_agent.use_ansible_provisioning" | "GLOBAL" | "If enabled use Ansible for provisioning" | "Boolean" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |
 | "Enable Path Access Style for Amazon S3" | "yb.ui.feature_flags.enable_path_style_access" | "GLOBAL" | "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible storage." | "Boolean" |
 | "Restore YBA postgres metadata during Yugaware container restart" | "yb.ha.k8s_restore_skip_dump_file_delete" | "GLOBAL" | "Restore YBA postgres metadata during Yugaware container restart" | "Boolean" |
@@ -314,3 +312,7 @@
 | "Allow users to disable DB APIs" | "yb.configure_db_api.allow_disable" | "UNIVERSE" | "Allow users to disable DB APIs" | "Boolean" |
 | "Enable Clockbound synchronization check" | "yb.checks.clockbound.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Clockbound synchronization check timeout" | "yb.checks.clockbound.timeout" | "UNIVERSE" | "Clockbound synchronization check timeout" | "Duration" |
+| "Delay between failed create tablespaces operation retry" | "yb.task.create_tablespaces.retry_delay" | "UNIVERSE" | "Delay between failed create tablespaces operation retry" | "Duration" |
+| "Timeout for create tablespaces task retries" | "yb.task.create_tablespaces.retry_timeout" | "UNIVERSE" | "Timeout for create tablespaces task retries" | "Duration" |
+| "Minimal number of retries for create tablespaces task" | "yb.task.create_tablespaces.min_retries" | "UNIVERSE" | "Minimal number of retries for create tablespaces task" | "Integer" |
+| "Whether to alert for unexpected masters/tservers in universe" | "yb.health_checks.unexpected_servers_check_enabled" | "UNIVERSE" | "Whether to alert for unexpected masters/tservers in universe" | "Boolean" |

@@ -1546,4 +1546,47 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Clockbound synchronization check timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryDelay =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_delay",
+          ScopeType.UNIVERSE,
+          "Delay between failed create tablespaces operation retry",
+          "Delay between failed create tablespaces operation retry",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryTimeout =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for create tablespaces task retries",
+          "Timeout for create tablespaces task retries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> createTablespacesMinRetries =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.min_retries",
+          ScopeType.UNIVERSE,
+          "Minimal number of retries for create tablespaces task",
+          "Minimal number of retries for create tablespaces task",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> unexpectedServersCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health_checks.unexpected_servers_check_enabled",
+          ScopeType.UNIVERSE,
+          "Whether to alert for unexpected masters/tservers in universe",
+          "Whether to alert for unexpected masters/tservers in universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> verifyClusterUUIDOnStart =
+      new ConfKeyInfo<>(
+          "yb.checks.verify_cluster_uuid.enabled",
+          ScopeType.UNIVERSE,
+          "Check if process has correct gflag on start",
+          "Check if process has correct gflag on start",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

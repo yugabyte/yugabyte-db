@@ -489,7 +489,7 @@ group by ss.x;
          ->  Seq Scan on public.int8_tbl i1
                Output: (SubPlan 2), i1.q1
                SubPlan 2
-                 ->  Result
+                 ->  Result *RESULT*_1
                        Output: i1.q1
 (11 rows)
 
@@ -519,10 +519,10 @@ group by ss.x;
          ->  Seq Scan on public.int8_tbl i1
                Output: (SubPlan 3), i1.q1
                SubPlan 3
-                 ->  Result
+                 ->  Result *RESULT*_2
                        Output: i1.q1
    SubPlan 2
-     ->  Result
+     ->  Result *RESULT*
            Output: GROUPING((SubPlan 1))
 (14 rows)
 
@@ -1751,12 +1751,12 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
    Hash Key: $2
    Group Key: ()
    InitPlan 1 (returns $1)
-     ->  Result
+     ->  Result *RESULT*_1
    InitPlan 3 (returns $2)
-     ->  Result
-   ->  Result
+     ->  Result *RESULT*_2
+   ->  Result *RESULT*_3
    SubPlan 2
-     ->  Result
+     ->  Result *RESULT*
 (10 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
@@ -1773,12 +1773,12 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
  GroupAggregate
    Group Key: $2
    InitPlan 1 (returns $1)
-     ->  Result
+     ->  Result *RESULT*_1
    InitPlan 3 (returns $2)
-     ->  Result
-   ->  Result
+     ->  Result *RESULT*_2
+   ->  Result *RESULT*_3
    SubPlan 2
-     ->  Result
+     ->  Result *RESULT*
 (9 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;

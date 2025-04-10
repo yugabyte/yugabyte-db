@@ -251,6 +251,14 @@ Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
   return down_cast<PgDmlRead*>(this)->ANNSetPrefetchSize(prefetch_size);
 }
 
+Status PgDml::HnswSetReadOptions(int ef_search) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->HnswSetReadOptions(ef_search);
+  }
+
+  return down_cast<PgDmlRead*>(this)->HnswSetReadOptions(ef_search);
+}
+
 Status PgDml::BindTable() {
   bind_table_ = true;
   return Status::OK();

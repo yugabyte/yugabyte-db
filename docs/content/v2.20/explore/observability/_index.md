@@ -75,13 +75,13 @@ To get more details about the various steps of a query execution, use the [Expla
       title="Prometheus integration"
       body="Export YugabyteDB metrics into Prometheus to inspect various metrics."
       href="./prometheus-integration/macos/"
-      icon="fa-solid fa-chart-line">}}
+      icon="fa-thin fa-chart-line">}}
 
   {{<index/item
       title="Grafana dashboard"
       body="Create dashboards using Prometheus metrics to understand the health and performance of YugabyteDB clusters."
       href="./grafana-dashboard/grafana/"
-      icon="fa-solid fa-chart-bar">}}
+      icon="fa-thin fa-chart-bar">}}
 
   {{<index/item
       title="View live queries with pg_stat_activity"
@@ -111,12 +111,12 @@ To get more details about the various steps of a query execution, use the [Expla
       title="Query statistics using pg_stat_statements"
       body="Track planning and execution metrics for SQL statements"
       href="../query-1-performance/pg-stat-statements"
-      icon="fa-solid fa-signal">}}
+      icon="fa-thin fa-signal">}}
 
   {{<index/item
       title="Monitor clusters using key metrics"
       body="Understand the different metrics in YugabyteDB to monitor your cluster"
       href="../../launch-and-manage/monitor-and-alert/metrics"
-      icon="fa-solid fa-bell">}}
+      icon="fa-thin fa-bell">}}
 
 {{</index/block>}}

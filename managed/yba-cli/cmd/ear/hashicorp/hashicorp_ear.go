@@ -31,6 +31,7 @@ func init() {
 	HashicorpVaultEARCmd.AddCommand(listHashicorpVaultEARCmd)
 	HashicorpVaultEARCmd.AddCommand(describeHashicorpVaultEARCmd)
 	HashicorpVaultEARCmd.AddCommand(deleteHashicorpVaultEARCmd)
+	HashicorpVaultEARCmd.AddCommand(refreshHashicorpVaultEARCmd)
 
 	HashicorpVaultEARCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",

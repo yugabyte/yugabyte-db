@@ -230,7 +230,7 @@ get_tablespace_distance(Oid spcid)
 		return UNKNOWN_DISTANCE;
 	}
 
-	MemoryContext tablespaceDistanceContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tablespaceDistanceContext = AllocSetContextCreate(CurrentMemoryContext,
 																	"tablespace distance calculation",
 																	ALLOCSET_SMALL_SIZES);
 

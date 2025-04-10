@@ -246,20 +246,10 @@ class HealthInfoPanel extends PureComponent {
 
   render() {
     const { healthCheck, universeInfo } = this.props;
-    let disabledUntilStr = '';
     if (getPromiseState(healthCheck).isSuccess()) {
       const healthCheckData = [...healthCheck.data].reverse()[0];
       const lastUpdateDate = moment.utc(healthCheckData.timestamp).local();
-      if (universeInfo.universeConfig && 'disableAlertsUntilSecs' in universeInfo.universeConfig) {
-        const disabledUntilSecs = Number(universeInfo.universeConfig.disableAlertsUntilSecs);
-        const now = Date.now() / 1000;
-        if (!Number.isSafeInteger(disabledUntilSecs)) {
-          disabledUntilStr = ' Alerts are snoozed';
-        } else if (disabledUntilSecs > now) {
-          disabledUntilStr =
-            ' Alerts are snoozed until ' + moment.unix(disabledUntilSecs).format('MMM DD hh:mm a');
-        }
-      }
+
       const totalNodesCounter = healthCheckData.data.length;
       let errorNodesCounter = 0;
 
@@ -308,14 +298,6 @@ class HealthInfoPanel extends PureComponent {
               <span className={'text-dark text-normal'}>
                 <FormattedRelative value={lastUpdateDate} unit="day" />
               </span>
-            </span>
-          ) : null
-        },
-        {
-          name: '',
-          data: disabledUntilStr ? (
-            <span className="text-light">
-              <i className={'fa fa-exclamation-triangle'}>{disabledUntilStr}</i>
             </span>
           ) : null
         }

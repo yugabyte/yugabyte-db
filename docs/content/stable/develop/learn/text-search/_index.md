@@ -88,24 +88,24 @@ To learn more about pattern matching, see [Phonetic Search](./phonetic-matching)
     title="Pattern matching"
     body="Search text based on a text pattern."
     href="./pattern-matching"
-    icon="fa-solid fa-equals">}}
+    icon="fa-thin fa-equals">}}
 
 {{<index/item
     title="Similarity search"
     body="Find similar words."
-    icon="fa-solid fa-equals"
+    icon="fa-thin fa-equals"
     href="similarity-matching">}}
 
 {{<index/item
     title="Full-Text Search"
     body="Search engine like search"
-    icon="fa-brands fa-searchengin"
+    icon="fa-thin fa-magnifying-glass"
     href="full-text-search">}}
 
 {{<index/item
     title="Phonetic Search"
     body="Search text based on sound and similarity"
-    icon="fa-solid fa-music"
+    icon="fa-thin fa-music"
     href="phonetic-matching">}}
 
 {{</index/block>}}

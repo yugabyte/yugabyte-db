@@ -19,13 +19,12 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
-#include "yb/client/client.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/wait_queue.h"
+
+#include "yb/tserver/tserver_service.pb.h"
 
 namespace yb {
 namespace tablet {

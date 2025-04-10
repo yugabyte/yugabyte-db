@@ -18,6 +18,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
@@ -59,7 +61,10 @@ public class WaitForServer extends ServerSubTaskBase {
   public void run() {
 
     checkParams();
-
+    Universe universe =
+        taskParams().currentUniverseState == null
+            ? Universe.getOrBadRequest(taskParams().getUniverseUUID())
+            : taskParams().currentUniverseState;
     boolean ret;
     YBClient client = null;
     long startMs = System.currentTimeMillis();
@@ -71,10 +76,6 @@ public class WaitForServer extends ServerSubTaskBase {
         // Check for master UUID retries until timeout.
         ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
-        Universe universe =
-            taskParams().currentUniverseState == null
-                ? Universe.getOrBadRequest(taskParams().getUniverseUUID())
-                : taskParams().currentUniverseState;
         NodeDetails node = universe.getNode(taskParams().nodeName);
         Provider provider =
             Provider.getOrBadRequest(
@@ -97,6 +98,12 @@ public class WaitForServer extends ServerSubTaskBase {
         }
       } else {
         ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      }
+      if (ret
+          && (taskParams().serverType == ServerType.MASTER
+              || taskParams().serverType == ServerType.TSERVER)
+          && confGetter.getConfForScope(universe, UniverseConfKeys.verifyClusterUUIDOnStart)) {
+        verifyUniverseUUID(hp.getHost(), taskParams().serverType, universe);
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -128,5 +135,31 @@ public class WaitForServer extends ServerSubTaskBase {
             userIntent.isYSQLAuthEnabled(),
             userIntent.enableConnectionPooling);
     return !ysqlResponse.has("error");
+  }
+
+  private void verifyUniverseUUID(String privateIp, ServerType serverType, Universe universe) {
+    NodeDetails nodeDetails = universe.getNodeByAnyIP(privateIp);
+    int port =
+        serverType == ServerType.MASTER ? nodeDetails.masterHttpPort : nodeDetails.tserverHttpPort;
+    JsonNode varz = nodeUIApiHelper.getRequest("http://" + privateIp + ":" + port + "/api/v1/varz");
+    JsonNode errors = varz.get("error");
+    if (errors != null) {
+      throw new RuntimeException("Received error: " + errors.asText());
+    }
+    String universeUUIDStr = universe.getUniverseUUID().toString();
+    if (varz.get("flags") == null) {
+      throw new RuntimeException("No flags in response: " + varz);
+    }
+    for (JsonNode flag : varz.get("flags")) {
+      if (flag.get("name").asText().equals(GFlagsUtil.CLUSTER_UUID)) {
+        String flagValue = flag.get("value").asText().trim();
+        if (!flagValue.equalsIgnoreCase(universeUUIDStr)) {
+          throw new IllegalStateException(
+              String.format(
+                  "Expected '%s' for %s %s gflag, found '%s'",
+                  universeUUIDStr, serverType.name(), GFlagsUtil.CLUSTER_UUID, flagValue));
+        }
+      }
+    }
   }
 }

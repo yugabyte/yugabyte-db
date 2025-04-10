@@ -15,13 +15,15 @@
 
 #include <stdint.h>
 
-#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_data.h"
 #include "yb/docdb/lock_batch.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_fwd.h"
 

@@ -40,10 +40,10 @@ SELECT * FROM t1_gen ORDER BY k;
 -- Updates that don't involve generated columns + columns they depend on should
 -- eligible for single-row optimization or expression pushdown.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
-                QUERY PLAN                
-------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result t0_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -52,10 +52,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int WHERE k = 2;
-                QUERY PLAN                
-------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Update on t0_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result t0_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -125,10 +125,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (101, 101, 101), (1
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (103, 103);
-                QUERY PLAN                
-------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 0
@@ -138,10 +138,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (103, 103);
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (104, 104);
-                QUERY PLAN                
-------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 0
@@ -312,10 +312,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (201, 201, 201), (2
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (203, 203);
-                QUERY PLAN                
-------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 0
@@ -325,10 +325,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (203, 203);
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (204, 204);
-                QUERY PLAN                
-------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Insert on t0_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 0
@@ -543,10 +543,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = 2 WHERE k = 2;
-                QUERY PLAN                
-------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Update on t1_gen (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result t1_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0

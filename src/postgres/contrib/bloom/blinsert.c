@@ -134,7 +134,7 @@ blbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	/* Initialize the bloom build state */
 	memset(&buildstate, 0, sizeof(buildstate));
 	initBloomState(&buildstate.blstate, index);
-	buildstate.tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate.tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
 											  "Bloom build temporary context",
 											  ALLOCSET_DEFAULT_SIZES);
 	initCachedPage(&buildstate);
@@ -213,7 +213,7 @@ blinsert(Relation index, Datum *values, bool *isnull,
 	OffsetNumber nStart;
 	GenericXLogState *state;
 
-	insertCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	insertCtx = AllocSetContextCreate(CurrentMemoryContext,
 									  "Bloom insert temporary context",
 									  ALLOCSET_DEFAULT_SIZES);
 

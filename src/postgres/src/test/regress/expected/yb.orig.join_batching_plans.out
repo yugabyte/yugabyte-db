@@ -214,31 +214,31 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
-   Join Filter: (t3.a = t1.a)
-   ->  YB Batched Nested Loop Join
-         Join Filter: (t1.a = t2.b)
-         ->  Index Scan using p2_pkey on p2 t2
-               Index Cond: (b <= 15)
-         ->  Index Scan using p1_pkey on p1 t1
-               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2, ..., $1023])) AND (b <= 10))
-   ->  Index Scan using p3_pkey on p3 t3
-         Index Cond: (a = ANY (ARRAY[t1.a, $1025, $1026, ..., $2047]))
-(10 rows)
-
-/*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- YB Batched Nested Loop Left Join
-   Join Filter: (t3.a = t1.a)
+ Hash Left Join
+   Hash Cond: (t1.a = t3.a)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Index Scan using p1_pkey on p1 t1
                Index Cond: (b <= 10)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: ((b = ANY (ARRAY[t1.a, $1, $2, ..., $1023])) AND (b <= 15))
-   ->  Index Scan using p3_pkey on p3 t3
-         Index Cond: (a = ANY (ARRAY[t1.a, $1025, $1026, ..., $2047]))
+   ->  Hash
+         ->  Seq Scan on p3 t3
+(10 rows)
+
+/*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Hash Left Join
+   Hash Cond: (t1.a = t3.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
+         ->  Index Scan using p1_pkey on p1 t1
+               Index Cond: (b <= 10)
+         ->  Index Scan using p2_pkey on p2 t2
+               Index Cond: ((b = ANY (ARRAY[t1.a, $1, $2, ..., $1023])) AND (b <= 15))
+   ->  Hash
+         ->  Seq Scan on p3 t3
 (10 rows)
 
 -- anti join--
@@ -348,15 +348,15 @@ ANALYZE;
 -- Since we don't have many rows in p1, p2 it isn't too bad to use the extra
 -- sort operator imposed by nested loop join batching.
 explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+            QUERY PLAN            
+----------------------------------
  Sort
    Sort Key: p1.a
-   ->  YB Batched Nested Loop Join
-         Join Filter: (p1.a = p2.a)
-         ->  Seq Scan on p2
-         ->  Index Scan using p1_pkey on p1
-               Index Cond: (a = ANY (ARRAY[p2.a, $1, $2, ..., $1023]))
+   ->  Hash Join
+         Hash Cond: (p1.a = p2.a)
+         ->  Seq Scan on p1
+         ->  Hash
+               ->  Seq Scan on p2
 (7 rows)
 
 /*+YbBatchedNL(p1 p2)*/ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
@@ -377,15 +377,15 @@ ANALYZE;
 -- After we have inserted many rows into each table, we expect that other
 -- join methods that preserve the sort order of its input relations to be better.
 explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+            QUERY PLAN            
+----------------------------------
  Sort
    Sort Key: p1.a
-   ->  YB Batched Nested Loop Join
-         Join Filter: (p1.a = p2.a)
-         ->  Seq Scan on p1
-         ->  Index Scan using p2_pkey on p2
-               Index Cond: (a = ANY (ARRAY[p1.a, $1, $2, ..., $1023]))
+   ->  Hash Join
+         Hash Cond: (p2.a = p1.a)
+         ->  Seq Scan on p2
+         ->  Hash
+               ->  Seq Scan on p1
 (7 rows)
 
 -- However, removing the ordering constraint in this query allows us to prefer
@@ -433,17 +433,17 @@ insert into s3 select generate_series(1,10);
 ANALYZE;
 explain (costs off) /*+Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
 on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a < 5;
-                           QUERY PLAN                            
------------------------------------------------------------------
- YB Batched Nested Loop Left Join
+                 QUERY PLAN                 
+--------------------------------------------
+ Nested Loop Left Join
    Join Filter: (s2.a = s3.a)
    ->  Merge Left Join
          Merge Cond: (s1.a = s2.a)
          ->  Index Scan using s1_pkey on s1
                Index Cond: (a < 5)
          ->  Index Scan using s2_pkey on s2
-   ->  Index Scan using s3_pkey on s3
-         Index Cond: (a = ANY (ARRAY[s2.a, $1, $2, ..., $1023]))
+   ->  Materialize
+         ->  Index Scan using s3_pkey on s3
 (9 rows)
 
 drop table s1;
@@ -470,9 +470,9 @@ explain (costs off) /*+IndexScan(p2) YbBatchedNL(p1 p2)*/ select * from test1 p1
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: ((p1.a = p2.a) AND (p1.b = p2.b) AND (p1.c = p2.c))
-   ->  Index Scan using test1_pkey on test1 p1
    ->  Index Scan using test2_pkey on test2 p2
-         Index Cond: (ROW(a, b, c) = ANY (ARRAY[ROW(p1.a, p1.b, p1.c), ROW($1, $1025, $2049), ROW($2, $1026, $2050), ..., ROW($1023, $2047, $3071)]))
+   ->  Index Scan using test1_pkey on test1 p1
+         Index Cond: (ROW(a, b, c) = ANY (ARRAY[ROW(p2.a, p2.b, p2.c), ROW($1, $1025, $2049), ROW($2, $1026, $2050), ..., ROW($1023, $2047, $3071)]))
 (5 rows)
 
 drop table test1;

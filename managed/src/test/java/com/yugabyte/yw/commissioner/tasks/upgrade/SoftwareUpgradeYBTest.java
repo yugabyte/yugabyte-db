@@ -26,6 +26,8 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
@@ -64,8 +66,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.RollbackYsqlMajorCatalogVersionResponse;
 import org.yb.client.UpgradeYsqlResponse;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -74,6 +79,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @InjectMocks private SoftwareUpgrade softwareUpgrade;
+
+  private boolean ysqlMajorUpgrade = false;
 
   @Override
   @Before
@@ -398,6 +405,339 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testYsqlMajorVersionSoftwareUpgrade() throws Exception {
+
+    String baseVersion = "2024.2.2.0-b1";
+    String targetVersion = "2025.1.0.0-b1";
+    this.ysqlMajorUpgrade = true;
+
+    TestHelper.updateUniverseVersion(defaultUniverse, baseVersion);
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(targetVersion)
+            .withFilePath("yugabyte-" + targetVersion + "-centos-x86_64" + ".tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(anyString()))
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    mockDBServerVersion(
+        baseVersion,
+        targetVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = targetVersion;
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(false))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.RunYsqlMajorVersionCatalogUpgrade)
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertEquals(
+        baseVersion,
+        defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
+  }
+
+  @Test
+  public void testYsqlMajorVersionSoftwareUpgradeOnDedicatedNodeUniverse() throws Exception {
+    String baseVersion = "2024.2.2.0-b1";
+    String targetVersion = "2025.1.0.0-b1";
+    this.ysqlMajorUpgrade = true;
+
+    // Update universe details to set dedicated node, version and auth settings.
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion = baseVersion;
+    userIntent.enableYSQLAuth = true;
+    userIntent.dedicatedNodes = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+
+    when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(targetVersion)
+            .withFilePath("yugabyte-" + targetVersion + "-centos-x86_64" + ".tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(anyString()))
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    mockDBServerVersion(
+        baseVersion,
+        targetVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = targetVersion;
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(false))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.ManageCatalogUpgradeSuperUser)
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.RunYsqlMajorVersionCatalogUpgrade)
+        .addTasks(TaskType.ManageCatalogUpgradeSuperUser)
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertEquals(
+        baseVersion,
+        defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
+  }
+
+  @Test
+  public void testYsqlMajorVersionSoftwareUpgradeFailureRetry() throws Exception {
+    String baseVersion = "2024.2.2.0-b1";
+    String targetVersion = "2025.1.0.0-b1";
+    this.ysqlMajorUpgrade = true;
+
+    // Update universe details to set dedicated node, version and auth settings.
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion = baseVersion;
+    userIntent.enableYSQLAuth = true;
+    userIntent.dedicatedNodes = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+
+    when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(any(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(any()))
+        .thenReturn(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK);
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(targetVersion)
+            .withFilePath("yugabyte-" + targetVersion + "-centos-x86_64" + ".tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(anyString()))
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L, null, null, YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING))
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L, null, null, YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING))
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    when(mockClient.rollbackYsqlMajorCatalogVersion())
+        .thenReturn(new RollbackYsqlMajorCatalogVersionResponse(0L, null, null));
+    mockDBServerVersion(
+        baseVersion,
+        targetVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = targetVersion;
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(false))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addTasks(TaskType.RollbackYsqlMajorVersionCatalogUpgrade)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.ManageCatalogUpgradeSuperUser)
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.RunYsqlMajorVersionCatalogUpgrade)
+        .addTasks(TaskType.ManageCatalogUpgradeSuperUser)
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion(targetVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertEquals(
+        baseVersion,
+        defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
+  }
+
+  @Test
   public void testSoftwareUpgradeRetries() {
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
@@ -417,6 +757,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         TaskType.SoftwareUpgradeYB,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
@@ -587,6 +928,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
                 TaskType.CheckMemory,
                 TaskType.CheckLocale,
                 TaskType.CheckGlibc));
+    if (ysqlMajorUpgrade) {
+      lst.add(TaskType.PGUpgradeTServerCheck);
+    }
     if (hasRollingRestarts) {
       lst.add(0, TaskType.CheckNodesAreSafeToTakeDown);
     }

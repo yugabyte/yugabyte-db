@@ -1963,30 +1963,30 @@ To check if any tables are configured for replication, use [list_cdc_streams](#l
 Use the `set_master_addresses` subcommand to replace the source master address list. Use this if the set of masters on the source changes:
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    set_master_addresses <source_master_addresses>
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <source-universe-uuid>_<replication-name> \
+    set_master_addresses <source-master-addresses>
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *source_master_addresses*: Comma-separated list of the source master addresses.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source-universe-uuid*: The UUID of the source universe.
+* *replication-name*: The name of the replication to be altered.
+* *source-master-addresses*: Comma-separated list of the source master addresses.
 
 Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    add_table [ <comma_separated_list_of_table_ids> ] \
-    [ <comma_separated_list_of_producer_bootstrap_ids> ]
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <source-universe-uuid>_<replication-name> \
+    add_table [ <source-table-ids> ] \
+    [ <source-bootstrap-ids> ]
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source-universe-uuid*: The UUID of the source universe.
+* *replication-name*: The name of the replication to be altered.
+* *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* *source-bootstrap-ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
 Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
@@ -1995,28 +1995,29 @@ Enter the source universe bootstrap IDs in the same order as their corresponding
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    remove_table [ <comma_separated_list_of_table_ids> ]
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <source-universe-uuid>_<replication-name> \
+    remove_table <source-table-ids> [ignore-errors]
 ```
 
-* *target_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source-universe-uuid*: The UUID of the source universe.
+* *replication-name*: The name of the replication to be altered.
+* *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* `ignore-errors`: Execute the command, ignoring any errors. It is recommended that you contact support before using this option.
 
 Use the `rename_id` subcommand to rename xCluster replication streams.
 
 ```sh
-yb-admin -master_addresses <target_master_addresses> \
-    alter_universe_replication <source_universe_uuid>_<replication_name> \
-    rename_id <source_universe_uuid>_<new_replication_name>
+yb-admin -master_addresses <target-master-addresses> \
+    alter_universe_replication <source-universe-uuid>_<replication-name> \
+    rename_id <source-universe-uuid>_<new-replication-name>
 ```
 
-* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
-* *source_universe_uuid*: The UUID of the source universe.
-* *replication_name*: The name of the replication to be altered.
-* *new_replication_name*: The new name of the replication stream.
+* *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source-universe-uuid*: The UUID of the source universe.
+* *replication-name*: The name of the replication to be altered.
+* *new-replication-name*: The new name of the replication stream.
 
 #### delete_universe_replication <source_universe_uuid>
 

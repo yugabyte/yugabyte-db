@@ -27,13 +27,6 @@ public class TestPgRegressPgConstraints extends BasePgRegressTestPorted {
         return 1800;
     }
 
-    @Override
-    protected Map<String, String> getTServerFlags() {
-      Map<String, String> flags = super.getTServerFlags();
-      flags.put("ysql_enable_inheritance", "true");
-      return flags;
-    }
-
     @Test
     public void schedule() throws Exception {
         runPgRegressTest("yb_pg_constraints_schedule");

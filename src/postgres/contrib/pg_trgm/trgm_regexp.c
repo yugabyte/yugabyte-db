@@ -535,7 +535,7 @@ createTrgmNFA(text *text_re, Oid collation,
 	 * query-lifespan memory context).  Make a temp context we can work in so
 	 * that cleanup is easy.
 	 */
-	tmpcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tmpcontext = AllocSetContextCreate(CurrentMemoryContext,
 									   "createTrgmNFA temporary context",
 									   ALLOCSET_DEFAULT_SIZES);
 	oldcontext = MemoryContextSwitchTo(tmpcontext);
@@ -921,7 +921,7 @@ transformGraph(TrgmNFA *trgmNFA)
 	/* Create hashtable for states */
 	hashCtl.keysize = sizeof(TrgmStateKey);
 	hashCtl.entrysize = sizeof(TrgmState);
-	hashCtl.hcxt = GetCurrentMemoryContext();
+	hashCtl.hcxt = CurrentMemoryContext;
 	trgmNFA->states = hash_create("Trigram NFA",
 								  1024,
 								  &hashCtl,
@@ -1949,9 +1949,7 @@ packGraph(TrgmNFA *trgmNFA, MemoryContext rcontext)
 				arcsCount;
 	HASH_SEQ_STATUS scan_status;
 	TrgmState  *state;
-	TrgmPackArcInfo *arcs,
-			   *p1,
-			   *p2;
+	TrgmPackArcInfo *arcs;
 	TrgmPackedArc *packedArcs;
 	TrgmPackedGraph *result;
 	int			i,
@@ -2023,17 +2021,25 @@ packGraph(TrgmNFA *trgmNFA, MemoryContext rcontext)
 	qsort(arcs, arcIndex, sizeof(TrgmPackArcInfo), packArcInfoCmp);
 
 	/* We could have duplicates because states were merged. Remove them. */
-	/* p1 is probe point, p2 is last known non-duplicate. */
-	p2 = arcs;
-	for (p1 = arcs + 1; p1 < arcs + arcIndex; p1++)
+	if (arcIndex > 1)
 	{
-		if (packArcInfoCmp(p1, p2) > 0)
+		/* p1 is probe point, p2 is last known non-duplicate. */
+		TrgmPackArcInfo *p1,
+				   *p2;
+
+		p2 = arcs;
+		for (p1 = arcs + 1; p1 < arcs + arcIndex; p1++)
 		{
-			p2++;
-			*p2 = *p1;
+			if (packArcInfoCmp(p1, p2) > 0)
+			{
+				p2++;
+				*p2 = *p1;
+			}
 		}
+		arcsCount = (p2 - arcs) + 1;
 	}
-	arcsCount = (p2 - arcs) + 1;
+	else
+		arcsCount = arcIndex;
 
 	/* Create packed representation */
 	result = (TrgmPackedGraph *)

@@ -873,3 +873,4 @@ DROP USER ybvoyager;
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
+- For Oracle, only the values of identity columns on the migrating tables will be restored. The user will have to resume other sequences manually.

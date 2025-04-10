@@ -104,6 +104,7 @@ DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(catalog_manager_report_batch_size);
 DECLARE_int32(tablet_report_limit);
+DECLARE_int32(tablet_creation_timeout_ms);
 
 DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
 DEFINE_NON_RUNTIME_int32(benchmark_runtime_secs, 5, "Number of seconds to run the benchmark");
@@ -407,6 +408,8 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 30000;
+
   YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
 

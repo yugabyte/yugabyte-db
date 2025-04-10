@@ -1,0 +1,139 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 3610000;
+SET documentdb.next_collection_id TO 3610;
+SET documentdb.next_collection_index_id TO 3610;
+-- insert 10K documents
+SELECT COUNT (*) FROM ( SELECT documentdb_api.insert_one('db', 'test_index_selection_sharded', FORMAT('{ "a": { "b": %s, "c": %s } }', i, i)::bson) FROM generate_series(1, 10000) i) r1;
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+ 10000
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'test_index_selection_sharded');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- create indexes on a.b, and a.c
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_index_selection_sharded", "indexes": [ { "name": "a_b_1", "key": { "a.b": 1 } }, { "name": "a_c_1", "key": { "a.c": 1 }}] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "0" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Now, do an explain with an OR query that each uses 1 of the indexes.
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$or": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
+                                                                                                                                                                               QUERY PLAN                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_3610_3610002 collection WHERE (((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bsonquery) OR (document OPERATOR(documentdb_api_catalog.#<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery)) AND (shard_key_value OPERATOR(pg_catalog.=) '3610'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_3610_3610002 collection
+               Output: document
+               Recheck Cond: ((collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson) OR (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on a_c_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+(15 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$and": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
+                                                                                                                                                                              QUERY PLAN                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_3610_3610002 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '3610'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_3610_3610002 collection
+               Output: document
+               Recheck Cond: ((collection.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson))
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on a_c_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson)
+(15 rows)
+
+BEGIN;
+set local citus.enable_local_execution to off;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$or": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
+                                                                                                                                                                               QUERY PLAN                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_3610_3610002 collection WHERE (((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bsonquery) OR (document OPERATOR(documentdb_api_catalog.#<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery)) AND (shard_key_value OPERATOR(pg_catalog.=) '3610'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_3610_3610002 collection
+               Output: document
+               Recheck Cond: ((collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson) OR (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on a_c_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+(15 rows)
+
+ROLLBACK;
+-- Now shard the collection
+SELECT documentdb_api.shard_collection('db', 'test_index_selection_sharded', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- rerun the query
+BEGIN;
+set local enable_seqscan to off;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$or": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
+                                                                                                                                                  QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_3610_3610016 documents_3610 WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bsonquery) OR (document OPERATOR(documentdb_api_catalog.#<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_3610_3610016 documents_3610
+               Output: document
+               Recheck Cond: ((documents_3610.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson) OR (documents_3610.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (documents_3610.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on a_c_1
+                           Index Cond: (documents_3610.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+(15 rows)
+
+SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_index_selection_sharded') WHERE document @@ '{ "$and": [ { "a.b": { "$gt": 500 } }, { "a.c": { "$lt": 10 } } ] }';
+                                                                                                                                                  QUERY PLAN                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_3610_3610016 documents_3610 WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_3610_3610016 documents_3610
+               Output: document
+               Recheck Cond: (documents_3610.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+               Filter: (documents_3610.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "500" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on a_c_1
+                     Index Cond: (documents_3610.document OPERATOR(documentdb_api_catalog.@<) '{ "a.c" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+(13 rows)
+
+ROLLBACK;

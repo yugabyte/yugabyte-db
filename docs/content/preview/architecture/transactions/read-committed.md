@@ -21,7 +21,7 @@ A read committed transaction in PostgreSQL doesn't raise serialization errors be
 
 YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee where each statement in a YugabyteDB read committed transaction always uses a consistent snapshot of the database, while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. For a detailed example, see [Stronger guarantees in YugabyteDB's read committed isolation](#yugabytedb-s-implementation-with-a-stronger-guarantee).
 
-NOTE: Retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer gflag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
+Note that retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer flag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
 
 ## Implementation and semantics (as in PostgreSQL)
 

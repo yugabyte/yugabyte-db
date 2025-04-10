@@ -265,7 +265,10 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       createConfigureUniverseTasks(
-          primaryCluster, null /* masterNodes */, nonRestartMasterGflagUpgrade);
+          primaryCluster,
+          null /* masterNodes */,
+          allTserversAdded /* newTservers */,
+          nonRestartMasterGflagUpgrade);
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

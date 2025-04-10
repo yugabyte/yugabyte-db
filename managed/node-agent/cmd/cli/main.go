@@ -61,6 +61,13 @@ func setDefaultConfigs() {
 
 // Entry for all commands.
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			util.ConsoleLogger().
+				Fatalf(server.Context(), "Panic occurred: %v. Make sure node agent is correctly "+
+					"installed and the right user is running the command.", r)
+		}
+	}()
 	executor.Init(server.Context())
 	defer executor.GetInstance().WaitOnShutdown()
 	scheduler.Init(server.Context())

@@ -4318,8 +4318,7 @@
         }
       },
       "required" : [
-        "backupRequestParams",
-        "tables"
+        "backupRequestParams"
       ],
       "type" : "object"
     },

@@ -373,6 +373,15 @@ enum class YBPgErrorCode : uint32_t {
   YB_PG_INTERNAL_ERROR = YB_PG_MAKE_SQLSTATE('X', 'X', '0', '0', '0'),
   YB_PG_DATA_CORRUPTED = YB_PG_MAKE_SQLSTATE('X', 'X', '0', '0', '1'),
   YB_PG_INDEX_CORRUPTED = YB_PG_MAKE_SQLSTATE('X', 'X', '0', '0', '2'),
+
+  /* Class YB - Yugabyte Error */
+  YB_PG_YB_TXN_ERROR = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '0', '0'),
+  YB_PG_YB_TXN_ABORTED = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '0', '1'),
+  YB_PG_YB_RESTART_READ = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '0', '2'),
+  YB_PG_YB_TXN_CONFLICT = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '0', '3'),
+  YB_PG_YB_DEADLOCK = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '0', '4'),
+  YB_PG_YB_TXN_SKIP_LOCKING = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '1', '0'),
+  YB_PG_YB_TXN_LOCK_NOT_FOUND = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '1', '1'),
 };
 
 #undef YB_PG_MAKE_SQLSTATE

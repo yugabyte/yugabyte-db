@@ -22,6 +22,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -41,6 +42,18 @@ const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
 class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
  public:
+  Status SetUpClustersAndCheckpointReplicationGroup(
+      bool is_colocated = false, bool start_yb_controller_servers = false) {
+    RETURN_NOT_OK(SetUpClusters(is_colocated, start_yb_controller_servers));
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
+    return Status::OK();
+  }
+
+  // Precondition: a bootstrap is not actually needed.
+  // For example, the two databases might both be completely empty.
+  // This is not the same as whether or not IsXClusterBootstrapRequired will return false.
   Status AddDatabaseToReplication(
       const NamespaceId& source_db_id, const NamespaceId& target_db_id) {
     auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -48,7 +61,8 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
         kReplicationGroupId, source_db_id));
     auto bootstrap_required =
         VERIFY_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, source_db_id));
-    SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
+    SCHECK(
+        bootstrap_required, IllegalState, "Bootstrap should always be required for Automatic mode");
 
     return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
   }
@@ -56,8 +70,7 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
 
 // In automatic mode, sequences_data should have been created on both universe.
 TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
@@ -70,8 +83,7 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
 }
 
 TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -84,6 +96,7 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   const auto namespace_name2 = namespace_name + "2";
   auto [source_db2_id, target_db2_id] =
       ASSERT_RESULT(CreateDatabaseOnBothClusters(namespace_name2));
+  // AddDatabaseToReplication precondition met because databases are empty
   ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
 
@@ -95,6 +108,7 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name));
 
   // Add the second database to replication again to test dropping everything.
+  // AddDatabaseToReplication precondition met because databases are empty
   ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
 
@@ -107,8 +121,7 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
 }
 
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   {
@@ -132,10 +145,10 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
 
 TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationGroups) {
   const xcluster::ReplicationGroupId kReplicationGroupId2("ReplicationGroup2");
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name, /*only_source=*/true));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId2));
+  ASSERT_OK(
+      CheckpointReplicationGroup(kReplicationGroupId2, /*require_no_bootstrap_needed=*/false));
   ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name, /*only_source=*/true));
 
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -150,9 +163,7 @@ TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationG
 
 TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
   // Ensure that splitting of xCluster DDL Replication tables is disabled on both sides.
-  ASSERT_OK(SetUpClusters());
-
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
@@ -172,9 +183,13 @@ TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
 }
 
 TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
   // Ensure that xCluster DDL Replication system tables are not colocated.
 
-  ASSERT_OK(SetUpClusters(/* is_colocated */ true));
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/true, /*start_yb_controller_servers=*/true));
   // Create a colocated table so that we can run xCluster setup.
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     RETURN_NOT_OK(CreateYsqlTable(
@@ -182,7 +197,9 @@ TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
     return Status::OK();
   }));
 
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
@@ -214,6 +231,22 @@ TEST_F(XClusterDDLReplicationTest, Bootstrapping) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 }
 
+TEST_F(XClusterDDLReplicationTest, BootstrappingEmptyTable) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name));
+  auto bootstrap_required =
+      ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, namespace_id));
+  EXPECT_EQ(bootstrap_required, true);
+}
+
 // TODO(Julien): As part of #24888, undisable this or make this a test that this correctly fails
 // with an error.
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
@@ -230,8 +263,7 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Create a simple table.
@@ -289,16 +321,8 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
 
 TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
   ASSERT_OK(SetUpClusters());
-  {
-    // Perturb OIDs on consumer side to make sure we don't accidentally preserve OIDs.
-    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-    ASSERT_OK(
-        conn.Execute("CREATE TYPE gratuitous_enum AS ENUM ('red', 'orange', 'yellow', 'green', "
-                     "'blue', 'purple');"));
-    ASSERT_OK(conn.Execute("DROP TYPE gratuitous_enum;"));
-  }
-
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  // Bootstrap here would have no effect because the database is empty so we skip it for the test.
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   std::string expected;
@@ -328,8 +352,7 @@ TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
 }
 
 TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Have to do this through ysqlsh -c since that sends the whole
@@ -368,8 +391,7 @@ TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateIndex) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   const std::string kBaseTableName = "base_table";
@@ -430,8 +452,7 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   // Test that DDLs are only replicated exactly once.
   const int kNumTablets = 3;
 
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Fail next DDL query and continue to process it.
@@ -467,8 +488,7 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
 }
 
 TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -492,8 +512,7 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
 }
 
 TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -536,8 +555,7 @@ TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
   const int kNumTablets = 3;
   const int kNumRowsTable1 = 10;
   const int kNumRowsTable2 = 3 * kNumRowsTable1;
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Pause replication.
@@ -579,8 +597,7 @@ TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
   // Test when a table is created and dropped multiple times.
   // Decrease number of iterations for slower build types.
   const int kNumIterations = (IsSanitizer() || kIsMac) ? 3 : 10;
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Pause replication.
@@ -613,8 +630,7 @@ TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
   // Test that when a table is renamed, the new table is correctly linked to the source table.
   const std::string kTableNewName = "renamed_table";
 
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Pause replication.
@@ -662,8 +678,7 @@ TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateColocatedTables) {
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -702,8 +717,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTables) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -752,8 +766,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -808,8 +821,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithSourceFailures) {
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -857,8 +869,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithSourceFailures) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -909,8 +920,7 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithTargetFailures) {
 
 // Test is disabled until #25926 is fixed.
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(ColocatedHistoricalSchemasWithCompactions)) {
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -958,8 +968,7 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(ColocatedHistoricalSchemasWit
 
 TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
   // Test alters on a table that is already part of replication.
-  ASSERT_OK(SetUpClusters(/*is_colocated=*/true));
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup(/*is_colocated=*/true));
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -979,8 +988,7 @@ TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
 }
 
 TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   google::SetVLOGLevel("catalog_manager*", 1);
   google::SetVLOGLevel("pg_client_service*", 1);
@@ -1029,9 +1037,8 @@ class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
 };
 
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
-  ASSERT_OK(SetUpClusters());
   // Set up replication from A to B.
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
@@ -1107,9 +1114,8 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
 }
 
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
-  ASSERT_OK(SetUpClusters());
   // Set up replication from A to B.
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   ASSERT_OK(ValidateReplicationRole(*cluster_A_, "source"));
@@ -1233,9 +1239,8 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
   // Limit how many OIDs we cache at a time so cache flushing doesn't consume too many OIDs.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_oid_cache_prefetch_size) = 1;
 
-  ASSERT_OK(SetUpClusters());
   // Set up replication from A to B.
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   // Log information about OID reservations; search logs for (case insensitive) "reserve".
@@ -1304,13 +1309,86 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 }
 
+using XClusterDDLReplicationSetupTest = XClusterDDLReplicationSwitchoverTest;
+
+TEST_F(XClusterDDLReplicationSetupTest, ReplicationSetUpBumpsOidCounter) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  // The resulting statement will consume 100 pg_enum OIDs.
+  auto CreateGiantEnumStatement = [](std::string name) {
+    std::string result = Format("CREATE TYPE $0 AS ENUM ('l0'", name);
+    for (int i = 1; i < 100; i++) {
+      result += Format(", 'l$0'", i);
+    }
+    return result + ");";
+  };
+
+  google::SetVLOGLevel("catalog_manager*", 1);
+  google::SetVLOGLevel("pg_client_service*", 1);
+  google::SetVLOGLevel("xcluster_source_manager", 1);
+  // Cache only 30 OIDs at a time; see below for why this value was chosen.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_oid_cache_prefetch_size) = 30;
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+
+  // Create a giant enum on cluster A.
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute(CreateGiantEnumStatement("first_enum")));
+    // Backup requires at least one table so create one.
+    ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+  }
+
+  // Reset OID counters on A by backing up then restoring the database on cluster A.
+  ASSERT_OK(BackupFromProducer());
+  SetReplicationDirection(ReplicationDirection::BToA);
+  ASSERT_OK(RestoreToConsumer());
+  SetReplicationDirection(ReplicationDirection::AToB);
+
+  // Allocate a few OIDs on A to force caching of normal space OIDs.
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE TABLE exercise_cache (x INT);"));
+  }
+
+  // Set up xCluster replication with a nonempty database.
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // At this point, in the absence of OID cache invalidation, we would still have OIDs cached on A
+  // from before replication was set up.  (Replication setup does create some objects, consuming
+  // OIDs, but not enough to exhaust the cache size of 30 we have set.)
+  //
+  // Importantly, we do not have enough OIDs cached to handle an entire giant enum.
+
+  {
+    // Drop via manual DDL replication the enum on only cluster A.
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute(R"(
+                     SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1;
+                     DROP TYPE first_enum;
+                     SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=0;)"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Now create a new giant enum via normal DDL replication.  If we did not bump up the normal
+    // space OID counter and invalidate on A then this will cause a OID collision on cluster B
+    // because the new enum on A will use OIDs freed up by dropping the previous enum but those OIDs
+    // are still in use on B because the previous enum still exists there.
+    ASSERT_OK(conn.Execute(CreateGiantEnumStatement("second_enum")));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+}
+
 class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
  public:
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
     XClusterDDLReplicationTest::SetUp();
-    ASSERT_OK(SetUpClusters());
-    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
     ASSERT_OK(CreateReplicationFromCheckpoint());
     producer_conn_ = std::make_unique<pgwrapper::PGConn>(
         ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
@@ -1479,8 +1557,7 @@ TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
 // Make sure we can create Colocated db and table on both clusters that is not affected by an the
 // replication of a different database.
 TEST_F(XClusterDDLReplicationTest, CreateNonXClusterColocatedDb) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   const auto kColocatedDB = "colocated_db";
@@ -1503,8 +1580,7 @@ class XClusterDDLReplicationTableRewriteTest : public XClusterDDLReplicationTest
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
     XClusterDDLReplicationTest::SetUp();
-    ASSERT_OK(SetUpClusters());
-    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
     ASSERT_OK(CreateReplicationFromCheckpoint());
 
     producer_conn_ = std::make_unique<pgwrapper::PGConn>(

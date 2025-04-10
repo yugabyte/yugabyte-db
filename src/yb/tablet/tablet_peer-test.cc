@@ -770,13 +770,10 @@ TEST_F(TabletBootstrapStateFlusherTest, RejectFlushOrSubmitIfFlushingOrSubmitted
 TEST_F(TabletBootstrapStateFlusherTest, WaitFlushDoneBeforeCopy) {
   TestThreadHolder thread_holder;
 
-  std::atomic<int> finish_order{0};
   // If a flush is in progress, the next copy should wait for flush done.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
     ASSERT_OK(tablet_peer_->FlushBootstrapState());
-    auto order = finish_order.fetch_add(1);
-    ASSERT_EQ(order, 0);
   });
   ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushing));
   thread_holder.AddThreadFunctor([&] {
@@ -785,21 +782,16 @@ TEST_F(TabletBootstrapStateFlusherTest, WaitFlushDoneBeforeCopy) {
     ASSERT_FALSE(res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
     ASSERT_TRUE(res.status().message().Contains("Bootstrap state has not been flushed"));
-    auto order = finish_order.fetch_add(1);
-    ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
   ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
   thread_holder.WaitAndStop(10s);
 
-  finish_order.store(0);
   // If a submit is in progress, the next copy should wait for flush done.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
     ASSERT_OK(tablet_peer_->SubmitFlushBootstrapStateTask());
-    auto order = finish_order.fetch_add(1);
-    ASSERT_EQ(order, 0);
   });
   ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushSubmitted));
   thread_holder.AddThreadFunctor([&] {
@@ -808,8 +800,6 @@ TEST_F(TabletBootstrapStateFlusherTest, WaitFlushDoneBeforeCopy) {
     ASSERT_FALSE(res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
     ASSERT_TRUE(res.status().message().Contains("Bootstrap state has not been flushed"));
-    auto order = finish_order.fetch_add(1);
-    ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_bootstrap_state) = false;

@@ -276,6 +276,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
         .thenReturn(builder.build());
+    lenient()
+        .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
+        .thenReturn(Paths.get("/opt/yugabyte"));
     NodeAgent nodeAgent = new NodeAgent();
     nodeAgent.setIp("127.0.0.1");
     nodeAgent.setName("nodeAgent");
@@ -514,7 +517,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             + TaskInfo.getOrBadRequest(taskUuid).getTaskState());
   }
 
-  private void setAbortPosition(int abortPosition) {
+  public void setAbortPosition(int abortPosition) {
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
     MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, String.valueOf(abortPosition));
   }
@@ -742,6 +745,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       throw new RuntimeException(e);
     } finally {
       clearAbortOrPausePositions();
+    }
+  }
+
+  protected void checkUniverseNodesStates(UUID universeUUID) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
+      if (nodeDetails.state != NodeDetails.NodeState.Live) {
+        throw new RuntimeException(
+            "Node " + nodeDetails.nodeName + " is left in non-Live state: " + nodeDetails.state);
+      }
     }
   }
 

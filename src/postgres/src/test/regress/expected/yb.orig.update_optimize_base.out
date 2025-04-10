@@ -42,10 +42,10 @@ INSERT INTO pkey_only_table (SELECT i, i FROM generate_series(1, 1024) AS i);
 -- A simple point update without involving the primary key
 -- This query does not go through the distributed transaction path
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -938,10 +938,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = h, v2 = v2 + 1 
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE h = 1;
-                QUERY PLAN                
-------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Update on a_test (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result a_test (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -1033,10 +1033,10 @@ CREATE TABLE base_table1 (k INT PRIMARY KEY, v1 INT, v2 INT);
 INSERT INTO base_table1 (SELECT i, i, i FROM generate_series(1, 10) AS i);
 -- This query below should follow the transaction fast path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
-                  QUERY PLAN                   
------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result base_table1 (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -1235,10 +1235,10 @@ CREATE TABLE base_table1 (k INT PRIMARY KEY, v1 INT, v2 INT) WITH (colocation = 
 INSERT INTO base_table1 (SELECT i, i, i FROM generate_series(1, 10) AS i);
 -- This query below should follow the transaction fast path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
-                  QUERY PLAN                   
------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Update on base_table1 (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result base_table1 (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -1573,7 +1573,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Storage Index Read Requests: 1
    Storage Table Write Requests: 1
    Storage Index Write Requests: 3
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
  Storage Read Requests: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 4
@@ -1596,7 +1596,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Storage Index Rows Scanned: 1
    Storage Table Write Requests: 2
    Storage Index Write Requests: 4
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
  Storage Read Requests: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 6
@@ -1619,7 +1619,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Storage Index Rows Scanned: 1
    Storage Table Write Requests: 2
    Storage Index Write Requests: 4
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
  Storage Read Requests: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 6

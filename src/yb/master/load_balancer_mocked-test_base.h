@@ -90,7 +90,7 @@ class LoadBalancerMockedBase : public YBTest {
     int adds = 0;
     int removes = 0;
     int stepdowns = 0;
-    RETURN_NOT_OK(cb_.CountPendingTasksUnlocked(cur_table_uuid_, &adds, &removes, &stepdowns));
+    RETURN_NOT_OK(CountPendingTasksUnlocked(table, &adds, &removes, &stepdowns));
 
     RETURN_NOT_OK(cb_.AnalyzeTabletsUnlocked(cur_table_uuid_));
     return PendingTasks { adds, removes, stepdowns };
@@ -133,10 +133,10 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
   Status CountPendingTasksUnlocked(
-      const TableId& table_uuid, int* pending_add_replica_tasks, int* pending_remove_replica_tasks,
+      const TableInfoPtr& table, int* pending_add_replica_tasks, int* pending_remove_replica_tasks,
       int* pending_stepdown_leader_tasks)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
-    return cb_.CountPendingTasksUnlocked(table_uuid, pending_add_replica_tasks,
+    return cb_.CountPendingTasksUnlocked(table, pending_add_replica_tasks,
         pending_remove_replica_tasks, pending_stepdown_leader_tasks);
   }
 
@@ -147,7 +147,7 @@ class LoadBalancerMockedBase : public YBTest {
     bool task_added = false;
     cb_.ProcessUnderReplicatedTablets(remaining_adds, task_added, out_tablet_id, out_to_ts);
 
-    SCHECK(cb_.global_state_->warnings_.size() == 0, IllegalState,
+    SCHECK(cb_.global_state_->activity_info_.GetWarningsSummary().empty(), IllegalState,
         "ProcessUnderReplicatedTablets hit an error");
     SCHECK_NE(remaining_adds, task_added, IllegalState, "task_added and remaining_adds mismatch");
     return task_added;
@@ -276,7 +276,7 @@ class LoadBalancerMockedBase : public YBTest {
     if (!from_ts.empty()) {
       SCHECK_EQ(1, cb_.get_total_over_replication() - over_replication_at_start, IllegalState,
                 "Overreplication count mismatch");
-      RETURN_NOT_OK(cb_.RemoveReplica(tablet_id, from_ts));
+      RETURN_NOT_OK(cb_.RemoveReplica(tablet_id, from_ts, "Remove replica for move"));
     }
     return Status::OK();
   }

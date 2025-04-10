@@ -354,6 +354,7 @@ CaseTestExpr
 CaseWhen
 Cash
 CastInfo
+CatCInProgress
 CatCList
 CatCTup
 CatCache
@@ -2218,6 +2219,7 @@ ReadLocalXLogPageNoWaitPrivate
 ReadReplicationSlotCmd
 ReassignOwnedStmt
 RecheckForeignScan_function
+RecordCacheArrayEntry
 RecordCacheEntry
 RecordCompareData
 RecordIOData
@@ -2635,6 +2637,7 @@ SupportRequestSelectivity
 SupportRequestSimplify
 SupportRequestWFuncMonotonic
 Syn
+SyncingTablesState
 SyncOps
 SyncRepConfigData
 SyncRepStandbyData
@@ -2689,6 +2692,7 @@ TSQuerySign
 TSReadPointer
 TSTemplateInfo
 TSTernaryValue
+TSTokenTypeItem
 TSTokenTypeStorage
 TSVector
 TSVectorBuildState
@@ -3073,6 +3077,7 @@ _locale_t
 _resultmap
 _stringlist
 acquireLocksOnSubLinks_context
+addFkConstraintSides
 adjust_appendrel_attrs_context
 aff_regex_struct
 allocfunc
@@ -3365,6 +3370,8 @@ json_manifest_perwalrange_callback
 json_ofield_action
 json_scalar_action
 json_struct_action
+keepwal_entry
+keepwal_hash
 keyEntryData
 key_t
 lclContext
@@ -3411,6 +3418,7 @@ mbstr_verifier
 memoize_hash
 memoize_iterator
 metastring
+missing_cache_key
 mix_data_t
 mixedStruct
 mode_t
@@ -3485,6 +3493,9 @@ pg_md5_ctx
 pg_on_exit_callback
 pg_prng_state
 pg_re_flags
+pg_regex_t
+pg_regmatch_t
+pg_regoff_t
 pg_saslprep_rc
 pg_sha1_ctx
 pg_sha224_ctx
@@ -3699,6 +3710,7 @@ string
 substitute_actual_parameters_context
 substitute_actual_srf_parameters_context
 substitute_phv_relids_context
+subxids_array_status
 symbol
 tablespaceinfo
 teSection

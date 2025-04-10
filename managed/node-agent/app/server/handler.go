@@ -167,31 +167,30 @@ func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
 		util.FileLogger().Errorf(ctx, "Node Agent Get failed - %s", err)
 		return err
 	}
-	nodeAgent := getNodeAgentHandler.Result()
-	if nodeAgent.State != string(model.Ready) {
-		err = fmt.Errorf("Node Agent state %s is not ready", nodeAgent.State)
-		util.FileLogger().Errorf(ctx, "Node Agent validation failed - %s", err)
-		return err
-	}
 	nodeAgentId := config.String(util.NodeAgentIdKey)
-	if nodeAgentId == "" {
-		// Fix the node agent ID in case it was not saved.
+	nodeAgent := getNodeAgentHandler.Result()
+	if nodeAgent.State == string(model.Ready) && nodeAgentId == nodeAgent.Uuid {
+		// Validate the keys by not using the API token.
+		getNodeAgentHandler = task.NewGetNodeAgentHandler("")
+		err = executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
+		if err == nil {
+			return nil
+		}
+	}
+	if nodeAgentId != nodeAgent.Uuid {
+		util.FileLogger().Errorf(ctx, "Node Agent ID %s does not match", nodeAgent.Uuid)
+		// Correct the node agent ID before unregistering.
 		err = config.Update(util.NodeAgentIdKey, nodeAgent.Uuid)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Unable to store node agent ID - %s", err)
 			return err
 		}
-	} else if nodeAgentId != nodeAgent.Uuid {
-		err = fmt.Errorf("Node Agent ID %s does not match", nodeAgent.Uuid)
-		util.FileLogger().Errorf(ctx, "Node Agent validation failed - %s", err)
-		return err
 	}
-	// Validate the keys by not using the API token.
-	getNodeAgentHandler = task.NewGetNodeAgentHandler("")
-	err = executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
+	// Remove the existing invalid node agent.
+	util.FileLogger().Infof(ctx, "Unregistering dangling node agent %s", nodeAgent.Uuid)
+	err = UnregisterNodeAgent(ctx, apiToken)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Node Agent Get failed - %s", err)
 		return err
 	}
-	return nil
+	return util.ErrNotExist
 }

@@ -107,3 +107,15 @@ CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
 CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
 SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
 DROP TABLE items;
+
+CREATE TABLE vec1 (embedding vector(3));
+CREATE INDEX vec1_idx ON vec1 USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO vec1 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 5);
+CREATE TABLE vec2 (embedding vector(3));
+INSERT INTO vec2 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 2);
+EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
+SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
+EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+DROP TABLE vec2;
+DROP TABLE vec1;

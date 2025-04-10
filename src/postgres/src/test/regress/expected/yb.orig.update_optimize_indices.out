@@ -22,10 +22,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM pkey_only_table;
 
 -- Updating non-index column should be done in a single op
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1 WHERE h = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -34,10 +34,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1 WHERE h = 1
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHERE h = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -46,10 +46,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHE
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -58,10 +58,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHERE h = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -70,10 +70,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHE
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = v1 + 1 WHERE h = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on pkey_only_table (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -414,10 +414,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE v1 = NULL;
-                    QUERY PLAN                    
---------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Update on nullable_table (actual rows=0 loops=1)
-   ->  Result (actual rows=0 loops=1)
+   ->  Result nullable_table (actual rows=0 loops=1)
          One-Time Filter: false
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -426,10 +426,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE v1 = NULL OR v2 = NULL;
-                    QUERY PLAN                    
---------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Update on nullable_table (actual rows=0 loops=1)
-   ->  Result (actual rows=0 loops=1)
+   ->  Result nullable_table (actual rows=0 loops=1)
          One-Time Filter: false
  Storage Read Requests: 0
  Storage Rows Scanned: 0
@@ -438,10 +438,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
 (7 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE v1 = NULL AND v2 = NULL;
-                    QUERY PLAN                    
---------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Update on nullable_table (actual rows=0 loops=1)
-   ->  Result (actual rows=0 loops=1)
+   ->  Result nullable_table (actual rows=0 loops=1)
          One-Time Filter: false
  Storage Read Requests: 0
  Storage Rows Scanned: 0

@@ -41,7 +41,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
 
-#include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
@@ -49,6 +49,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
@@ -95,6 +96,7 @@
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/ysql_lease_poller.h"

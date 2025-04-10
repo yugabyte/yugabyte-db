@@ -362,7 +362,7 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
           << "\n  " << (ht <= safe_time ? "!!! " : "") << YB_EXPR_TO_STREAM(ht <= safe_time) \
           << "\n  " << YB_EXPR_TO_STREAM( \
                            static_cast<int64_t>(ht.ToUint64() - safe_time.ToUint64())) \
-          << "\n  " << YB_EXPR_TO_STREAM(ht.PhysicalDiff(safe_time)) \
+          << "\n  " << YB_EXPR_TO_STREAM(ht.PhysicalDiff(safe_time).ToPrettyString()) \
           << "\n  "
 
 #define LOG_INFO_FOR_HT_LOWER_BOUND_WITH_SOURCE(t) LOG_INFO_FOR_HT_LOWER_BOUND_IMPL(t, t.safe_time)

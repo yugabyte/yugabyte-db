@@ -15,6 +15,7 @@ import mimetypes
 import os.path
 import re
 import shutil
+import ssl
 import urllib.request as urllib_request
 import urllib.error
 import uuid
@@ -50,6 +51,12 @@ def parse_arguments():
     parser.add_argument(
         "-v", "--verbose", action="store_true",
         required=False, default=False, help="Enable verbose logging.")
+
+    parser.add_argument(
+        "-dhc",
+        "--disable-hostname-check", action="store_true",
+        required=False, default=False,
+        help="Disable hostname checking for SSL certificates.")
 
     file_parent_parser = argparse.ArgumentParser(add_help=False)
     file_parent_parser.add_argument(
@@ -317,7 +324,12 @@ class YBAttachDetach:
 def open_url(request):
     """Make request to desired url and print verbose logs if needed"""
     try:
-        resp = urllib_request.urlopen(request)
+        # Will disable hostname checking if command line flag passed
+        context = ssl.create_default_context() if cmd_args.get("disable_hostname_check") else None
+        if context:
+            context.check_hostname = False
+            logging.debug("Using SSL context with hostname checking disabled")
+        resp = urllib_request.urlopen(request, context=context)
         logging.debug("Success Status %s", resp.code)
         return resp
     except urllib.error.HTTPError as err:

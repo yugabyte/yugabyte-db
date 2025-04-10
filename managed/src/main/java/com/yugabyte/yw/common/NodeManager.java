@@ -873,6 +873,7 @@ public class NodeManager extends DevopsBase {
     allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
 
     GFlagsUtil.processUserGFlags(
+        universe,
         node,
         gflags,
         GFlagsUtil.getAllDefaultGFlags(
@@ -1806,8 +1807,7 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     ImageBundle.NodeProperties toOverwriteNodeProperties = null;
-    UUID imageBundleUUID =
-        Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
+    UUID imageBundleUUID = getImageBundleUUID(arch, nodeTaskParam, userIntent);
     if (imageBundleUUID != null) {
       Region region = nodeTaskParam.getRegion();
       toOverwriteNodeProperties =
@@ -1975,6 +1975,10 @@ public class NodeManager extends DevopsBase {
               // Backward compatiblity.
               imageBundleDefaultImage = taskParam.getRegion().getYbImage();
             }
+            log.debug(
+                "Machine image params {} default {}",
+                taskParam.getMachineImage(),
+                imageBundleDefaultImage);
             String ybImage =
                 Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
@@ -2674,6 +2678,30 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  /**
+   * Get current image bundle UUID. Checking these in order: 1) provided in params 2) used in
+   * userIntent 3) get default bundle for provider
+   *
+   * @param arch
+   * @param nodeTaskParam
+   * @param userIntent
+   * @return
+   */
+  private UUID getImageBundleUUID(
+      Architecture arch, NodeTaskParams nodeTaskParam, UserIntent userIntent) {
+    UUID imageBundleUUID = null;
+    if (nodeTaskParam instanceof AnsibleCreateServer.Params) {
+      imageBundleUUID = ((AnsibleCreateServer.Params) nodeTaskParam).imageBundleUUID;
+    }
+    if (nodeTaskParam instanceof AnsibleSetupServer.Params) {
+      imageBundleUUID = ((AnsibleSetupServer.Params) nodeTaskParam).imageBundleUUID;
+    }
+    if (imageBundleUUID == null) {
+      imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
+    }
+    return imageBundleUUID;
   }
 
   private void appendCertPathsToCheck(List<String> commandArgs, UUID rootCA, boolean isClient) {

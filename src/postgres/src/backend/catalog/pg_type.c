@@ -39,6 +39,7 @@
 
 /* YB includes */
 #include "catalog/catalog.h"
+#include "catalog/yb_oid_assignment.h"
 #include "pg_yb_utils.h"
 
 static char *makeUniqueTypeName(const char *typeName, Oid typeNamespace,
@@ -141,6 +142,11 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 
 		typoid = binary_upgrade_next_pg_type_oid;
 		binary_upgrade_next_pg_type_oid = InvalidOid;
+	}
+	else if (YbUsingTypeOidAssignment())
+	{
+		typoid = YbLookupOidAssignmentForType(get_namespace_name(typeNamespace),
+											  typeName);
 	}
 	else
 	{
@@ -523,6 +529,11 @@ TypeCreate(Oid newTypeOid,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("system relations must have an explicit type OID!")));
+		}
+		else if (YbUsingTypeOidAssignment())
+		{
+			typeObjectId = YbLookupOidAssignmentForType(get_namespace_name(typeNamespace),
+														typeName);
 		}
 		/* else allow system to assign oid */
 		else

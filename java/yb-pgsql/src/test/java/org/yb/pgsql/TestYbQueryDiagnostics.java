@@ -119,9 +119,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     // Use regex to split on commas not inside quotes
     private static final String pgssRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
-    @Before
-    public void setUp() throws Exception {
-        /* Set Gflags and restart cluster */
+    private Map<String, String> queryDiagnosticsFlags() throws Exception {
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
         flagMap.put("ysql_yb_enable_query_diagnostics", "true");
@@ -130,24 +128,34 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         flagMap.put("ysql_beta_features", "true");
         flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
 
+        return flagMap;
+    }
+
+    @Before
+    public void setUp() throws Exception {
+        Map<String, String> flagMap = queryDiagnosticsFlags();
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
         setUpPreparedStatement();
     }
 
+    /* TODO(#26574): Fix triggering restartCluster twice for tests calling setUp manually */
     public void setUp(int queryDiagnosticsCircularBufferSize) throws Exception {
-        /* Set Gflags and restart cluster */
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
-        flagMap.put("ysql_yb_enable_query_diagnostics", "true");
+        Map<String, String> flagMap = queryDiagnosticsFlags();
+
         appendToYsqlPgConf(flagMap,
-                            "yb_query_diagnostics_circular_buffer_size=" +
-                            queryDiagnosticsCircularBufferSize);
+                "yb_query_diagnostics_circular_buffer_size=" +
+                        queryDiagnosticsCircularBufferSize);
+        restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
-        /* Required for some of the fields within schema details */
-        flagMap.put("ysql_beta_features", "true");
-        flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
+        setUpPreparedStatement();
+    }
 
+    /* TODO(#26574): Fix triggering restartCluster twice for tests calling setUp manually */
+    public void setUpWithBgworkerRaceConditionTestFlag() throws Exception {
+        Map<String, String> flagMap = queryDiagnosticsFlags();
+
+        flagMap.put("TEST_ysql_yb_query_diagnostics_race_condition", "true");
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
         setUpPreparedStatement();
@@ -2085,4 +2093,66 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                 new String(Files.readAllBytes(schemaDetailsPath)));
         }
     }
+
+    /*
+     * Tests the case when bgworker doesn't gets killed for 10sec after marking bgworker inactive.
+     * This leads to insert query hitting 5s sleep and timing out.
+     */
+    @Test
+    public void testBgworkerRaceConditionTimeout() throws Exception {
+        setUpWithBgworkerRaceConditionTestFlag();
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            String queryid = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /* bgworker should be waiting now */
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+        } catch (Exception e) {
+            assertTrue("Expected exception not thrown: " + e.getMessage(),
+                    e.getMessage().contains("timed out after waiting 5 seconds"));
+        }
+    }
+
+    /*
+     * Tests the case when we hit 5s sleep while inserting the query but does not timeout.
+     */
+    @Test
+    public void testBgworkerRaceConditionResolved() throws Exception {
+        setUpWithBgworkerRaceConditionTestFlag();
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            String queryid = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /*
+             * bgworker should be waiting now.
+             * We know that bgworker is waiting for 10sec, and timeout is 5sec so sleeping for 7s
+             * should avoid a timeout at the same time ensure that we did hit the race condition.
+            */
+            Thread.sleep(7000);
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+        }
+    }
+
 }

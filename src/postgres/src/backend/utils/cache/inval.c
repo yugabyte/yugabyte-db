@@ -798,7 +798,7 @@ InvalidateSystemCachesExtended(bool debug_discard, bool yb_callback)
 	if (!yb_callback)
 	{
 		InvalidateCatalogSnapshot();
-		ResetCatalogCaches();
+		ResetCatalogCachesExt(debug_discard);
 		RelationCacheInvalidate(debug_discard); /* gets smgr and relmap too */
 	}
 
@@ -1092,14 +1092,16 @@ YbGetSubGroupInvalMessages(SharedInvalidationMessage **msgs, int subgroup)
 	/* Quick exit if we haven't done anything with invalidation messages. */
 	if (transInvalInfo == NULL)
 	{
-		*msgs = NULL;
+		if (msgs)
+			*msgs = NULL;
 		return 0;
 	}
 
-	Assert(YBGetDdlNestingLevel() == 0);
-
 	nummsgs = NumMessagesInSubGroup(&transInvalInfo->PriorCmdInvalidMsgs, subgroup) +
 		NumMessagesInSubGroup(&transInvalInfo->CurrentCmdInvalidMsgs, subgroup);
+
+	if (msgs == NULL)
+		return nummsgs;
 
 	*msgs = msgarray = (SharedInvalidationMessage *)
 		MemoryContextAlloc(CurTransactionContext,

@@ -98,6 +98,14 @@ extern bool yb_binary_restore;
 extern bool yb_ignore_pg_class_oids;
 
 /*
+ * Guc variable to ignore requests to set relfilenode ids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_relfilenode will have no
+ * effect.
+ */
+extern bool yb_ignore_relfilenode_ids;
+
+/*
  * Set to true only for runs with EXPLAIN ANALYZE
  */
 extern bool yb_run_with_explain_analyze;
@@ -138,6 +146,11 @@ extern bool yb_enable_replica_identity;
  * Guc variable that allows lsn types to be specified while creating replication slot
  */
 extern bool yb_allow_replication_slot_lsn_types;
+
+/*
+ * Guc variable that allows ordering mode to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_ordering_modes;
 
 /*
  * GUC variable that specifies default replica identity for tables at the time of creation.

@@ -69,6 +69,17 @@ extern void create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 extern void generate_partitionwise_join_paths(PlannerInfo *root,
 											  RelOptInfo *rel);
 
+extern void ybTraceRelOptInfo(PlannerInfo *root, RelOptInfo *relOptInfo, char *msg);
+extern void ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg);
+extern void ybTraceRelds(PlannerInfo *root, Relids relids, char *msg);
+extern void ybTracePath(PlannerInfo *root, Path *path, char *msg);
+extern void ybTracePathList(PlannerInfo *root, List *pathList, char *msg);
+extern bool ybFindHintedJoin(PlannerInfo *root, Relids relIds1, Relids relIds2, bool trySwapped);
+extern bool ybFindProhibitedJoin(PlannerInfo *root, NodeTag joinTag, Relids joinRelids);
+extern void ybBuildRelOptInfoString(PlannerInfo *root, RelOptInfo *relOptInfo, StringInfoData *buf);
+extern void ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf);
+extern void ybTraceCheapestPaths(RelOptInfo *rel, char *msg);
+
 #ifdef OPTIMIZER_DEBUG
 extern void debug_print_rel(PlannerInfo *root, RelOptInfo *rel);
 #endif

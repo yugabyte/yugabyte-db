@@ -1367,7 +1367,7 @@ exec_simple_query(const char *query_string)
 		(void) PortalRun(portal,
 						 FETCH_ALL,
 						 true,	/* always top level */
-						 true,
+						 true,	/* ignored */
 						 receiver,
 						 receiver,
 						 &qc);
@@ -1749,6 +1749,7 @@ exec_bind_message(StringInfo input_message)
 	char		msec_str[32];
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
+	ListCell   *lc;
 	CommandTag	command_tag;
 
 	/* Get the fixed part of the message */
@@ -1787,6 +1788,17 @@ exec_bind_message(StringInfo input_message)
 	command_tag = YbParseCommandTag(psrc->query_string);
 	redacted_query_string = YbRedactPasswordIfExists(psrc->query_string, command_tag);
 	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
+
+	foreach(lc, psrc->query_list)
+	{
+		Query	   *query = lfirst_node(Query, lc);
+
+		if (query->queryId != UINT64CONST(0))
+		{
+			pgstat_report_query_id(query->queryId, false);
+			break;
+		}
+	}
 
 	set_ps_display("BIND");
 
@@ -2211,6 +2223,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	char		msec_str[32];
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
+	ListCell   *lc;
 
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;
@@ -2256,6 +2269,17 @@ exec_execute_message(const char *portal_name, long max_rows)
 	debug_query_string = sourceText;
 
 	pgstat_report_activity(STATE_RUNNING, sourceText);
+
+	foreach(lc, portal->stmts)
+	{
+		PlannedStmt *stmt = lfirst_node(PlannedStmt, lc);
+
+		if (stmt->queryId != UINT64CONST(0))
+		{
+			pgstat_report_query_id(stmt->queryId, false);
+			break;
+		}
+	}
 
 	set_ps_display(GetCommandTagName(portal->commandTag));
 
@@ -2335,7 +2359,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	completed = PortalRun(portal,
 						  max_rows,
 						  true, /* always top level */
-						  !execute_is_fetch && max_rows == FETCH_ALL,
+						  true, /* ignored */
 						  receiver,
 						  receiver,
 						  &qc);
@@ -3867,6 +3891,11 @@ check_restrict_nonsystem_relation_kind(char **newval, void **extra, GucSource so
 
 	/* Save the flags in *extra, for use by the assign function */
 	*extra = malloc(sizeof(int));
+	if (*extra == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+
 	*((int *) *extra) = flags;
 
 	return true;
@@ -4345,11 +4374,12 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	/*
 	 * A non-DDL statement that failed due to transaction conflict does not
 	 * require cache refresh.
-	*/
-	bool		is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
-	bool		is_conflict_error = YBCIsTxnConflictError(edata->yb_txn_errcode);
-	bool		is_deadlock_error = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
-	bool		is_aborted_error = YBCIsTxnAbortedError(edata->yb_txn_errcode);
+	 */
+	const bool is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
+	const bool is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
+	const bool is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
+	const bool is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+	edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 
 	/*
 	 * Note that 'is_dml' could be set for a Select operation on a pg_catalog
@@ -4357,11 +4387,9 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * without refreshing the cache (as the schema of a PG catalog table cannot
 	 * change).
 	 */
-	if (is_dml && (is_read_restart_error || is_conflict_error ||
-				   is_deadlock_error || is_aborted_error))
-	{
+	if (is_dml && (is_read_restart || is_conflict_error || is_deadlock_error || is_aborted_error))
 		return;
-	}
+
 	char	   *table_to_refresh = NULL;
 	const bool	need_table_cache_refresh = YBTableSchemaVersionMismatchError(edata,
 																			 &table_to_refresh);
@@ -4465,8 +4493,6 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	{
 		if (need_global_cache_refresh)
 		{
-			int			error_code = edata->sqlerrcode;
-
 			/*
 			 * TODO: This error occurs in tablet service when snapshot is outdated.
 			 * We should eventually translate this type of error as a retryable error
@@ -4485,15 +4511,14 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 */
 			if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
 			{
-				error_code = ERRCODE_T_R_SERIALIZATION_FAILURE;
+				edata->sqlerrcode = ERRCODE_T_R_SERIALIZATION_FAILURE;
 			}
 			/*
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
 			ereport(edata->elevel,
-					(yb_txn_errcode(edata->yb_txn_errcode),
-					 errcode(error_code),
+					(errcode(edata->sqlerrcode),
 					 errmsg("%s", edata->message),
 					 edata->detail ? errdetail("%s", edata->detail) : 0,
 					 edata->hint ? errhint("%s", edata->hint) : 0,
@@ -4747,9 +4772,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	if (yb_debug_log_internal_restarts)
 		elog(LOG,
 			 "Error details: edata->message=%s, edata->filename=%s, "
-			 "edata->lineno=%d, edata->yb_txn_errcode=%d",
+			 "edata->lineno=%d, edata->sqlerrcode=%s",
 			 edata->message, edata->filename, edata->lineno,
-			 edata->yb_txn_errcode);
+			 unpack_sql_state(edata->sqlerrcode));
 
 	if (!IsYugaByteEnabled())
 	{
@@ -4764,24 +4789,22 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 * levels. In case of Read Committed isolation, these are retried by
 	 * undoing and retrying just the statement that failed.
 	 */
-	bool		is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
-	bool		is_conflict_error = YBCIsTxnConflictError(edata->yb_txn_errcode);
+	bool		is_read_restart_error = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
+	bool		is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
 
 	/*
 	 * Retrying kDeadlock and kAborted errors require restart of the whole
 	 * transaction. They can't be retried by just retrying the statement that
 	 * failed.
 	 */
-	bool		is_deadlock_error = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
-	bool		is_aborted_error = YBCIsTxnAbortedError(edata->yb_txn_errcode);
+	bool		is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
+	bool		is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
 
 	if (!is_read_restart_error && !is_conflict_error && !is_deadlock_error && !is_aborted_error)
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG,
-				 "query layer retry isn't possible, txn error %s isn't one of "
-				 "kConflict/kReadRestart/kDeadlock/kAborted",
-				 YBCTxnErrCodeToString(edata->yb_txn_errcode));
+			elog(LOG, "query layer retry isn't possible, txn error isn't one of "
+					  "kConflict/kReadRestart/kDeadlock/kAborted");
 		return false;
 	}
 
@@ -4832,6 +4855,27 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/*
+	 * This check is not strictly necessary.
+	 * However, recommend read committed isolation level when
+	 * increasing ysql_output_buffer_size is ineffective.
+	 *
+	 * This scenario is retryable if isolation is read committed instead.
+	 */
+	if (!IsYBReadCommitted() && YBIsDataSent() && !YBIsDataSentForCurrQuery())
+	{
+		const char *retry_err = "";
+
+		retry_err = psprintf("query layer retry isn't possible because "
+							 "this is not the first command in the "
+							 "transaction. Consider using READ COMMITTED "
+							 "isolation level.");
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
 	 * In REPEATABLE READ and SERIALIZABLE isolation levels, retrying involves restarting the whole
 	 * transaction. So, we can only retry if no data has been sent to the external client as part of
 	 * the current transaction.
@@ -4844,10 +4888,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		(IsYBReadCommitted() && YBIsDataSentForCurrQuery()))
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
-								 "data was already sent, if this is the read "
-								 "committed isolation (or) the first "
-								 "statement in repeatable read/ serializable "
-								 "isolation transaction, consider increasing "
+								 "data was already transferred, consider increasing "
 								 "the tserver gflag ysql_output_buffer_size");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
@@ -5317,21 +5358,21 @@ yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, bool stateme
 }
 
 static void
-yb_perform_retry_on_error(int attempt, uint16_t txn_errcode,
+yb_perform_retry_on_error(int attempt, ErrorData *edata,
 						  const char *portal_name)
 {
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
 
-	const bool	is_read_restart = YBCIsRestartReadError(txn_errcode);
-	const bool	is_conflict_error = YBCIsTxnConflictError(txn_errcode);
-	const bool	is_deadlock_error = YBCIsTxnDeadlockError(txn_errcode);
-	const bool	is_aborted_error = YBCIsTxnAbortedError(txn_errcode);
+	const bool is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
+	const bool is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
+	const bool is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
+	const bool is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
 
 	if (!(is_read_restart || is_conflict_error || is_deadlock_error || is_aborted_error))
 	{
 		Assert(false);
-		elog(ERROR, "unexpected txn error code: %d", txn_errcode);
+		elog(ERROR, "unexpected txn error code: %d", edata->sqlerrcode);
 	}
 
 	/*
@@ -5414,8 +5455,7 @@ yb_attempt_to_retry_on_error(int attempt, const YBQueryRetryData *retry_data,
 		Assert(!YBTableSchemaVersionMismatchError(edata, NULL));
 
 		FlushErrorState();
-		yb_perform_retry_on_error(attempt, edata->yb_txn_errcode,
-								  retry_data->portal_name);
+		yb_perform_retry_on_error(attempt, edata, retry_data->portal_name);
 	}
 	else
 	{
@@ -5671,12 +5711,12 @@ PostgresSingleUserMain(int argc, char *argv[],
 void
 PostgresMain(const char *dbname, const char *username)
 {
-	int			firstchar;
-	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
+
+	/* these must be volatile to ensure state is preserved across longjmp: */
 	volatile bool send_ready_for_query = true;
-	bool		idle_in_transaction_timeout_enabled = false;
-	bool		idle_session_timeout_enabled = false;
+	volatile bool idle_in_transaction_timeout_enabled = false;
+	volatile bool idle_session_timeout_enabled = false;
 
 	AssertArg(dbname != NULL);
 	AssertArg(username != NULL);
@@ -5915,8 +5955,10 @@ PostgresMain(const char *dbname, const char *username)
 		 * query cancels from being misreported as timeouts in case we're
 		 * forgetting a timeout cancel.
 		 */
-		disable_all_timeouts(false);
-		QueryCancelPending = false; /* second to avoid race condition */
+		disable_all_timeouts(false);	/* do first to avoid race condition */
+		QueryCancelPending = false;
+		idle_in_transaction_timeout_enabled = false;
+		idle_session_timeout_enabled = false;
 
 		/* Not reading from the client anymore. */
 		DoingCommandRead = false;
@@ -6005,6 +6047,9 @@ PostgresMain(const char *dbname, const char *username)
 
 	for (;;)
 	{
+		int			firstchar;
+		StringInfoData input_message;
+
 		/*
 		 * At top of loop, reset extended-query-message flag, so that any
 		 * errors encountered in "idle" state don't provoke skip.
@@ -6261,6 +6306,8 @@ PostgresMain(const char *dbname, const char *username)
 				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 				yb_catalog_version_type = CATALOG_VERSION_UNSET;
 			yb_is_multi_statement_query = false;
+			/* New Query => Did not sent any data for the current query. */
+			YBMarkDataNotSentForCurrQuery();
 		}
 
 		switch (firstchar)
@@ -6274,7 +6321,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
-					MemoryContext oldcontext = GetCurrentMemoryContext();
+					MemoryContext oldcontext = CurrentMemoryContext;
 
 					PG_TRY();
 					{
@@ -6298,24 +6345,36 @@ PostgresMain(const char *dbname, const char *username)
 
 						if (need_retry)
 						{
-							if (!am_walsender || !exec_replication_command(query_string))
+							PG_TRY();
 							{
-								if (yb_debug_log_internal_restarts)
+								if (!am_walsender || !exec_replication_command(query_string))
 								{
-									yb_report_cache_version_restart(query_string, edata);
+									if (yb_debug_log_internal_restarts)
+									{
+										yb_report_cache_version_restart(query_string, edata);
+									}
+									/*
+									 * Free edata before restarting, in other branches
+									 * the memory context will get reset after anyway.
+									 */
+									FreeErrorData(edata);
+									yb_exec_simple_query(query_string, oldcontext);
 								}
-								/*
-								 * Free edata before restarting, in other branches
-								 * the memory context will get reset after anyway.
-								 */
-								FreeErrorData(edata);
-								yb_exec_simple_query(query_string, oldcontext);
 							}
+							PG_CATCH();
+							{
+								errorcontext = MemoryContextSwitchTo(oldcontext);
+								edata = CopyErrorData();
+								edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
+								MemoryContextSwitchTo(errorcontext);
+								ThrowErrorData(edata);
+							}
+							PG_END_TRY();
 						}
 						else
 						{
 							MemoryContextSwitchTo(errorcontext);
-							PG_RE_THROW();
+							ThrowErrorData(edata);
 						}
 					}
 					PG_END_TRY();
@@ -6366,7 +6425,7 @@ PostgresMain(const char *dbname, const char *username)
 					}
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = GetCurrentMemoryContext();
+					MemoryContext oldcontext = CurrentMemoryContext;
 
 					PG_TRY();
 					{
@@ -6396,7 +6455,7 @@ PostgresMain(const char *dbname, const char *username)
 													  yb_is_dml_command(query_string),
 													  &need_retry);
 						MemoryContextSwitchTo(errorcontext);
-						PG_RE_THROW();
+						ThrowErrorData(edata);
 
 					}
 					PG_END_TRY();
@@ -6429,7 +6488,7 @@ PostgresMain(const char *dbname, const char *username)
 
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = GetCurrentMemoryContext();
+					MemoryContext oldcontext = CurrentMemoryContext;
 					const YBQueryRetryData *retry_data = yb_collect_portal_restart_data(portal_name);
 
 					PG_TRY();
@@ -6506,7 +6565,7 @@ PostgresMain(const char *dbname, const char *username)
 								{
 									yb_report_cache_version_restart(query_string, edata);
 								}
-
+								FreeErrorData(edata);
 								/*
 								 * 1. Redo Parse: Create Cached stmt (no
 								 * output)
@@ -6562,20 +6621,23 @@ PostgresMain(const char *dbname, const char *username)
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(max_rows,
 														retry_data,
-														GetCurrentMemoryContext());
+														CurrentMemoryContext);
 							}
 							PG_CATCH();
 							{
-								PG_RE_THROW();
+								errorcontext = MemoryContextSwitchTo(oldcontext);
+								edata = CopyErrorData();
+								edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
+								MemoryContextSwitchTo(errorcontext);
+								ThrowErrorData(edata);
 							}
 							PG_END_TRY();
 						}
 						else
 						{
 							MemoryContextSwitchTo(errorcontext);
-							PG_RE_THROW();
+							ThrowErrorData(edata);
 						}
-
 					}
 					PG_END_TRY();
 				}
@@ -6697,9 +6759,24 @@ PostgresMain(const char *dbname, const char *username)
 				break;
 
 			case 'S':			/* sync */
-				pq_getmsgend(&input_message);
-				finish_xact_command();
-				send_ready_for_query = true;
+				{
+					pq_getmsgend(&input_message);
+					MemoryContext oldcontext = CurrentMemoryContext;
+					PG_TRY();
+					{
+						finish_xact_command();
+					}
+					PG_CATCH();
+					{
+						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
+						ErrorData  *edata = CopyErrorData();
+						edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
+						MemoryContextSwitchTo(errorcontext);
+						ThrowErrorData(edata);
+					}
+					PG_END_TRY();
+					send_ready_for_query = true;
+				}
 				break;
 
 				/*

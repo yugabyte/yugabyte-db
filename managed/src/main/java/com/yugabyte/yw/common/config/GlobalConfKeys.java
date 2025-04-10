@@ -477,6 +477,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
+      new ConfKeyInfo<>(
+          "yb.kms.hcv_token_renew_percent",
+          ScopeType.GLOBAL,
+          "Percentage of Hashicorp vault TTL to renew the token after",
+          "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token"
+              + " after it has used the specified percentage of its original TTL. Default: 70%.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   // TODO() Add metadata
   public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
       new ConfKeyInfo<>(
@@ -1113,7 +1122,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth enabled",
           "Enables basic authentication for Prometheus web UI/APIs access",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthUsername =
       new ConfKeyInfo<>(
           "yb.metrics.auth_username",
@@ -1121,7 +1130,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth username",
           "Username, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthPassword =
       new ConfKeyInfo<>(
           "yb.metrics.auth_password",
@@ -1129,7 +1138,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth password",
           "Password, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> forceYbcShutdownDuringUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.force_shutdown",
@@ -1585,14 +1594,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
-      new ConfKeyInfo<>(
-          "yb.node_agent.use_ansible_provisioning",
-          ScopeType.GLOBAL,
-          "Use Ansible for provisioning",
-          "If enabled use Ansible for provisioning",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
       new ConfKeyInfo<>(
           "yb.ui.metrics.enable_timezone",

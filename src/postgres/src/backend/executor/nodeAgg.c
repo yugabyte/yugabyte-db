@@ -582,7 +582,7 @@ fetch_input_tuple(AggState *aggstate)
  * This function handles only one grouping set, already set in
  * aggstate->current_set.
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
@@ -669,7 +669,7 @@ initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
  * NB: This cannot be used for hash aggregates, as for those the grouping set
  * number has to be specified from further up.
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 initialize_aggregates(AggState *aggstate,
@@ -822,7 +822,7 @@ advance_transition_function(AggState *aggstate,
  * and one for hashed; we do them both here, to avoid multiple evaluation of
  * the inputs.
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 advance_aggregates(AggState *aggstate)
@@ -854,7 +854,7 @@ advance_aggregates(AggState *aggstate)
  * This function handles only one grouping set (already set in
  * aggstate->current_set).
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 process_ordered_aggregate_single(AggState *aggstate,
@@ -946,7 +946,7 @@ process_ordered_aggregate_single(AggState *aggstate,
  * This function handles only one grouping set (already set in
  * aggstate->current_set).
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 process_ordered_aggregate_multi(AggState *aggstate,
@@ -1036,7 +1036,7 @@ process_ordered_aggregate_multi(AggState *aggstate,
  * aggstate->current_set).
  *
  * The finalfn will be run, and the result delivered, in the
- * output-tuple context; caller's GetCurrentMemoryContext() does not matter.
+ * output-tuple context; caller's CurrentMemoryContext does not matter.
  *
  * The finalfn uses the state as set in the transno. This also might be
  * being used by another aggregate function, so it's important that we do
@@ -1130,7 +1130,7 @@ finalize_aggregate(AggState *aggstate,
 	 * If result is pass-by-ref, make sure it is in the right context.
 	 */
 	if (!peragg->resulttypeByVal && !*resultIsNull &&
-		!MemoryContextContains(GetCurrentMemoryContext(),
+		!MemoryContextContains(CurrentMemoryContext,
 							   DatumGetPointer(*resultVal)))
 		*resultVal = datumCopy(*resultVal,
 							   peragg->resulttypeByVal,
@@ -1143,7 +1143,7 @@ finalize_aggregate(AggState *aggstate,
  * Compute the output value of one partial aggregate.
  *
  * The serialization function will be run, and the result delivered, in the
- * output-tuple context; caller's GetCurrentMemoryContext() does not matter.
+ * output-tuple context; caller's CurrentMemoryContext does not matter.
  */
 static void
 finalize_partialaggregate(AggState *aggstate,
@@ -1197,7 +1197,7 @@ finalize_partialaggregate(AggState *aggstate,
 
 	/* If result is pass-by-ref, make sure it is in the right context. */
 	if (!peragg->resulttypeByVal && !*resultIsNull &&
-		!MemoryContextContains(GetCurrentMemoryContext(),
+		!MemoryContextContains(CurrentMemoryContext,
 							   DatumGetPointer(*resultVal)))
 		*resultVal = datumCopy(*resultVal,
 							   peragg->resulttypeByVal,
@@ -3421,8 +3421,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, sizeof(uint32), nread)));
 	if (hashp != NULL)
 		*hashp = hash;
 
@@ -3430,8 +3430,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, sizeof(uint32), nread)));
 
 	tuple = (MinimalTuple) palloc(t_len);
 	tuple->t_len = t_len;
@@ -3442,8 +3442,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != t_len - sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, t_len - sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, t_len - sizeof(uint32), nread)));
 
 	return tuple;
 }

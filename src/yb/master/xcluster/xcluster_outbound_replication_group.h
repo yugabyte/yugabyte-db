@@ -39,6 +39,8 @@ class XClusterOutboundReplicationGroup
  public:
   struct HelperFunctions {
     const std::function<Status()> create_sequences_data_table_func;
+    const std::function<Status(NamespaceId namespace_id)>
+        set_normal_oid_counter_above_all_normal_oids_func;
     const std::function<Result<uint32_t>(NamespaceId namespace_id)>
         get_normal_oid_higher_than_any_used_normal_oid_func;
     const std::function<Result<scoped_refptr<NamespaceInfo>>(const NamespaceIdentifierPB&)>

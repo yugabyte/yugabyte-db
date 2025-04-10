@@ -26,7 +26,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_backup.fwd.h"
-#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.fwd.h"
 #include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/enums.h"
@@ -47,7 +47,10 @@ typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class EncryptionManager;
 
+class AsyncAddServerTask;
 class AsyncDeleteReplica;
+class AsyncRemoveServerTask;
+class AsyncTryStepDown;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
@@ -80,8 +83,10 @@ class RetrySpecificTSRpcTaskWithTable;
 class SnapshotCoordinatorContext;
 class SnapshotState;
 class SysCatalogTable;
+class SysCatalogWriter;
 class SysConfigInfo;
 class SysRowEntries;
+class SystemTablet;
 class TablegroupInfo;
 class TestAsyncRpcManager;
 class TSDescriptor;
@@ -138,7 +143,6 @@ YB_STRONGLY_TYPED_BOOL(IncludeHidden);
 
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
-
 
 
 YB_DEFINE_ENUM(

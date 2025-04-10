@@ -1,0 +1,66 @@
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_dollar_eq(__CORE_SCHEMA__.bson,__API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+ SUPPORT __API_CATALOG_SCHEMA__.dollar_support
+AS 'MODULE_PATHNAME', $function$bson_dollar_eq$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_dollar_lt(__CORE_SCHEMA__.bson,__API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+ SUPPORT __API_CATALOG_SCHEMA__.dollar_support
+AS 'MODULE_PATHNAME', $function$bson_dollar_lt$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_dollar_lte(__CORE_SCHEMA__.bson,__API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+ SUPPORT __API_CATALOG_SCHEMA__.dollar_support
+AS 'MODULE_PATHNAME', $function$bson_dollar_lte$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_dollar_gt(__CORE_SCHEMA__.bson,__API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+ SUPPORT __API_CATALOG_SCHEMA__.dollar_support
+AS 'MODULE_PATHNAME', $function$bson_dollar_gt$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bson_dollar_gte(__CORE_SCHEMA__.bson,__API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+ SUPPORT __API_CATALOG_SCHEMA__.dollar_support
+AS 'MODULE_PATHNAME', $function$bson_dollar_gte$function$;
+
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bsonquery_eq(__CORE_SCHEMA__.bsonquery, __API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bsonquery_equal$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bsonquery_lt(__CORE_SCHEMA__.bsonquery, __API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bsonquery_lt$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bsonquery_lte(__CORE_SCHEMA__.bsonquery, __API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bsonquery_lte$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bsonquery_gt(__CORE_SCHEMA__.bsonquery, __API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bsonquery_gt$function$;
+
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.bsonquery_gte(__CORE_SCHEMA__.bsonquery, __API_SCHEMA_INTERNAL_V2__.bsonindexbounds)
+ RETURNS bool
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bsonquery_gte$function$;

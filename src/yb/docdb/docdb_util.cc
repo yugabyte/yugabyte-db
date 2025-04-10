@@ -13,6 +13,8 @@
 
 #include "yb/docdb/docdb_util.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"

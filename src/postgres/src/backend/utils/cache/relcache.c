@@ -2739,7 +2739,7 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 static YbcStatus
 YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx)
 {
-	MemoryContext own_mem_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext own_mem_ctx = AllocSetContextCreate(CurrentMemoryContext,
 													  "UpdateRelationCacheContext",
 													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext old_mem_ctx = MemoryContextSwitchTo(own_mem_ctx);
@@ -3076,7 +3076,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	/*
 	 * This function and its subroutines can allocate a good deal of transient
-	 * data in GetCurrentMemoryContext().  Traditionally we've just leaked that
+	 * data in CurrentMemoryContext.  Traditionally we've just leaked that
 	 * data, reasoning that the caller's context is at worst of transaction
 	 * scope, and relcache loads shouldn't happen so often that it's essential
 	 * to recover transient data before end of statement/transaction.  However
@@ -3095,7 +3095,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	if (RECOVER_RELATION_BUILD_MEMORY || debug_discard_caches > 0)
 	{
-		tmpcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
 									   "RelationBuildDesc workspace",
 									   ALLOCSET_DEFAULT_SIZES);
 		oldcxt = MemoryContextSwitchTo(tmpcxt);
@@ -4352,6 +4352,7 @@ RelationReloadIndexInfo(Relation relation)
 		relation->rd_index->indcheckxmin = index->indcheckxmin;
 		relation->rd_index->indisready = index->indisready;
 		relation->rd_index->indislive = index->indislive;
+		relation->rd_index->indisreplident = index->indisreplident;
 
 		/* Copy xmin too, as that is needed to make sense of indcheckxmin */
 		HeapTupleHeaderSetXmin(relation->rd_indextuple->t_data,
@@ -5854,32 +5855,18 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 {
 	Oid			newrelfilenode;
 	Relation	pg_class;
+	ItemPointerData otid;
 	HeapTuple	tuple;
 	Form_pg_class classform;
 	MultiXactId minmulti = InvalidMultiXactId;
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
-	/*
-	 * YB Note: this code that opens pg_class table was moved here from below.
-	 * Get a writable copy of the pg_class tuple for the given relation.
-	 */
-	pg_class = table_open(RelationRelationId, RowExclusiveLock);
-
 	if (!IsBinaryUpgrade || yb_binary_restore)
 	{
-		if (IsYugaByteEnabled())
-			/*
-			 * In YB, always use pg_class to check for OID collision. During
-			 * table rewrite a relfilenode is used by DocDB to construct a
-			 * table id in the same way as a regular table OID.
-			 */
-			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-											   pg_class, persistence);
-		else
-			/* Allocate a new relfilenode */
-			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-											   NULL, persistence);
+		/* Allocate a new relfilenode */
+		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+										   NULL, persistence);
 	}
 	else if (relation->rd_rel->relkind == RELKIND_INDEX)
 	{
@@ -5907,14 +5894,16 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 				 errmsg("unexpected request for new relfilenode in binary upgrade mode")));
 
 	/*
-	 * YB Note: native PG code setup pg_class here, YB has moved that code up above.
+	 * Get a writable copy of the pg_class tuple for the given relation.
 	 */
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
-	tuple = SearchSysCacheCopy1(RELOID,
-								ObjectIdGetDatum(RelationGetRelid(relation)));
+	tuple = SearchSysCacheLockedCopy1(RELOID,
+									  ObjectIdGetDatum(RelationGetRelid(relation)));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for relation %u",
 			 RelationGetRelid(relation));
+	otid = tuple->t_self;
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
 	if (IsYBRelation(relation))
@@ -6074,9 +6063,10 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		classform->relminmxid = minmulti;
 		classform->relpersistence = persistence;
 
-		CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+		CatalogTupleUpdate(pg_class, &otid, tuple);
 	}
 
+	UnlockTuple(pg_class, &otid, InplaceUpdateTupleLock);
 	heap_freetuple(tuple);
 
 	table_close(pg_class, RowExclusiveLock);

@@ -273,6 +273,39 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
   }
 
   @Test
+  public void testSetDatabaseCredentialsWhenYSQLMajorUpgradeInProgress() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    Universe u = createUniverse(customer.getId());
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQLAuth = true;
+    userIntent.enableYCQLAuth = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    u.setUniverseDetails(details);
+    u.save();
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("ycqlAdminUsername", "cassandra")
+            .put("ysqlAdminUsername", "yugabyte")
+            .put("ycqlCurrAdminPassword", "Admin@123")
+            .put("ysqlCurrAdminPassword", "Admin@123")
+            .put("ycqlAdminPassword", "Admin@123")
+            .put("ysqlAdminPassword", "Admin@123")
+            .put("dbName", "test");
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/update_db_credentials";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result, "Cannot configure ysql admin password while YSQL major upgrade is in progress.");
+  }
+
+  @Test
   public void testConfigureYSQL() {
     Universe universe = createUniverse(customer.getId());
     updateUniverseAPIDetails(universe, false, false, true, false);
@@ -313,6 +346,29 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         result,
         "Disabling YSQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
             + " disable DB API");
+  }
+
+  @Test
+  public void testConfigureYSQLWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", true)
+            .put("enableYSQLAuth", false);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result, "Cannot configure YSQL APIs as a major version upgrade is in progress.");
   }
 
   @Test

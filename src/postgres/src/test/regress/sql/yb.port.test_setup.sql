@@ -32,9 +32,7 @@ INSERT INTO CHAR_TBL (f1) VALUES
   ('abcd    ');
 VACUUM CHAR_TBL;
 
--- TODO(jason): see if "PRIMARY KEY" could be removed, which is not present in
--- the upstream test.
-CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);
+CREATE TABLE FLOAT8_TBL(f1 float8);
 
 INSERT INTO FLOAT8_TBL(f1) VALUES
   ('0.0'),
@@ -44,8 +42,7 @@ INSERT INTO FLOAT8_TBL(f1) VALUES
   ('-1.2345678901234e-200');
 VACUUM FLOAT8_TBL;
 
--- YB note: add primary key for sorting
-CREATE TABLE INT2_TBL(f1 int2 PRIMARY KEY);
+CREATE TABLE INT2_TBL(f1 int2);
 
 INSERT INTO INT2_TBL(f1) VALUES
   ('0   '),
@@ -55,8 +52,7 @@ INSERT INTO INT2_TBL(f1) VALUES
   ('-32767');
 VACUUM INT2_TBL;
 
--- YB note: add primary key for sorting
-CREATE TABLE INT4_TBL(f1 int4 PRIMARY KEY);
+CREATE TABLE INT4_TBL(f1 int4);
 
 INSERT INTO INT4_TBL(f1) VALUES
   ('   0  '),

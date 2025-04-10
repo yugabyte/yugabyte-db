@@ -39,6 +39,7 @@ std::string GetPostgresInstallRoot();
 // Configuration for an external PostgreSQL server.
 struct PgProcessConf : public ProcessWrapperCommonConfig {
   static constexpr uint16_t kDefaultPort = 5433;
+  static constexpr uint16_t kDefaultPortWithConnMgr = 6433;
 
   static Result<PgProcessConf> CreateValidateAndRunInitDb(
       const std::string& bind_addresses,

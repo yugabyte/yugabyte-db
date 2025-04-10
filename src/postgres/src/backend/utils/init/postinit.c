@@ -374,13 +374,13 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 	 * These checks are not enforced when in standalone mode, so that there is
 	 * a way to recover from disabling all access to all databases, for
 	 * example "UPDATE pg_database SET datallowconn = false;".
-	 *
-	 * We do not enforce them for autovacuum worker processes either.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
+	if (IsUnderPostmaster)
 	{
 		/*
 		 * Check that the database is currently allowing connections.
+		 * (Background processes can override this test and the next one by
+		 * setting override_allow_connections.)
 		 */
 		if (!dbform->datallowconn && !override_allow_connections)
 			ereport(FATAL,
@@ -393,7 +393,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * is redundant, but since we have the flag, might as well check it
 		 * and save a few cycles.)
 		 */
-		if (!am_superuser &&
+		if (!am_superuser && !override_allow_connections &&
 			pg_database_aclcheck(MyDatabaseId, GetUserId(),
 								 ACL_CONNECT) != ACLCHECK_OK)
 			ereport(FATAL,
@@ -402,7 +402,9 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 					 errdetail("User does not have CONNECT privilege.")));
 
 		/*
-		 * Check connection limit for this database.
+		 * Check connection limit for this database.  We enforce the limit
+		 * only for regular backends, since other process types have their own
+		 * PGPROC pools.
 		 *
 		 * There is a race condition here --- we create our PGPROC before
 		 * checking for other PGPROCs.  If two backends did this at about the
@@ -412,6 +414,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * just document that the connection limit is approximate.
 		 */
 		if (dbform->datconnlimit >= 0 &&
+			AmRegularBackendProcess() &&
 			!am_superuser &&
 			CountDBConnections(MyDatabaseId) > dbform->datconnlimit)
 			ereport(FATAL,
@@ -453,6 +456,10 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 				 errdetail("The database was initialized with LC_CTYPE \"%s\", "
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
+
+	if (strcmp(ctype, "C") == 0 ||
+		strcmp(ctype, "POSIX") == 0)
+		database_ctype_is_c = true;
 
 	/* YbPresetDatabaseCollation may have already populated default_locale */
 	if (IsYugaByteEnabled())
@@ -1009,11 +1016,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	}
 
 	/*
-	 * The last few connection slots are reserved for superusers.  Replication
-	 * connections are drawn from slots reserved with max_wal_senders and not
-	 * limited by max_connections or superuser_reserved_connections.
+	 * The last few regular connection slots are reserved for superusers. We
+	 * do not apply this limit to background processes, since they all have
+	 * their own pools of PGPROC slots.
 	 */
-	if (!am_superuser && !am_walsender &&
+	if (AmRegularBackendProcess() && !am_superuser &&
 		ReservedBackends > 0 &&
 		!HaveNFreeProcs(ReservedBackends))
 		ereport(FATAL,
@@ -1068,7 +1075,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	if (bootstrap)
 	{
-		MyDatabaseId = Template1DbOid;
+		dboid = Template1DbOid;
 		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
 	}
 	else if (in_dbname != NULL)
@@ -1082,42 +1089,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist", in_dbname)));
 		dbform = (Form_pg_database) GETSTRUCT(tuple);
-		MyDatabaseId = dbform->oid;
-		MyDatabaseTableSpace = dbform->dattablespace;
-		/* take database name from the caller, just for paranoia */
-		strlcpy(dbname, in_dbname, sizeof(dbname));
-		if (IsYugaByteEnabled())
-		{
-			SetDatabaseEncoding(dbform->encoding);
-			YbPresetDatabaseCollation(tuple);
-		}
+		dboid = dbform->oid;
 	}
-	else if (OidIsValid(dboid))
-	{
-		/* caller specified database by OID */
-		HeapTuple	tuple;
-		Form_pg_database dbform;
-
-		tuple = GetDatabaseTupleByOid(dboid);
-		if (!HeapTupleIsValid(tuple))
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database %u does not exist", dboid)));
-		dbform = (Form_pg_database) GETSTRUCT(tuple);
-		MyDatabaseId = dbform->oid;
-		MyDatabaseTableSpace = dbform->dattablespace;
-		Assert(MyDatabaseId == dboid);
-		strlcpy(dbname, NameStr(dbform->datname), sizeof(dbname));
-		/* pass the database name back to the caller */
-		if (out_dbname)
-			strcpy(out_dbname, dbname);
-		if (IsYugaByteEnabled())
-		{
-			SetDatabaseEncoding(dbform->encoding);
-			YbPresetDatabaseCollation(tuple);
-		}
-	}
-	else
+	else if (!OidIsValid(dboid))
 	{
 		/*
 		 * If this is a background worker not bound to any particular
@@ -1131,20 +1105,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			CommitTransactionCommand();
 		}
 		return;
-	}
-
-	if (MyDatabaseId != Template1DbOid && YBIsDBCatalogVersionMode())
-	{
-		/*
-		 * Here we assume that the entire table pg_yb_catalog_version is
-		 * prefetched. Note that in this case YbGetMasterCatalogVersion()
-		 * returns the prefetched catalog version of MyDatabaseId which is
-		 * consistent with all the other tables that are prefetched.
-		 */
-		uint64_t	master_catalog_version = YbGetMasterCatalogVersion();
-
-		Assert(master_catalog_version > YB_CATCACHE_VERSION_UNINITIALIZED);
-		YbUpdateCatalogCacheVersion(master_catalog_version);
 	}
 
 	/*
@@ -1169,8 +1129,64 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 * CREATE DATABASE.
 	 */
 	if (!bootstrap)
-		LockSharedObject(DatabaseRelationId, MyDatabaseId, 0,
-						 RowExclusiveLock);
+		LockSharedObject(DatabaseRelationId, dboid, 0, RowExclusiveLock);
+
+	/*
+	 * Recheck pg_database to make sure the target database hasn't gone away.
+	 * If there was a concurrent DROP DATABASE, this ensures we will die
+	 * cleanly without creating a mess.
+	 */
+	if (!bootstrap)
+	{
+		HeapTuple	tuple;
+		Form_pg_database datform;
+
+		tuple = GetDatabaseTupleByOid(dboid);
+		if (HeapTupleIsValid(tuple))
+			datform = (Form_pg_database) GETSTRUCT(tuple);
+
+		if (!HeapTupleIsValid(tuple) ||
+			(in_dbname && namestrcmp(&datform->datname, in_dbname)))
+		{
+			if (in_dbname)
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database \"%s\" does not exist", in_dbname),
+						 errdetail("It seems to have just been dropped or renamed.")));
+			else
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database %u does not exist", dboid)));
+		}
+
+		strlcpy(dbname, NameStr(datform->datname), sizeof(dbname));
+
+		if (database_is_invalid_form(datform))
+		{
+			ereport(FATAL,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("cannot connect to invalid database \"%s\"", dbname),
+					errhint("Use DROP DATABASE to drop invalid databases."));
+		}
+
+		MyDatabaseTableSpace = datform->dattablespace;
+		/* pass the database name back to the caller */
+		if (out_dbname)
+			strcpy(out_dbname, dbname);
+	}
+
+	/*
+	 * Now that we rechecked, we are certain to be connected to a database and
+	 * thus can set MyDatabaseId.
+	 *
+	 * It is important that MyDatabaseId only be set once we are sure that the
+	 * target database can no longer be concurrently dropped or renamed.  For
+	 * example, without this guarantee, pgstat_update_dbstats() could create
+	 * entries for databases that were just dropped in the pgstat shutdown
+	 * callback, which could confuse other code paths like the autovacuum
+	 * scheduler.
+	 */
+	MyDatabaseId = dboid;
 
 	/*
 	 * Now we can mark our PGPROC entry with the database ID.
@@ -1186,9 +1202,34 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	MyProc->databaseId = MyDatabaseId;
 
-	/* YB: Set the dbid in ASH metadata */
-	if (IsYugaByteEnabled() && yb_enable_ash)
-		YbAshSetDatabaseId(MyDatabaseId);
+	if (MyDatabaseId != Template1DbOid && YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * Here we assume that the entire table pg_yb_catalog_version is
+		 * prefetched. Note that in this case YbGetMasterCatalogVersion()
+		 * returns the prefetched catalog version of MyDatabaseId which is
+		 * consistent with all the other tables that are prefetched.
+		 */
+		uint64_t	master_catalog_version = YbGetMasterCatalogVersion();
+
+		Assert(master_catalog_version > YB_CATCACHE_VERSION_UNINITIALIZED);
+		YbUpdateCatalogCacheVersion(master_catalog_version);
+	}
+
+	if (IsYugaByteEnabled() && !bootstrap)
+	{
+		HeapTuple	tuple;
+		Form_pg_database datform;
+
+		tuple = GetDatabaseTupleByOid(dboid);
+		Assert(HeapTupleIsValid(tuple));
+		datform = (Form_pg_database) GETSTRUCT(tuple);
+
+		SetDatabaseEncoding(datform->encoding);
+		YbPresetDatabaseCollation(tuple);
+		if (yb_enable_ash)
+			YbAshSetDatabaseId(MyDatabaseId);
+	}
 
 	/*
 	 * We established a catalog snapshot while reading pg_authid and/or
@@ -1206,26 +1247,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
 		YbSetLogicalClientCacheVersion(logical_client_version);
-	}
-
-	/*
-	 * Recheck pg_database to make sure the target database hasn't gone away.
-	 * If there was a concurrent DROP DATABASE, this ensures we will die
-	 * cleanly without creating a mess.
-	 * In YB mode DB existance is checked on cache load/refresh.
-	 */
-	if (!IsYugaByteEnabled() && !bootstrap)
-	{
-		HeapTuple	tuple;
-
-		tuple = GetDatabaseTuple(dbname);
-		if (!HeapTupleIsValid(tuple) ||
-			MyDatabaseId != ((Form_pg_database) GETSTRUCT(tuple))->oid ||
-			MyDatabaseTableSpace != ((Form_pg_database) GETSTRUCT(tuple))->dattablespace)
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exist", dbname),
-					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
 	/* No local physical path for the database in YugaByte mode */

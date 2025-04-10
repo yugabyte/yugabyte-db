@@ -48,7 +48,7 @@
 
 static void report_invalid_record(XLogReaderState *state, const char *fmt,...)
 			pg_attribute_printf(2, 3);
-static bool allocate_recordbuf(XLogReaderState *state, uint32 reclength);
+static void allocate_recordbuf(XLogReaderState *state, uint32 reclength);
 static int	ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr,
 							 int reqLen);
 static void XLogReaderInvalReadState(XLogReaderState *state);
@@ -165,14 +165,7 @@ XLogReaderAllocate(int wal_segment_size, const char *waldir,
 	 * Allocate an initial readRecordBuf of minimal size, which can later be
 	 * enlarged if necessary.
 	 */
-	if (!allocate_recordbuf(state, 0))
-	{
-		pfree(state->errormsg_buf);
-		pfree(state->readBuf);
-		pfree(state);
-		return NULL;
-	}
-
+	allocate_recordbuf(state, 0);
 	return state;
 }
 
@@ -194,7 +187,6 @@ XLogReaderFree(XLogReaderState *state)
 
 /*
  * Allocate readRecordBuf to fit a record of at least the given length.
- * Returns true if successful, false if out of memory.
  *
  * readRecordBufSize is set to the new buffer size.
  *
@@ -202,8 +194,11 @@ XLogReaderFree(XLogReaderState *state)
  * XLOG_BLCKSZ, and make sure it's at least 5*Max(BLCKSZ, XLOG_BLCKSZ) to start
  * with.  (That is enough for all "normal" records, but very large commit or
  * abort records might need more space.)
+ *
+ * Note: This routine should *never* be called for xl_tot_len until the header
+ * of the record has been fully validated.
  */
-static bool
+static void
 allocate_recordbuf(XLogReaderState *state, uint32 reclength)
 {
 	uint32		newSize = reclength;
@@ -211,36 +206,10 @@ allocate_recordbuf(XLogReaderState *state, uint32 reclength)
 	newSize += XLOG_BLCKSZ - (newSize % XLOG_BLCKSZ);
 	newSize = Max(newSize, 5 * Max(BLCKSZ, XLOG_BLCKSZ));
 
-#ifndef FRONTEND
-
-	/*
-	 * Note that in much unlucky circumstances, the random data read from a
-	 * recycled segment can cause this routine to be called with a size
-	 * causing a hard failure at allocation.  For a standby, this would cause
-	 * the instance to stop suddenly with a hard failure, preventing it to
-	 * retry fetching WAL from one of its sources which could allow it to move
-	 * on with replay without a manual restart. If the data comes from a past
-	 * recycled segment and is still valid, then the allocation may succeed
-	 * but record checks are going to fail so this would be short-lived.  If
-	 * the allocation fails because of a memory shortage, then this is not a
-	 * hard failure either per the guarantee given by MCXT_ALLOC_NO_OOM.
-	 */
-	if (!AllocSizeIsValid(newSize))
-		return false;
-
-#endif
-
 	if (state->readRecordBuf)
 		pfree(state->readRecordBuf);
-	state->readRecordBuf =
-		(char *) palloc_extended(newSize, MCXT_ALLOC_NO_OOM);
-	if (state->readRecordBuf == NULL)
-	{
-		state->readRecordBufSize = 0;
-		return false;
-	}
+	state->readRecordBuf = (char *) palloc(newSize);
 	state->readRecordBufSize = newSize;
-	return true;
 }
 
 /*
@@ -498,18 +467,37 @@ XLogReadRecordAlloc(XLogReaderState *state, size_t xl_tot_len, bool allow_oversi
 	if (state->decode_buffer_tail >= state->decode_buffer_head)
 	{
 		/* Empty, or tail is to the right of head. */
-		if (state->decode_buffer_tail + required_space <=
-			state->decode_buffer + state->decode_buffer_size)
+		if (required_space <=
+			state->decode_buffer_size -
+			(state->decode_buffer_tail - state->decode_buffer))
 		{
-			/* There is space between tail and end. */
+			/*-
+			 * There is space between tail and end.
+			 *
+			 * +-----+--------------------+-----+
+			 * |     |////////////////////|here!|
+			 * +-----+--------------------+-----+
+			 *       ^                    ^
+			 *       |                    |
+			 *       h                    t
+			 */
 			decoded = (DecodedXLogRecord *) state->decode_buffer_tail;
 			decoded->oversized = false;
 			return decoded;
 		}
-		else if (state->decode_buffer + required_space <
-				 state->decode_buffer_head)
+		else if (required_space <
+				 state->decode_buffer_head - state->decode_buffer)
 		{
-			/* There is space between start and head. */
+			/*-
+			 * There is space between start and head.
+			 *
+			 * +-----+--------------------+-----+
+			 * |here!|////////////////////|     |
+			 * +-----+--------------------+-----+
+			 *       ^                    ^
+			 *       |                    |
+			 *       h                    t
+			 */
 			decoded = (DecodedXLogRecord *) state->decode_buffer;
 			decoded->oversized = false;
 			return decoded;
@@ -518,10 +506,19 @@ XLogReadRecordAlloc(XLogReaderState *state, size_t xl_tot_len, bool allow_oversi
 	else
 	{
 		/* Tail is to the left of head. */
-		if (state->decode_buffer_tail + required_space <
-			state->decode_buffer_head)
+		if (required_space <
+			state->decode_buffer_head - state->decode_buffer_tail)
 		{
-			/* There is space between tail and head. */
+			/*-
+			 * There is space between tail and head.
+			 *
+			 * +-----+--------------------+-----+
+			 * |/////|here!               |/////|
+			 * +-----+--------------------+-----+
+			 *       ^                    ^
+			 *       |                    |
+			 *       t                    h
+			 */
 			decoded = (DecodedXLogRecord *) state->decode_buffer_tail;
 			decoded->oversized = false;
 			return decoded;
@@ -531,9 +528,7 @@ XLogReadRecordAlloc(XLogReaderState *state, size_t xl_tot_len, bool allow_oversi
 	/* Not enough space in the decode buffer.  Are we allowed to allocate? */
 	if (allow_oversized)
 	{
-		decoded = palloc_extended(required_space, MCXT_ALLOC_NO_OOM);
-		if (decoded == NULL)
-			return NULL;
+		decoded = palloc(required_space);
 		decoded->oversized = true;
 		return decoded;
 	}
@@ -677,7 +672,7 @@ restart:
 	}
 	else
 	{
-		/* XXX: more validation should be done here */
+		/* There may be no next page if it's too small. */
 		if (total_len < SizeOfXLogRecord)
 		{
 			report_invalid_record(state,
@@ -686,32 +681,26 @@ restart:
 								  (uint32) SizeOfXLogRecord, total_len);
 			goto err;
 		}
+		/* We'll validate the header once we have the next page. */
 		gotheader = false;
 	}
 
 	/*
-	 * Find space to decode this record.  Don't allow oversized allocation if
-	 * the caller requested nonblocking.  Otherwise, we *have* to try to
-	 * decode the record now because the caller has nothing else to do, so
-	 * allow an oversized record to be palloc'd if that turns out to be
-	 * necessary.
+	 * Try to find space to decode this record, if we can do so without
+	 * calling palloc.  If we can't, we'll try again below after we've
+	 * validated that total_len isn't garbage bytes from a recycled WAL page.
 	 */
 	decoded = XLogReadRecordAlloc(state,
 								  total_len,
-								  !nonblocking /* allow_oversized */ );
-	if (decoded == NULL)
+								  false /* allow_oversized */ );
+	if (decoded == NULL && nonblocking)
 	{
 		/*
-		 * There is no space in the decode buffer.  The caller should help
-		 * with that problem by consuming some records.
+		 * There is no space in the circular decode buffer, and the caller is
+		 * only reading ahead.  The caller should consume existing records to
+		 * make space.
 		 */
-		if (nonblocking)
-			return XLREAD_WOULDBLOCK;
-
-		/* We failed to allocate memory for an oversized record. */
-		report_invalid_record(state,
-							  "out of memory while trying to decode a record of length %u", total_len);
-		goto err;
+		return XLREAD_WOULDBLOCK;
 	}
 
 	len = XLOG_BLCKSZ - RecPtr % XLOG_BLCKSZ;
@@ -726,16 +715,11 @@ restart:
 		assembled = true;
 
 		/*
-		 * Enlarge readRecordBuf as needed.
+		 * We always have space for a couple of pages, enough to validate a
+		 * boundary-spanning record header.
 		 */
-		if (total_len > state->readRecordBufSize &&
-			!allocate_recordbuf(state, total_len))
-		{
-			/* We treat this as a "bogus data" condition */
-			report_invalid_record(state, "record length %u at %X/%X too long",
-								  total_len, LSN_FORMAT_ARGS(RecPtr));
-			goto err;
-		}
+		Assert(state->readRecordBufSize >= XLOG_BLCKSZ * 2);
+		Assert(state->readRecordBufSize >= len);
 
 		/* Copy the first fragment of the record from the first page. */
 		memcpy(state->readRecordBuf,
@@ -832,8 +816,29 @@ restart:
 					goto err;
 				gotheader = true;
 			}
-		} while (gotlen < total_len);
 
+			/*
+			 * We might need a bigger buffer.  We have validated the record
+			 * header, in the case that it split over a page boundary.  We've
+			 * also cross-checked total_len against xlp_rem_len on the second
+			 * page, and verified xlp_pageaddr on both.
+			 */
+			if (total_len > state->readRecordBufSize)
+			{
+				char		save_copy[XLOG_BLCKSZ * 2];
+
+				/*
+				 * Save and restore the data we already had.  It can't be more
+				 * than two pages.
+				 */
+				Assert(gotlen <= lengthof(save_copy));
+				Assert(gotlen <= state->readRecordBufSize);
+				memcpy(save_copy, state->readRecordBuf, gotlen);
+				allocate_recordbuf(state, total_len);
+				memcpy(state->readRecordBuf, save_copy, gotlen);
+				buffer = state->readRecordBuf + gotlen;
+			}
+		} while (gotlen < total_len);
 		Assert(gotheader);
 
 		record = (XLogRecord *) state->readRecordBuf;
@@ -875,6 +880,20 @@ restart:
 		state->NextRecPtr -= XLogSegmentOffset(state->NextRecPtr, state->segcxt.ws_segsize);
 	}
 
+	/*
+	 * If we got here without a DecodedXLogRecord, it means we needed to
+	 * validate total_len before trusting it, but by now now we've done that.
+	 */
+	if (decoded == NULL)
+	{
+		Assert(!nonblocking);
+		decoded = XLogReadRecordAlloc(state,
+									  total_len,
+									  true /* allow_oversized */ );
+		/* allocation should always happen under allow_oversized */
+		Assert(decoded != NULL);
+	}
+
 	if (DecodeXLogRecord(state, decoded, record, RecPtr, &errormsg))
 	{
 		/* Record the location of the next record. */
@@ -903,8 +922,6 @@ restart:
 			state->decode_queue_head = decoded;
 		return XLREAD_SUCCESS;
 	}
-	else
-		return XLREAD_FAIL;
 
 err:
 	if (assembled)
@@ -922,15 +939,11 @@ err:
 		state->missingContrecPtr = targetPagePtr;
 
 		/*
-		 * If we got here without reporting an error, report one now so that
-		 * XLogPrefetcherReadRecord() doesn't bring us back a second time and
-		 * clobber the above state.  Otherwise, the existing error takes
-		 * precedence.
+		 * If we got here without reporting an error, make sure an error is
+		 * queued so that XLogPrefetcherReadRecord() doesn't bring us back a
+		 * second time and clobber the above state.
 		 */
-		if (!state->errormsg_buf[0])
-			report_invalid_record(state,
-								  "missing contrecord at %X/%X",
-								  LSN_FORMAT_ARGS(RecPtr));
+		state->errormsg_deferred = true;
 	}
 
 	if (decoded && decoded->oversized)
@@ -1190,6 +1203,8 @@ static bool
 ValidXLogRecord(XLogReaderState *state, XLogRecord *record, XLogRecPtr recptr)
 {
 	pg_crc32c	crc;
+
+	Assert(record->xl_tot_len >= SizeOfXLogRecord);
 
 	/* Calculate the CRC */
 	INIT_CRC32C(crc);

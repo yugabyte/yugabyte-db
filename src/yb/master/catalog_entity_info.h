@@ -68,6 +68,8 @@ DECLARE_bool(use_parent_table_id_field);
 namespace yb {
 namespace master {
 
+class RetryingRpcTask;
+
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Per table structure for external cluster snapshot importing to this cluster.
@@ -819,8 +821,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get the Status of the last error from the current CreateTable.
   Status GetCreateTableErrorStatus() const;
 
-  std::size_t NumLBTasks() const;
-
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
   bool UsesTablespacesForPlacement() const;
@@ -1071,9 +1071,19 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
+  std::optional<ObjectLockInfo::WriteLock> RefreshYsqlOperationLease(const NodeInstancePB& instance)
+      EXCLUDES(mutex_);
+
+  virtual void Load(const SysObjectLockEntryPB& metadata) override;
+
+  MonoTime last_ysql_lease_refresh() const EXCLUDES(mutex_);
+
  private:
   // The ID field is used in the sys_catalog table.
   const std::string ts_uuid_;
+
+  mutable simple_spinlock mutex_;
+  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
 };

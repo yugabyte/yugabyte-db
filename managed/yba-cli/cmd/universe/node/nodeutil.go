@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -60,13 +61,8 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			"No clusters found in universe " + universeName + " (" + universeUUID + ")")
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	var primaryCluster ybaclient.Cluster
-	for _, c := range clusters {
-		if strings.EqualFold(c.GetClusterType(), util.PrimaryClusterType) {
-			primaryCluster = c
-			break
-		}
-	}
+
+	primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
 
 	if primaryCluster == (ybaclient.Cluster{}) {
 		err := fmt.Errorf(

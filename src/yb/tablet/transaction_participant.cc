@@ -325,7 +325,7 @@ class TransactionParticipant::Impl
         cleanup_cache_.Erase(metadata.transaction_id) != 0) {
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
       auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
           "Transaction was recently aborted: $0", metadata.transaction_id);
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
@@ -445,10 +445,10 @@ class TransactionParticipant::Impl
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
       return lock_and_iterator.did_txn_deadlock()
-          ? lock_and_iterator.deadlock_status
-          : STATUS(TryAgain,
-                   Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
-                   PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+                 ? lock_and_iterator.deadlock_status
+                 : STATUS(
+                       TryAgain, Format("Unknown transaction, could be recently aborted: $0", id),
+                       Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
@@ -1421,13 +1421,13 @@ class TransactionParticipant::Impl
         YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
             << "Request to unknown transaction " << transaction_id;
         return STATUS_EC_FORMAT(
-            Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+            Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
             "Transaction $0 expired or aborted by a conflict", transaction_id);
       }
 
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
-                             PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+                             PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT));
       txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }

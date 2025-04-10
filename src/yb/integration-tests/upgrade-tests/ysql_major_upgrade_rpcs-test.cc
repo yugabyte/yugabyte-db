@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -23,12 +23,12 @@ namespace yb {
 
 static const MonoDelta kNoDelayBetweenNodes = 0s;
 
-class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeRpcsTest : public YsqlMajorUpgradeTestBase {
  public:
   YsqlMajorUpgradeRpcsTest() = default;
 
   void SetUp() override {
-    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
+    TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
 
     CHECK_OK(CreateSimpleTable());
   }
@@ -274,7 +274,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
 // Disabling in debug builds since this test times out on it.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDuringUpgrade)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 
@@ -419,7 +419,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
   ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
 }
 
-class YsqlMajorUpgradeYbAdminTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeYbAdminTest : public YsqlMajorUpgradeTestBase {
  public:
   YsqlMajorUpgradeYbAdminTest() = default;
 

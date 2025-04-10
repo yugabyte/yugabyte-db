@@ -208,6 +208,8 @@ static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 // Postgres object identifier (OID) defined in Postgres' postgres_ext.h
 typedef unsigned int YbcPgOid;
 
+typedef uint64_t YbcReadPointHandle;
+
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid);
 
 // These OIDs are defined here to work around the build dependency problem.
@@ -617,7 +619,8 @@ typedef enum {
   // Force non-transactional semantics to avoid overhead of a distributed transaction. This is used
   // in the following cases as of today:
   //   (1) Index backfill
-  //   (2) COPY with ysql_non_txn_copy=true
+  //   (2) COPY with ysql_non_txn_copy=true or COPY to colocated table with
+  //       yb_fast_path_for_colocated_copy=true.
   //   (3) For normal DML writes if yb_disable_transactional_writes is set by the user
   YB_NON_TRANSACTIONAL,
   // Use a distributed transaction for full ACID semantics (common case).
@@ -822,6 +825,11 @@ typedef enum {
   YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE,
   YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME
 } YbcLsnType;
+
+typedef enum {
+  YB_REPLICATION_SLOT_ORDERING_MODE_ROW,
+  YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION
+} YbcOrderingMode;
 
 typedef struct {
   const char* tablet_id;

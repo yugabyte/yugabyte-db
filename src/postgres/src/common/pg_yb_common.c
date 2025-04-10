@@ -307,3 +307,14 @@ YBGetDatabaseOidFromEnv(const char *database_name)
 	}
 	return InvalidOid;
 }
+
+bool
+YBQueryDiagnosticsTestRaceCondition()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_ysql_yb_query_diagnostics_race_condition");
+	}
+	return cached_value;
+}

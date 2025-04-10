@@ -11,7 +11,6 @@ import moment from 'moment';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
 import {
   alertConfigQueryKey,
   api,
@@ -32,12 +31,7 @@ import {
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder } from '../../../../redesign/helpers/constants';
-import {
-  liveMetricTimeRangeUnit,
-  liveMetricTimeRangeValue,
-  MetricName,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
-} from '../../constants';
+import { liveMetricTimeRangeUnit, liveMetricTimeRangeValue, MetricName } from '../../constants';
 import { getTableUuid } from '../../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { AlertTemplate } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
@@ -55,8 +49,7 @@ import {
   MetricsQueryParams,
   TableType,
   Universe,
-  UniverseNamespace,
-  YBTable
+  UniverseNamespace
 } from '../../../../redesign/helpers/dtos';
 import {
   IndexTableRestartReplicationCandidate,
@@ -135,14 +128,6 @@ export const ConfigTableSelect = ({
     () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
   );
 
-  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
-    () =>
-      fetchTablesInUniverse(
-        xClusterConfig.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data)
-  );
   const sourceUniverseQuery = useQuery<Universe>(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
@@ -193,8 +178,6 @@ export const ConfigTableSelect = ({
   if (
     sourceUniverseNamespaceQuery.isLoading ||
     sourceUniverseNamespaceQuery.isIdle ||
-    sourceUniverseTablesQuery.isLoading ||
-    sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle
   ) {
@@ -202,11 +185,7 @@ export const ConfigTableSelect = ({
   }
 
   const sourceUniverseLabel = isDrInterface ? 'DR primary universe' : 'source universe';
-  if (
-    sourceUniverseNamespaceQuery.isError ||
-    sourceUniverseTablesQuery.isError ||
-    sourceUniverseQuery.isError
-  ) {
+  if (sourceUniverseNamespaceQuery.isError || sourceUniverseQuery.isError) {
     return (
       <YBErrorIndicator customErrorMessage={`Error fetching ${sourceUniverseLabel} information.`} />
     );

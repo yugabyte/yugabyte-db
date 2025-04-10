@@ -279,7 +279,7 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	buildstate->collation = index->rd_indcollation[0];
 
-	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
 											   "ann build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 }
@@ -353,7 +353,7 @@ ybvectorWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		MemoryContextSwitchTo(oldCtx);
 	}
 
-	writeCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	writeCtx = AllocSetContextCreate(CurrentMemoryContext,
 									 "Ybvector write temporary context",
 									 ALLOCSET_DEFAULT_SIZES);
 

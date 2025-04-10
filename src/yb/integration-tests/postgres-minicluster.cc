@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+
 #include "yb/integration-tests/postgres-minicluster.h"
 
 #include "yb/tserver/mini_tablet_server.h"

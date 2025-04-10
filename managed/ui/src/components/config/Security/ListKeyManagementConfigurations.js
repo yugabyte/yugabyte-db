@@ -10,9 +10,14 @@ import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { isRbacEnabled, userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
+import {
+  isRbacEnabled,
+  userhavePermInRoleBindings
+} from '../../../redesign/features/rbac/common/RbacUtils';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
+import { KmsProvider } from './KeyManagementConfiguration';
+import { YBTooltip } from '../../../redesign/components';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
@@ -23,8 +28,11 @@ export class ListKeyManagementConfigurations extends Component {
   };
 
   actionList = (item, row) => {
-    const { in_use: inUse, universeDetails } = row.metadata;
-    const { isAdmin, onEdit } = this.props;
+    const { in_use: inUse, universeDetails, provider: kmsProvider } = row.metadata;
+    const { isAdmin, onEdit, isCipherTrustKmsEnabled } = this.props;
+
+    const isRestrictedKmsProvider =
+      kmsProvider === KmsProvider.CIPHERTRUST && !isCipherTrustKmsEnabled;
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         <MenuItem
@@ -41,14 +49,24 @@ export class ListKeyManagementConfigurations extends Component {
             isControl
             overrideStyle={{ display: 'block' }}
           >
-            <MenuItem
-              onClick={() => {
-                onEdit(row);
-              }}
-              data-testid="EAR-EditConfiguration"
+            <YBTooltip
+              title={
+                isRestrictedKmsProvider
+                  ? 'Enable the runtime configuration yb.kms.allow_ciphertrust to edit this KMS configuration.'
+                  : ''
+              }
+              placement="top"
             >
-              <i className="fa fa-pencil"></i> Edit Configuration
-            </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  onEdit(row);
+                }}
+                data-testid="EAR-EditConfiguration"
+                disabled={isRestrictedKmsProvider}
+              >
+                <i className="fa fa-pencil"></i> Edit Configuration
+              </MenuItem>
+            </YBTooltip>
           </RbacValidator>
         )}
         <RbacValidator
@@ -56,16 +74,27 @@ export class ListKeyManagementConfigurations extends Component {
           isControl
           overrideStyle={{ display: 'block' }}
         >
-          <MenuItem
-            title={'Delete provider'}
-            disabled={inUse}
-            onClick={() => {
-              !inUse && this.setState({ deleteConfig: row });
-            }}
-            data-testid="EAR-DeleteConfiguration"
+          <YBTooltip
+            title={
+              isRestrictedKmsProvider
+                ? 'Enable the runtime configuration `yb.kms.allow_ciphertrust` to delete this KMS configuration.'
+                : inUse
+                ? 'The configuration is in use.'
+                : ''
+            }
+            placement="top"
           >
-            <i className="fa fa-trash"></i> Delete Configuration
-          </MenuItem>
+            <MenuItem
+              title={'Delete provider'}
+              disabled={inUse || isRestrictedKmsProvider}
+              onSelect={() => {
+                this.setState({ deleteConfig: row });
+              }}
+              data-testid="EAR-DeleteConfiguration"
+            >
+              <i className="fa fa-trash"></i> Delete Configuration
+            </MenuItem>
+          </YBTooltip>
         </RbacValidator>
 
         <RbacValidator
@@ -136,10 +165,7 @@ export class ListKeyManagementConfigurations extends Component {
               <h2 className="table-container-title pull-left">List Configurations</h2>
               <FlexContainer className="pull-right">
                 <FlexShrink>
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE} isControl>
                     <Button bsClass="btn btn-orange btn-config" onClick={onCreate}>
                       Create New Config
                     </Button>

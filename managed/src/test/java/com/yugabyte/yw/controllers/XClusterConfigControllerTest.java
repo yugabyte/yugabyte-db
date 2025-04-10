@@ -1,6 +1,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
@@ -1393,5 +1394,34 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
 
     xClusterConfig.delete();
+  }
+
+  @Test
+  public void testCreateYSQLXClusterConfigWhenYSQLMajorUpgradeIsInComplete() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    createFormData.tables = ImmutableSet.of(exampleTableID1);
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", apiEndpoint, user.createAuthToken(), createRequest));
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source universe"
+            + " is in progress.");
+  }
+
+  @Test
+  public void testCreateYCQLXClusterConfigWhenYSQLMajorUpgradeIsInComplete() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertOk(result);
+    assertNumXClusterConfigs(1);
   }
 }

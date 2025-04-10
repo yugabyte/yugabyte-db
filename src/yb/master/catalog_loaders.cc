@@ -39,6 +39,7 @@
 #include "yb/master/backfill_index.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"

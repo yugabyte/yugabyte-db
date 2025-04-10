@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
@@ -164,8 +165,8 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   master::TSHeartbeatResponsePB last_hb_response_;
 
   // Full reports can take multiple heartbeats.
-  // Flag to indicate if next heartbeat is part of a full report.
-  bool sending_full_report_ = false;
+  // This field has value of the sequence number of the first heartbeat in this scenario.
+  std::optional<int32> full_report_seq_no_;
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
@@ -177,7 +178,7 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
 Heartbeater::Heartbeater(
     const TabletServerOptions& opts, TabletServer* server,
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
-  : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
+    : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
 }
 
 Heartbeater::~Heartbeater() {
@@ -212,7 +213,7 @@ Heartbeater::Impl::Impl(
   auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
   CHECK(!master_addresses->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
-                      << yb::ToString(master_addresses);
+                      << AsString(master_addresses);
 }
 
 Status Heartbeater::Impl::Start() {
@@ -283,7 +284,7 @@ Status HeartbeatPoller::Poll() {
 }
 
 MonoDelta HeartbeatPoller::IntervalToNextPoll(int32_t consecutive_failures) {
-  if (sending_full_report_ || last_hb_response_.needs_reregister() ||
+  if (full_report_seq_no_ || last_hb_response_.needs_reregister() ||
       last_hb_response_.needs_full_tablet_report()) {
     return GetMinimumHeartbeatMillis(consecutive_failures);
   }
@@ -322,18 +323,21 @@ Status HeartbeatPoller::TryHeartbeat() {
                           "Unable to set up registration");
   }
 
+  auto& tablet_report = *req.mutable_tablet_report();
   if (last_hb_response_.needs_full_tablet_report()) {
     LOG_WITH_PREFIX(INFO) << "Sending a full tablet report to master...";
-    server_.tablet_manager()->StartFullTabletReport(req.mutable_tablet_report());
-    sending_full_report_ = true;
+    server_.tablet_manager()->StartFullTabletReport(&tablet_report);
+    full_report_seq_no_ = tablet_report.sequence_number();
+    tablet_report.set_full_report_seq_no(*full_report_seq_no_);
   } else {
-    if (sending_full_report_) {
+    server_.tablet_manager()->GenerateTabletReport(
+        &tablet_report, !full_report_seq_no_ /* include_bootstrap */);
+    if (full_report_seq_no_) {
       LOG_WITH_PREFIX(INFO) << "Continuing full tablet report to master...";
+      tablet_report.set_full_report_seq_no(*full_report_seq_no_);
     } else {
       VLOG_WITH_PREFIX(2) << "Sending an incremental tablet report to master...";
     }
-    server_.tablet_manager()->GenerateTabletReport(
-        req.mutable_tablet_report(), !sending_full_report_ /* include_bootstrap */);
   }
 
   auto universe_uuid = VERIFY_RESULT(
@@ -342,7 +346,7 @@ Status HeartbeatPoller::TryHeartbeat() {
     req.set_universe_uuid(universe_uuid);
   }
 
-  req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
+  tablet_report.set_is_incremental(!full_report_seq_no_);
   req.set_num_live_tablets(server_.tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_.tablet_manager()->GetLeaderCount());
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -482,7 +486,9 @@ Status HeartbeatPoller::TryHeartbeat() {
       req.tablet_report().sequence_number(), last_hb_response_.tablet_report(), all_processed);
 
   // Trigger another heartbeat ASAP if we didn't process all tablets on this request.
-  sending_full_report_ = sending_full_report_ && !all_processed;
+  if (all_processed) {
+    full_report_seq_no_.reset();
+  }
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   // We only check --enable_ysql when --ysql_enable_db_catalog_version_mode=true

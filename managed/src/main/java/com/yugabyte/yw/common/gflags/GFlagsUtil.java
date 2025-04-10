@@ -1113,6 +1113,7 @@ public class GFlagsUtil {
    * @param allowOverrideAll - indicates whether we allow user flags to override platform flags
    */
   public static void processUserGFlags(
+      Universe universe,
       NodeDetails node,
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
@@ -1137,7 +1138,11 @@ public class GFlagsUtil {
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, node.ysqlServerRpcPort);
+      int ysqlPort = node.ysqlServerRpcPort;
+      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling) {
+        ysqlPort = node.internalYsqlServerRpcPort;
+      }
+      mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);

@@ -2346,8 +2346,6 @@ YBCRestartWriteTransaction()
 static void
 CommitTransaction(void)
 {
-	if (IsYugaByteEnabled())
-		YbIncrementPgTxnsCommitted();
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;
@@ -2394,14 +2392,22 @@ CommitTransaction(void)
 			break;
 	}
 
-	/*
-	 * Firing the triggers may abort current transaction.
-	 * At this point all the them has been fired already.
-	 * It is time to commit YB transaction.
-	 * Postgres transaction can be aborted at this point without an issue
-	 * in case of YBCCommitTransaction failure.
-	 */
-	YBCCommitTransaction();
+	if (IsYugaByteEnabled())
+	{
+		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		/*
+		 * Firing the triggers may abort current transaction.
+		 * At this point all the them has been fired already.
+		 * It is time to commit YB transaction.
+		 * Postgres transaction can be aborted at this point without an issue
+		 * in case of YBCCommitTransaction failure.
+		 */
+		YBCCommitTransaction();
+		if (increment_pg_txns)
+			YbIncrementPgTxnsCommitted();
+	}
+
+
 
 	/*
 	 * The remaining actions cannot call any user-defined code, so it's safe
@@ -2976,6 +2982,15 @@ AbortTransaction(void)
 	Assert(s->parent == NULL);
 
 	/*
+	 * Invalidate the table cache for any tables which have been altered as part
+	 * of the transaction. We do this before setting the transaction state to
+	 * TRANS_ABORT since the invalidation requires us to fetch the Relation
+	 * descriptor which requires us to be in a valid PG transaction block.
+	 */
+	if (IsYugaByteEnabled())
+		YbInvalidateTableCacheForAlteredTables();
+
+	/*
 	 * set the current transaction state information appropriately during the
 	 * abort processing
 	 */
@@ -3203,13 +3218,6 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_internal_savepoint)
 			{
 				/*
-				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
-				 * current query). This helps track if automatic restart of a query is possible in
-				 * READ COMMITTED isolation level.
-				 */
-				s->ybDataSentForCurrQuery = false;
-
-				/*
 				 * Create a new internal sub txn before any execution. This aids in rolling back any changes
 				 * before restarting the statement.
 				 *
@@ -3338,6 +3346,7 @@ CommitTransactionCommand(void)
 	TransactionState s = CurrentTransactionState;
 	SavedTransactionCharacteristics savetc;
 
+	/* Must save in case we need to restore below */
 	SaveTransactionCharacteristics(&savetc);
 
 	/* TODO(jayant): add YB prefix to prevState. */
@@ -5312,7 +5321,7 @@ IsSubTransaction(void)
  * If you're wondering why this is separate from PushTransaction: it's because
  * we can't conveniently do this stuff right inside DefineSavepoint.  The
  * SAVEPOINT utility command will be executed inside a Portal, and if we
- * muck with GetCurrentMemoryContext() or CurrentResourceOwner then exit from
+ * muck with CurrentMemoryContext or CurrentResourceOwner then exit from
  * the Portal will undo those settings.  So we make DefineSavepoint just
  * push a dummy transaction block, and when control returns to the main
  * idle loop, CommitTransactionCommand will be called, and we'll come here
@@ -5710,6 +5719,7 @@ PushTransaction(void)
 	s->blockState = TBLOCK_SUBBEGIN;
 	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
 	s->prevXactReadOnly = XactReadOnly;
+	s->startedInRecovery = p->startedInRecovery;
 	s->parallelModeLevel = 0;
 	s->topXidLogged = false;
 

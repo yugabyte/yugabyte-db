@@ -194,8 +194,11 @@ YbPgMemResetStmtConsumption()
 /*
  * CurrentMemoryContext
  *		Default memory context for allocations.
+ *
+ * YB: rename upstream PG's CurrentMemoryContext to YbCurrentMemoryContext (for
+ * explanation, see comment for the header declaration of this).
  */
-MemoryContext CurrentMemoryContext = NULL;
+MemoryContext YbCurrentMemoryContext = NULL;
 
 
 MemoryContext
@@ -320,10 +323,10 @@ MemoryContextInit(void)
 											 ALLOCSET_DEFAULT_SIZES);
 
 	/*
-	 * Not having any other place to point GetCurrentMemoryContext(), make it point
+	 * Not having any other place to point CurrentMemoryContext, make it point
 	 * to TopMemoryContext.  Caller should change this soon!
 	 */
-	CurrentMemoryContext = TopMemoryContext;
+	YbCurrentMemoryContext = TopMemoryContext;
 
 	/*
 	 * Initialize ErrorContext as an AllocSetContext with slow growth rate ---
@@ -447,8 +450,8 @@ MemoryContextDelete(MemoryContext context)
 	AssertArg(MemoryContextIsValid(context));
 	/* We had better not be deleting TopMemoryContext ... */
 	Assert(context != TopMemoryContext);
-	/* And not GetCurrentMemoryContext(), either */
-	Assert(context != GetCurrentMemoryContext());
+	/* And not CurrentMemoryContext, either */
+	Assert(context != CurrentMemoryContext);
 
 	/* save a function call in common case where there are no children */
 	if (context->firstchild != NULL)
@@ -1323,7 +1326,7 @@ palloc(Size size)
 {
 	/* duplicates MemoryContextAlloc to avoid increased overhead */
 	void	   *ret;
-	MemoryContext context = GetCurrentMemoryContext();
+	MemoryContext context = CurrentMemoryContext;
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
@@ -1354,7 +1357,7 @@ palloc0(Size size)
 {
 	/* duplicates MemoryContextAllocZero to avoid increased overhead */
 	void	   *ret;
-	MemoryContext context = GetCurrentMemoryContext();
+	MemoryContext context = CurrentMemoryContext;
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
@@ -1387,7 +1390,7 @@ palloc_extended(Size size, int flags)
 {
 	/* duplicates MemoryContextAllocExtended to avoid increased overhead */
 	void	   *ret;
-	MemoryContext context = GetCurrentMemoryContext();
+	MemoryContext context = CurrentMemoryContext;
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
@@ -1558,7 +1561,7 @@ MemoryContextStrdup(MemoryContext context, const char *string)
 char *
 pstrdup(const char *in)
 {
-	return MemoryContextStrdup(GetCurrentMemoryContext(), in);
+	return MemoryContextStrdup(CurrentMemoryContext, in);
 }
 
 /*
@@ -1600,7 +1603,7 @@ pchomp(const char *in)
 YbcPgMemctx
 GetCurrentYbMemctx()
 {
-	MemoryContext context = GetCurrentMemoryContext();
+	MemoryContext context = CurrentMemoryContext;
 
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);

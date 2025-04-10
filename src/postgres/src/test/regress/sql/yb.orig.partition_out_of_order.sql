@@ -110,3 +110,13 @@ UPDATE part2 SET b = 'y' || b WHERE a % 10 = 1;
 UPDATE part3 SET (b, c) = (b || 'z', NOT c) WHERE a >= 33 AND a <= 38;
 
 SELECT * FROM base ORDER BY a;
+TRUNCATE base;
+
+-- GH-25147: Test UPDATE projections with partitions out-of-order.
+INSERT INTO base VALUES (11, 'foo', TRUE), (21, 'bar', TRUE), (31, 'baz', FALSE);
+UPDATE base SET (a, b) = (SELECT base.a, base.b || 'z');
+UPDATE base SET (b, c, a) = (SELECT base.b || 'y', NOT base.c, base.a);
+UPDATE base SET (b, c, a) = (SELECT base.b || 'y', base.c, base.a + 1);
+INSERT INTO base (a, b) VALUES (12, 'foo'), (32, 'baz') ON CONFLICT(a) DO UPDATE SET (a, b) = (SELECT EXCLUDED.a, base.b || 'x');
+
+SELECT * FROM base ORDER BY a;

@@ -15,6 +15,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/object_lock_info_manager.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 
@@ -48,6 +50,10 @@ DEFINE_test_flag(double, ysql_ddl_rollback_failure_probability, 0.0,
 
 DEFINE_test_flag(double, ysql_ddl_verification_failure_probability, 0.0,
     "Inject random failure of ddl verification operations");
+
+DEFINE_test_flag(bool, disable_release_object_locks_on_ddl_verification, false,
+    "When set, skip release object lock rpcs to tservers triggered at the end of DDL verification, "
+    "that release object locks acquired by the DDL.");
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
@@ -631,11 +637,14 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      WARN_NOT_OK(
-          background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
-            DoReleaseObjectLocksIfNecessary(txn_id);
-          }),
-          Format("Failed to submit task for releasing exclusive object locks of txn $0", txn_id));
+      if (FLAGS_TEST_enable_object_locking_for_table_locks &&
+          !FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+        WARN_NOT_OK(
+            background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
+              DoReleaseObjectLocksIfNecessary(txn_id);
+            }),
+            Format("Failed to submit task for releasing exclusive object locks of txn $0", txn_id));
+      }
     } else {
       VLOG(1) << "DDL Verification state for " << txn_id << " has "
               << tables.size() << " tables remaining";
@@ -791,9 +800,6 @@ void CatalogManager::ScheduleTriggerDdlVerificationIfNeeded(
 }
 
 void CatalogManager::DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id) {
-  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    return;
-  }
   DEBUG_ONLY_TEST_SYNC_POINT("DoReleaseObjectLocksIfNecessary");
   object_lock_info_manager_->ReleaseLocksForTxn(txn_id);
 }

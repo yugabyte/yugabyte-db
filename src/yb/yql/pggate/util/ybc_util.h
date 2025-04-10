@@ -40,7 +40,6 @@ bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
 bool YBCStatusIsFatalError(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
-uint16_t YBCStatusTransactionError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
 const char* YBCStatusFilename(YbcStatus s);
@@ -52,14 +51,6 @@ const char* YBCMessageAsCString(YbcStatus s);
 unsigned int YBCStatusRelationOid(YbcStatus s);
 const char** YBCStatusArguments(YbcStatus s, size_t* nargs);
 
-bool YBCIsRestartReadError(uint16_t txn_errcode);
-bool YBCIsTxnConflictError(uint16_t txn_errcode);
-bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
-bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
-bool YBCIsTxnAbortedError(uint16_t txn_errcode);
-bool YBCIsAdvisoryLockNotFoundError(uint16_t txn_errcode);
-const char* YBCTxnErrCodeToString(uint16_t txn_errcode);
-uint16_t YBCGetTxnConflictErrorCode();
 void YBCResolveHostname();
 
 #define CHECKED_YBC_STATUS __attribute__ ((warn_unused_result)) YbcStatus

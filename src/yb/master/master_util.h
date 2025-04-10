@@ -85,7 +85,7 @@ Result<bool> TableMatchesIdentifier(const TableId& id,
                                     const TableIdentifierPB& table_identifier);
 
 Status SetupError(MasterErrorPB* error, const Status& s);
-Status SetupError(MasterErrorPB* error, MasterErrorPB::Code code, const Status& s);
+Status SetupError(MasterErrorPB* error, MasterErrorPB_Code code, const Status& s);
 
 // TODO(alex): Merge with stuff in entity_ids?
 

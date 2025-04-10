@@ -10,13 +10,13 @@
 --
 CREATE SCHEMA yb_tmp;
 SET search_path TO yb_tmp;
-CREATE TABLE FLOAT8_TBL(yborder int, f1 float8);
+CREATE TABLE FLOAT8_TBL(f1 float8);
 
-INSERT INTO FLOAT8_TBL(yborder, f1) VALUES (0, '    0.0   ');
-INSERT INTO FLOAT8_TBL(yborder, f1) VALUES (1, '1004.30  ');
-INSERT INTO FLOAT8_TBL(yborder, f1) VALUES (2, '   -34.84');
-INSERT INTO FLOAT8_TBL(yborder, f1) VALUES (3, '1.2345678901234e+200');
-INSERT INTO FLOAT8_TBL(yborder, f1) VALUES (4, '1.2345678901234e-200');
+INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1004.30  ');
+INSERT INTO FLOAT8_TBL(f1) VALUES ('   -34.84');
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1.2345678901234e+200');
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1.2345678901234e-200');
 
 -- test for underflow and overflow handling
 SELECT '10e400'::float8;
@@ -55,60 +55,60 @@ SELECT 'nan'::float8 / 'nan'::float8;
 SELECT 'nan'::float8 / '0'::float8;
 SELECT 'nan'::numeric::float8;
 
-SELECT f1 FROM FLOAT8_TBL ORDER BY yborder;
+SELECT * FROM FLOAT8_TBL;
 
-SELECT f.f1 FROM FLOAT8_TBL f WHERE f.f1 <> '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT8_TBL f WHERE f.f1 <> '1004.3';
 
-SELECT f.f1 FROM FLOAT8_TBL f WHERE f.f1 = '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT8_TBL f WHERE f.f1 = '1004.3';
 
-SELECT f.f1 FROM FLOAT8_TBL f WHERE '1004.3' > f.f1 ORDER BY yborder;
+SELECT f.* FROM FLOAT8_TBL f WHERE '1004.3' > f.f1;
 
-SELECT f.f1 FROM FLOAT8_TBL f WHERE  f.f1 < '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT8_TBL f WHERE  f.f1 < '1004.3';
 
-SELECT f.f1 FROM FLOAT8_TBL f WHERE '1004.3' >= f.f1 ORDER BY yborder;
+SELECT f.* FROM FLOAT8_TBL f WHERE '1004.3' >= f.f1;
 
-SELECT f.f1 FROM FLOAT8_TBL f WHERE  f.f1 <= '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT8_TBL f WHERE  f.f1 <= '1004.3';
 
 SELECT f.f1, f.f1 * '-10' AS x
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1, f.f1 + '-10' AS x
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1, f.f1 / '-10' AS x
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1, f.f1 - '-10' AS x
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1 ^ '2.0' AS square_f1
-   FROM FLOAT8_TBL f where f.f1 = '1004.3' ORDER BY yborder;
+   FROM FLOAT8_TBL f where f.f1 = '1004.3';
 
 -- absolute value
 SELECT f.f1, @f.f1 AS abs_f1
-   FROM FLOAT8_TBL f ORDER BY yborder;
+   FROM FLOAT8_TBL f;
 
 -- truncate
 SELECT f.f1, trunc(f.f1) AS trunc_f1
-   FROM FLOAT8_TBL f ORDER BY yborder;
+   FROM FLOAT8_TBL f;
 
 -- round
 SELECT f.f1, round(f.f1) AS round_f1
-   FROM FLOAT8_TBL f ORDER BY yborder;
+   FROM FLOAT8_TBL f;
 
 -- ceil / ceiling
-select ceil(f1) as ceil_f1 from float8_tbl f ORDER BY yborder;
-select ceiling(f1) as ceiling_f1 from float8_tbl f ORDER BY yborder;
+select ceil(f1) as ceil_f1 from float8_tbl f;
+select ceiling(f1) as ceiling_f1 from float8_tbl f;
 
 -- floor
-select floor(f1) as floor_f1 from float8_tbl f ORDER BY yborder;
+select floor(f1) as floor_f1 from float8_tbl f;
 
 -- sign
-select sign(f1) as sign_f1 from float8_tbl f ORDER BY yborder;
+select sign(f1) as sign_f1 from float8_tbl f;
 
 -- avoid bit-exact output here because operations may not be bit-exact.
 SET extra_float_digits = 0;
@@ -120,7 +120,7 @@ SELECT |/ float8 '64' AS eight;
 
 SELECT f.f1, |/f.f1 AS sqrt_f1
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 -- power
 SELECT power(float8 '144', float8 '0.5');
@@ -163,7 +163,7 @@ SELECT power(float8 '-inf', float8 '-inf');
 -- take exp of ln(f.f1)
 SELECT f.f1, exp(ln(f.f1)) AS exp_ln_f1
    FROM FLOAT8_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 -- check edge cases for exp
 SELECT exp('inf'::float8), exp('-inf'::float8), exp('nan'::float8);
@@ -171,18 +171,21 @@ SELECT exp('inf'::float8), exp('-inf'::float8), exp('nan'::float8);
 -- cube root
 SELECT ||/ float8 '27' AS three;
 
-SELECT f.f1, ||/f.f1 AS cbrt_f1 FROM FLOAT8_TBL f ORDER BY yborder;
+SELECT f.f1, ||/f.f1 AS cbrt_f1 FROM FLOAT8_TBL f;
 
 
-SELECT f1 FROM FLOAT8_TBL ORDER BY yborder;
+SELECT * FROM FLOAT8_TBL;
+
+WITH ybtmp AS (DELETE FROM FLOAT8_TBL WHERE FLOAT8_TBL.f1 > '0.0' RETURNING *)
+   INSERT INTO FLOAT8_TBL SELECT * FROM ybtmp; -- YB: imitate PG ctid reallocation for the following update
 
 UPDATE FLOAT8_TBL
-   SET f1 = FLOAT8_TBL.f1 * '-1', yborder = yborder + 100
+   SET f1 = FLOAT8_TBL.f1 * '-1'
    WHERE FLOAT8_TBL.f1 > '0.0';
 
-SELECT f.f1 * '1e200' from FLOAT8_TBL f ORDER BY yborder;
+SELECT f.f1 * '1e200' from FLOAT8_TBL f;
 
-SELECT f.f1 ^ '1e200' from FLOAT8_TBL f ORDER BY yborder;
+SELECT f.f1 ^ '1e200' from FLOAT8_TBL f;
 
 SELECT 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5;
 
@@ -194,7 +197,7 @@ SELECT exp(f.f1) from FLOAT8_TBL f;
 
 SELECT f.f1 / '0.0' from FLOAT8_TBL f;
 
-SELECT f1 FROM FLOAT8_TBL ORDER BY yborder;
+SELECT * FROM FLOAT8_TBL;
 
 -- hyperbolic functions
 -- we run these with extra_float_digits = 0 too, since different platforms
@@ -244,7 +247,7 @@ RESET search_path; -- YB
 
 -- Check the float8 values exported for use by other tests
 
-SELECT * FROM FLOAT8_TBL ORDER BY f1; -- YB ordering
+SELECT * FROM FLOAT8_TBL;
 
 -- test edge-case coercions to integer
 SELECT '32767.4'::float8::int2;

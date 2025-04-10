@@ -85,6 +85,7 @@ DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 
 namespace yb {
 namespace master {
@@ -216,6 +217,43 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   void SetUp() override {
     MasterPathHandlersBaseItest<MiniCluster>::SetUp();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
+  }
+
+  // Returns the rows in a table with a given id, excluding the header row.
+  Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
+      const std::string& url, const std::string& html_table_tag_id) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl(url, &result));
+    const auto webpage = result.ToString();
+    // Using [^]* to matches all characters instead of .* because . does not match newlines.
+    const std::regex table_regex(
+        Format("<table[^>]*id='$0'[^>]*>([^]*?)</table>", html_table_tag_id));
+    const std::regex row_regex(Format("<tr>([^]*?)</tr>"));
+    const std::regex col_regex(Format("<td>([^]*?)</td>"));
+
+    std::smatch match;
+    std::regex_search(webpage, match, table_regex);
+
+    // [0] is the full match.
+    if (match.size() < 1) {
+      return STATUS_FORMAT(NotFound, "Table with id $0 not found", html_table_tag_id);
+    }
+    // Match[1] is the first capture group, and contains everything inside the <table> tags.
+    std::string table = match[1];
+
+    std::vector<std::vector<std::string>> rows;
+    // Start at the second row to skip the header.
+    const auto table_begin = ++std::sregex_iterator(table.begin(), table.end(), row_regex);
+    for (auto row_it = table_begin; row_it != std::sregex_iterator(); ++row_it) {
+      auto row = row_it->str(1);
+      std::vector<std::string> cols;
+      const auto row_begin = std::sregex_iterator(row.begin(), row.end(), col_regex);
+      for (auto col_it = row_begin; col_it != std::sregex_iterator(); ++col_it) {
+        cols.push_back(col_it->str(1));
+      }
+      rows.push_back(std::move(cols));
+    }
+    return rows;
   }
 
   void ExpectLoadDistributionViewTabletsShown(int tablet_count) {
@@ -1707,10 +1745,44 @@ TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
   ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, false /* blacklist_leader */));
 
   SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms); // Let the load balancer run once
-  faststring result;
-  ASSERT_OK(GetUrl("/load-distribution", &result));
-  const auto webpage = result.ToString();
-  ASSERT_STR_CONTAINS(webpage, "Could not find a valid tserver to host tablet");
+  auto rows = ASSERT_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0].size(), 2);
+  ASSERT_STR_CONTAINS(rows[0][0], "Could not find a valid tserver to host tablet");
+  // 3 user tablets, plus 3 transaction tablets.
+  ASSERT_EQ(rows[0][1], "6");
+}
+
+TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
+  CreateTestTable(3 /* num_tablets */);
+  auto hp = HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr());
+  ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, true /* blacklist_leader */));
+
+  // Test that leader stepdown task is shown in the task summary table, with a description
+  // explaining that the tserver is leader blacklisted.
+  // Wait 500ms before loading the UI so the task has a chance to complete.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
+  std::vector<std::string> row;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Tasks Summary"));
+    if (rows.empty()) return false;
+    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
+    row = rows[0];
+    return true;
+  }, 5s, "Leader stepdown task not shown in the table"));
+
+  LOG(INFO) << "Got row: " << VectorToString(row);
+  auto desc   = row[0];
+  auto state  = row[1];
+  auto count  = row[2];
+  auto status = row[3];
+
+  ASSERT_STR_CONTAINS(desc, "Stepdown Leader RPC for tablet");
+  ASSERT_STR_CONTAINS(desc, "Leader is on leader blacklisted tserver");
+  ASSERT_EQ(state, "kComplete");
+  ASSERT_EQ(count, "2");
+  ASSERT_EQ(status, "OK");
 }
 
 TEST_F(MasterPathHandlersItest, StatefulServices) {

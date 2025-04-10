@@ -1,0 +1,3 @@
+CREATE TRIGGER collections_trigger
+ AFTER UPDATE OR DELETE ON __API_CATALOG_SCHEMA_V2__.collections
+ FOR STATEMENT EXECUTE FUNCTION __API_SCHEMA_INTERNAL_V2__.collection_update_trigger();

@@ -25,6 +25,8 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_log.h"

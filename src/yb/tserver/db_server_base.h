@@ -26,6 +26,9 @@
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
 
 namespace yb {
+
+class JsonWriter;
+
 namespace tserver {
 
 class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWrapperContext {

@@ -263,7 +263,7 @@ tuplestore_begin_common(int eflags, bool interXact, int maxKBytes)
 	state->allowedMem = maxKBytes * 1024L;
 	state->availMem = state->allowedMem;
 	state->myfile = NULL;
-	state->context = GetCurrentMemoryContext();
+	state->context = CurrentMemoryContext;
 	state->resowner = CurrentResourceOwner;
 
 	state->memtupdeleted = 0;

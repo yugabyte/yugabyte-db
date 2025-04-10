@@ -137,6 +137,7 @@ struct ExternalMiniClusterOptions {
 
   bool enable_ysql = false;
   bool enable_ysql_auth = false;
+  bool enable_ysql_conn_mgr = false;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -581,7 +582,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // chosen.
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& db_name = "yugabyte", std::optional<size_t> node_index = std::nullopt,
-      bool simple_query_protocol = false);
+      bool simple_query_protocol = false, const std::string& user = "postgres");
 
   Status MoveTabletLeader(
       const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,

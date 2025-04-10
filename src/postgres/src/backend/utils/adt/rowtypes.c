@@ -2047,7 +2047,7 @@ YbRecordOut(HeapTupleHeader rec, TupleDesc tupdesc)
 	RecordIOData *my_extra;
 	size_t		natts = tupdesc->natts;
 
-	flinfo->fn_extra = MemoryContextAlloc(GetCurrentMemoryContext(),
+	flinfo->fn_extra = MemoryContextAlloc(CurrentMemoryContext,
 										  offsetof(RecordIOData, columns) +
 										  natts * sizeof(ColumnIOData));
 	my_extra = (RecordIOData *) flinfo->fn_extra;

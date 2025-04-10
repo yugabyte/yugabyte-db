@@ -19,6 +19,7 @@
 
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/env.h"
+#include "yb/util/metrics.h"
 #include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
 

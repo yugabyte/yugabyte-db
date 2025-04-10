@@ -19,6 +19,7 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/nodeModifyTable.h"
@@ -246,6 +247,15 @@ tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 		Form_pg_attribute att;
 		TypeCacheEntry *typentry;
 
+		att = TupleDescAttr(slot1->tts_tupleDescriptor, attrnum);
+
+		/*
+		 * Ignore dropped and generated columns as the publisher doesn't send
+		 * those
+		 */
+		if (att->attisdropped || att->attgenerated)
+			continue;
+
 		/*
 		 * If one value is NULL and other is not, then they are certainly not
 		 * equal
@@ -258,8 +268,6 @@ tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 		 */
 		if (slot1->tts_isnull[attrnum] || slot2->tts_isnull[attrnum])
 			continue;
-
-		att = TupleDescAttr(slot1->tts_tupleDescriptor, attrnum);
 
 		typentry = eq[attrnum];
 		if (typentry == NULL)
@@ -479,8 +487,12 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 	ItemPointer tid = &(searchslot->tts_tid);
 
-	/* For now we support only tables. */
+	/*
+	 * We support only non-system tables, with
+	 * check_publication_add_relation() accountable.
+	 */
 	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
+	Assert(!IsCatalogRelation(rel));
 
 	CheckCmdReplicaIdentity(rel, CMD_UPDATE);
 

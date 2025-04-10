@@ -25,6 +25,7 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
@@ -37,6 +38,9 @@ DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
 
 DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef, 128,
     "The \"expansion\" parameter for search");
+
+DECLARE_bool(vector_index_dump_stats);
+DECLARE_bool(vector_index_skip_filter_check);
 
 namespace yb::docdb {
 
@@ -148,6 +152,9 @@ struct VectorIndexMergeFilter {
   }
 
   rocksdb::FilterDecision operator()(vector_index::VectorId vector_id) {
+    if (FLAGS_vector_index_skip_filter_check) {
+      return rocksdb::FilterDecision::kKeep;
+    }
     // TODO(vector_index): Revise once regular compaction correctly handles VectorId <=> ybctid;
     // additionally check the following points:
     // 1) Should tombstoned mapping be taken into account for filtering decision?
@@ -214,7 +221,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
           const auto& log_prefix = lsm_.options().log_prefix;
           VectorIndexMergeFilter filter(log_prefix, doc_db_);
           return vector_index::Merge(target, source, std::ref(filter));
-        };
+       };
 
     name_ = RemoveLogPrefixColon(log_prefix);
     Options lsm_options = {
@@ -236,14 +243,14 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const rocksdb::UserFrontiers* frontiers) override {
+      const rocksdb::UserFrontiers& frontiers) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
       lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry)));
     }
     vector_index::VectorLSMInsertContext context {
-      .frontiers = frontiers,
+      .frontiers = &frontiers,
     };
     return lsm_.Insert(lsm_entries, context);
   }
@@ -252,6 +259,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
       Slice vector, const vector_index::SearchOptions& options) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+
+    auto dump_stats = FLAGS_vector_index_dump_stats;
+    auto start_time = MonoTime::NowIf(dump_stats);
 
     // TODO(vector_index): check if ReadOptions are required.
     docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
@@ -276,6 +286,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
       }
 #endif
     }
+
+    LOG_IF(INFO, dump_stats)
+        << "VI_STATS: Convert vector id to ybctid time: "
+        << (MonoTime::Now() - start_time).ToPrettyString() << ", entries: " << result.size();
 
     return result;
   }

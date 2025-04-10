@@ -13,7 +13,7 @@
 
 #include <regex>
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -24,7 +24,7 @@ struct UpgradeIncompatibilityCheck {
   std::initializer_list<std::string> teardown_stmts;
 };
 
-using YsqlMajorUpgradeCheckTest = Pg15UpgradeTestBase;
+using YsqlMajorUpgradeCheckTest = YsqlMajorUpgradeTestBase;
 
 static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
     {// check_proper_datallowconn

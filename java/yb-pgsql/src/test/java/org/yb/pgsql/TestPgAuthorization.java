@@ -3376,4 +3376,23 @@ public class TestPgAuthorization extends BasePgSQLTest {
       statement.executeQuery("SELECT * FROM pg_locks");
     }
   }
+
+  @Test
+  public void testPgPublicSchemaCreateAuthorization() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // In java tests using BasePsqSQLTest, we provide CREATE privilege on public schema to PUBLIC,
+      // which is not the default PG15 behaviour (which is only USAGE privilege). The below two
+      // queries reset this to PG15 behaviour. This test ensures that yb_db_admin has CREATE
+      // privilege on public schema.
+      statement.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
+      statement.execute("CREATE ROLE yb_public_schema_user LOGIN");
+      statement.execute("GRANT yb_db_admin TO yb_public_schema_user");
+    }
+
+    try (Connection connection = getConnectionBuilder().withUser("yb_public_schema_user").connect();
+        Statement statement = connection.createStatement()) {
+      // yb_db_admin user should have create privilege in public schema.
+      statement.execute("CREATE TABLE public.t1(col INT)");
+    }
+  }
 }

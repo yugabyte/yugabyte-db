@@ -287,7 +287,7 @@ intset_create(void)
 	IntegerSet *intset;
 
 	intset = (IntegerSet *) palloc(sizeof(IntegerSet));
-	intset->context = GetCurrentMemoryContext();
+	intset->context = CurrentMemoryContext;
 	intset->mem_used = GetMemoryChunkSpace(intset);
 
 	intset->num_entries = 0;

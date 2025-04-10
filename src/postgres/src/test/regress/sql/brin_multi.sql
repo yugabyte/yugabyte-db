@@ -357,6 +357,13 @@ insert into public.brintest_multi (float8col) values (real 'nan');
 
 UPDATE brintest_multi SET int8col = int8col * int4col;
 
+-- Test handling of inet netmasks with inet_minmax_multi_ops
+CREATE TABLE brin_test_inet (a inet);
+CREATE INDEX ON brin_test_inet USING brin (a inet_minmax_multi_ops);
+INSERT INTO brin_test_inet VALUES ('127.0.0.1/0');
+INSERT INTO brin_test_inet VALUES ('0.0.0.0/12');
+DROP TABLE brin_test_inet;
+
 -- Tests for brin_summarize_new_values
 SELECT brin_summarize_new_values('brintest_multi'); -- error, not an index
 SELECT brin_summarize_new_values('tenk1_unique1'); -- error, not a BRIN index
@@ -414,3 +421,102 @@ VACUUM ANALYZE brin_test_multi;
 EXPLAIN (COSTS OFF) SELECT * FROM brin_test_multi WHERE a = 1;
 -- Ensure brin index is not used when values are not correlated
 EXPLAIN (COSTS OFF) SELECT * FROM brin_test_multi WHERE b = 1;
+
+-- test overflows during CREATE INDEX with extreme timestamp values
+CREATE TABLE brin_timestamp_test(a TIMESTAMPTZ);
+
+SET datestyle TO iso;
+
+-- values close to timetamp minimum
+INSERT INTO brin_timestamp_test
+SELECT '4713-01-01 00:00:01 BC'::timestamptz + (i || ' seconds')::interval
+  FROM generate_series(1,30) s(i);
+
+-- values close to timetamp maximum
+INSERT INTO brin_timestamp_test
+SELECT '294276-12-01 00:00:01'::timestamptz + (i || ' seconds')::interval
+  FROM generate_series(1,30) s(i);
+
+CREATE INDEX ON brin_timestamp_test USING brin (a timestamptz_minmax_multi_ops) WITH (pages_per_range=1);
+DROP TABLE brin_timestamp_test;
+
+-- test overflows during CREATE INDEX with extreme date values
+CREATE TABLE brin_date_test(a DATE);
+
+-- insert values close to date minimum
+INSERT INTO brin_date_test SELECT '4713-01-01 BC'::date + i FROM generate_series(1, 30) s(i);
+
+-- insert values close to date minimum
+INSERT INTO brin_date_test SELECT '5874897-12-01'::date + i FROM generate_series(1, 30) s(i);
+
+CREATE INDEX ON brin_date_test USING brin (a date_minmax_multi_ops) WITH (pages_per_range=1);
+
+SET enable_seqscan = off;
+
+-- make sure the ranges were built correctly and 2023-01-01 eliminates all
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
+
+DROP TABLE brin_date_test;
+RESET enable_seqscan;
+
+-- test handling of infinite timestamp values
+CREATE TABLE brin_timestamp_test(a TIMESTAMP);
+
+INSERT INTO brin_timestamp_test VALUES ('-infinity'), ('infinity');
+INSERT INTO brin_timestamp_test
+SELECT i FROM generate_series('2000-01-01'::timestamp, '2000-02-09'::timestamp, '1 day'::interval) s(i);
+
+CREATE INDEX ON brin_timestamp_test USING brin (a timestamp_minmax_multi_ops) WITH (pages_per_range=1);
+
+SET enable_seqscan = off;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_timestamp_test WHERE a = '2023-01-01'::timestamp;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_timestamp_test WHERE a = '1900-01-01'::timestamp;
+
+DROP TABLE brin_timestamp_test;
+RESET enable_seqscan;
+
+-- test handling of infinite date values
+CREATE TABLE brin_date_test(a DATE);
+
+INSERT INTO brin_date_test VALUES ('-infinity'), ('infinity');
+INSERT INTO brin_date_test SELECT '2000-01-01'::date + i FROM generate_series(1, 40) s(i);
+
+CREATE INDEX ON brin_date_test USING brin (a date_minmax_multi_ops) WITH (pages_per_range=1);
+
+SET enable_seqscan = off;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_date_test WHERE a = '1900-01-01'::date;
+
+DROP TABLE brin_date_test;
+RESET enable_seqscan;
+RESET datestyle;
+
+-- test handling of overflow for interval values
+CREATE TABLE brin_interval_test(a INTERVAL);
+
+INSERT INTO brin_interval_test SELECT (i || ' years')::interval FROM generate_series(-178000000, -177999980) s(i);
+
+INSERT INTO brin_interval_test SELECT (i || ' years')::interval FROM generate_series( 177999980,  178000000) s(i);
+
+CREATE INDEX ON brin_interval_test USING brin (a interval_minmax_multi_ops) WITH (pages_per_range=1);
+
+SET enable_seqscan = off;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_interval_test WHERE a = '-30 years'::interval;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_interval_test WHERE a = '30 years'::interval;
+
+DROP TABLE brin_interval_test;
+RESET enable_seqscan;
+RESET datestyle;

@@ -242,7 +242,7 @@ ybginBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 		 * create a temporary memory context that is used for calling
 		 * ginExtractEntries(), and can be reset after each tuple
 		 */
-		buildstate.funcCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+		buildstate.funcCtx = AllocSetContextCreate(CurrentMemoryContext,
 												   "Ybgin build temporary context for user-defined function",
 												   ALLOCSET_DEFAULT_SIZES);
 
@@ -330,7 +330,7 @@ ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		MemoryContextSwitchTo(oldCtx);
 	}
 
-	writeCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	writeCtx = AllocSetContextCreate(CurrentMemoryContext,
 									 "Ybgin write temporary context",
 									 ALLOCSET_DEFAULT_SIZES);
 

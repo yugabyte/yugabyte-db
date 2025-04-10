@@ -16,6 +16,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/rocksdb/iterator.h"
 
 #include "yb/util/bytes_formatter.h"

@@ -523,7 +523,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->js.ps.inneropsset = inneropsset;
 
 	/* Per batch memory context for the hash table to work with */
-	MemoryContext tablecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tablecxt = AllocSetContextCreate(CurrentMemoryContext,
 												   "BNL_HASHTABLE",
 												   ALLOCSET_DEFAULT_SIZES);
 

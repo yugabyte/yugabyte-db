@@ -77,6 +77,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -87,7 +88,6 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 namespace yb {
 
 class FsManager;
-class MemTracker;
 class MetricEntity;
 
 namespace server {

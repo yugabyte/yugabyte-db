@@ -1040,6 +1040,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTableStmt
 			| AlterTypeStmt
+			| AnalyzeStmt
 			| YbBackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
@@ -1122,7 +1123,6 @@ stmt:
 				parser_ybc_beta_feature(@1, "alter text search configuration", false);
 			  }
 			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
@@ -5206,6 +5206,10 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("increment", (Node *) $3, @1);
 				}
+			| LOGGED
+				{
+					$$ = makeDefElem("logged", NULL, @1);
+				}
 			| MAXVALUE NumericOnly
 				{
 					$$ = makeDefElem("maxvalue", (Node *) $2, @1);
@@ -5228,7 +5232,6 @@ SeqOptElem: AS SimpleTypename
 				}
 			| SEQUENCE NAME_P any_name
 				{
-					/* not documented, only used by pg_dump */
 					$$ = makeDefElem("sequence_name", (Node *) $3, @1);
 				}
 			| START opt_with NumericOnly
@@ -5242,6 +5245,10 @@ SeqOptElem: AS SimpleTypename
 			| RESTART opt_with NumericOnly
 				{
 					$$ = makeDefElem("restart", (Node *) $3, @1);
+				}
+			| UNLOGGED
+				{
+					$$ = makeDefElem("unlogged", NULL, @1);
 				}
 		;
 
@@ -19529,7 +19536,7 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			if (!pubobj->name && !pubobj->pubtable)
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid table name at or near"),
+						errmsg("invalid table name"),
 						parser_errposition(pubobj->location));
 
 			if (pubobj->name)
@@ -19571,7 +19578,7 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			else
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid schema name at or near"),
+						errmsg("invalid schema name"),
 						parser_errposition(pubobj->location));
 		}
 

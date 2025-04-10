@@ -101,6 +101,14 @@ const (
 	HashicorpVaultAuthNamespaceField = "HC_VAULT_AUTH_NAMESPACE"
 )
 
+// URL scheme
+const (
+	// HTTPURLScheme http scheme
+	HTTPURLScheme = "http"
+	// HTTPSURLScheme https scheme
+	HTTPSURLScheme = "https"
+)
+
 // Minimum YugabyteDB Anywhere versions to support operation
 const (
 

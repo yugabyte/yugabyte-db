@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
@@ -2357,9 +2358,16 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   }
   pgwrapper::PGConn conn = std::move(*res);
 
+  // Note: keep this query in sync with the errhint query (YbWaitForBackendsCatalogVersion at the
+  // time of writing).
+  //
+  // TODO(Vaibhav): We will need to exempt the walreceiver and walwriter processes from this query
+  // once we start supporting the pub-sub model in logical replication.
+  //
   // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
   const std::string num_lagging_backends_query = Format(
-      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1$2",
+      "SELECT count(*) FROM pg_stat_activity WHERE"
+      " backend_type != 'walsender' AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
        Format(" AND pid != $0", req->requestor_pg_backend_pid()) :
@@ -2419,6 +2427,16 @@ void TabletServiceAdminImpl::UpdateTransactionTablesVersion(
   server_->TransactionManager().UpdateTransactionTablesVersion(req->version(), callback);
 }
 
+void TabletServiceAdminImpl::GetPgSocketDir(
+    const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp, rpc::RpcContext context) {
+  auto result = GetLocalPgHostPort();
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  HostPortToPB(*result, resp->mutable_pg_socket_dir());
+  context.RespondSuccess();
+}
 
 bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
   return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();

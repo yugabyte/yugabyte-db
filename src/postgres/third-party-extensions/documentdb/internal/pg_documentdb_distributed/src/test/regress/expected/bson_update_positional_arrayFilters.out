@@ -1,0 +1,243 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 220000;
+SET documentdb.next_collection_id TO 2200;
+SET documentdb.next_collection_index_id TO 2200;
+-- arrayFilters with aggregation pipeline
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "c.d": 1 } }]}', '{}', '{ "": [] }');
+                            bson_update_document                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "c" : { "d" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "c.d": 1 } }]}', '{}', NULL);
+                            bson_update_document                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "c" : { "d" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "c.d": 1 } }]}', '{}', '{ "": [ { "foo": 2 }]}');
+ERROR:  arrayFilters may not be specified for pipeline-style updates
+-- arrayFilters ignored on replace
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "a": 2 } }', '{}', '{ "": [ { "foo": 2 }]}');
+                       bson_update_document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "2" } }
+(1 row)
+
+-- arrayFilters with update fails - missing array filter
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [] }');
+ERROR:  No array filter found for identifier a
+-- arrayFilters with update fails - invalid array filters
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ 1 ] }');
+ERROR:  BSONField updates.update.arrayFilters.0 is the wrong type int. expected type object
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ {} ] }');
+ERROR:  Cannot use an expression without a top-level field name in arrayFilters
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ { "": 1} ] }');
+ERROR:  The top level field name must be alphanumeric string. Found ''
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ { "a": 1, "b.c": 1 } ] }');
+ERROR:  Error parsing array filter :: caused by :: Expected a single top-level field name, found a and b
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ { "a": 1 }, { "a": 2 } ] }');
+ERROR:  Found multiple array filters with the same top-level field name a
+-- simple array update on equality
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1, "myArray": [ 0, 1 ] }','{ "": { "$set": { "myArray.$[element]": 2 }}}', '{}', '{ "": [{ "element": 0 }] }');
+                                        bson_update_document                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "myArray" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{}','{ "": { "$set": { "myArray.$[element]": 2 }}}', '{"_id": 1, "myArray": [ 0, 1 ] }', '{ "": [{ "element": 0 }] }');
+                                        bson_update_document                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "myArray" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{"_id": 1 }','{ "": { "$set": { "myArray.$[element]": 2 }}}', '{}', '{ "": [{ "element": 0 }] }');
+ERROR:  The path 'myArray' must exist in the document in order to apply array updates.
+-- updates on $gte condition
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "grades" : [ 95, 92, 90 ] }','{ "": { "$set": { "grades.$[element]": 100 }}}', '{}', '{ "": [{ "element": { "$gte": 100 } }] }');
+ bson_update_document 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 3, "grades" : [ 95, 110, 100, 98, 102 ] }','{ "": { "$set": { "grades.$[element]": 100 }}}', '{}', '{ "": [{ "element": { "$gte": 100 } }] }');
+                                                                               bson_update_document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "grades" : [ { "$numberInt" : "95" }, { "$numberInt" : "100" }, { "$numberInt" : "100" }, { "$numberInt" : "98" }, { "$numberInt" : "100" } ] }
+(1 row)
+
+-- nested arrayFilters.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 3, "grades" : [ { "grade": 80, "mean": 75, "std": 6}, { "grade": 85, "mean": 90, "std": 4 }, { "grade": 87, "mean": 85, "std": 6 } ] }',
+    '{ "": { "$set": { "grades.$[elem].mean": 100 }}}', '{}', '{ "": [{ "elem.grade": { "$gte": 85 } }] }');
+                                                                                                                                                                              bson_update_document                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "grades" : [ { "grade" : { "$numberInt" : "80" }, "mean" : { "$numberInt" : "75" }, "std" : { "$numberInt" : "6" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "100" }, "std" : { "$numberInt" : "4" } }, { "grade" : { "$numberInt" : "87" }, "mean" : { "$numberInt" : "100" }, "std" : { "$numberInt" : "6" } } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 3, "grades" : [ { "grade": 80, "mean": 75, "std": 6}, { "grade": 85, "mean": 90, "std": 4 }, { "grade": 87, "mean": 85, "std": 6 } ] }',
+    '{ "": { "$inc": { "grades.$[elem].std": -50 }}}', '{}', '{ "": [{ "elem.grade": { "$gte": 85 }, "elem.std": { "$gte": 5 } }] }');
+                                                                                                                                                                              bson_update_document                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "grades" : [ { "grade" : { "$numberInt" : "80" }, "mean" : { "$numberInt" : "75" }, "std" : { "$numberInt" : "6" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "90" }, "std" : { "$numberInt" : "4" } }, { "grade" : { "$numberInt" : "87" }, "mean" : { "$numberInt" : "85" }, "std" : { "$numberInt" : "-44" } } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 3, "grades" : [ { "grade": 80, "mean": 75, "std": 6}, { "grade": 85, "mean": 90, "std": 4 }, { "grade": 87, "mean": 85, "std": 6 } ] }',
+    '{ "": { "$inc": { "grades.$[elem].std": -50 }}}', '{}', '{ "": [{ "elem.grade": { "$gte": 85 }, "elem.std": { "$gte": 4 } }] }');
+                                                                                                                                                                               bson_update_document                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "grades" : [ { "grade" : { "$numberInt" : "80" }, "mean" : { "$numberInt" : "75" }, "std" : { "$numberInt" : "6" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "90" }, "std" : { "$numberInt" : "-46" } }, { "grade" : { "$numberInt" : "87" }, "mean" : { "$numberInt" : "85" }, "std" : { "$numberInt" : "-44" } } ] }
+(1 row)
+
+-- negation operators
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "degrees" : [ { "level": "Master" }, { "level": "Bachelor" } ] }',
+    '{ "": { "$set" : { "degrees.$[degree].gradcampaign" : 1 }} }', '{}', '{ "": [{ "degree.level": { "$ne": "Bachelor" } }] }');
+                                                             bson_update_document                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "degrees" : [ { "level" : "Master", "gradcampaign" : { "$numberInt" : "1" } }, { "level" : "Bachelor" } ] }
+(1 row)
+
+-- multiple positional operators
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "grades" : [ { "type": "quiz", "questions": [ 10, 8, 5 ] }, { "type": "quiz", "questions": [ 8, 9, 6 ] }, { "type": "hw", "questions": [ 5, 4, 3 ] }, { "type": "exam", "questions": [ 25, 10, 23, 0 ] }] }',
+    '{ "": { "$inc": { "grades.$[t].questions.$[score]": 90 }} }', '{}', '{ "": [{ "t.type": "quiz" }, { "score": { "$gte": 8 } }] }');
+                                                                                                                                                                                                                                                            bson_update_document                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "grades" : [ { "type" : "quiz", "questions" : [ { "$numberInt" : "100" }, { "$numberInt" : "98" }, { "$numberInt" : "5" } ] }, { "type" : "quiz", "questions" : [ { "$numberInt" : "98" }, { "$numberInt" : "99" }, { "$numberInt" : "6" } ] }, { "type" : "hw", "questions" : [ { "$numberInt" : "5" }, { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }, { "type" : "exam", "questions" : [ { "$numberInt" : "25" }, { "$numberInt" : "10" }, { "$numberInt" : "23" }, { "$numberInt" : "0" } ] } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "grades" : [ { "type": "quiz", "questions": [ 10, 8, 5 ] }, { "type": "quiz", "questions": [ 8, 9, 6 ] }, { "type": "hw", "questions": [ 5, 4, 3 ] }, { "type": "exam", "questions": [ 25, 10, 23, 0 ] }] }',
+    '{ "": { "$inc": { "grades.$[].questions.$[score]": 90 }} }', '{}', '{ "": [{ "score": { "$gte": 8 } }] }');
+                                                                                                                                                                                                                                                              bson_update_document                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "grades" : [ { "type" : "quiz", "questions" : [ { "$numberInt" : "100" }, { "$numberInt" : "98" }, { "$numberInt" : "5" } ] }, { "type" : "quiz", "questions" : [ { "$numberInt" : "98" }, { "$numberInt" : "99" }, { "$numberInt" : "6" } ] }, { "type" : "hw", "questions" : [ { "$numberInt" : "5" }, { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }, { "type" : "exam", "questions" : [ { "$numberInt" : "115" }, { "$numberInt" : "100" }, { "$numberInt" : "113" }, { "$numberInt" : "0" } ] } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "grades" : [ { "type": "quiz", "questions": [ 10, 8, 5 ] }, { "type": "quiz", "questions": [ 8, 9, 6 ] }, { "type": "hw", "questions": [ 5, 4, 3 ] }, { "type": "exam", "questions": [ 25, 10, 23, 0 ] }] }',
+    '{ "": { "$inc": { "grades.$[t].questions.$[]": 90 }} }', '{}', '{ "": [{ "t.type": "quiz" }] }');
+                                                                                                                                                                                                                                                             bson_update_document                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "grades" : [ { "type" : "quiz", "questions" : [ { "$numberInt" : "100" }, { "$numberInt" : "98" }, { "$numberInt" : "95" } ] }, { "type" : "quiz", "questions" : [ { "$numberInt" : "98" }, { "$numberInt" : "99" }, { "$numberInt" : "96" } ] }, { "type" : "hw", "questions" : [ { "$numberInt" : "5" }, { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }, { "type" : "exam", "questions" : [ { "$numberInt" : "25" }, { "$numberInt" : "10" }, { "$numberInt" : "23" }, { "$numberInt" : "0" } ] } ] }
+(1 row)
+
+-- arrayFilters for all Update operators should recurse if for a single level nested array
+-- array update operators
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$addToSet": { "array.$[i]": 2 }} }', '{}', '{ "": [{ "i": 0 }] }');
+                                                       bson_update_document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "1" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pop": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 0 }] }');
+                                                       bson_update_document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ [ { "$numberInt" : "0" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pull": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 2 }] }');
+                                                       bson_update_document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pull": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 2 }] }');
+                                                       bson_update_document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0, 1], [2, 3] ] }',
+    '{ "": { "$push": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 1 }] }');
+                                                                               bson_update_document                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ] }
+(1 row)
+
+-- field update operators, should be able to match but apply update based on the type requirement
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$inc": { "array.$[i]": 10 }} }', '{}', '{ "": [{ "i": 0 }] }');
+ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 1 } has the field '0' of non-numeric type array
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$min": { "array.$[i]": 10 }} }', '{}', '{ "": [{ "i": 0 }] }');
+                                         bson_update_document                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ { "$numberInt" : "10" }, [ { "$numberInt" : "1" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$max": { "array.$[i]": 10 }} }', '{}', '{ "": [{ "i": 0 }] }');
+ bson_update_document 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$mul": { "array.$[i]": 2 }} }', '{}', '{ "": [{ "i": 0 }] }');
+ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field '0' of non-numeric type array
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$rename": { "array.$[i]": "a.3" }} }', '{}', '{ "": [{ "i": 0 }] }');
+ERROR:  The source field for $rename may not be dynamic: array.$[i]
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$set": { "array.$[i]": "newValue" }} }', '{}', '{ "": [{ "i": 0 }] }');
+                                   bson_update_document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ "newValue", [ { "$numberInt" : "1" } ] ] }
+(1 row)
+
+-- bit operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [0], [1] ] }',
+    '{ "": { "$bit": { "array.$[i]": {"or": 5} }} }', '{}', '{ "": [{ "i": 0 }] }');
+ERROR:  Cannot apply $bit to a value of non-integral type.{ "_id" : 1 } has the field 0 of non-integer type array
+-- Check array value should also match in arrayFilters
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [1,2,3], [4,5,6] ] }',
+    '{ "": { "$set": { "array.$[i]": [11,12,13] }} }', '{}', '{ "": [{ "i": [1,2,3] }] }');
+                                                                                            bson_update_document                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ [ { "$numberInt" : "11" }, { "$numberInt" : "12" }, { "$numberInt" : "13" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "array" : [ [1,2,3], [4,5,6] ] }',
+    '{ "": { "$set": { "array.$[i]": 3 }} }', '{}', '{ "": [{ "i": {"$size": 3} }] }');
+                                       bson_update_document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "array" : [ { "$numberInt" : "3" }, { "$numberInt" : "3" } ] }
+(1 row)
+

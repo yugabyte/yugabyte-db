@@ -1192,9 +1192,9 @@ begin;
 explain (costs off) declare c1 cursor for select (select 42) as x;
         QUERY PLAN         
 ---------------------------
- Result
+ Result *RESULT*_1
    InitPlan 1 (returns $0)
-     ->  Result
+     ->  Result *RESULT*
 (3 rows)
 
 explain (costs off) declare c1 scroll cursor for select (select 42) as x;
@@ -1202,8 +1202,8 @@ explain (costs off) declare c1 scroll cursor for select (select 42) as x;
 ---------------------------
  Materialize
    InitPlan 1 (returns $0)
-     ->  Result
-   ->  Result
+     ->  Result *RESULT*
+   ->  Result *RESULT*_1
 (4 rows)
 
 declare c1 scroll cursor for select (select 42) as x;
@@ -1221,18 +1221,18 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumb
 rollback;
 begin;
 explain (costs off) declare c2 cursor for select generate_series(1,3) as g;
-  QUERY PLAN  
---------------
+      QUERY PLAN       
+-----------------------
  ProjectSet
-   ->  Result
+   ->  Result *RESULT*
 (2 rows)
 
 explain (costs off) declare c2 scroll cursor for select generate_series(1,3) as g;
-     QUERY PLAN     
---------------------
+         QUERY PLAN          
+-----------------------------
  Materialize
    ->  ProjectSet
-         ->  Result
+         ->  Result *RESULT*
 (3 rows)
 
 declare c2 scroll cursor for select generate_series(1,3) as g;

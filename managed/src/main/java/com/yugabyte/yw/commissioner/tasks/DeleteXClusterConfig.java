@@ -85,7 +85,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
         unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* force delete */);
       }
     } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error :", getName(), e);
       Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
       if (mightDeletedXClusterConfig.isPresent()
           && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {

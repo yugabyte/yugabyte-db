@@ -26,6 +26,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/snapshot.h"
+#include "yb/master/ts_manager.h"
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"

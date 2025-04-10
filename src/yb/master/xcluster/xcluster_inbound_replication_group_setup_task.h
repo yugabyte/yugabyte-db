@@ -15,9 +15,11 @@
 
 #include <shared_mutex>
 
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/xcluster_types.h"
 
 #include "yb/common/common_fwd.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/multi_step_monitored_task.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"

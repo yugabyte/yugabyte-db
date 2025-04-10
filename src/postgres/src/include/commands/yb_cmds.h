@@ -98,8 +98,7 @@ extern List *YBCPrepareAlterTable(List **subcmds,
 								  int subcmds_size,
 								  Oid relationId,
 								  YbcPgStatement *rollbackHandle,
-								  bool isPartitionOfAlteredTable,
-								  List *volatile *ybAlteredTableIds);
+								  bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YbcPgStatement handle, Oid relationId);
 
@@ -125,7 +124,8 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time,
-									 YbCRSLsnType lsn_type);
+									 YbCRSLsnType lsn_type,
+									 YbCRSOrderingMode yb_ordering_mode);
 
 extern void YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 									size_t *numreplicationslots);

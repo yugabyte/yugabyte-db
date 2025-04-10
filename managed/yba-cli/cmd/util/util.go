@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -385,7 +387,33 @@ func YAMLtoString(filePath string) string {
 				formatter.RedColor))
 	}
 	return string(contentBytes)
+}
 
+// StringToYAMLFile converts a string to a yaml file
+func StringToYAMLFile(contentString string, filePath string, perms fs.FileMode) (bool, error) {
+	logrus.Debug("YAML File Path: ", filePath)
+
+	var data yaml.MapSlice
+
+	// Unmarshal the YAML string into MapSlice
+	err := yaml.Unmarshal([]byte(contentString), &data)
+	if err != nil {
+		return false, fmt.Errorf("Error unmarshalling YAML string: " + err.Error())
+	}
+
+	// Marshal it again to ensure proper formatting (optional)
+	contentBytes, err := yaml.Marshal(data)
+	if err != nil {
+		return false, fmt.Errorf("Error marshalling YAML string: " + err.Error())
+	}
+
+	// Write YAML content to file
+	err = os.WriteFile(filePath, contentBytes, perms)
+	if err != nil {
+		return false, fmt.Errorf("Error writing YAML to file: " + err.Error())
+	}
+
+	return true, nil
 }
 
 // IsOutputType check if the output type is t
@@ -523,4 +551,28 @@ func MissingKeyFromStringDeclaration(key, flag string) {
 		formatter.Colorize(
 			fmt.Sprintf("%s not specified in %s.\n", key, flag),
 			formatter.RedColor))
+}
+
+// GetCLIConfigDirectoryPath returns the CLI config directory path
+func GetCLIConfigDirectoryPath() (string, fs.FileMode, error) {
+	configFileUsed := viper.GetViper().ConfigFileUsed()
+	directory := filepath.Dir(configFileUsed)
+
+	info, err := os.Stat(directory)
+	if err != nil {
+		return "", 0644, err
+	}
+	return directory, info.Mode(), nil
+}
+
+// GetCLIOutputFormat returns the output format for the CLI
+func GetCLIOutputFormat(outputType string) string {
+	outputFormat := strings.TrimPrefix(outputType, "cli-")
+	if outputFormat == "flags" || outputFormat == "" {
+		outputFormat = "flag"
+	}
+	if outputFormat == "yml" {
+		outputFormat = "yaml"
+	}
+	return outputFormat
 }

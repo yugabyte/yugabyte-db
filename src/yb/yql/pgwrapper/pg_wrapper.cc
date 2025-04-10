@@ -81,6 +81,9 @@ DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
 
+DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
+                 "If true, enables race condition testing for query diagnostics.");
+
 // Default to 5MB
 DEFINE_UNKNOWN_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -279,10 +282,8 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, f
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
     kLocalVolatile, false, true, "Allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING");
 
-// TODO(analyze_sampling): https://github.com/yugabyte/yugabyte-db/issues/26366:
-// Convert to auto flag with target value set to true after block-based ANALYZE with concurrent
-// dynamic tablet splitting is fully supported and tested.
-DEFINE_RUNTIME_PG_FLAG(bool, yb_allow_separate_requests_for_sampling_stages, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_separate_requests_for_sampling_stages, kLocalVolatile, false, true,
     "Allow using separate requests for block-based sampling stages");
 
 DEFINE_RUNTIME_PG_FLAG(
@@ -299,7 +300,7 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_nonempty_ms, 1, 
     "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
     "the CDC service in case the last received response was non-empty.");
 
-DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 1000,  // 1 sec
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  // 10 ms
     "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");

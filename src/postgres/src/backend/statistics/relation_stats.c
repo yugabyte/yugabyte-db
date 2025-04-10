@@ -115,8 +115,15 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	 */
 	crel = table_open(RelationRelationId, RowExclusiveLock);
 
+	bool yb_use_regular_txn_block =
+		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
 	if (IsYugaByteEnabled())
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
+	{
+		if (yb_use_regular_txn_block)
+			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+		else
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
+	}
 
 	ctup = SearchSysCache1(RELOID, ObjectIdGetDatum(reloid));
 	if (!HeapTupleIsValid(ctup))
@@ -158,7 +165,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 
 	ReleaseSysCache(ctup);
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
 		YBDecrementDdlNestingLevel();
 
 	/* release the lock, consistent with vac_update_relstats() */

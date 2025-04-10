@@ -27,9 +27,6 @@
 #define PGSTAT_STAT_PERMANENT_FILENAME		"pg_stat/pgstat.stat"
 #define PGSTAT_STAT_PERMANENT_TMPFILE		"pg_stat/pgstat.tmp"
 
-#define PGSTAT_YBSTAT_PERMANENT_FILENAME    "pg_stat/yb_global.stat"
-#define PGSTAT_YBSTAT_PERMANENT_TMPFILE     "pg_stat/yb_global.tmp"
-
 /* Default directory to store temporary statistics data in */
 #define PG_STAT_TMP_DIR		"pg_stat_tmp"
 
@@ -604,6 +601,9 @@ extern TimestampTz pgstat_get_stat_snapshot_timestamp(bool *have_snapshot);
 /* helpers */
 extern PgStat_Kind pgstat_get_kind_from_str(char *kind_str);
 extern bool pgstat_have_entry(PgStat_Kind kind, Oid dboid, Oid objoid);
+
+/* GUC hook for stats_fetch_consistency */
+extern void assign_stats_fetch_consistency(int newval, void *extra);
 
 /*
  * Functions in pgstat_archiver.c

@@ -15,7 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Universe;
@@ -263,17 +264,21 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
       // Must use ansible provisioning for non-systemd universes
+      Customer customer = Customer.get(universe.getCustomerId());
       boolean useAnsibleProvisioning =
-          confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning) || !userIntent.useSystemd;
+          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
+              || !userIntent.useSystemd;
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
       if (userIntent.providerType != CloudType.local) {
-        createSetupYNPTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         if (!useAnsibleProvisioning) {
-          createYNPProvisioningTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          createYNPProvisioningTask(universe, nodeList)
+              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
       }
-      createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createInstallNodeAgentTasks(universe, nodeList)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {

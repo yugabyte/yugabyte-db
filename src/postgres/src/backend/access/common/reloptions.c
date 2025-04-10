@@ -1323,7 +1323,7 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 				/* No match, so keep old option */
 				astate = accumArrayResult(astate, oldoptions[i],
 										  false, TEXTOID,
-										  GetCurrentMemoryContext());
+										  CurrentMemoryContext);
 			}
 		}
 	}
@@ -1424,12 +1424,12 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 
 			astate = accumArrayResult(astate, PointerGetDatum(t),
 									  false, TEXTOID,
-									  GetCurrentMemoryContext());
+									  CurrentMemoryContext);
 		}
 	}
 
 	if (astate)
-		result = makeArrayResult(astate, GetCurrentMemoryContext());
+		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
 
@@ -1489,11 +1489,11 @@ ybExcludeNonPersistentReloptions(Datum options)
 
 		astate = accumArrayResult(astate, optiondatums[i],
 								  false, TEXTOID,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 	}
 
 	if (astate)
-		result = makeArrayResult(astate, GetCurrentMemoryContext());
+		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
 
@@ -2179,8 +2179,9 @@ build_local_reloptions(local_relopts *relopts, Datum options, bool validate)
 	fillRelOptions(opts, relopts->relopt_struct_size, vals, noptions, validate,
 				   elems, noptions);
 
-	foreach(lc, relopts->validators)
-		((relopts_validator) lfirst(lc)) (opts, vals, noptions);
+	if (validate)
+		foreach(lc, relopts->validators)
+			((relopts_validator) lfirst(lc)) (opts, vals, noptions);
 
 	if (elems)
 		pfree(elems);

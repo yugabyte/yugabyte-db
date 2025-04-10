@@ -13,11 +13,15 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
-#include "yb/client/xcluster_client.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/xcluster_util.h"
+
+#include "yb/client/xcluster_client.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+
 #include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
@@ -191,19 +195,26 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     std::function<void(XClusterCheckpointStreamsResult)> completion_cb) {
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
   std::vector<TableId> table_ids;
-  bool check_if_bootstrap_required = true;
-
+  bool check_if_bootstrap_required;
   {
     std::lock_guard mutex_l(mutex_);
     auto l = VERIFY_RESULT(LockForWrite());
 
-    auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+    const auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
     SCHECK_EQ(
         ns_info->state(), NamespaceInfoPB::CHECKPOINTING, IllegalState,
         "Namespace in unexpected state");
 
-    // We only have to check only if bootstrap is not currently required.
-    check_if_bootstrap_required = !ns_info->initial_bootstrap_required();
+    if (automatic_ddl_mode_) {
+      // Bootstrap is always required for automatic mode, so no need to perform an expensive check.
+      // (In automatic mode we need OIDs to match for things like enums so the semi-automatic check
+      // of "are there any tables with data?" is insufficient to determine if a bootstrap is needed;
+      // accordingly we decided to just always require bootstrap for automatic mode.)
+      check_if_bootstrap_required = false;
+    } else {
+      // We have to check only if bootstrap is not currently required.
+      check_if_bootstrap_required = !ns_info->initial_bootstrap_required();
+    }
 
     for (const auto& [table_id, table_info] : ns_info->table_infos()) {
       if (!TableNeedsInitialCheckpoint(table_info)) {
@@ -222,12 +233,14 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     }
   }
 
-  auto callback = [table_ids, user_cb = std::move(completion_cb)](Result<bool> result) {
+  auto callback = [table_ids, user_cb = std::move(completion_cb),
+                   automatic_ddl_mode = automatic_ddl_mode_](Result<bool> result) {
     if (!result.ok()) {
       user_cb(result.status());
       return;
     }
-    user_cb(std::make_pair(std::move(table_ids), *result));
+    // Bootstrap is always required in automatic mode.
+    user_cb(std::make_pair(std::move(table_ids), automatic_ddl_mode || *result));
   };
 
   if (!table_ids.empty()) {
@@ -238,7 +251,7 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
         table_streams, StreamCheckpointLocation::kCurrentEndOfWAL, epoch,
         check_if_bootstrap_required, std::move(callback)));
   } else {
-    callback(false);  // Bootstrap not required if we dont have any tables.
+    callback(false);  // Bootstrap not required if we don't have any tables.
     // When MarkBootstrapTablesAsCheckpointed handles this empty table result it will mark the
     // namespace as READY.
     // So, after all tables have been checkpointed this function and

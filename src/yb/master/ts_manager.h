@@ -125,9 +125,6 @@ class TSManager {
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
       CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache);
 
-  Result<YsqlLeaseUpdate> RefreshYsqlLease(
-      const LeaderEpoch& epoch, const NodeInstancePB& instance);
-
   // Return all of the currently registered TS descriptors into the provided list.
   void GetAllDescriptors(TSDescriptorVector* descs) const;
   TSDescriptorVector GetAllDescriptors() const;
@@ -149,8 +146,6 @@ class TSManager {
   // heartbeat, indicating that they're alive and well, recently and have given
   // full report of their tablets as well.
   void GetAllReportedDescriptors(TSDescriptorVector* descs) const;
-
-  TSDescriptorVector GetAllDescriptorsWithALiveLease() const;
 
   // Check if the placement uuid of the tserver is same as given cluster uuid.
   static bool IsTsInCluster(const TSDescriptorPtr& ts, const std::string& cluster_uuid);
@@ -261,10 +256,6 @@ class TSManager {
   // This callback will be called when the number of tablet servers reaches the given number.
   TSCountCallback ts_count_callback_ GUARDED_BY(registration_lock_);
   size_t ts_count_callback_min_count_ GUARDED_BY(registration_lock_) = 0;
-
-  // todo(zdrudi): We probably need to stop protecting this with the registration lock.
-  // Possibly introduce a new lock? Or don't use a lock at all.
-  LeaseExpiredCallback lease_expired_callback_ GUARDED_BY(registration_lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);
 };

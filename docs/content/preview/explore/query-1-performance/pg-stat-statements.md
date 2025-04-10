@@ -39,18 +39,18 @@ The columns of the pg_stat_statements view are described in the following table.
 | mean_time            | double precision | Mean time spent in the statement, in milliseconds                                                              |
 | stddev_time          | double precision | Population standard deviation of time spent in the statement, in milliseconds                                  |
 | rows                 | bigint           | Total number of rows retrieved or affected by the statement                                                    |
-| shared_blks_hit      | bigint           | Total number of shared block cache hits by the statement                                                       |
-| shared_blks_read     | bigint           | Total number of shared blocks read by the statement                                                            |
-| shared_blks_dirtied  | bigint           | Total number of shared blocks dirtied by the statement                                                         |
-| shared_blks_written  | bigint           | Total number of shared blocks written by the statement                                                         |
+| shared_blks_hit      | bigint           | Not populated in YugabyteDB                                                                                    |
+| shared_blks_read     | bigint           | Not populated in YugabyteDB                                                                                    |
+| shared_blks_dirtied  | bigint           | Not populated in YugabyteDB                                                                                    |
+| shared_blks_written  | bigint           | Not populated in YugabyteDB                                                                                    |
 | local_blks_hit       | bigint           | Total number of local block cache hits by the statement                                                        |
 | local_blks_read      | bigint           | Total number of local blocks read by the statement                                                             |
 | local_blks_dirtied   | bigint           | Total number of local blocks dirtied by the statement                                                          |
 | local_blks_written   | bigint           | Total number of local blocks written by the statement                                                          |
 | temp_blks_read       | bigint           | Total number of temp blocks read by the statement                                                              |
 | temp_blks_written    | bigint           | Total number of temp blocks written by the statement                                                           |
-| blk_read_time        | double precision | Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-| blk_write_time       | double precision | Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
+| blk_read_time        | double precision | Not populated in YugabyteDB                                                                                    |
+| blk_write_time       | double precision | Not populated in YugabyteDB                                                                                    |
 | yb_latency_histogram | jsonb            | List of key value pairs where key is the latency range and value is the count of times a query was executed    |
 
 ## Configuration parameters

@@ -7,6 +7,7 @@
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -2730,6 +2731,76 @@ GRANT SELECT ON TABLE public.rls_private TO rls_user;
 \if :use_roles
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
 \endif
+
+
+--
+-- Name: TABLE tbl13; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+GRANT ALL ON TABLE public.tbl13 TO regress_rls_alice WITH GRANT OPTION;
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT ALL ON TABLE public.tbl13 TO tablegroup_test_user;
+RESET SESSION AUTHORIZATION;
+\endif
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT ALL ON FUNCTIONS  TO PUBLIC;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: yugabyte_test
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT SELECT ON TABLES  TO PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT UPDATE ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT DELETE ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: rls_user
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user IN SCHEMA public GRANT SELECT ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TYPES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE ALL ON TYPES  FROM PUBLIC;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SCHEMAS; Type: DEFAULT ACL; Schema: -; Owner: yugabyte_test
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test GRANT USAGE ON SCHEMAS  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT SELECT ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: rls_user
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE ALL ON TABLES  FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT,REFERENCES,TRIGGER,TRUNCATE,UPDATE ON TABLES  TO rls_user;
 
 
 -- YB: re-enable auto analyze after all catalog changes

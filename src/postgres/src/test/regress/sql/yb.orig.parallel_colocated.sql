@@ -192,7 +192,7 @@ SELECT * from pctest2
   WHERE b < (SELECT avg(b) / 20 FROM pctest1 WHERE c = pctest2.c);
 
 -- passing parameters to workers
-/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+/*+ Parallel(pctest1 2 hard) Parallel(pctest1_1 2 hard) Parallel(pctest2 2 hard) */
 EXPLAIN (costs off)
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
@@ -245,10 +245,132 @@ EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
 /*+ Parallel(pctest3 2 hard) */
 SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
 
+-- Try with parallel hints instead of setting costing GUCs.
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
+
+-- Parallel index scan
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE k < 10;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE k < 10;
+
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
+
+--secondary index
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE c = 10;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE c = 10;
+
+--secondary index
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 ORDER BY a LIMIT 10;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 ORDER BY a LIMIT 10;
+
+-- with aggregates
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT count(*) FROM pctest1 WHERE k > 123;
+/*+ Parallel(pctest1 2 hard) */
+SELECT count(*) FROM pctest1 WHERE k > 123;
+
+-- index only
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT a FROM pctest1 WHERE a < 10;
+/*+ Parallel(pctest1 2 hard) */
+SELECT a FROM pctest1 WHERE a < 10;
+
+-- with grouping
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
+/*+ Parallel(pctest1 2 hard) */
+SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
+
+-- Joins
+-- Nest loop
+/*+
+  Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
+EXPLAIN (costs off)
+SELECT pctest1.* FROM pctest1, pctest2
+  WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+/*+
+  Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
+SELECT pctest1.* FROM pctest1, pctest2
+  WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+EXPLAIN (costs off)
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+
+-- Hash join
+set enable_mergejoin to false;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+EXPLAIN (costs off)
+SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c) ORDER BY pctest1.k, pctest2.k;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c) ORDER BY pctest1.k, pctest2.k;
+reset enable_mergejoin;
+
+-- Merge join
+set enable_hashjoin to false;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+EXPLAIN (costs off)
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+reset enable_hashjoin;
+
+-- Subquery
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+EXPLAIN (costs off)
+SELECT x, d FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
+  (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT x, d FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
+  (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
+
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
+  (SELECT pctest2.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT * FROM
+  (SELECT pctest1.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
+  (SELECT pctest2.* FROM pctest1, pctest2
+     WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
+
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
-/*+ Parallel(pctest3 2 hard) */
+/*+ Parallel(pctest3 3 hard) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-/*+ Parallel(pctest3 2 hard) */
+/*+ Parallel(pctest3 3 hard) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 
 DROP TABLE pctest1;

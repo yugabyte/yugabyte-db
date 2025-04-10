@@ -1187,13 +1187,17 @@ CompactCheckpointerRequestQueue(void)
 	/* must hold CheckpointerCommLock in exclusive mode */
 	Assert(LWLockHeldByMe(CheckpointerCommLock));
 
+	/* Avoid memory allocations in a critical section. */
+	if (CritSectionCount > 0)
+		return false;
+
 	/* Initialize skip_slot array */
 	skip_slot = palloc0(sizeof(bool) * CheckpointerShmem->num_requests);
 
 	/* Initialize temporary hash table */
 	ctl.keysize = sizeof(CheckpointerRequest);
 	ctl.entrysize = sizeof(struct CheckpointerSlotMapping);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 
 	htab = hash_create("CompactCheckpointerRequestQueue",
 					   CheckpointerShmem->num_requests,

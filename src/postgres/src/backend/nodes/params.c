@@ -65,7 +65,7 @@ makeParamList(int numParams)
 /*
  * Copy a ParamListInfo structure.
  *
- * The result is allocated in GetCurrentMemoryContext.
+ * The result is allocated in CurrentMemoryContext.
  *
  * Note: the intent of this function is to make a static, self-contained
  * set of parameter values.  If dynamic parameter hooks are present, we
@@ -281,7 +281,7 @@ SerializeParamList(ParamListInfo paramLI, char **start_address)
 /*
  * Copy a ParamListInfo structure.
  *
- * The result is allocated in GetCurrentMemoryContext().
+ * The result is allocated in CurrentMemoryContext.
  *
  * Note: the intent of this function is to make a static, self-contained
  * set of parameter values.  If dynamic parameter hooks are present, we
@@ -357,7 +357,7 @@ BuildParamLogString(ParamListInfo params, char **knownTextValues, int maxlen)
 	initStringInfo(&buf);
 
 	/* Use a temporary context to call output functions, just in case */
-	tmpCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tmpCxt = AllocSetContextCreate(CurrentMemoryContext,
 								   "BuildParamLogString",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldCxt = MemoryContextSwitchTo(tmpCxt);

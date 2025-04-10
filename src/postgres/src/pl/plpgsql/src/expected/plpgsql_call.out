@@ -35,6 +35,23 @@ SELECT * FROM test1;
  55
 (1 row)
 
+-- Check that plan revalidation doesn't prevent setting transaction properties
+-- (bug #18059).  This test must include the first temp-object creation in
+-- this script, or it won't exercise the bug scenario.  Hence we put it early.
+CREATE PROCEDURE test_proc3a()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+   COMMIT;
+   SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+   RAISE NOTICE 'done';
+END;
+$$;
+CALL test_proc3a();
+NOTICE:  done
+CREATE TEMP TABLE tt1(f1 int);
+CALL test_proc3a();
+NOTICE:  done
 -- nested CALL
 TRUNCATE TABLE test1;
 CREATE PROCEDURE test_proc4(y int)
@@ -392,6 +409,40 @@ END
 $$;
 NOTICE:  a: <NULL>, b: {30,7}
 NOTICE:  _a: 37, _b: 30, _c: 7
+-- polymorphic OUT arguments
+CREATE PROCEDURE test_proc12(a anyelement, OUT b anyelement, OUT c anyarray)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %', a;
+  b := a;
+  c := array[a];
+END;
+$$;
+DO $$
+DECLARE _a int; _b int; _c int[];
+BEGIN
+  _a := 10;
+  CALL test_proc12(_a, _b, _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+NOTICE:  a: 10
+NOTICE:  _a: 10, _b: 10, _c: {10}
+DO $$
+DECLARE _a int; _b int; _c text[];
+BEGIN
+  _a := 10;
+  CALL test_proc12(_a, _b, _c);  -- error
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+ERROR:  procedure test_proc12(integer, integer, text[]) does not exist
+LINE 1: CALL test_proc12(_a, _b, _c)
+             ^
+HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  CALL test_proc12(_a, _b, _c)
+CONTEXT:  PL/pgSQL function inline_code_block line 5 at CALL
 -- transition variable assignment
 TRUNCATE test1;
 CREATE FUNCTION triggerfunc1() RETURNS trigger
@@ -466,3 +517,120 @@ BEGIN
 END;
 $$;
 NOTICE:  <NULL>
+-- check that we detect change of dependencies in CALL
+-- atomic and non-atomic call sites used to do this differently, so check both
+CREATE PROCEDURE inner_p (f1 int)
+AS $$
+BEGIN
+  RAISE NOTICE 'inner_p(%)', f1;
+END
+$$ LANGUAGE plpgsql;
+CREATE FUNCTION f(int) RETURNS int AS $$ SELECT $1 + 1 $$ LANGUAGE sql;
+CREATE PROCEDURE outer_p (f1 int)
+AS $$
+BEGIN
+  RAISE NOTICE 'outer_p(%)', f1;
+  CALL inner_p(f(f1));
+END
+$$ LANGUAGE plpgsql;
+CREATE FUNCTION outer_f (f1 int) RETURNS void
+AS $$
+BEGIN
+  RAISE NOTICE 'outer_f(%)', f1;
+  CALL inner_p(f(f1));
+END
+$$ LANGUAGE plpgsql;
+CALL outer_p(42);
+NOTICE:  outer_p(42)
+NOTICE:  inner_p(43)
+SELECT outer_f(42);
+NOTICE:  outer_f(42)
+NOTICE:  inner_p(43)
+ outer_f 
+---------
+ 
+(1 row)
+
+DROP FUNCTION f(int);
+CREATE FUNCTION f(int) RETURNS int AS $$ SELECT $1 + 2 $$ LANGUAGE sql;
+CALL outer_p(42);
+NOTICE:  outer_p(42)
+NOTICE:  inner_p(44)
+SELECT outer_f(42);
+NOTICE:  outer_f(42)
+NOTICE:  inner_p(44)
+ outer_f 
+---------
+ 
+(1 row)
+
+-- Check that stable functions in CALL see the correct snapshot
+CREATE TABLE t_test (x int);
+INSERT INTO t_test VALUES (0);
+CREATE FUNCTION f_get_x () RETURNS int
+AS $$
+DECLARE l_result int;
+BEGIN
+  SELECT x INTO l_result FROM t_test;
+  RETURN l_result;
+END
+$$ LANGUAGE plpgsql STABLE;
+CREATE PROCEDURE f_print_x (x int)
+AS $$
+BEGIN
+  RAISE NOTICE 'f_print_x(%)', x;
+END
+$$ LANGUAGE plpgsql;
+-- test in non-atomic context
+DO $$
+BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  ROLLBACK;
+END
+$$;
+NOTICE:  f_get_x(1)
+NOTICE:  f_print_x(1)
+NOTICE:  f_get_x(2)
+NOTICE:  f_print_x(2)
+-- test in non-atomic context, except exception block is locally atomic
+DO $$
+BEGIN
+ BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+ EXCEPTION WHEN division_by_zero THEN
+   RAISE NOTICE '%', SQLERRM;
+ END;
+  ROLLBACK;
+END
+$$;
+NOTICE:  f_get_x(1)
+NOTICE:  f_print_x(1)
+NOTICE:  f_get_x(2)
+NOTICE:  f_print_x(2)
+-- test in atomic context
+BEGIN;
+DO $$
+BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+END
+$$;
+NOTICE:  f_get_x(1)
+NOTICE:  f_print_x(1)
+NOTICE:  f_get_x(2)
+NOTICE:  f_print_x(2)
+ROLLBACK;

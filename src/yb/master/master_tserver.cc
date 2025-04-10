@@ -19,6 +19,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/client/client.h"
+
 #include "yb/common/pg_types.h"
 
 #include "yb/master/catalog_manager_if.h"

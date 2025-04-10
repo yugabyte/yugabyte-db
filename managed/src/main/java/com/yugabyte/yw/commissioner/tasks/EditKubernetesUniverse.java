@@ -197,6 +197,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universeDetails.getPrimaryCluster().userIntent.replicationFactor
               != primaryCluster.userIntent.replicationFactor;
 
+      // Delete old PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(true /* deletePDB */);
+      }
+
       // Update the user intent.
       // This writes new state of nodes to DB.
       updateUniverseNodesAndSettings(universe, taskParams(), false);
@@ -243,8 +248,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         createMasterLeaderStepdownTask();
       }
 
-      // Update PDB policy for the universe.
-      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* updatePDB */);
+      // Create new PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(false /* deletePDB */);
+      }
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);

@@ -313,7 +313,7 @@ ReorderBufferAllocate(void)
 	Assert(MyReplicationSlot != NULL);
 
 	/* allocate memory in own context, to have better accountability */
-	new_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	new_ctx = AllocSetContextCreate(CurrentMemoryContext,
 									"ReorderBuffer",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -335,15 +335,20 @@ ReorderBufferAllocate(void)
 											sizeof(ReorderBufferTXN));
 
 	/*
-	 * XXX the allocation sizes used below pre-date generation context's block
-	 * growing code.  These values should likely be benchmarked and set to
-	 * more suitable values.
+	 * To minimize memory fragmentation caused by long-running transactions
+	 * with changes spanning multiple memory blocks, we use a single
+	 * fixed-size memory block for decoded tuple storage. The performance
+	 * testing showed that the default memory block size maintains logical
+	 * decoding performance without causing fragmentation due to concurrent
+	 * transactions. One might think that we can use the max size as
+	 * SLAB_LARGE_BLOCK_SIZE but the test also showed it doesn't help resolve
+	 * the memory fragmentation.
 	 */
 	buffer->tup_context = GenerationContextCreate(new_ctx,
 												  "Tuples",
-												  SLAB_LARGE_BLOCK_SIZE,
-												  SLAB_LARGE_BLOCK_SIZE,
-												  SLAB_LARGE_BLOCK_SIZE);
+												  SLAB_DEFAULT_BLOCK_SIZE,
+												  SLAB_DEFAULT_BLOCK_SIZE,
+												  SLAB_DEFAULT_BLOCK_SIZE);
 
 	hash_ctl.keysize = sizeof(TransactionId);
 	hash_ctl.entrysize = sizeof(ReorderBufferTXNByIdEnt);
@@ -853,6 +858,13 @@ ReorderBufferQueueMessage(ReorderBuffer *rb, TransactionId xid,
 
 		Assert(xid != InvalidTransactionId);
 
+		/*
+		 * We don't expect snapshots for transactional changes - we'll use the
+		 * snapshot derived later during apply (unless the change gets
+		 * skipped).
+		 */
+		Assert(!snapshot);
+
 		oldcontext = MemoryContextSwitchTo(rb->context);
 
 		change = ReorderBufferGetChange(rb);
@@ -870,6 +882,9 @@ ReorderBufferQueueMessage(ReorderBuffer *rb, TransactionId xid,
 	{
 		ReorderBufferTXN *txn = NULL;
 		volatile Snapshot snapshot_now = snapshot;
+
+		/* Non-transactional changes require a valid snapshot. */
+		Assert(snapshot_now);
 
 		if (xid != InvalidTransactionId)
 			txn = ReorderBufferTXNByXid(rb, xid, true, NULL, lsn, true);
@@ -2078,7 +2093,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 						bool streaming)
 {
 	bool		using_subtxn;
-	MemoryContext ccxt = GetCurrentMemoryContext();
+	MemoryContext ccxt = CurrentMemoryContext;
 	ReorderBufferIterTXNState *volatile iterstate = NULL;
 	volatile XLogRecPtr prev_lsn = InvalidXLogRecPtr;
 	ReorderBufferChange *volatile specinsert = NULL;
@@ -3590,8 +3605,8 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	while (rb->size >= logical_decoding_work_mem * 1024L)
 	{
 		/*
-		 * Pick the largest transaction (or subtransaction) and evict it from
-		 * memory by streaming, if possible.  Otherwise, spill to disk.
+		 * Pick the largest transaction and evict it from memory by streaming,
+		 * if possible.  Otherwise, spill to disk.
 		 */
 		if (ReorderBufferCanStartStreaming(rb) &&
 			(txn = ReorderBufferLargestTopTXN(rb)) != NULL)

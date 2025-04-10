@@ -180,8 +180,10 @@ g_int_compress(PG_FUNCTION_ARGS)
 		PREPAREARR(r);
 
 		if (ARRNELEMS(r) >= 2 * num_ranges)
-			elog(NOTICE, "input array is too big (%d maximum allowed, %d current), use gist__intbig_ops opclass instead",
-				 2 * num_ranges - 1, ARRNELEMS(r));
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("input array is too big (%d maximum allowed, %d current), use gist__intbig_ops opclass instead",
+							2 * num_ranges - 1, ARRNELEMS(r))));
 
 		retval = palloc(sizeof(GISTENTRY));
 		gistentryinit(*retval, PointerGetDatum(r),
@@ -269,7 +271,8 @@ g_int_compress(PG_FUNCTION_ARGS)
 		lenr = internal_size(dr, len);
 		if (lenr < 0 || lenr > MAXNUMELTS)
 			ereport(ERROR,
-					(errmsg("data is too sparse, recreate index using gist__intbig_ops opclass instead")));
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("data is too sparse, recreate index using gist__intbig_ops opclass instead")));
 
 		r = resize_intArrayType(r, len);
 		retval = palloc(sizeof(GISTENTRY));
@@ -293,8 +296,7 @@ g_int_decompress(PG_FUNCTION_ARGS)
 	ArrayType  *in;
 	int			lenin;
 	int		   *din;
-	int			i,
-				j;
+	int			i;
 
 	in = DatumGetArrayTypeP(entry->key);
 
@@ -331,15 +333,19 @@ g_int_decompress(PG_FUNCTION_ARGS)
 	lenr = internal_size(din, lenin);
 	if (lenr < 0 || lenr > MAXNUMELTS)
 		ereport(ERROR,
-				(errmsg("compressed array is too big, recreate index using gist__intbig_ops opclass instead")));
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("compressed array is too big, recreate index using gist__intbig_ops opclass instead")));
 
 	r = new_intArrayType(lenr);
 	dr = ARRPTR(r);
 
 	for (i = 0; i < lenin; i += 2)
-		for (j = din[i]; j <= din[i + 1]; j++)
+	{
+		/* use int64 for j in case din[i + 1] is INT_MAX */
+		for (int64 j = din[i]; j <= din[i + 1]; j++)
 			if ((!i) || *(dr - 1) != j)
-				*dr++ = j;
+				*dr++ = (int) j;
+	}
 
 	if (in != (ArrayType *) DatumGetPointer(entry->key))
 		pfree(in);

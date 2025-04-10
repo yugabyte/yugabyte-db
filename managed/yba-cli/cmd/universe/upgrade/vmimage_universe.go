@@ -86,14 +86,7 @@ var upgradeVMImageCmd = &cobra.Command{
 			)
 		}
 
-		var primaryCluster ybaclient.Cluster
-		for _, c := range clusters {
-			if strings.EqualFold(c.GetClusterType(), util.PrimaryClusterType) {
-				primaryCluster = c
-				break
-			}
-		}
-
+		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
 		if primaryCluster == (ybaclient.Cluster{}) {
 			err := fmt.Errorf(
 				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",

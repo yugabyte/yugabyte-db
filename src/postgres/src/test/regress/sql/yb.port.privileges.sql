@@ -551,13 +551,13 @@ UPDATE errtst SET b = NULL;
 -- partitioning key is updated, doesn't move the row.
 UPDATE errtst SET a = 'aaa', b = NULL;
 -- row is moved to another partition.
-UPDATE errtst SET a = 'aaaa', b = NULL; -- YB: TODO: investigate why output shows errtst_part_1 instead of errtst_part_2
+UPDATE errtst SET a = 'aaaa', b = NULL;
 
 -- row is moved to another partition. This differs from the previous case in
 -- that the new partition is excluded by constraint exclusion, so its
 -- ResultRelInfo is not created at ExecInitModifyTable, but needs to be
 -- constructed on the fly when the updated tuple is routed to it.
-UPDATE errtst SET a = 'aaaa', b = NULL WHERE a = 'aaa'; -- YB: TODO: investigate why output shows errtst_part_1 instead of errtst_part_2
+UPDATE errtst SET a = 'aaaa', b = NULL WHERE a = 'aaa';
 
 SET SESSION AUTHORIZATION regress_priv_user1;
 DROP TABLE errtst;
@@ -598,7 +598,45 @@ SET SESSION AUTHORIZATION regress_priv_user1;
 CREATE TABLE atestp1 (f1 int, f2 int);
 CREATE TABLE atestp2 (fx int, fy int);
 CREATE TABLE atestc (fz int) INHERITS (atestp1, atestp2);
--- YB: port further queries when above works
+GRANT SELECT(fx,fy,tableoid) ON atestp2 TO regress_priv_user2;
+GRANT SELECT(fx) ON atestc TO regress_priv_user2;
+
+SET SESSION AUTHORIZATION regress_priv_user2;
+SELECT fx FROM atestp2; -- ok
+SELECT fy FROM atestp2; -- ok
+SELECT atestp2 FROM atestp2; -- ok
+SELECT tableoid FROM atestp2; -- ok
+SELECT fy FROM atestc; -- fail
+
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT SELECT(fy,tableoid) ON atestc TO regress_priv_user2;
+
+SET SESSION AUTHORIZATION regress_priv_user2;
+SELECT fx FROM atestp2; -- still ok
+SELECT fy FROM atestp2; -- ok
+SELECT atestp2 FROM atestp2; -- ok
+SELECT tableoid FROM atestp2; -- ok
+
+-- child's permissions do not apply when operating on parent
+SET SESSION AUTHORIZATION regress_priv_user1;
+REVOKE ALL ON atestc FROM regress_priv_user2;
+GRANT ALL ON atestp1 TO regress_priv_user2;
+SET SESSION AUTHORIZATION regress_priv_user2;
+SELECT f2 FROM atestp1; -- ok
+SELECT f2 FROM atestc; -- fail
+DELETE FROM atestp1; -- ok
+DELETE FROM atestc; -- fail
+UPDATE atestp1 SET f1 = 1; -- ok
+UPDATE atestc SET f1 = 1; -- fail
+TRUNCATE atestp1; -- ok
+TRUNCATE atestc; -- fail
+BEGIN;
+LOCK atestp1;
+END;
+BEGIN;
+LOCK atestc;
+END;
+
 -- privileges on functions, languages
 
 -- switch to superuser
@@ -1492,7 +1530,7 @@ DROP TABLE atest3;
 DROP TABLE atest4;
 DROP TABLE atest5;
 DROP TABLE atest6;
-DROP TABLE atestc; -- YB: fails due to previous CREATE failure
+DROP TABLE atestc;
 DROP TABLE atestp1;
 DROP TABLE atestp2;
 

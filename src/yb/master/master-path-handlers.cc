@@ -72,6 +72,7 @@
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_creation_limits.h"
@@ -89,6 +90,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_case.h"
@@ -112,12 +114,13 @@ DEFINE_RUNTIME_uint32(leaderless_tablet_alert_delay_secs, 2 * 60,
     "From master's view, if the tablet doesn't have a valid leader for this amount of seconds, "
     "alert it as a leaderless tablet.");
 
+DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
+                 "Sleep before reporting tasks in the load balancer UI, to give tasks a chance to "
+                 "complete.");
+
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
-
 DECLARE_string(webserver_ca_certificate_file);
-
 DECLARE_string(webserver_certificate_file);
-
 DEPRECATE_FLAG(uint64, master_maximum_heartbeats_without_lease, "12_2023");
 
 namespace yb {
@@ -3144,22 +3147,37 @@ void MasterPathHandlers::HandleVersionInfoDump(
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
+  HtmlPrintHelper html_print_helper(*output);
+
   *output << "<h1>Cluster Balancer</h1>\n";
 
-  // TODO(asrivastava): Display tasks with started_by_lb() set here.
-  // TODO(asrivastava): Display LB bottleneck here.
+  auto activity_info = master_->catalog_manager()->load_balancer()->GetLatestActivityInfo();
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_sleep_before_reporting_lb_ui_ms));
 
-  *output << "<h2>Warnings Summary</h2>\n";
-  *output << "<table class='table table-striped'>\n";
-  *output << "<thead><tr>"
-          << "<th>Sample warning</th>"
-          << "<th>Count of similar messages (in previous run)</th>"
-          << "</tr></thead>";
-  auto activity_info = master_->catalog_manager()->load_balancer()->GetActivityInfo();
-  for (const auto& warning : activity_info.warnings.GetWarningSummary()) {
-    *output << Format("<tr><td>$0</td><td>$1</td></tr>\n", warning.example_message, warning.count);
+  *output << "<h2>Last Run Summary</h2>\n";
+
+  // TODO(asrivastava): Display LB bottlenecks here.
+  *output << "<h3>Warnings Summary</h3>\n";
+  *output << "Warnings are grouped by type (warnings for different tables / tablets are summed):\n";
+  auto warnings_summary_table = html_print_helper.CreateTablePrinter(
+      "Warnings Summary", {"Example Warning", "Count of similar messages"});
+  for (const auto& warning : activity_info.GetWarningsSummary()) {
+    warnings_summary_table.AddRow(warning.example_message, warning.count);
   }
-  *output << "</table>\n";
+  warnings_summary_table.Print();
+
+  *output << "<h3>Tasks Summary</h3>\n";
+  *output << "Tasks are grouped by type and state (tasks for different tablets are summed):\n";
+  auto tasks_summary_table = html_print_helper.CreateTablePrinter(
+      "Tasks Summary",
+      {"Example description", "Task state", "Count", "Example status (if complete)"});
+  for (const auto& [type_and_state, aggregated] : activity_info.GetTasksSummary()) {
+    auto& [_, state] = type_and_state;
+    tasks_summary_table.AddRow(
+        aggregated.example_description, state, aggregated.count,
+        MonitoredTask::IsStateTerminal(state) ? aggregated.example_status : "");
+  }
+  tasks_summary_table.Print();
 
   *output << "<h2>Tablet Distribution</h2>\n";
   auto descs = master_->ts_manager()->GetAllDescriptors();

@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------
  *
  * yb_terminated_queries.h
- * 	  Declarations for YB Terminated Queries
+ * 	  Declarations for YB Terminated Queries.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -25,7 +25,7 @@
 #ifndef YB_TERMINATED_QUERIES_H
 #define YB_TERMINATED_QUERIES_H
 
-#include "postgres.h"
+#include "c.h"
 
 /* Functions defined for yb_terminated_queries */
 extern void yb_report_query_termination(char *message, int pid);

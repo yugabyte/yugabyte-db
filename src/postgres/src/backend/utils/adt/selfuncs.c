@@ -6359,7 +6359,7 @@ get_actual_variable_range(PlannerInfo *root, VariableStatData *vardata,
 			ScanKeyData scankeys[1];
 
 			/* Make sure any cruft gets recycled when we're done */
-			tmpcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+			tmpcontext = AllocSetContextCreate(CurrentMemoryContext,
 											   "get_actual_variable_range workspace",
 											   ALLOCSET_DEFAULT_SIZES);
 			oldcontext = MemoryContextSwitchTo(tmpcontext);
@@ -6680,7 +6680,7 @@ yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
 
 	root->yb_cur_batched_relids = NULL;
 
-	int			num_outer_tuples = get_loop_count(root, path_relid,
+	double		num_outer_tuples = get_loop_count(root, path_relid,
 												  other_varnos);
 
 	root->yb_cur_batched_relids = batched_relids;

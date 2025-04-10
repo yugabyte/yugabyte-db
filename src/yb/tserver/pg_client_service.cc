@@ -44,7 +44,6 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/dockv/partition.h"
 
@@ -134,23 +133,30 @@ DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
                  "production environment. In unit test we use this flag to force allocation of "
                  "large Postgres OIDs.");
 
+DEFINE_test_flag(uint64, delay_before_complete_expired_pg_sessions_shutdown_ms, 0,
+                 "Inject delay before completing shutdown of expired PG sessions.");
+
 DEFINE_RUNTIME_uint64(ysql_cdc_active_replication_slot_window_ms, 60000,
                       "Determines the window in milliseconds in which if a client has consumed the "
                       "changes of a ReplicationSlot across any tablet, then it is considered to be "
                       "actively used. ReplicationSlots which haven't been used in this interval are"
                       "considered to be inactive.");
 TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
-DECLARE_uint64(cdc_intent_retention_ms);
 
+DEFINE_RUNTIME_int32(
+    check_pg_object_id_allocators_interval_secs, 3600 * 3,
+    "Interval at which pg object id allocators are checked for dropped databases.");
+TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
+
+DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultiplier,
+    "Idle timeout interval in milliseconds used by shared memory exchange thread pool.");
+
+DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
-DEFINE_RUNTIME_int32(
-    check_pg_object_id_allocators_interval_secs, 3600 * 3,
-    "Interval at which pg object id allocators are checked for dropped databases.");
-TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
 METRIC_DEFINE_event_stats(
     server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
@@ -218,30 +224,36 @@ class LockablePgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  Status StartExchange(const std::string& instance_id) {
+  Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
     auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
-    exchange_.emplace(std::move(exchange), [this](size_t size) {
+    exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
+        std::move(exchange), [this](size_t size) {
       Touch();
       std::unique_lock lock(mutex_);
-      session_.ProcessSharedRequest(size, &exchange_->exchange());
+      session_.ProcessSharedRequest(size, &exchange_runnable_->exchange());
     });
-    return Status::OK();
+    auto status = exchange_runnable_->Start(thread_pool);
+    if (!status.ok()) {
+      exchange_runnable_.reset();
+    }
+    return status;
   }
 
   void StartShutdown() {
-    if (exchange_) {
-      exchange_->StartShutdown();
+    if (exchange_runnable_) {
+      exchange_runnable_->StartShutdown();
     }
     session_.StartShutdown();
   }
 
   bool ReadyToShutdown() const {
-    return !exchange_ || exchange_->ReadyToShutdown();
+    return (!exchange_runnable_ || exchange_runnable_->ReadyToShutdown()) &&
+           session_.ReadyToShutdown();
   }
 
   void CompleteShutdown() {
-    if (exchange_) {
-      exchange_->CompleteShutdown();
+    if (exchange_runnable_) {
+      exchange_runnable_->CompleteShutdown();
     }
     session_.CompleteShutdown();
   }
@@ -276,7 +288,7 @@ class LockablePgClientSession {
 
   std::mutex mutex_;
   PgClientSession session_;
-  std::optional<SharedExchangeThread> exchange_;
+  std::shared_ptr<SharedExchangeRunnable> exchange_runnable_;
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
 };
@@ -444,8 +456,8 @@ class PgClientServiceImpl::Impl {
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
         table_cache_(client_future_),
-        check_expired_sessions_(&messenger->scheduler()),
-        check_object_id_allocators_(&messenger->scheduler()),
+        check_expired_sessions_("check_expired_sessions", &messenger->scheduler()),
+        check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
@@ -503,6 +515,9 @@ class PgClientServiceImpl::Impl {
     sessions.clear();
     check_expired_sessions_.Shutdown();
     check_object_id_allocators_.Shutdown();
+    if (exchange_thread_pool_) {
+      exchange_thread_pool_->Shutdown();
+    }
   }
 
   Status Heartbeat(
@@ -528,8 +543,20 @@ class PgClientServiceImpl::Impl {
         messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
-      resp->set_instance_id(instance_id_);
-      RETURN_NOT_OK(session_info->session().StartExchange(instance_id_));
+      std::call_once(exchange_thread_pool_once_flag_, [this] {
+        CHECK_OK(ThreadPoolBuilder("shmem_exchange")
+                     .set_min_threads(1)
+                     .unlimited_threads()
+                     .set_idle_timeout(FLAGS_shmem_exchange_idle_timeout_ms * 1ms)
+                     .set_max_queue_size(0)
+                     .Build(&exchange_thread_pool_));
+      });
+      auto status = session_info->session().StartExchange(instance_id_, *exchange_thread_pool_);
+      if (status.ok()) {
+        resp->set_instance_id(instance_id_);
+      } else {
+        LOG(WARNING) << "Failed to start exchange for " << session_id << ": " << status;
+      }
     }
 
     context->ListenConnectionShutdown([this, session_id, pid = req.pid()]() {
@@ -1497,12 +1524,10 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     VLOG(1) << "ExportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto session = VERIFY_RESULT(GetSession(req.session_id()));
-    const auto read_time = req.has_explicit_read_time()
-        ? ReadHybridTime::FromPB(req.explicit_read_time())
-        : VERIFY_RESULT(session->GetTxnSnapshotReadTime(req.options(),
-                                                        context->GetClientDeadline()));
-    const auto snapshot = PgTxnSnapshot::Make(req.snapshot(), read_time);
-    resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(session->id(), snapshot)));
+    const auto read_time = VERIFY_RESULT(session->GetTxnSnapshotReadTime(
+        req.options(), context->GetClientDeadline()));
+    resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(
+        session->id(), PgTxnSnapshot::Make(req.snapshot(), read_time))));
     return Status::OK();
   }
 
@@ -1510,21 +1535,17 @@ class PgClientServiceImpl::Impl {
     return txn_snapshot_manager_.Get(snapshot_id);
   }
 
-  Status SetTxnSnapshot(
-      const PgSetTxnSnapshotRequestPB& req, PgSetTxnSnapshotResponsePB* resp,
+  Status ImportTxnSnapshot(
+      const PgImportTxnSnapshotRequestPB& req, PgImportTxnSnapshotResponsePB* resp,
       rpc::RpcContext* context) {
-    VLOG(1) << "SetTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
-    PgTxnSnapshot snapshot;
+    VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
     auto options = req.options();
-    if (!req.has_explicit_read_time()) {
-      snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
-      snapshot.read_time.ToPB(options.mutable_read_time());
-      snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
-    } else {
-      *options.mutable_read_time() = req.explicit_read_time();
-    }
-    return VERIFY_RESULT(GetSession(req.session_id()))
-        ->SetTxnSnapshotReadTime(options, context->GetClientDeadline());
+    snapshot.read_time.ToPB(options.mutable_read_time());
+    RETURN_NOT_OK(VERIFY_RESULT(GetSession(req.session_id()))->SetTxnSnapshotReadTime(
+        options, context->GetClientDeadline()));
+    snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+    return Status::OK();
   }
 
   Status ClearExportedTxnSnapshots(
@@ -1784,9 +1805,6 @@ class PgClientServiceImpl::Impl {
   }
 
   void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
-    if (!GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease)) {
-      return;
-    }
     std::vector<SessionInfoPtr> sessions;
     {
       std::lock_guard lock(mutex_);
@@ -1813,6 +1831,7 @@ class PgClientServiceImpl::Impl {
       session->session().StartShutdown();
       txn_snapshot_manager_.UnregisterAll(session->id());
     }
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
     for (const auto& session : expired_sessions) {
       if (session->session().ReadyToShutdown()) {
         session->session().CompleteShutdown();
@@ -2316,6 +2335,8 @@ class PgClientServiceImpl::Impl {
   PgSequenceCache sequence_cache_;
 
   const std::string instance_id_;
+  std::once_flag exchange_thread_pool_once_flag_;
+  std::unique_ptr<ThreadPool> exchange_thread_pool_;
 
   PgSharedMemoryPool shared_mem_pool_;
 

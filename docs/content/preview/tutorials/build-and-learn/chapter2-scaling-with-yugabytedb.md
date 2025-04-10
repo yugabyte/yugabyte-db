@@ -194,7 +194,7 @@ Now, you're ready to switch the application from PostgreSQL to YugabyteDB.
 
 All you need to do is to restart the application containers with YugabyteDB-specific connectivity settings:
 
-1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the application containers.
+1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker compose stop` to stop the application containers.
 
 1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following connectivity settings:
 
@@ -202,20 +202,17 @@ All you need to do is to restart the application containers with YugabyteDB-spec
     - DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
     - DB_USER=yugabyte
     - DB_PASSWORD=yugabyte
+    - DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true
     ```
 
-    {{< warning title="Flyway and Advisory Locks" >}}
-If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable in the `docker-compose.yaml` file to the following value:
-
-`- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
-
-The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), which are only supported in YugabyteDB v2.25.1 or later. You can use Flyway with YugabyteDB even without this type of lock. The version of YugabyteDB is displayed in the UI at <http://localhost:15433/>.
-    {{< /warning >}}
+    {{< note title="Flyway and Advisory Locks" >}}
+The application uses Flyway to apply database migrations on startup. Flyway tries to acquire [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), but does not require them. Because this example does not require them, we set the DB_CONN_INIT_SQL to suppress all advisory lock warnings. For information on advisory lock support in YugabyteDB, refer to [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+    {{< /note >}}
 
 1. Start the application:
 
     ```shell
-    docker-compose up
+    docker compose up
     ```
 
 This time, the `yugaplus-backend` container connects to YugabyteDB, which listens on port `5433`. Given YugabyteDB's feature and runtime compatibility with PostgreSQL, the container continues using the PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`), the pgvector extension, and other libraries and frameworks created for PostgreSQL.

@@ -2655,11 +2655,10 @@ class ControlScript(object):
                             Output.log(out)
                             status_details = [
                                 (Output.make_yellow("Status"), out),
+                                (Output.make_yellow("Key Location"), f"The Encryption key is " +
+                                    f"stored at {key_path}. Moving the encryption key to a " +
+                                    "secure location is strongly advised. "),
                             ]
-
-            Output.log("Deleting the universe key generated for encryption at rest.")
-            if os.path.isdir(key_dir):
-                shutil.rmtree(key_dir)
         # Disabling encryption at rest
         else:
             Output.log("Trying to disable encryption at rest.")

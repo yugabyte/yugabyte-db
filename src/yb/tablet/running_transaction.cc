@@ -519,11 +519,14 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
           expected_deadlock_status, pg_session_req_version});
     } else {
-      waiter.callback(STATUS(TryAgain,
-          Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
-                 "last known: $2 at $3", waiter.read_ht, waiter.global_limit_ht,
-                 TransactionStatus_Name(transaction_status), time_of_status), Slice(),
-          PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) ));
+      waiter.callback(STATUS(
+          TryAgain,
+          Format(
+              "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+              "last known: $2 at $3",
+              waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
+              time_of_status),
+          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT)));
     }
   }
 }
@@ -600,7 +603,7 @@ std::string RunningTransaction::LogPrefix() const {
 Status MakeAbortedStatus(const TransactionId& id) {
   return STATUS(
       TryAgain, Format("Transaction aborted: $0", id), Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,

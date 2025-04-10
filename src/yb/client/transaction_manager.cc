@@ -20,14 +20,13 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/master/catalog_manager.h"
-
 #include "yb/rpc/tasks_pool.h"
 
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"

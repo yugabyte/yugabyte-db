@@ -428,6 +428,8 @@ static void pgpassfileWarning(PGconn *conn);
 static void default_threadlock(int acquire);
 static bool sslVerifyProtocolVersion(const char *version);
 static bool sslVerifyProtocolRange(const char *min, const char *max);
+static bool parse_int_param(const char *value, int *result, PGconn *conn,
+							const char *context);
 
 
 /* global variable because fe-auth.c needs to access it */
@@ -1791,14 +1793,14 @@ connectFailureMessage(PGconn *conn, int errorno)
 static int
 useKeepalives(PGconn *conn)
 {
-	char	   *ep;
 	int			val;
 
 	if (conn->keepalives == NULL)
 		return 1;
-	val = strtol(conn->keepalives, &ep, 10);
-	if (*ep)
+
+	if (!parse_int_param(conn->keepalives, &val, conn, "keepalives"))
 		return -1;
+
 	return val != 0 ? 1 : 0;
 }
 
@@ -2646,8 +2648,7 @@ keep_going:						/* We will come back to here until there is
 
 						if (usekeepalives < 0)
 						{
-							appendPQExpBufferStr(&conn->errorMessage,
-												 libpq_gettext("keepalives parameter must be an integer\n"));
+							/* error is already reported */
 							err = 1;
 						}
 						else if (usekeepalives == 0)
@@ -3088,16 +3089,13 @@ keep_going:						/* We will come back to here until there is
 					{
 						/*
 						 * Server failure of some sort, such as failure to
-						 * fork a backend process.  We need to process and
-						 * report the error message, which might be formatted
-						 * according to either protocol 2 or protocol 3.
-						 * Rather than duplicate the code for that, we flip
-						 * into AWAITING_RESPONSE state and let the code there
-						 * deal with it.  Note we have *not* consumed the "E"
-						 * byte here.
+						 * fork a backend process.  Don't bother retrieving
+						 * the error message; we should not trust it as the
+						 * server has not been authenticated yet.
 						 */
-						conn->status = CONNECTION_AWAITING_RESPONSE;
-						goto keep_going;
+						appendPQExpBuffer(&conn->errorMessage,
+										  libpq_gettext("server sent an error response during SSL exchange\n"));
+						goto error_return;
 					}
 					else
 					{
@@ -3243,17 +3241,22 @@ keep_going:						/* We will come back to here until there is
 					conn->status = CONNECTION_MADE;
 					return PGRES_POLLING_WRITING;
 				}
-				else if (pollres == PGRES_POLLING_FAILED &&
-						 conn->gssencmode[0] == 'p')
+				else if (pollres == PGRES_POLLING_FAILED)
 				{
-					/*
-					 * We failed, but we can retry on "prefer".  Have to drop
-					 * the current connection to do so, though.
-					 */
-					conn->try_gss = false;
-					need_new_connection = true;
-					goto keep_going;
+					if (conn->gssencmode[0] == 'p')
+					{
+						/*
+						 * We failed, but we can retry on "prefer".  Have to
+						 * drop the current connection to do so, though.
+						 */
+						conn->try_gss = false;
+						need_new_connection = true;
+						goto keep_going;
+					}
+					/* Else it's a hard failure */
+					goto error_return;
 				}
+				/* Else, return POLLING_READING or POLLING_WRITING status */
 				return pollres;
 #else							/* !ENABLE_GSS */
 				/* unreachable */
@@ -7461,24 +7464,8 @@ static void
 default_threadlock(int acquire)
 {
 #ifdef ENABLE_THREAD_SAFETY
-#ifndef WIN32
 	static pthread_mutex_t singlethread_lock = PTHREAD_MUTEX_INITIALIZER;
-#else
-	static pthread_mutex_t singlethread_lock = NULL;
-	static long mutex_initlock = 0;
 
-	if (singlethread_lock == NULL)
-	{
-		while (InterlockedExchange(&mutex_initlock, 1) == 1)
-			 /* loop, another thread own the lock */ ;
-		if (singlethread_lock == NULL)
-		{
-			if (pthread_mutex_init(&singlethread_lock, NULL))
-				Assert(false);
-		}
-		InterlockedExchange(&mutex_initlock, 0);
-	}
-#endif
 	if (acquire)
 	{
 		if (pthread_mutex_lock(&singlethread_lock))

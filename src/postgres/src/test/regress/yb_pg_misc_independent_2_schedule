@@ -7,8 +7,8 @@
 ####################################################################################################
 test: yb.port.identity
 test: yb.port.alter_generic
-test: yb.port.alter_operator
-test: yb.port.dbsize
+test: alter_operator
+test: dbsize
 test: yb.port.indirect_toast
 test: yb.port.conversion
 test: yb.port.truncate

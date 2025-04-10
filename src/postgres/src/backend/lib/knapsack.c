@@ -54,7 +54,7 @@ Bitmapset *
 DiscreteKnapsack(int max_weight, int num_items,
 				 int *item_weights, double *item_values)
 {
-	MemoryContext local_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext local_ctx = AllocSetContextCreate(CurrentMemoryContext,
 													"Knapsack",
 													ALLOCSET_SMALL_SIZES);
 	MemoryContext oldctx = MemoryContextSwitchTo(local_ctx);

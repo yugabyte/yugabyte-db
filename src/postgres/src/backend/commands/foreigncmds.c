@@ -86,11 +86,11 @@ optionListToArray(List *options)
 
 		astate = accumArrayResult(astate, PointerGetDatum(t),
 								  false, TEXTOID,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 	}
 
 	if (astate)
-		return makeArrayResult(astate, GetCurrentMemoryContext());
+		return makeArrayResult(astate, CurrentMemoryContext);
 
 	return PointerGetDatum(NULL);
 }

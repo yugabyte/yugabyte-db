@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------
  *
  * yb_terminated_queries.c
- *	  Implementation of YB terminated queries.
+ *	  Implementation of YB Terminated Queries.
  *
  * This file contains the implementation of yb terminated queries. It is kept
  * separate from pgstat.c to enforce the line between the statistics access /
@@ -33,11 +33,13 @@
 #include "funcapi.h"
 #include "nodes/execnodes.h"
 #include "pg_yb_utils.h"
+#include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/acl.h"
 #include "utils/backend_status.h"
 #include "utils/builtins.h"
+#include "yb_file_utils.h"
 #include "yb_terminated_queries.h"
 
 /* Caps the number of queries which can be stored in the array. */
@@ -45,6 +47,10 @@
 
 #define YB_QUERY_TEXT_SIZE 256
 #define YB_QUERY_TERMINATION_SIZE 256
+
+#define YB_TERMINATED_QUERIES_FILE_FORMAT_ID	0x20250325
+#define YB_TERMINATED_QUERIES_FILENAME		"pg_stat/yb_terminated_queries.stat"
+#define YB_TERMINATED_QUERIES_TMPFILE		"pg_stat/yb_terminated_queries.tmp"
 
 /* Structure defining the format of a terminated query. */
 typedef struct YbTerminatedQuery
@@ -66,6 +72,10 @@ typedef struct YbTerminatedQueries {
 
 static LWLock *yb_terminated_queries_lock;
 static YbTerminatedQueriesBuffer *yb_terminated_queries;
+
+static YbTerminatedQuery *yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries);
+static void yb_save_terminated_queries(int code, Datum arg);
+static void yb_restore_terminated_queries();
 
 Size
 YbTerminatedQueriesShmemSize(void)
@@ -96,7 +106,13 @@ YbTerminatedQueriesShmemInit(void)
 													&found);
 
 	if (!found)
+	{
 		MemSet(yb_terminated_queries, 0, sizeof(YbTerminatedQueriesBuffer));
+		yb_restore_terminated_queries();
+	}
+
+	if (!IsUnderPostmaster)
+		on_shmem_exit(yb_save_terminated_queries, (Datum) 0);
 
 	return;
 }
@@ -149,7 +165,7 @@ yb_report_query_termination(char *message, int pid)
  * Returns terminated queries filtered by db_oid, else returns all terminated queries if db_oid is
  * not mentioned. Returns NULL if no terminated queries have been reported.
  */
-YbTerminatedQuery *
+static YbTerminatedQuery *
 yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 {
 	LWLockAcquire(yb_terminated_queries_lock, LW_SHARED);
@@ -189,6 +205,22 @@ yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 	LWLockRelease(yb_terminated_queries_lock);
 
 	return queries;
+}
+
+static void
+yb_save_terminated_queries(int code, Datum arg)
+{
+	yb_write_struct_to_file(YB_TERMINATED_QUERIES_TMPFILE, YB_TERMINATED_QUERIES_FILENAME,
+							yb_terminated_queries, sizeof(YbTerminatedQueriesBuffer),
+							YB_TERMINATED_QUERIES_FILE_FORMAT_ID);
+}
+
+static void
+yb_restore_terminated_queries()
+{
+	yb_read_struct_from_file(YB_TERMINATED_QUERIES_FILENAME,
+							 yb_terminated_queries, sizeof(YbTerminatedQueriesBuffer),
+							 YB_TERMINATED_QUERIES_FILE_FORMAT_ID);
 }
 
 /*

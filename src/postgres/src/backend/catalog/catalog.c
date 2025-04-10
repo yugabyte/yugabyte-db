@@ -59,8 +59,10 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/defrem.h"
+#include "executor/spi.h"
 #include "pg_yb_utils.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/syscache.h"
 
 /*
@@ -149,6 +151,36 @@ IsCatalogRelationOid(Oid relid)
 	 * OIDs; see GetNewObjectId().
 	 */
 	return (relid < (Oid) FirstUnpinnedObjectId);
+}
+
+/*
+ * IsInplaceUpdateRelation
+ *		True iff core code performs inplace updates on the relation.
+ *
+ *		This is used for assertions and for making the executor follow the
+ *		locking protocol described at README.tuplock section "Locking to write
+ *		inplace-updated tables".  Extensions may inplace-update other heap
+ *		tables, but concurrent SQL UPDATE on the same table may overwrite
+ *		those modifications.
+ *
+ *		The executor can assume these are not partitions or partitioned and
+ *		have no triggers.
+ */
+bool
+IsInplaceUpdateRelation(Relation relation)
+{
+	return IsInplaceUpdateOid(RelationGetRelid(relation));
+}
+
+/*
+ * IsInplaceUpdateOid
+ *		Like the above, but takes an OID as argument.
+ */
+bool
+IsInplaceUpdateOid(Oid relid)
+{
+	return (relid == RelationRelationId ||
+			relid == DatabaseRelationId);
 }
 
 /*
@@ -624,6 +656,96 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	return newOid;
 }
 
+static HTAB *
+YbGetAllRelfilenodes()
+{
+	static HTAB *relfilenode_htab = NULL;
+
+	/* For backward compatibility and Keep unit test happy. */
+	if (!*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator)
+		return NULL;
+
+	/*
+	 * For practical purpose, there is no need to refresh the hash table during
+	 * a session. We only need to find out existing relfilenode in pg_class
+	 * before the session starts. After a session starts, a newly allocated OID
+	 * cannot cause collision.
+	 */
+	if (relfilenode_htab)
+		return relfilenode_htab;
+
+	/*
+	 * Connect to SPI manager
+	 */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+	char query[100];
+	sprintf(query, "SELECT relfilenode FROM pg_catalog.pg_class WHERE relfilenode >= %u",
+			FirstNormalObjectId);
+	SPIPlanPtr plan = SPI_prepare(query, 0, NULL);
+	if (plan == NULL)
+		elog(ERROR, "SPI_prepare failed for \"%s\"", query);
+
+	int saved_yb_fetch_row_limit = yb_fetch_row_limit;
+	bool saved_yb_is_calling_internal_function_for_ddl = yb_is_calling_internal_function_for_ddl;
+	/*
+	 * We are fetching relfilenode column, each row has only 4-bytes, let's
+	 * fetch 256K rows at a time.
+	 */
+	yb_fetch_row_limit = 1024 * 256;
+	yb_is_calling_internal_function_for_ddl = true;
+	PG_TRY();
+	{
+		int spirc = SPI_execute_plan(plan, NULL, NULL, true, 0);
+		yb_fetch_row_limit = saved_yb_fetch_row_limit;
+		yb_is_calling_internal_function_for_ddl = saved_yb_is_calling_internal_function_for_ddl;
+		if (spirc != SPI_OK_SELECT)
+			elog(ERROR, "failed to get relfilenode tuple");
+		YBC_LOG_INFO("SPI_processed = %lu", SPI_processed);
+	}
+	PG_CATCH();
+	{
+		yb_fetch_row_limit = saved_yb_fetch_row_limit;
+		yb_is_calling_internal_function_for_ddl = saved_yb_is_calling_internal_function_for_ddl;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/* Build a hash table of all the relfilenodes in pg_class. */
+	HASHCTL		ctl;
+	ctl.keysize = sizeof(Oid);
+	ctl.entrysize = sizeof(Oid);
+	ctl.hcxt = CacheMemoryContext;
+	relfilenode_htab = hash_create("relfilenode_htab", 1024, &ctl, HASH_ELEM | HASH_BLOBS);
+	uint64		i;
+	for (i = 0; i < SPI_processed; i++)
+	{
+		bool		isnull;
+		Datum       qdata = SPI_getbinval(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 1, &isnull);
+		Assert(!isnull);
+		Oid         relfilenode = DatumGetObjectId(qdata);
+		hash_search(relfilenode_htab, &relfilenode, HASH_ENTER, NULL);
+	}
+
+	/*
+	 * Disconnect from SPI manager
+	 */
+	if (SPI_finish() != SPI_OK_FINISH)
+	{
+		hash_destroy(relfilenode_htab);
+		relfilenode_htab = NULL;
+		elog(ERROR, "SPI_finish failed");
+	}
+
+	return relfilenode_htab;
+}
+
+static bool
+YbDoesRelfilenodeExist(HTAB *htab, Oid relfilenode)
+{
+	return htab && hash_search(htab, &relfilenode, HASH_FIND, NULL);
+}
+
 /*
  * GetNewRelFileNode
  *		Generate a new relfilenode number that is unique within the
@@ -644,6 +766,11 @@ Oid
 GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 {
 	RelFileNodeBackend rnode;
+
+	HTAB *htab = NULL;
+
+	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
+		htab = YbGetAllRelfilenodes();
 
 	/*
 	 * If we ever get here during pg_upgrade, there's something wrong; all
@@ -689,7 +816,11 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 			rnode.node.relNode = GetNewObjectId();
 
 		/* Check for existing file of same name */
-	} while (DoesRelFileExist(&rnode));
+		/*
+		 * YB: also check for existing relfilenode in the pg_class catalog table.
+		 */
+	} while (DoesRelFileExist(&rnode) ||
+			 YbDoesRelfilenodeExist(htab, rnode.node.relNode));
 
 	return rnode.node.relNode;
 }

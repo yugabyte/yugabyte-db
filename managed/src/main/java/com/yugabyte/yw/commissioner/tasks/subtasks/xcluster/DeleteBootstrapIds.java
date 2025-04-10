@@ -127,7 +127,11 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      if (!forceDelete) {
+        throw new RuntimeException(e);
+      } else {
+        log.warn("Ignoring error because forceDelete is true: {}", e.getMessage());
+      }
     }
 
     log.info("Completed {}", getName());

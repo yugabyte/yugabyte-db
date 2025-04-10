@@ -143,13 +143,14 @@ install-data: bki-stamp yb_bki-stamp installdirs
 	$(INSTALL_DATA) $(srcdir)/yb_system_views.sql '$(DESTDIR)$(datadir)/yb_system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
+	$(INSTALL_DATA) $(srcdir)/fix-CVE-2024-4317.sql '$(DESTDIR)$(datadir)/fix-CVE-2024-4317.sql'
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(datadir)'
 
 .PHONY: uninstall-data
 uninstall-data:
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki yb_postgres.bki system_constraints.sql system_functions.sql system_views.sql information_schema.sql sql_features.txt yb_system_functions.sql yb_system_views.sql)
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki system_constraints.sql system_functions.sql system_views.sql information_schema.sql sql_features.txt fix-CVE-2024-4317.sql yb_system_functions.sql yb_system_views.sql)
 
 # postgres.bki, system_constraints.sql, and the generated headers are
 # in the distribution tarball, so they are not cleaned here.

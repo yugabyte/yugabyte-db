@@ -120,7 +120,14 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-static bool table_states_valid = false;
+typedef enum
+{
+	SYNC_TABLE_STATE_NEEDS_REBUILD,
+	SYNC_TABLE_STATE_REBUILD_STARTED,
+	SYNC_TABLE_STATE_VALID,
+} SyncingTablesState;
+
+static SyncingTablesState table_states_validity = SYNC_TABLE_STATE_NEEDS_REBUILD;
 static List *table_states_not_ready = NIL;
 static bool FetchTableStates(bool *started_tx);
 
@@ -270,7 +277,7 @@ wait_for_worker_state_change(char expected_state)
 void
 invalidate_syncing_table_states(Datum arg, int cacheid, uint32 hashvalue)
 {
-	table_states_valid = false;
+	table_states_validity = SYNC_TABLE_STATE_NEEDS_REBUILD;
 }
 
 /*
@@ -518,15 +525,25 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 					/* Now safe to release the LWLock */
 					LWLockRelease(LogicalRepWorkerLock);
 
+					if (started_tx)
+					{
+						/*
+						 * We must commit the existing transaction to release
+						 * the existing locks before entering a busy loop.
+						 * This is required to avoid any undetected deadlocks
+						 * due to any existing lock as deadlock detector won't
+						 * be able to detect the waits on the latch.
+						 */
+						CommitTransactionCommand();
+						pgstat_report_stat(false);
+					}
+
 					/*
 					 * Enter busy loop and wait for synchronization worker to
 					 * reach expected state (or die trying).
 					 */
-					if (!started_tx)
-					{
-						StartTransactionCommand();
-						started_tx = true;
-					}
+					StartTransactionCommand();
+					started_tx = true;
 
 					wait_for_relation_state_change(rstate->relid,
 												   SUBREL_STATE_SYNCDONE);
@@ -1044,22 +1061,30 @@ copy_table(Relation rel)
 	/* Regular table with no row filter */
 	if (lrel.relkind == RELKIND_RELATION && qual == NIL)
 	{
-		appendStringInfo(&cmd, "COPY %s (",
+		appendStringInfo(&cmd, "COPY %s",
 						 quote_qualified_identifier(lrel.nspname, lrel.relname));
 
-		/*
-		 * XXX Do we need to list the columns in all cases? Maybe we're
-		 * replicating all columns?
-		 */
-		for (int i = 0; i < lrel.natts; i++)
+		/* If the table has columns, then specify the columns */
+		if (lrel.natts)
 		{
-			if (i > 0)
-				appendStringInfoString(&cmd, ", ");
+			appendStringInfoString(&cmd, " (");
 
-			appendStringInfoString(&cmd, quote_identifier(lrel.attnames[i]));
+			/*
+			 * XXX Do we need to list the columns in all cases? Maybe we're
+			 * replicating all columns?
+			 */
+			for (int i = 0; i < lrel.natts; i++)
+			{
+				if (i > 0)
+					appendStringInfoString(&cmd, ", ");
+
+				appendStringInfoString(&cmd, quote_identifier(lrel.attnames[i]));
+			}
+
+			appendStringInfoString(&cmd, ")");
 		}
 
-		appendStringInfo(&cmd, ") TO STDOUT");
+		appendStringInfo(&cmd, " TO STDOUT");
 	}
 	else
 	{
@@ -1448,12 +1473,14 @@ FetchTableStates(bool *started_tx)
 
 	*started_tx = false;
 
-	if (!table_states_valid)
+	if (table_states_validity != SYNC_TABLE_STATE_VALID)
 	{
 		MemoryContext oldctx;
 		List	   *rstates;
 		ListCell   *lc;
 		SubscriptionRelState *rstate;
+
+		table_states_validity = SYNC_TABLE_STATE_REBUILD_STARTED;
 
 		/* Clean the old lists. */
 		list_free_deep(table_states_not_ready);
@@ -1488,7 +1515,15 @@ FetchTableStates(bool *started_tx)
 		has_subrels = (list_length(table_states_not_ready) > 0) ||
 			HasSubscriptionRelations(MySubscription->oid);
 
-		table_states_valid = true;
+		/*
+		 * If the subscription relation cache has been invalidated since we
+		 * entered this routine, we still use and return the relations we just
+		 * finished constructing, to avoid infinite loops, but we leave the
+		 * table states marked as stale so that we'll rebuild it again on next
+		 * access. Otherwise, we mark the table states as valid.
+		 */
+		if (table_states_validity == SYNC_TABLE_STATE_REBUILD_STARTED)
+			table_states_validity = SYNC_TABLE_STATE_VALID;
 	}
 
 	return has_subrels;

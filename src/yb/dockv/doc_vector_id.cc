@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 
 namespace yb::dockv {
 

@@ -152,6 +152,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
       "the tests with connection manager";
 
+  protected static final String DUMMY_LABEL_NOT_LOADED_ON_ALL_BACKENDS =
+      "Skipping this test with Ysql Connection Manager as security labels of \'dummy\' provider " +
+      "are not loaded on all backends, except for where create extension has been executed. " +
+      "Therefore in random mode of conn mgr, while loading security labels on different " +
+      "backend it throws error. Skipping this test untill bug is fixed tracked by GH: #26650";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +
@@ -1554,7 +1560,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected List<Row> getRowList(ResultSet rs) throws SQLException {
+  static protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       rows.add(Row.fromResultSet(rs));
@@ -1562,7 +1568,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
+  static protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
     // Sort all rows and return.
     List<Row> rows = getRowList(rs);
     Collections.sort(rows);

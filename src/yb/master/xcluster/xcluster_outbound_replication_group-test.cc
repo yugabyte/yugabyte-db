@@ -16,12 +16,16 @@
 #include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client_mock.h"
+
 #include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
@@ -161,8 +165,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     }
   }
 
-  void SetUp() {
-    YBTest::SetUp();
+  void SetUp() override {
+    TEST_SETUP_SUPER(YBTest);
     LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
   }
@@ -308,6 +312,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
         return Status::OK();
       },
+      .set_normal_oid_counter_above_all_normal_oids_func =
+          [](NamespaceId namespace_id) -> Status { return Status::OK(); },
       .get_normal_oid_higher_than_any_used_normal_oid_func =
           [](NamespaceId namespace_id) -> Result<uint32_t> { return 100'000; },
       .get_namespace_func =
@@ -413,7 +419,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, const NamespaceCheckpointInfo& ns_info,
       bool all_tables_included = true, const PgSchemaName& table2_schema_name = kPgSchemaName) {
-    EXPECT_FALSE(ns_info.initial_bootstrap_required);
+    EXPECT_EQ(ns_info.initial_bootstrap_required, UseAutomaticMode());
     ASSERT_EQ(ns_info.table_infos.size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
     std::set<TableId> table_ids;
     for (const auto& table_info : ns_info.table_infos) {
@@ -714,8 +720,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTableDuringCheckpoint) {
   auto* sync_point_instance = yb::SyncPoint::GetInstance();
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"TESTAddTableDuringCheckpoint::TableCreated",
-        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+      {{.predecessor = "TESTAddTableDuringCheckpoint::TableCreated",
+        .successor = "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
   sync_point_instance->EnableProcessing();
 
   ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));
@@ -742,8 +748,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, DropTableDuringCheckpoint) {
   auto* sync_point_instance = yb::SyncPoint::GetInstance();
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"TESTAddTableDuringCheckpoint::TableCreated",
-        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+      {{.predecessor = "TESTAddTableDuringCheckpoint::TableCreated",
+        .successor = "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
   sync_point_instance->EnableProcessing();
 
   ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));

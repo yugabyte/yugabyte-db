@@ -29,6 +29,7 @@
 /* YB includes */
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
+#include "replication/walsender.h"
 #include "utils/uuid.h"
 
 /*
@@ -49,7 +50,7 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 	ReplicationSlotCreate(name, false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
 						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
-						  NULL, CRS_SEQUENCE);
+						  NULL, CRS_SEQUENCE, YB_CRS_TRANSACTION);
 
 	if (immediately_reserve)
 	{
@@ -131,7 +132,8 @@ create_logical_replication_slot(char *name, char *plugin,
 								bool temporary, bool two_phase,
 								XLogRecPtr restart_lsn,
 								bool find_startpoint,
-								char *yb_lsn_type)
+								char *yb_lsn_type,
+								char *yb_ordering_mode)
 {
 	LogicalDecodingContext *ctx = NULL;
 
@@ -150,9 +152,10 @@ create_logical_replication_slot(char *name, char *plugin,
 	 * CreateInitDecodingContext call below where `need_full_snapshot` is passed
 	 * as false indicating that no snapshot should be built.
 	 */
-	ReplicationSlotCreate(name, true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
-						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL, YBParseLsnType(yb_lsn_type));
+	ReplicationSlotCreate(name, true, temporary ? RS_TEMPORARY : RS_EPHEMERAL,
+						  two_phase, plugin, CRS_NOEXPORT_SNAPSHOT, NULL,
+						  YBParseLsnType(yb_lsn_type),
+						  YBParseOrderingMode(yb_ordering_mode));
 
 	if (!IsYugaByteEnabled())
 	{
@@ -206,6 +209,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		yb_lsn_type_arg;
 	char	   *yb_lsn_type = "SEQUENCE";
 
+	char	   *yb_ordering_mode = "TRANSACTION";
+
 	if (!PG_ARGISNULL(4))
 	{
 		yb_lsn_type_arg = PG_GETARG_NAME(4);
@@ -243,6 +248,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 
 		YBValidateOutputPlugin(NameStr(*plugin));
 		YBValidateLsnType(yb_lsn_type);
+		YBValidateOrderingMode(yb_ordering_mode);
 	}
 
 	CheckSlotPermissions();
@@ -255,7 +261,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									two_phase,
 									InvalidXLogRecPtr,
 									true,
-									yb_lsn_type);
+									yb_lsn_type,
+									yb_ordering_mode);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -873,6 +880,7 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 	ReplicationSlot first_slot_contents;
 	ReplicationSlot second_slot_contents;
 	char	   *yb_lsn_type = "SEQUENCE";
+	char	   *yb_ordering_mode = "TRANSACTION";
 	XLogRecPtr	src_restart_lsn;
 	bool		src_islogical;
 	bool		temporary;
@@ -972,7 +980,8 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 										false,
 										src_restart_lsn,
 										false,
-										yb_lsn_type);
+										yb_lsn_type,
+										yb_ordering_mode);
 	}
 	else
 		create_physical_replication_slot(NameStr(*dst_name),

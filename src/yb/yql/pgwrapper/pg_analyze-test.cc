@@ -11,24 +11,37 @@
 // under the License.
 //
 
+#include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
+
+#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/tablet_split_manager.h"
 
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(TEST_refresh_partitions_after_fetched_sample_blocks);
+
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(ysql_docdb_blocks_sampling_method);
 
 DECLARE_int64(db_block_size_bytes);
@@ -60,7 +73,7 @@ std::unordered_map<int, float> kMaxGroupWidthStdDevToAvgRatio = {
 
 // When we have small number of groups to check, std.dev is not accurate, and we compare
 // (max-min)/avg instead and allow higher deviation.
-constexpr auto kMaxGroupWidthMaxMinDeltaToAvgRatio = 0.4;
+constexpr auto kMaxGroupWidthMaxMinDeltaToAvgRatio = 0.5;
 
 Status CheckHistogramBounds(
     PGConn* conn, const std::string& table_name, const std::string& column_name,
@@ -228,14 +241,23 @@ std::string GetPreSplitSpecifier(
 
 class PgAnalyzeTest : public PgTabletSplitTestBase {
  protected:
+  struct TableDesc {
+    std::optional<TableId> colocated_parent_table_id;
+    std::string table_name;
+    std::string table_schema;
+  };
+
   void EnableVlogs(bool enable) {
     google::SetVLOGLevel("pg_doc_op", 2 * enable);
-    google::SetVLOGLevel("pg_sample", 4 * enable);
     google::SetVLOGLevel("pgsql_operation", 4 * enable);
     google::SetVLOGLevel("ql_rocksdb_storage", 4 * enable);
+    // For postgres process we need to pass vlog settings via vmodule:
+    FLAGS_vmodule = Format("pg_sample=$0", 4 * enable);
+    ASSERT_OK(SET_FLAG(vmodule, FLAGS_vmodule));
   }
 
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
         Format("default_statistics_target=$0", kStatisticsTarget);
     if (kEnableVlogs) {
@@ -251,11 +273,12 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
   }
 
   Status PrepareHelperData() {
-    auto conn = VERIFY_RESULT(ConnectToDB(database_name));
+    LOG_WITH_FUNC(INFO) << "Started";
+    auto conn = VERIFY_RESULT(ConnectToDB(database_name_));
 
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION pgcrypto"));
 
-    LOG(INFO) << "Creating helper tables and loading data for database: " << database_name;
+    LOG(INFO) << "Creating helper tables and loading data for database: " << database_name_;
 
     RETURN_NOT_OK(
         conn.Execute("CREATE TABLE series_with_random(k SERIAL, r float, PRIMARY KEY (k ASC))"));
@@ -269,19 +292,11 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
     RETURN_NOT_OK(conn.Execute(
         "INSERT INTO series_random_order(v) SELECT k FROM series_with_random order by r;"));
     LOG(INFO) << "Inserted " << kNumRows << " rows into series_random_order";
+    LOG_WITH_FUNC(INFO) << "Done";
     return Status::OK();
   }
 
-  Status RunAnalyzeAndCheck(
-      PGConn* conn, const std::string& table_name, const std::optional<TableId>& colocated_table_id,
-      size_t num_rows, const std::vector<bool>& allow_separate_requests_for_sampling_stages_values,
-      test::Partitioning partitioning) {
-    const std::set<std::string> kLowCardinalityColumns = {"v_m", "v_n", "v_rm", "v_rn"};
-
-    const auto table_id =
-        colocated_table_id.value_or(VERIFY_RESULT(GetTableIDFromTableName(table_name)));
-    const auto is_colocated = colocated_table_id.has_value();
-
+  Result<size_t> GetNumDataBlocks(const TableId& table_id) {
     size_t num_total_data_blocks = 0;
 
     for (const auto& tablet_peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
@@ -307,8 +322,155 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       }
     }
     LOG(INFO) << "num_total_data_blocks: " << num_total_data_blocks;
+    return num_total_data_blocks;
+  }
 
-    if (num_rows > 0 && (is_colocated || num_rows == kNumRows)) {
+  Status RunAnalyzeAndCheck(
+      PGConn* conn, const std::string& table_name, size_t num_rows, test::Partitioning partitioning,
+      YsqlSamplingAlgorithm ysql_sampling_algorithm,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      bool allow_separate_requests_for_sampling_stages) {
+    const std::set<std::string> kLowCardinalityColumns = {"v_m", "v_n", "v_rm", "v_rn"};
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_docdb_blocks_sampling_method) = blocks_sampling_method;
+
+    if (kEnableVlogsDuringAnalyze) {
+      EnableVlogs(/* enable = */ true);
+      RETURN_NOT_OK(RestartPostgres());
+      *conn = VERIFY_RESULT(ConnectToDB(database_name_));
+    }
+
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "SET yb_allow_separate_requests_for_sampling_stages = $0",
+        allow_separate_requests_for_sampling_stages));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "SET yb_sampling_algorithm = $0", GetYbSamplingAlgorithm(ysql_sampling_algorithm)));
+
+    const auto num_distinct_tolerace = kNumDistinctTolerance[blocks_sampling_method];
+    const auto null_frac_tolerance = kNullFracTolerance[blocks_sampling_method];
+    const auto estimated_total_rows_accuracy =
+        kEstimatedTotalRowsAccuracy[blocks_sampling_method];
+
+    {
+      Stopwatch sw;
+      sw.start();
+      RETURN_NOT_OK(conn->ExecuteFormat("ANALYZE VERBOSE $0", table_name));
+      sw.stop();
+      LOG(INFO) << table_name << " ANALYZE took " << sw.elapsed().ToString();
+    }
+
+    if (kEnableVlogsDuringAnalyze) {
+      EnableVlogs(/* enable = */ false);
+      RETURN_NOT_OK(RestartPostgres());
+      *conn = VERIFY_RESULT(ConnectToDB(database_name_));
+    }
+
+    if (kStatisticsTarget <= 10) {
+      // We use lower settings for faster test runs for debug, asan, tsan builds and that
+      // causes higher inaccuracy, so we only check statistics for release build.
+      return Status::OK();
+    }
+
+    const auto reltuples = size_t(VERIFY_RESULT(conn->FetchRow<float>(
+        Format("SELECT reltuples FROM pg_class WHERE relname = '$0'", table_name))));
+    LOG(INFO) << table_name << " estimated total rows: " << reltuples;
+    EXPECT_GE(reltuples, num_rows * (1 - estimated_total_rows_accuracy))
+        << " table_name: " << table_name;
+    EXPECT_LE(reltuples, num_rows * (1 + estimated_total_rows_accuracy))
+        << " table_name: " << table_name;
+
+    if (num_rows <= 1) {
+      return Status::OK();
+    }
+
+    for (std::string column_name :
+         {"k", "v", "v_d", "v_m", "v_n", "v_r", "v_rd", "v_rm", "v_rn"}) {
+      const bool is_low_cardinality_column = kLowCardinalityColumns.contains(column_name);
+      EXPECT_OK(CheckHistogramBounds(
+          conn, table_name, column_name,
+          is_low_cardinality_column ? 0 : kStatisticsTarget + 1));
+
+      auto [null_frac, n_distinct, correlation] =
+          VERIFY_RESULT((conn->FetchRow<float, float, float>(Format(
+              "SELECT null_frac, n_distinct, correlation FROM pg_stats "
+              "WHERE tablename='$0' and attname='$1'",
+              table_name, column_name))));
+
+      const auto n_disinct_count = n_distinct >= 0 ? n_distinct : -n_distinct * reltuples;
+
+      LOG(INFO) << "column_name: " << column_name << " null_frac: " << null_frac
+                << " n_distinct: " << n_distinct << " correlation: " << correlation;
+
+      if (column_name == "v_n" || column_name == "v_rn") {
+        // Expected 10% of null values.
+        EXPECT_GT(null_frac, 0.1 - null_frac_tolerance);
+        EXPECT_LT(null_frac, 0.1 + null_frac_tolerance);
+      } else {
+        SCHECK_LT(null_frac, kEps, InternalError, "");
+      }
+
+      SCHECK_LT(correlation, 1 + kEps, InternalError, "");
+      SCHECK_GT(correlation, -1 - kEps, InternalError, "");
+      // YsqlSamplingAlgorithm::FULL_TABLE_SCAN calculates correlation incorrectly as of
+      // 2024-12-12, so skip it.
+      if (ysql_sampling_algorithm != YsqlSamplingAlgorithm::FULL_TABLE_SCAN) {
+        if (column_name == "k" || column_name == "v" || column_name == "v_d") {
+          // These column values are in the scan order for range-sharded table.
+          bool is_handled = false;
+          switch (partitioning) {
+            case test::Partitioning::kHash:
+              SCHECK_LT(correlation, 0.05, InternalError, "");
+              is_handled = true;
+              break;
+            case test::Partitioning::kRange:
+              is_handled = true;
+              SCHECK_GT(correlation, 1 - kEps, InternalError, "");
+              break;
+          }
+          if (!is_handled) {
+            FATAL_INVALID_ENUM_VALUE(test::Partitioning, partitioning);
+          }
+        }
+      }
+
+      SCHECK_GT(n_distinct, -1 - kEps, InternalError, "");
+      if (column_name == "k" || column_name == "v" || column_name == "v_r") {
+        // All values are distinct and number of distinct values grows with the number of
+        // rows.
+        SCHECK_LT(n_distinct, -1 + kEps, InternalError, "");
+      } else if (column_name == "v_rd") {
+        const auto expected_n_distinct = EstimateDistinct(kNumRows / 10, 10, num_rows);
+        EXPECT_GT(n_disinct_count, expected_n_distinct * (1 - num_distinct_tolerace))
+            << "table_name: " << table_name;
+        EXPECT_LT(n_disinct_count, expected_n_distinct * (1 + num_distinct_tolerace))
+            << "table_name: " << table_name;
+      } else if (column_name == "v_d") {
+        // TODO(analyze_sampling): for v_d n_distinct should be 10%, but for block-based
+        // sampling it could be calculated incorrectly. PG has the same problem for repeated
+        // values ordered in scan order.
+      } else if (column_name == "v_m" || column_name == "v_rm") {
+        SCHECK_EQ(n_distinct, 10, InternalError, "");
+      } else if (column_name == "v_n" || column_name == "v_rn") {
+        SCHECK_EQ(n_distinct, 9, InternalError, "");
+      }
+    }
+    return Status::OK();
+  }
+
+  Status RunAnalyzeAndCheckAlgorithms(
+      PGConn* conn, const std::string& table_name,
+      const std::optional<TableId>& colocated_parent_table_id, size_t num_rows,
+      const std::vector<bool>& allow_separate_requests_for_sampling_stages_values,
+      test::Partitioning partitioning) {
+    const auto table_id =
+        colocated_parent_table_id.value_or(VERIFY_RESULT(GetTableIDFromTableName(table_name)));
+    const auto is_colocated = colocated_parent_table_id.has_value();
+
+    const auto num_total_data_blocks = VERIFY_RESULT(GetNumDataBlocks(table_id));
+
+    const auto has_no_splits =
+        VERIFY_RESULT(client_->OpenTable(table_id))->GetPartitionListVersion() == 0;
+    if (num_rows > 0 && (is_colocated || num_rows == kNumRows) && has_no_splits) {
       // Only check for non-empty colocated tables tablet or initial non-colocated table.
       EXPECT_GT(num_total_data_blocks, kNumSampleRows * RegularBuildVsDebugVsSanitizers(2, 1, 1));
     }
@@ -328,158 +490,46 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
                     << DocDbBlocksSamplingMethod_Name(blocks_sampling_method)
                     << " yb_allow_separate_requests_for_sampling_stages: "
                     << allow_separate_requests_for_sampling_stages;
-          ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_docdb_blocks_sampling_method) =
-              blocks_sampling_method;
-
-          if (kEnableVlogsDuringAnalyze) {
-            EnableVlogs(/* enable = */ true);
-            RETURN_NOT_OK(RestartPostgres());
-            *conn = VERIFY_RESULT(ConnectToDB(database_name));
-          }
-
-          RETURN_NOT_OK(conn->ExecuteFormat(
-              "SET yb_allow_separate_requests_for_sampling_stages = $0",
-              allow_separate_requests_for_sampling_stages));
-          RETURN_NOT_OK(conn->ExecuteFormat(
-              "SET yb_sampling_algorithm = $0", GetYbSamplingAlgorithm(ysql_sampling_algorithm)));
-
-          const auto num_distinct_tolerace = kNumDistinctTolerance[blocks_sampling_method];
-          const auto null_frac_tolerance = kNullFracTolerance[blocks_sampling_method];
-          const auto estimated_total_rows_accuracy =
-              kEstimatedTotalRowsAccuracy[blocks_sampling_method];
-
-          RETURN_NOT_OK(conn->ExecuteFormat("ANALYZE VERBOSE $0", table_name));
-
-          if (kEnableVlogsDuringAnalyze) {
-            EnableVlogs(/* enable = */ false);
-            RETURN_NOT_OK(RestartPostgres());
-            *conn = VERIFY_RESULT(ConnectToDB(database_name));
-          }
-
-          if (kStatisticsTarget <= 10) {
-            // We use lower settings for faster test runs for debug, asan, tsan builds and that
-            // causes higher inaccuracy, so we only check statistics for release build.
-            continue;
-          }
-
-          const auto reltuples = size_t(VERIFY_RESULT(conn->FetchRow<float>(
-              Format("SELECT reltuples FROM pg_class WHERE relname = '$0'", table_name))));
-          LOG(INFO) << table_name << " estimated total rows: " << reltuples;
-          EXPECT_GE(reltuples, num_rows * (1 - estimated_total_rows_accuracy))
-              << " table_name: " << table_name;
-          EXPECT_LE(reltuples, num_rows * (1 + estimated_total_rows_accuracy))
-              << " table_name: " << table_name;
-
-          if (num_rows <= 1) {
-            continue;
-          }
-
-          for (std::string column_name :
-               {"k", "v", "v_d", "v_m", "v_n", "v_r", "v_rd", "v_rm", "v_rn"}) {
-            const bool is_low_cardinality_column = kLowCardinalityColumns.contains(column_name);
-            EXPECT_OK(CheckHistogramBounds(
-                conn, table_name, column_name,
-                is_low_cardinality_column ? 0 : kStatisticsTarget + 1));
-
-            auto [null_frac, n_distinct, correlation] =
-                VERIFY_RESULT((conn->FetchRow<float, float, float>(Format(
-                    "SELECT null_frac, n_distinct, correlation FROM pg_stats "
-                    "WHERE tablename='$0' and attname='$1'",
-                    table_name, column_name))));
-
-            const auto n_disinct_count = n_distinct >= 0 ? n_distinct : -n_distinct * reltuples;
-
-            LOG(INFO) << "column_name: " << column_name << " null_frac: " << null_frac
-                      << " n_distinct: " << n_distinct << " correlation: " << correlation;
-
-            if (column_name == "v_n" || column_name == "v_rn") {
-              // Expected 10% of null values.
-              EXPECT_GT(null_frac, 0.1 - null_frac_tolerance);
-              EXPECT_LT(null_frac, 0.1 + null_frac_tolerance);
-            } else {
-              SCHECK_LT(null_frac, kEps, InternalError, "");
-            }
-
-            SCHECK_LT(correlation, 1 + kEps, InternalError, "");
-            SCHECK_GT(correlation, -1 - kEps, InternalError, "");
-            // YsqlSamplingAlgorithm::FULL_TABLE_SCAN calculates correlation incorrectly as of
-            // 2024-12-12, so skip it.
-            if (ysql_sampling_algorithm != YsqlSamplingAlgorithm::FULL_TABLE_SCAN) {
-              if (column_name == "k" || column_name == "v" || column_name == "v_d") {
-                // These column values are in the scan order for range-sharded table.
-                bool is_handled = false;
-                switch (partitioning) {
-                  case test::Partitioning::kHash:
-                    SCHECK_LT(correlation, 0.05, InternalError, "");
-                    is_handled = true;
-                    break;
-                  case test::Partitioning::kRange:
-                    is_handled = true;
-                    SCHECK_GT(correlation, 1 - kEps, InternalError, "");
-                  break;
-                }
-                if (!is_handled) {
-                  FATAL_INVALID_ENUM_VALUE(test::Partitioning, partitioning);
-                }
-              }
-            }
-
-            SCHECK_GT(n_distinct, -1 - kEps, InternalError, "");
-            if (column_name == "k" || column_name == "v" || column_name == "v_r") {
-              // All values are distinct and number of distinct values grows with the number of
-              // rows.
-              SCHECK_LT(n_distinct, -1 + kEps, InternalError, "");
-            } else if (column_name == "v_rd") {
-              const auto expected_n_distinct = EstimateDistinct(kNumRows / 10, 10, num_rows);
-              EXPECT_GT(n_disinct_count, expected_n_distinct * (1 - num_distinct_tolerace))
-                  << "table_name: " << table_name;
-              EXPECT_LT(n_disinct_count, expected_n_distinct * (1 + num_distinct_tolerace))
-                  << "table_name: " << table_name;
-            } else if (column_name == "v_d") {
-              // TODO(analyze_sampling): for v_d n_distinct should be 10%, but for block-based
-              // sampling it could be calculated incorrectly. PG has the same problem for repeated
-              // values ordered in scan order.
-            } else if (column_name == "v_m" || column_name == "v_rm") {
-              SCHECK_EQ(n_distinct, 10, InternalError, "");
-            } else if (column_name == "v_n" || column_name == "v_rn") {
-              SCHECK_EQ(n_distinct, 9, InternalError, "");
-            }
-          }
+          RETURN_NOT_OK(RunAnalyzeAndCheck(
+              conn, table_name, num_rows, partitioning, ysql_sampling_algorithm,
+              blocks_sampling_method, allow_separate_requests_for_sampling_stages));
         }
       }
     }
     return Status::OK();
   }
 
-  Status TestAnalyze(test::Partitioning partitioning, size_t num_shards,
-      std::vector<bool> allow_separate_requests_for_sampling_stages_values = {true}) {
+  Result<TableDesc> CreateAndPopulateTable(
+      const std::string& table_name_prefix, test::Partitioning partitioning, size_t num_shards,
+      size_t num_rows) {
+    LOG_WITH_FUNC(INFO) << "Started";
+    TableDesc table_desc;
+
     // We add some number of UUID columns just to have larger rows and higher number of data blocks.
     constexpr auto kNumUuids = 4;
 
-    std::optional<TableId> colocated_table_id;
     {
       const auto colocation_parent_tables = VERIFY_RESULT(client_->ListTables(
-          kColocationParentTableNameSuffix, /* exclude_ysql = */ false, database_name));
+          kColocationParentTableNameSuffix, /* exclude_ysql = */ false, database_name_));
       SCHECK_LE(
           colocation_parent_tables.size(), size_t{1}, InternalError,
           "More than one colocation parent table for database");
       if (!colocation_parent_tables.empty()) {
-        colocated_table_id = colocation_parent_tables.front().table_id();
+        table_desc.colocated_parent_table_id = colocation_parent_tables.front().table_id();
       }
     }
-    LOG(INFO) << "colocated_table_id: " << AsString(colocated_table_id);
+    LOG(INFO) << "colocated_parent_table_id: " << AsString(table_desc.colocated_parent_table_id);
 
-    const auto table_name_prefix = GetTableNamePrefix(partitioning);
-    std::string table_name = table_name_prefix;
+    table_desc.table_name = Format("$0_$1", table_name_prefix, num_rows);
 
     // We reduce block size and memtable size in order to have more SST files and more blocks for
     // testing analyze sampling. We don't do that for helper tables to spend less time on populating
     // them.
     SetupSstParams();
     RETURN_NOT_OK(cluster_->RestartSync());
-    auto conn = VERIFY_RESULT(ConnectToDB(database_name));
+    auto conn = VERIFY_RESULT(ConnectToDB(database_name_));
 
-    LOG(INFO) << "Creating test table " << table_name << " and loading with " << kNumRows
+    LOG(INFO) << "Creating test table " << table_desc.table_name << " and loading with " << num_rows
               << " rows of data...";
 
     std::string uuid_columns;
@@ -488,14 +538,14 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       uuid_columns += Format(", u_$0 UUID", i);
       uuid_generators += ", gen_random_uuid()";
     }
-    const auto table_schema = Format(
+    table_desc.table_schema = Format(
         "k INT, "
         "v INT, v_d INT, v_m INT, v_n INT, "
         "v_r INT, v_rd INT, v_rm INT, v_rn INT $0, PRIMARY KEY (k$1) $2",
         uuid_columns, partitioning == test::Partitioning::kRange ? " ASC" : "");
     std::string create_stmt = Format(
-        "CREATE TABLE $0($1)$2", table_name, table_schema,
-        GetPreSplitSpecifier(kNumRows, num_shards, partitioning));
+        "CREATE TABLE $0($1)$2", table_desc.table_name, table_desc.table_schema,
+        GetPreSplitSpecifier(num_rows, num_shards, partitioning));
     LOG(INFO) << "Create statement: " << create_stmt;
     RETURN_NOT_OK(conn.Execute(create_stmt));
 
@@ -506,25 +556,73 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
         "NULLIF(series_random_order.v % 10, 0) $1 FROM "
         "(SELECT generate_series(1, $2) i) tmp JOIN series_random_order "
         "ON series_random_order.k = i",
-        table_name, uuid_generators, kNumRows);
+        table_desc.table_name, uuid_generators, num_rows);
     LOG(INFO) << "Insert statement: " << insert_stmt;
     RETURN_NOT_OK(conn.Execute(insert_stmt));
 
-    LOG(INFO) << "Inserted " << kNumRows << " rows into " << table_name;
+    LOG(INFO) << "Inserted " << num_rows << " rows into " << table_desc.table_name;
+    LOG_WITH_FUNC(INFO) << "Done";
+    return table_desc;
+  }
 
+  Status WaitForTabletSplit(const TableId& table_id, const size_t num_splits = 1) {
+    auto active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+    auto active_tablets_count = active_tablet_ids.size();
+
+    auto table = VERIFY_RESULT(client_->OpenTable(table_id));
+    auto partition_list_version = table->GetPartitionListVersion();
+
+    LOG(INFO) << "Waiting for tablet splits (" << num_splits
+              << "), partition_list_version: " << partition_list_version
+              << ", active_tablets_count: " << active_tablets_count;
+
+    const auto partition_list_version_0 = partition_list_version;
+    const auto active_tablets_count_0 = active_tablets_count;
+
+    // Wait for child tablets to be registered.
+    while (partition_list_version == partition_list_version_0) {
+      std::this_thread::sleep_for(250ms);
+      Synchronizer synchronizer;
+      table->RefreshPartitions(client_.get(), synchronizer.AsStdStatusCallback());
+      RETURN_NOT_OK(synchronizer.Wait());
+      partition_list_version = table->GetPartitionListVersion();
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "partition_list_version: " << partition_list_version;
+    }
+
+    // Wait for child tablets to become active.
+    while (active_tablets_count < active_tablets_count_0 + num_splits) {
+      std::this_thread::sleep_for(250ms);
+      active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+      active_tablets_count = active_tablet_ids.size();
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "active_tablets_count: " << active_tablets_count;
+    }
+    LOG(INFO) << "Waiting for tablet split completed, partition_list_version: "
+              << partition_list_version << ", active_tablets_count: " << active_tablets_count;
+    return Status::OK();
+  }
+
+  Status TestAnalyze(
+      test::Partitioning partitioning, size_t num_shards,
+      std::vector<bool> allow_separate_requests_for_sampling_stages_values = {true}) {
     auto num_rows = kNumRows;
+    const auto table_name_prefix = GetTableNamePrefix(partitioning);
+    const auto big_table_desc = VERIFY_RESULT(
+        CreateAndPopulateTable(table_name_prefix, partitioning, num_shards, num_rows));
+    const auto colocated_parent_table_id = big_table_desc.colocated_parent_table_id;
+    auto table_name = big_table_desc.table_name;
 
+    auto conn = VERIFY_RESULT(ConnectToDB(database_name_));
     while (true) {
       RETURN_NOT_OK(WaitForAllIntentsApplied(
           cluster_.get(), RegularBuildVsDebugVsSanitizers(90s, 120s, 360s)));
       RETURN_NOT_OK(cluster_->FlushTablets());
       LOG(INFO) << "Intents applied, tablets flushed for table: " << table_name;
 
-      RETURN_NOT_OK(RunAnalyzeAndCheck(
-          &conn, table_name, colocated_table_id, num_rows,
+      RETURN_NOT_OK(RunAnalyzeAndCheckAlgorithms(
+          &conn, table_name, colocated_parent_table_id, num_rows,
           allow_separate_requests_for_sampling_stages_values, partitioning));
 
-      if (!colocated_table_id.has_value() && num_rows > 100) {
+      if (!colocated_parent_table_id.has_value() && num_rows > 100) {
         LOG(INFO) << "Test both with dynamic tablet splitting and non-even data distribution "
                      "across tablets";
 
@@ -538,8 +636,8 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
 
         LOG(INFO) << "Tablet splitting completed";
 
-        RETURN_NOT_OK(RunAnalyzeAndCheck(
-            &conn, table_name, colocated_table_id, num_rows,
+        RETURN_NOT_OK(RunAnalyzeAndCheckAlgorithms(
+            &conn, table_name, colocated_parent_table_id, num_rows,
             allow_separate_requests_for_sampling_stages_values, partitioning));
       }
 
@@ -552,15 +650,158 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
         num_rows = num_rows / 2;
       }
 
+      if (table_name != big_table_desc.table_name) {
+        RETURN_NOT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", table_name));
+      }
+
       table_name = Format("$0_$1", table_name_prefix, num_rows);
       LOG(INFO) << "Creating " << table_name << " and copying " << num_rows << " rows there ...";
       RETURN_NOT_OK(conn.ExecuteFormat(
-          "CREATE TABLE $0($1)$2", table_name, table_schema,
+          "CREATE TABLE $0($1)$2", table_name, big_table_desc.table_schema,
           GetPreSplitSpecifier(num_rows, num_shards, partitioning)));
       RETURN_NOT_OK(conn.ExecuteFormat(
-          "INSERT INTO $0 select * from $1 where k <= $2", table_name, table_name_prefix,
+          "INSERT INTO $0 select * from $1 where k <= $2", table_name, big_table_desc.table_name,
           num_rows));
     }
+    return Status::OK();
+  }
+
+  Status TestAnalyzeWithConcurrentSplits(test::Partitioning partitioning) {
+    constexpr auto kNumAnalyzeRuns = 2;
+    constexpr auto kStartNumShards = 1;
+    const auto kAllowSeparateRequestsForSamplingStages = true;
+    const auto kYsqlSamplingAlgorithm = YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING;
+    const auto kBlocksSamplingMethod = DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3;
+
+    FLAGS_TEST_refresh_partitions_after_fetched_sample_blocks = true;
+    RETURN_NOT_OK(RestartPostgres());
+
+    const auto table_name_prefix = GetTableNamePrefix(partitioning);
+
+    const auto big_table_desc = VERIFY_RESULT(
+        CreateAndPopulateTable(table_name_prefix, partitioning, kStartNumShards, kNumRows));
+    SCHECK(
+        !big_table_desc.colocated_parent_table_id.has_value(), InternalError,
+        "Tablet splitting is not supported for colocated tables.");
+    auto table_name = big_table_desc.table_name;
+
+    for (auto num_rows : {kNumRows, kNumSampleRows}) {
+      // Disable dynamic tablet splitting for now.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+      if (num_rows < kNumRows) {
+        auto conn = VERIFY_RESULT(ConnectToDB(database_name_));
+
+        if (table_name != big_table_desc.table_name) {
+          RETURN_NOT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", table_name));
+        }
+
+        table_name = Format("$0_$1", table_name_prefix, num_rows);
+        LOG(INFO) << "Creating " << table_name << " and copying " << num_rows << " rows there ...";
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "CREATE TABLE $0($1)$2", table_name, big_table_desc.table_schema,
+            GetPreSplitSpecifier(num_rows, kStartNumShards, partitioning)));
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0 select * from $1 where k <= $2", table_name, big_table_desc.table_name,
+            num_rows));
+      }
+      RETURN_NOT_OK(WaitForAllIntentsApplied(
+          cluster_.get(), RegularBuildVsDebugVsSanitizers(90s, 120s, 360s)));
+      RETURN_NOT_OK(cluster_->FlushTablets());
+      LOG(INFO) << "Intents applied, tablets flushed for table: " << table_name;
+
+      const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+      const auto num_total_data_blocks = VERIFY_RESULT(GetNumDataBlocks(table_id));
+
+      auto read_rpc_call_remote_method_cb = [this, &table_id](void* arg) {
+        const auto* read_req = CHECK_NOTNULL(pointer_cast<tserver::ReadRequestPB*>(arg));
+        // Skip non-sampling requests.
+        if (read_req->pgsql_batch().empty() || !read_req->pgsql_batch(0).has_sampling_state()) {
+          return;
+        }
+
+        {
+          master::TabletLocationsPB tablet_locations_pb;
+          auto status = cluster_->mini_master()->catalog_manager().GetTabletLocations(
+              read_req->tablet_id(), &tablet_locations_pb);
+          LOG(INFO) << "Intercepted sampling request for tablet: " << read_req->tablet_id()
+                    << " partition: "
+                    << (status.ok() ? AsDebugHexString(std::make_pair(
+                                          tablet_locations_pb.partition().partition_key_start(),
+                                          tablet_locations_pb.partition().partition_key_end()))
+                                    : status.ToString())
+                    << " partition_key: "
+                    << Slice(read_req->pgsql_batch(0).partition_key()).ToDebugHexString()
+                    << " sampling_state: "
+                    << read_req->pgsql_batch(0).sampling_state().ShortDebugString();
+        }
+
+        const auto active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+        const auto active_tablets_count = active_tablet_ids.size();
+
+        // Only wait for splitting during some sampling requests handling otherwise we will be
+        // splitting forever as we add new tablets and intercept requests to them again.
+        if (!RandomActWithProbability(1.5 / active_tablets_count)) {
+          return;
+        }
+
+        ASSERT_OK(WaitForTabletSplit(table_id));
+      };
+
+      auto read_rpc_notify_batchr_cb = [this, &table_id, num_total_data_blocks](void* arg) {
+        const auto* read_resp = CHECK_NOTNULL(pointer_cast<tserver::ReadResponsePB*>(arg));
+        // Skip non-sampling responses.
+        if (read_resp->pgsql_batch().empty() || !read_resp->pgsql_batch(0).has_sampling_state()) {
+          return;
+        }
+
+        const auto& sampling_state = read_resp->pgsql_batch(0).sampling_state();
+        LOG(INFO) << "Intercepted sampling response for tablet: "
+                  << read_resp->tablet_consensus_info().tablet_id() << " sampling_state: "
+                  << sampling_state.ShortDebugString();
+
+        if (sampling_state.num_blocks_processed() > 0.98 * num_total_data_blocks) {
+          // Wait for number of tablet splits to split some sample block collected.
+          const auto kNumSplits = 5;
+          ASSERT_OK(WaitForTabletSplit(table_id, kNumSplits));
+        }
+      };
+
+      auto& sync_point = *yb::SyncPoint::GetInstance();
+      sync_point.SetCallBack("ReadRpc::CallRemoteMethod", read_rpc_call_remote_method_cb);
+      sync_point.SetCallBack("ReadRpc::NotifyBatcher", read_rpc_notify_batchr_cb);
+      sync_point.EnableProcessing();
+
+      // Enable dynamic tablet splitting only for table to be analyzed.
+      {
+        auto& split_manager = cluster_->mini_master()->master()->tablet_split_manager();
+        const auto yb_table_names = VERIFY_RESULT(client_->ListTables());
+        for (const auto& yb_table_name : yb_table_names) {
+          if (yb_table_name.is_system() || !yb_table_name.is_pgsql_namespace() ||
+              yb_table_name.pgschema_name() != "public") {
+            continue;
+          }
+          if (yb_table_name.table_id() == table_id) {
+            continue;
+          }
+          LOG(INFO) << "Disable splitting for table: " << yb_table_name.ToString();
+          split_manager.DisableSplittingForTtlTable(yb_table_name.table_id());
+        }
+
+        itest::SetupQuickSplit(1_KB);
+      }
+
+      auto conn = VERIFY_RESULT(ConnectToDB(database_name_));
+      for (auto i = 0; i < kNumAnalyzeRuns; ++i) {
+        RETURN_NOT_OK(RunAnalyzeAndCheck(
+            &conn, table_name, num_rows, partitioning, kYsqlSamplingAlgorithm,
+            kBlocksSamplingMethod, kAllowSeparateRequestsForSamplingStages));
+      }
+
+      sync_point.DisableProcessing();
+      sync_point.ClearAllCallBacks();
+    }
+
     return Status::OK();
   }
 
@@ -602,15 +843,14 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       {DocDbBlocksSamplingMethod::COMBINE_INTERSECTING_BLOCKS, 0.2},
   };
 
-  std::string database_name;
+  std::string database_name_;
 };
 
 TEST_F(PgAnalyzeTest, AnalyzeSamplingColocated) {
-  database_name = "yb_colocated";
+  database_name_ = "yb_colocated";
 
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(
-      conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database_name_));
 
   ASSERT_OK(PrepareHelperData());
   ASSERT_OK(TestAnalyze(
@@ -620,13 +860,22 @@ TEST_F(PgAnalyzeTest, AnalyzeSamplingColocated) {
 }
 
 TEST_F(PgAnalyzeTest, AnalyzeSamplingNonColocated) {
-  database_name = "yugabyte";
+  database_name_ = "yugabyte";
 
   ASSERT_OK(PrepareHelperData());
   for (const auto partitioning : test::PartitioningList()) {
     ASSERT_OK(TestAnalyze(
         partitioning, /* num_shards = */ 3,
         /* allow_separate_requests_for_sampling_stages_values = */ {false, true}));
+  }
+}
+
+TEST_F(PgAnalyzeTest, AnalyzeSamplingNonColocatedWithConcurrentSplits) {
+  database_name_ = "yugabyte";
+
+  ASSERT_OK(PrepareHelperData());
+  for (const auto partitioning : test::PartitioningList()) {
+    ASSERT_OK(TestAnalyzeWithConcurrentSplits(partitioning));
   }
 }
 

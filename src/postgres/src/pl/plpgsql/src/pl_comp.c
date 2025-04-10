@@ -248,7 +248,7 @@ recheck:
  * The passed-in "function" pointer is either NULL or an already-allocated
  * function struct to overwrite.
  *
- * While compiling a function, the GetCurrentMemoryContext() is the
+ * While compiling a function, the CurrentMemoryContext is the
  * per-function memory context of the function we are compiling. That
  * means a palloc() will allocate storage with the same lifetime as
  * the function itself.
@@ -887,7 +887,7 @@ plpgsql_compile_inline(char *proc_source)
 	 * All the rest of the compile-time storage (e.g. parse tree) is kept in
 	 * its own memory context, so it can be reclaimed easily.
 	 */
-	func_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
 									 "PL/pgSQL inline code context",
 									 ALLOCSET_DEFAULT_SIZES);
 	plpgsql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);

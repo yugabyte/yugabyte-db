@@ -39,7 +39,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_MERGE_JOIN = "Merge Join";
   public static final String NODE_MODIFY_TABLE = "ModifyTable";
   public static final String NODE_NESTED_LOOP = "Nested Loop";
-  public static final String NODE_RESULT = "Result";
+  public static final String NODE_RESULT = "Result *RESULT*";
   public static final String NODE_SEQ_SCAN = "Seq Scan";
   public static final String NODE_SORT = "Sort";
   public static final String NODE_VALUES_SCAN = "Values Scan";

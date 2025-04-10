@@ -50,8 +50,10 @@
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 
-static List *expand_insert_targetlist(List *tlist, Relation rel);
+static List *expand_insert_targetlist(PlannerInfo *root, List *tlist,
+									  Relation rel);
 static List *expand_delete_targetlist(List *tlist, Index result_relation, Relation rel);
+
 
 /*
  * preprocess_targetlist
@@ -106,7 +108,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 */
 	tlist = parse->targetList;
 	if (command_type == CMD_INSERT)
-		tlist = expand_insert_targetlist(tlist, target_relation);
+		tlist = expand_insert_targetlist(root, tlist, target_relation);
 	else if (command_type == CMD_UPDATE)
 		root->update_colnos = extract_update_targetlist_colnos(tlist);
 	/*
@@ -160,24 +162,23 @@ preprocess_targetlist(PlannerInfo *root)
 			ListCell   *l2;
 
 			if (action->commandType == CMD_INSERT)
-				action->targetList = expand_insert_targetlist(action->targetList,
+				action->targetList = expand_insert_targetlist(root,
+															  action->targetList,
 															  target_relation);
 			else if (action->commandType == CMD_UPDATE)
 				action->updateColnos =
 					extract_update_targetlist_colnos(action->targetList);
 
 			/*
-			 * Add resjunk entries for any Vars used in each action's
-			 * targetlist and WHEN condition that belong to relations other
-			 * than target.  Note that aggregates, window functions and
-			 * placeholder vars are not possible anywhere in MERGE's WHEN
-			 * clauses.  (PHVs may be added later, but they don't concern us
-			 * here.)
+			 * Add resjunk entries for any Vars and PlaceHolderVars used in
+			 * each action's targetlist and WHEN condition that belong to
+			 * relations other than the target.  We don't expect to see any
+			 * aggregates or window functions here.
 			 */
 			vars = pull_var_clause((Node *)
 								   list_concat_copy((List *) action->qual,
 													action->targetList),
-								   0);
+								   PVC_INCLUDE_PLACEHOLDERS);
 			foreach(l2, vars)
 			{
 				Var		   *var = (Var *) lfirst(l2);
@@ -382,7 +383,7 @@ extract_update_targetlist_colnos(List *tlist)
  * but now this code is only applied to INSERT targetlists.
  */
 static List *
-expand_insert_targetlist(List *tlist, Relation rel)
+expand_insert_targetlist(PlannerInfo *root, List *tlist, Relation rel)
 {
 	List	   *new_tlist = NIL;
 	ListCell   *tlist_item;
@@ -458,26 +459,18 @@ expand_insert_targetlist(List *tlist, Relation rel)
 			 * confuse code comparing the finished plan to the target
 			 * relation, however.
 			 */
-			Oid			atttype = att_tup->atttypid;
-			Oid			attcollation = att_tup->attcollation;
 			Node	   *new_expr;
 
 			if (!att_tup->attisdropped)
 			{
-				new_expr = (Node *) makeConst(atttype,
-											  -1,
-											  attcollation,
-											  att_tup->attlen,
-											  (Datum) 0,
-											  true, /* isnull */
-											  att_tup->attbyval);
-				new_expr = coerce_to_domain(new_expr,
-											InvalidOid, -1,
-											atttype,
-											COERCION_IMPLICIT,
-											COERCE_IMPLICIT_CAST,
-											-1,
-											false);
+				new_expr = coerce_null_to_domain(att_tup->atttypid,
+												 att_tup->atttypmod,
+												 att_tup->attcollation,
+												 att_tup->attlen,
+												 att_tup->attbyval);
+				/* Must run expression preprocessing on any non-const nodes */
+				if (!IsA(new_expr, Const))
+					new_expr = eval_const_expressions(root, new_expr);
 			}
 			else
 			{

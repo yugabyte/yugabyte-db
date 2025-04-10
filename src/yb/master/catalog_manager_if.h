@@ -15,11 +15,7 @@
 
 #include "yb/cdc/xrepl_types.h"
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/schema.h"
-
 #include "yb/common/snapshot.h"
-#include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -34,13 +30,11 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/server/monitored_task.h"
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tablet_peer_lookup.h"
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
