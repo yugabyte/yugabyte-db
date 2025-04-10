@@ -2026,8 +2026,16 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	}
 
 	heapId = IndexGetRelation(indexId, false);
-	/* TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock? */
-	heapRel = table_open(heapId, ShareLock);
+	/*
+	 * The backend that initiated index backfill holds the following locks:
+	 * 1. ShareUpdateExclusiveLock on the main table
+	 * 2. RowExclusiveLock on the index table
+	 *
+	 * Theoretically, the child backfill jobs need not acquire any locks on
+	 * either the main table or the index. Yet, we acquire relevant locks for
+	 * reading the main table and inserting rows into the index for safety.
+	 */
+	heapRel = table_open(heapId, AccessShareLock);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -2039,7 +2047,7 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
-	indexRel = index_open(indexId, ShareLock);
+	indexRel = index_open(indexId, RowExclusiveLock);
 
 	indexInfo = BuildIndexInfo(indexRel);
 	/*
@@ -2058,8 +2066,8 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 				   stmt->bfinfo,
 				   out_param);
 
-	index_close(indexRel, ShareLock);
-	table_close(heapRel, ShareLock);
+	index_close(indexRel, RowExclusiveLock);
+	table_close(heapRel, AccessShareLock);
 
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);

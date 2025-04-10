@@ -3004,8 +3004,6 @@ class PgClientSession::Impl {
     const auto has_exclusive_locks = plain_session_has_exclusive_object_locks_.load();
     if (has_exclusive_locks) {
       SCHECK_NOTNULL(txn);
-      VLOG(1) << "Requesting release of global object locks for "
-              << " txn " << txn->id() << " subtxn_id " << AsString(subtxn_id);
       // Statements like BACKFILL INDEX seem to operate under DML mode but acquire exclusive
       // locks on objects. This is because they don't lead to any schema changes. For such DMLs
       // we need to propagate the release locks request to master to release the object locks
@@ -3022,9 +3020,10 @@ class PgClientSession::Impl {
   Status DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
       CoarseTimePoint deadline, bool has_exclusive_locks) {
+    VLOG_WITH_PREFIX_AND_FUNC(1)
+        << "Requesting release of " << (has_exclusive_locks ? "global" : "local")
+        << " locks for " << " txn " << txn_id << " subtxn_id " << AsString(subtxn_id);
     if (!has_exclusive_locks) {
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "txn: " << txn_id << " subtxn: " << AsString(subtxn_id);
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),

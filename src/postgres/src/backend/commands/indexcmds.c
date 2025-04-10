@@ -2223,6 +2223,20 @@ DefineIndex(Oid relationId,
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 									 YB_PROGRESS_CREATEIDX_BACKFILLING);
 
+		/*
+		 * PG acquires ShareUpdateExclusiveLock on the main table for the
+		 * duration of the backfill so as to allow DMLs but prevent concurrent
+		 * schema changes, including parallel index creation requests. And it
+		 * acquires RowExclusiveLock on the index as backfill modifies data in
+		 * the index table.
+		 *
+		 * YB: Since backfill jobs run independently at each tablet, acquire
+		 * relevant locks here so as to hold them for the whole duration of the
+		 * backfill.
+		 */
+		LockRelationOid(relationId, ShareUpdateExclusiveLock);
+		LockRelationOid(indexRelationId, RowExclusiveLock);
+
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 
 		/* Do backfill. */
