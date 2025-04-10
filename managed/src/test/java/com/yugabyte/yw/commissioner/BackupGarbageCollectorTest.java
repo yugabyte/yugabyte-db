@@ -501,6 +501,20 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     verify(mockCommissioner, times(1)).submit(any(), any());
   }
 
+  @Test
+  public void testHandleDeleteInProgressDuringAppInit() {
+    Backup backup =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
+    backup.setState(Backup.BackupState.DeleteInProgress);
+    backup.save();
+    backupGC.handleDeleteInProgressBackups();
+    backup.refresh();
+    assertEquals(Backup.BackupState.QueuedForDeletion, backup.getState());
+  }
+
   public static void setUniversePaused(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
