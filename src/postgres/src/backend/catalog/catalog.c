@@ -661,7 +661,10 @@ YbGetAllRelfilenodes()
 {
 	static HTAB *relfilenode_htab = NULL;
 
-	/* For backward compatibility and Keep unit test happy. */
+	if (YBCIsInitDbModeEnvVarSet())
+		return NULL;
+
+	/* For backward compatibility and keep unit test happy. */
 	if (!*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator)
 		return NULL;
 
