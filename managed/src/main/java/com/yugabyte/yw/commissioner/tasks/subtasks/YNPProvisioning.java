@@ -14,9 +14,12 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -74,6 +77,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       Path nodeAgentHome) {
 
     ObjectMapper mapper = new ObjectMapper();
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
     try {
       ObjectNode rootNode = mapper.createObjectNode();
@@ -87,9 +91,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
-      ynpNode.put(
-          "is_configure_clockbound",
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
+      ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
       rootNode.set("ynp", ynpNode);
 
       // "extra" JSON Object
@@ -150,7 +152,23 @@ public class YNPProvisioning extends AbstractTaskBase {
                 node.cloudInfo.instance_type);
         extraNode.put("device_paths", String.join(" ", devicePaths));
       }
-
+      if (provider.getCloudCode() != CloudType.onprem) {
+        if (node.sshPortOverride != null && node.sshPortOverride != 22) {
+          extraNode.put("custom_ssh_port", node.sshPortOverride);
+        } else if (node.sshPortOverride == null) {
+          UUID imageBundleUUID =
+              Util.retreiveImageBundleUUID(
+                  universe.getUniverseDetails().arch, userIntent, provider);
+          if (imageBundleUUID != null) {
+            ImageBundle.NodeProperties overwriteProperties =
+                imageBundleUtil.getNodePropertiesOrFail(
+                    imageBundleUUID, node.getRegion(), userIntent.providerType.toString());
+            if (overwriteProperties.getSshPort() != 22) {
+              extraNode.put("custom_ssh_port", overwriteProperties.getSshPort());
+            }
+          }
+        }
+      }
       rootNode.set("extra", extraNode);
 
       // "logging" JSON Object
