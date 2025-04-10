@@ -93,7 +93,7 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
         },
         nodeCount: nodeList?.filter(node =>
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
-        vCpuPerNode: totalCores / divideFactor,
+        vCpuPerNode: totalCores > 0 ? totalCores / divideFactor : t("common.notAvailable"),
         ramPerNode: getRamUsageText(totalRamProvisionedGb / divideFactor),
         diskPerNode: getDiskSizeText(totalDiskSize / divideFactor),
       }
@@ -108,7 +108,7 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
     },
     {
       title: t('clusterDetail.settings.regions.totalvCPU'),
-      value: totalCores.toString(),
+      value: totalCores > 0 ? totalCores.toString() : t("common.notAvailable"),
     },
     {
       title: t('clusterDetail.settings.regions.totalMemory'),

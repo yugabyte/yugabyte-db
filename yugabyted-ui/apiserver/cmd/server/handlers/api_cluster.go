@@ -6,6 +6,7 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
+    "os"
     "runtime"
     "sort"
     "strconv"
@@ -375,6 +376,10 @@ func (c *Container) GetCluster(ctx echo.Context) error {
             smallestVersion = smallestVersionMaster
         }
         numCores := int32(len(reducedNodeList)) * int32(runtime.NumCPU())
+        // Don't count cores for k8s deployments
+        if _, ok := os.LookupEnv("YUGABYTED_UI_K8S"); ok {
+            numCores = 0
+        }
 
         // Get ram limits
         ramProvisionedBytes := float64(0)
