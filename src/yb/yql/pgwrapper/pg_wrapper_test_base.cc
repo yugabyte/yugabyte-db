@@ -111,7 +111,7 @@ string TrimSqlOutput(string output) {
 } // namespace
 
 Result<std::string> PgCommandTestBase::RunPsqlCommand(
-    const std::string& statement, TuplesOnly tuples_only) {
+    const std::string& statement, TuplesOnly tuples_only, CheckErrorString check_error_string) {
   string tmp_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
@@ -153,7 +153,11 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
 
   string psql_stdout;
   LOG(INFO) << "Executing statement: " << statement;
-  RETURN_NOT_OK(proc.Call(&psql_stdout));
+  if (check_error_string) {
+    RETURN_NOT_OK(proc.Call(&psql_stdout, StdFdTypes{StdFdType::kOut, StdFdType::kErr}));
+  } else {
+    RETURN_NOT_OK(proc.Call(&psql_stdout));
+  }
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
             << psql_stdout;
 
@@ -161,10 +165,15 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
 }
 
 void PgCommandTestBase::RunPsqlCommand(
-    const string& statement, const string& expected_output, bool tuples_only) {
+    const string& statement, const string& expected_output, bool tuples_only,
+    CheckErrorString check_error_string) {
   string psql_stdout = ASSERT_RESULT(
-      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse));
-  ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
+      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse,
+          check_error_string));
+  if (check_error_string)
+    ASSERT_STR_CONTAINS(psql_stdout, TrimSqlOutput(expected_output));
+  else
+    ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
 }
 
 void PgCommandTestBase::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
