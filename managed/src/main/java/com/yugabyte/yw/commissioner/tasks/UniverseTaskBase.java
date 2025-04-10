@@ -4310,7 +4310,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       boolean isK8s = cluster.userIntent.providerType == CloudType.kubernetes;
       universe.getTserversInCluster(cluster.uuid).stream()
-          .filter(NodeDetails::isConsideredRunning)
+          .filter(NodeDetails::isQueryable)
           .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
           .forEach(
               node -> {
