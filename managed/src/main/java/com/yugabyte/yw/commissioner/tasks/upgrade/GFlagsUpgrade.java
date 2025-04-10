@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -14,9 +15,11 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
@@ -44,15 +47,21 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
 
   private final GFlagsValidation gFlagsValidation;
   private final XClusterUniverseService xClusterUniverseService;
+  private final AuditService auditService;
+  private final GFlagsAuditHandler gFlagsAuditHandler;
 
   @Inject
   protected GFlagsUpgrade(
       BaseTaskDependencies baseTaskDependencies,
       GFlagsValidation gFlagsValidation,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      AuditService auditService,
+      GFlagsAuditHandler gFlagsAuditHandler) {
     super(baseTaskDependencies);
     this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.auditService = auditService;
+    this.gFlagsAuditHandler = gFlagsAuditHandler;
   }
 
   @Override
@@ -288,6 +297,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                         node, ServerType.TSERVER, newCluster, newClusters.values())));
       }
     }
+
+    taskParams().verifyPreviewGFlagsSettings(universe);
     addBasicPrecheckTasks();
   }
 
@@ -295,6 +306,9 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
+          JsonNode additionalDetails = gFlagsAuditHandler.constructGFlagAuditPayload(taskParams());
+          auditService.updateAdditionalDetils(getTaskUUID(), additionalDetails);
+
           Universe universe = getUniverse();
           List<UniverseDefinitionTaskParams.Cluster> curClusters =
               universe.getUniverseDetails().clusters;

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -11,10 +12,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -32,6 +35,8 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   private final GFlagsValidation gFlagsValidation;
   private final XClusterUniverseService xClusterUniverseService;
+  private final GFlagsAuditHandler gFlagsAuditHandler;
+  private final AuditService auditService;
 
   @Inject
   protected GFlagsKubernetesUpgrade(
@@ -39,10 +44,14 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
-      KubernetesManagerFactory kubernetesManagerFactory) {
+      KubernetesManagerFactory kubernetesManagerFactory,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      AuditService auditService) {
     super(baseTaskDependencies, operatorStatusUpdaterFactory, kubernetesManagerFactory);
     this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.gFlagsAuditHandler = gFlagsAuditHandler;
+    this.auditService = auditService;
   }
 
   @Override
@@ -83,6 +92,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       // Verify auto flags compatibility.
       taskParams().checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
     }
+    taskParams().verifyPreviewGFlagsSettings(universe);
     addBasicPrecheckTasks();
   }
 
@@ -98,11 +108,9 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           if (isFirstTry()) {
             taskParams().verifyParams(universe, isFirstTry());
           }
-          if (CommonUtils.isAutoFlagSupported(cluster.userIntent.ybSoftwareVersion)) {
-            // Verify auto flags compatibility.
-            taskParams()
-                .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
-          }
+
+          JsonNode additionalDetails = gFlagsAuditHandler.constructGFlagAuditPayload(taskParams());
+          auditService.updateAdditionalDetils(getTaskUUID(), additionalDetails);
 
           // Always update both master and tserver,
           // Helm update will finish without any restarts if there are no updates
