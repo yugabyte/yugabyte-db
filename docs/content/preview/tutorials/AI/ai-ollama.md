@@ -75,8 +75,6 @@ docker run -d --name yugabytedb-node3 --net custom-network \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-The database connectivity settings are provided in the `{project_dir}/.env` file and do not need to be changed if you started the cluster with the preceding command.
-
 Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
 ## Get started with Ollama
