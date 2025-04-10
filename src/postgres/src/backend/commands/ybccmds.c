@@ -1719,27 +1719,28 @@ YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
 }
 
 void
-YBCRename(RenameStmt *stmt, Oid relationId)
+YBCRename(Oid relationId, ObjectType renameType, const char *relname,
+		  const char *colname)
 {
 	YBCPgStatement	handle     = NULL;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char		   *db_name	   = get_database_name(databaseId);
 
-	switch (stmt->renameType)
+	switch (renameType)
 	{
 		case OBJECT_MATVIEW:
 		case OBJECT_TABLE:
 		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 				YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, relname));
 			break;
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 				YbGetRelfileNodeIdFromRelId(relationId), &handle));
 
-			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, stmt->subname, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, colname, relname));
 			break;
 
 		default:
