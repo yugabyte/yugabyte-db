@@ -446,7 +446,7 @@ public class TabletClient extends ReplayingDecoder<Void> {
         rpc.errback(exception);
       }
     } catch (Exception e) {
-      LOG.debug(getPeerUuidLoggingString() + "Unexpected exception while handling RPC #" + rpcid
+      LOG.warn(getPeerUuidLoggingString() + "Unexpected exception while handling RPC #" + rpcid
           + ", rpc=" + rpc + ", buf=" + Bytes.pretty(buf), e);
     }
     if (LOG.isDebugEnabled()) {
@@ -710,13 +710,13 @@ public class TabletClient extends ReplayingDecoder<Void> {
       LOG.warn(getPeerUuidLoggingString() + "RPC rejected by the executor," +
                " ignore this if we're shutting down", cause);
     } else if (cause instanceof ReadTimeoutException) {
-      LOG.debug(getPeerUuidLoggingString() + "Encountered a read timeout");
+      LOG.warn(getPeerUuidLoggingString() + "Encountered a read timeout");
       // Doing the cleanup here since we want to invalidate all the RPCs right _now_, and not let
       // the ReplayingDecoder continue decoding through Channels.close() below.
       cleanup(c);
     } else {
-      LOG.debug(getPeerUuidLoggingString() + "Unexpected exception " + cause.getMessage() +
-                " from downstream on " + c, cause);
+      LOG.warn(getPeerUuidLoggingString() + "Unexpected exception " + cause.getMessage() +
+               " from downstream on " + c, cause);
     }
     if (c.isOpen()) {
       c.close();          // Will trigger channelClosed(), which will cleanup()
