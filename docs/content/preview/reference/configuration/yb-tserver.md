@@ -229,11 +229,11 @@ Default: `true`
 ## Memory division flags
 
 These flags are used to determine how the RAM of a node is split between
-the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including Postgres and a [master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
+the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including postgres and a [master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
 {{< warning title="Warning" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and master if present leaves enough memory on the node for Postgres, and any required other processes like monitoring agents plus the memory needed by the kernel.
+Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and master if present leaves enough memory on the node for the postgres and any required other processes like monitoring agents plus the memory needed by the kernel.
 
 {{< /warning >}}
 
@@ -248,7 +248,7 @@ If true, the defaults for the memory division settings take into account the amo
 
 Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
-If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
+If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
 
 If these defaults are used for both TServer and master, then a node's available memory is partitioned as follows:
 
@@ -256,12 +256,12 @@ If these defaults are used for both TServer and master, then a node's available 
 | :--- | ---: | ---: | ---: | ---: |
 | TServer %  | 45% | 48% | 57% | 60% |
 | master %   | 20% | 15% | 10% | 10% |
-| Postgres % | 25% | 27% | 28% | 27% |
+| postgres % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the postgres memory.
 
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
+For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, postgres 0%, and other 5%.
 
 The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
 
@@ -271,25 +271,6 @@ The defaults for [flags controlling memory division in a TServer](#flags-control
 | --tablet_overhead_size_percentage | 10 |
 
 The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
-
-Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
-
-| total node GiB | max number of tablet replicas | max number of Postgres connections |
-| ---: | ---: | ---: |
-|   4 |    240 |  30 |
-|   8 |    530 |  65 |
-|  16 |  1,250 | 130 |
-|  32 |  2,700 | 225 |
-|  64 |  5,500 | 370 |
-| 128 | 11,000 | 550 |
-| 256 | 22,100 | 730 |
-
-These values are approximate because different kernels use different amounts of memory, leaving different amounts of memory for the TServer and thus the per-tablet overhead TServer component.
-
-Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
-
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
-
 
 ### Flags controlling the split of memory among processes
 
