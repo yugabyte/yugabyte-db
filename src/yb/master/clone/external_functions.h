@@ -84,7 +84,7 @@ class CloneStateManagerExternalFunctionsBase {
     UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
     CoarseTimePoint deadline) = 0;
 
-  virtual Result<TSDescriptorPtr> PickTserver() = 0;
+  virtual Result<TSDescriptorPtr> GetClosestLiveTserver() = 0;
 
   virtual TSDescriptorVector GetTservers() = 0;
 

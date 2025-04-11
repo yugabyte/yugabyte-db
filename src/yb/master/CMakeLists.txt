@@ -84,8 +84,9 @@ set(MASTER_SRCS
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   scoped_leader_shared_lock.cc
-  clone/clone_state_manager.cc
   clone/clone_state_entity.cc
+  clone/clone_state_manager.cc
+  clone/clone_tasks.cc
   cluster_balance.cc
   cluster_balance_util.cc
   encryption_manager.cc
