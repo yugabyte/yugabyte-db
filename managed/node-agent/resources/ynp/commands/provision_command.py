@@ -72,7 +72,7 @@ class ProvisionCommand(Command):
             self.print_results_helper(temp_file)
 
         os.chmod(temp_file.name, 0o755)
-        logger.info(temp_file.name)
+        logger.info("Temp file for " + phase + " is: " + temp_file.name)
         return temp_file.name
 
     def _run_script(self, script_path):
@@ -138,13 +138,18 @@ class ProvisionCommand(Command):
         file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
 
-    def _generate_template(self):
+    def _generate_template(self, specific_module=None):
         os_distribution, os_family, os_version = self._get_os_info()
         all_templates = {}
 
         for key in self.config:
             module = self._module_registry.get(key)
             if module is None:
+                continue
+            if key == 'InstallConfigureEarlyoom':
+                continue  # Skipping for now.
+            if specific_module is not None and key != specific_module:
+                print(f"Skipping {key} because requested specific module {specific_module}")
                 continue
             if key in self.cloud_only_modules and \
                     self.config[key].get('is_cloud', 'False') == 'False':
@@ -261,8 +266,8 @@ class ProvisionCommand(Command):
             for package in cloud_only_packages:
                 self._check_package(package_manager, package)
 
-    def execute(self):
-        run_combined_script, precheck_combined_script = self._generate_template()
+    def execute(self, specific_module=None):
+        run_combined_script, precheck_combined_script = self._generate_template(specific_module)
         provision_result = self._run_script(run_combined_script)
         precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
