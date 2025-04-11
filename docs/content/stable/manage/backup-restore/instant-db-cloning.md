@@ -288,7 +288,4 @@ Although creating a clone database is quick and initially doesn't take up much a
 
 ## Limitations
 
-- Cloning is not currently supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
 - Cloning to a time before dropping Materialized views is not currently supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
-- Cloning to a time before table rewrite operation is not currently supported. See GitHub issue [24385](https://github.com/yugabyte/yugabyte-db/issues/24385) for tracking.
-- Cloning to a time before rename of index column is not currently supported. See GitHub issue [24127](https://github.com/yugabyte/yugabyte-db/issues/24127) for tracking.
