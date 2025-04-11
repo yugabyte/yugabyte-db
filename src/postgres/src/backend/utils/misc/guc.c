@@ -287,6 +287,11 @@ static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 static void check_reserved_prefixes(const char *varName);
 
+
+static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
+
+static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
+
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
 												 bool applySettings, int elevel);
@@ -2383,8 +2388,9 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
-			gettext_noop("Silence the advisory locks not supported error message."),
-			gettext_noop("Enable this with high caution. It was added to avoid disruption for users who were "
+			gettext_noop("Silence the advisory locks error message."),
+			gettext_noop("Enable this with high caution. When enabled, advisory lock requests will silently succeed "
+						 "without actually executing the lock request. It was added to avoid disruption for users who were "
 						 "already using advisory locks but seeing success messages without the lock really being "
 						 "acquired. Such users should take the necessary steps to modify their application to "
 						 "remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
@@ -2393,7 +2399,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_silence_advisory_locks_not_supported_error,
 		false,
-		NULL, NULL, NULL
+		NULL, assign_yb_silence_advisory_locks_not_supported_error, NULL
 	},
 
 	{
@@ -3183,12 +3189,13 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
-			gettext_noop("Enable advisory lock feature"),
+			gettext_noop("DEPRECATED - Enable advisory lock feature"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_advisory_locks,
-		false,
+		true,
+		check_yb_enable_advisory_locks, NULL, NULL
 	},
 
 	{
@@ -15846,6 +15853,27 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 	{
 		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
 		list_free(neg_cache_ids_list);
+	}
+}
+
+static bool
+check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
+{
+	ereport(WARNING,
+			(errmsg("the parameter \"yb_enable_advisory_locks\" is deprecated, "
+					"toggle the runtime flag \"ysql_yb_enable_advisory_locks\" instead.")));
+	return true; /* still allow usage, but warn */
+}
+
+static void
+assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra)
+{
+	if (newval)
+	{
+		ereport(WARNING,
+				(errmsg("enable this with high caution. When enabled, advisory lock requests will silently succeed "
+						"without actually executing the lock request. It was added to avoid disruption for users who were "
+						"already using advisory locks but seeing success messages without the lock really being acquired.")));
 	}
 }
 

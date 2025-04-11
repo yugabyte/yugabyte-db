@@ -46,8 +46,8 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(
 DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, false,
     "This flag is deprecated, please use ycql_ignore_group_by_error");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_advisory_locks, false,
-                               "Whether to enable advisory locks.");
+DEFINE_RUNTIME_AUTO_bool(ysql_yb_enable_advisory_locks, kLocalPersisted, false, true,
+    "Whether to enable advisory locks.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_major_version_upgrade_compatibility, 0,
     "The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and "

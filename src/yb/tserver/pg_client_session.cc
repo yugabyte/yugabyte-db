@@ -2257,7 +2257,6 @@ class PgClientSession::Impl {
       const PgReleaseAdvisoryLockRequestPB& req, PgReleaseAdvisoryLockResponsePB* resp,
       rpc::RpcContext* context) {
     VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
-    SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
     // Release Advisory lock api is only invoked for session advisory locks.
     const auto& session_data =
         VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(context->GetClientDeadline()));
