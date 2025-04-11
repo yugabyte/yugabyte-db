@@ -21,7 +21,7 @@ import java.io.File;
 import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
+public class TestPgRegressContribYbPostgresFdw extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -30,16 +30,6 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/postgres_fdw"),
-                     "yb_pg_schedule");
-  }
-
-  /* TODO: this is necessary because the ysql_enable_inheritance can leak into other tests and cause
-   * failures. This test should use BasePgRegressTestPorted, and this flag can be removed.
-   */
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_enable_inheritance", "false");
-    return flagMap;
+                     "yb_schedule");
   }
 }
