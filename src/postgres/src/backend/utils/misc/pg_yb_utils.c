@@ -2096,12 +2096,14 @@ int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
-bool		yb_enable_advisory_locks = false;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
 bool		yb_enable_invalidation_messages = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
+
+/* DEPRECATED */
+bool		yb_enable_advisory_locks = true;
 
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
