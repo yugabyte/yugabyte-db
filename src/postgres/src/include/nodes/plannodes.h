@@ -654,12 +654,6 @@ typedef struct IndexOnlyScan
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 	YbPushdownExprs yb_pushdown;
-	/*
-	 * yb_indexqual_for_recheck is the modified version of indexqual.
-	 * It is used in tuple recheck step only.
-	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
-	 */
-	List	   *yb_indexqual_for_recheck;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
 } IndexOnlyScan;

@@ -2715,14 +2715,18 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.qual, target_relid,
 									  &result);
 
+		if (yb_scan->hash_code_keys != NIL)
+			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
+									   &result);
+
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
 										  target_relid,
 										  &result);
-
-		if (yb_scan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
-									   &result);
+		else if (IsA(pg_scan_plan, IndexOnlyScan))
+			ybcPullVarattnosIntoAttnumBms(((IndexOnlyScan *) pg_scan_plan)->recheckqual,
+										  target_relid,
+										  &result);
 
 		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
 
