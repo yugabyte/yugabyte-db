@@ -59,12 +59,12 @@ The valid *arguments* for export data are described in the following table:
 | --oracle-home | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#oracle-options) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --parallel-jobs | Number of parallel jobs to extract data from source database. <br>Default: 4; exports 4 tables at a time by default. If you use [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
 | --source-db-name | Source database name. |
 | --source-db-password | Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --source-db-port | Port number of the source database server. <br>Default: 5432 (PostgreSQL), 3306 (MySQL), and 1521 (Oracle) |
-| --source-db-schema | Schema name of the source database. Not applicable for MySQL. For Oracle, you can specify only one schema name using this option. For PostgreSQL, you can specify a list of comma-separated schema names. Case-sensitive schema names are not yet supported. Refer to [Importing with case-sensitive schema names](../../../known-issues/general-issues/#schema-review) for the appropriate database type for more details. |
+| --source-db-schema | Schema name of the source database. Not applicable for MySQL. For Oracle, you can specify only one schema name using this option. For PostgreSQL, you can specify a list of comma-separated schema names. Case-sensitive schema names are not yet supported. Refer to [Schema review workarounds](../../../known-issues/#schema-review) for the appropriate database type for more details. |
 | --source-db-type | One of `postgresql`, `mysql`, or `oracle`. |
 | --source-db-user | Username of the source database. |
 | [--source-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
@@ -188,7 +188,7 @@ The valid *arguments* for export data from target are described in the following
 | --disable-pb | Use this argument to disable the progress bar during data export and printing statistics during the streaming phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for synchronize. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
