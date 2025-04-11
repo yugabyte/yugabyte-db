@@ -330,6 +330,9 @@ DEFINE_validator(ysql_yb_major_version_upgrade_compatibility, FLAG_IN_SET_VALIDA
 DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_expression_pushdown, true,
     "Enables expression pushdown for queries in mixed mode of a YSQL Major version upgrade.");
 
+DEFINE_NON_RUNTIME_bool(enable_pg_anonymizer, false,
+    "Enables creation of the the PostgreSQL Anonymizer extension.");
+
 DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;
@@ -539,6 +542,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   if (FLAGS_enable_pg_cron) {
     metricsLibs.push_back("pg_cron");
+  }
+
+  if (FLAGS_enable_pg_anonymizer) {
+    metricsLibs.push_back("anon");
   }
 
   vector<string> lines;

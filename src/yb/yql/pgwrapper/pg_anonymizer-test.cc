@@ -73,7 +73,7 @@ class PgAnonymizerTest : public LibPqTestBase {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=\"shared_preload_libraries='anon'\"");
+        "--enable_pg_anonymizer=true");
   }
 
   Status AnonStartup(const std::string& function_name) {
