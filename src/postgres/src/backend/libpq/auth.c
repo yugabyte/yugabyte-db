@@ -2204,7 +2204,7 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 				ereport(LOG,
 						(errmsg("error from underlying PAM layer: %s",
 								msg[i]->msg)));
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case PAM_TEXT_INFO:
 				/* we don't bother to log TEXT_INFO messages */
 				if ((reply[i].resp = strdup("")) == NULL)

@@ -988,11 +988,11 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 	switch (addr_family)
 	{
 		case AF_UNIX:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AF_UNSPEC:
 			break;
 		case AF_INET:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AF_INET6:
 			if (inet_ntop(addr_family, ash_config->metadata->client_addr,
 						  ash_config->host, INET6_ADDRSTRLEN) == NULL)
@@ -2489,13 +2489,13 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 	switch (mode)
 	{
 		case YB_DDL_MODE_NO_ALTERING:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_SILENT_ALTERING:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_VERSION_INCREMENT:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_BREAKING_CHANGE:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT:
 			return mode;
 	}
@@ -5945,14 +5945,14 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 
 		case YBCatalogVersionRelationId:	/* pg_yb_catalog_version */
 			fetch_ybctid = false;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case DbRoleSettingRelationId:	/* pg_db_role_setting */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case TableSpaceRelationId:	/* pg_tablespace */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YbProfileRelationId:	/* pg_yb_profile */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YbRoleProfileRelationId:	/* pg_yb_role_profile */
 			db_id = Template1DbOid;
 			sys_only_filter_attr = InvalidAttrNumber;

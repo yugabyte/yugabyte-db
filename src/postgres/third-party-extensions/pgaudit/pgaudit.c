@@ -559,7 +559,7 @@ log_audit_event(AuditEventStackItem *stackItem)
                         stackItem->auditEvent.commandText = YbRedactPasswordIfExists(stackItem->auditEvent.commandText,
                             command_tag);
                     }
-                    switch_fallthrough();
+                    yb_switch_fallthrough();
 
                 /* Fall through */
 

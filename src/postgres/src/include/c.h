@@ -94,9 +94,9 @@
 #endif
 
 #if defined(__has_attribute) && __has_attribute(fallthrough)
-#define switch_fallthrough() __attribute__((fallthrough))
+#define yb_switch_fallthrough() __attribute__((fallthrough))
 #else
-#define switch_fallthrough()
+#define yb_switch_fallthrough()
 #endif
 
 /*

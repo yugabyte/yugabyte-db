@@ -203,7 +203,7 @@ main(int argc, char *const argv[])
 			case 'h':
 				header_mode = true;
 				/* this must include "-c" to make sense, so fall through */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case 'c':
 				auto_create_c = true;
 				break;

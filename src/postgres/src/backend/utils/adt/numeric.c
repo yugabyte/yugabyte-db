@@ -2223,13 +2223,13 @@ numeric_abbrev_convert_var(const NumericVar *var, NumericSortSupport *nss)
 		{
 			default:
 				result |= ((int64) var->digits[3]);
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case 3:
 				result |= ((int64) var->digits[2]) << 14;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case 2:
 				result |= ((int64) var->digits[1]) << 28;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case 1:
 				result |= ((int64) var->digits[0]) << 42;
 				break;

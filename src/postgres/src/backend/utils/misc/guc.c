@@ -9829,7 +9829,7 @@ set_config_option_ext(const char *name, const char *value,
 				}
 			}
 			/* fall through to process the same as PGC_BACKEND */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case PGC_BACKEND:
 			if (context == PGC_SIGHUP)
 			{
@@ -11487,7 +11487,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 		case VAR_SET_DEFAULT:
 			if (stmt->is_local)
 				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case VAR_RESET:
 			if (strcmp(stmt->name, "transaction_isolation") == 0)
 				WarnNoTransactionBlock(isTopLevel, "RESET TRANSACTION");

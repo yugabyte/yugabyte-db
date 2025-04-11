@@ -68,7 +68,7 @@ YbGetMasterCatalogVersion()
 			 * fallback to an old protobuf mechanism until the next cache refresh.
 			 */
 			yb_catalog_version_type = CATALOG_VERSION_PROTOBUF_ENTRY;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case CATALOG_VERSION_PROTOBUF_ENTRY:
 			/* deprecated (kept for compatibility with old clusters). */
 			HandleYBStatus(YBCPgGetCatalogMasterVersion(&version));

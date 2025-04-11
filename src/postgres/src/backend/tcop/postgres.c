@@ -444,7 +444,7 @@ SocketBackend(StringInfo inBuf)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 'B':				/* bind */
 		case 'P':				/* parse */
 			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
@@ -3216,7 +3216,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 					return;
 
 				/* Intentional fall through to check wait for pin */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case PROCSIG_RECOVERY_CONFLICT_BUFFERPIN:
 
@@ -3242,7 +3242,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 				MyProc->recoveryConflictPending = true;
 
 				/* Intentional fall through to error handling */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case PROCSIG_RECOVERY_CONFLICT_LOCK:
 			case PROCSIG_RECOVERY_CONFLICT_TABLESPACE:
@@ -3287,7 +3287,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 				}
 
 				/* Intentional fall through to session cancel */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case PROCSIG_RECOVERY_CONFLICT_DATABASE:
 				RecoveryConflictPending = true;
@@ -6401,7 +6401,7 @@ PostgresMain(const char *dbname, const char *username)
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
 							 errmsg("invalid frontend message type %d",
 									firstchar)));
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case 'P':			/* parse */
 				{
 					const char *stmt_name;
@@ -6434,7 +6434,7 @@ PostgresMain(const char *dbname, const char *username)
 										   paramTypes,
 										   numParams,
 										   whereToSendOutput,
-										   (firstchar == 'p')); /* YB: from switch_fallthrough() */
+										   (firstchar == 'p')); /* YB: from yb_switch_fallthrough() */
 					}
 					PG_CATCH();
 					{
@@ -6789,7 +6789,7 @@ PostgresMain(const char *dbname, const char *username)
 				/* for the cumulative statistics system */
 				pgStatSessionEndCause = DISCONNECT_CLIENT_EOF;
 
-				switch_fallthrough();	/* FALLTHROUGH */
+				yb_switch_fallthrough();	/* FALLTHROUGH */
 
 			case 'X':
 
