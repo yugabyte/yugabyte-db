@@ -21,7 +21,7 @@ from ybops.utils import validate_instance, get_datafile_path, YB_HOME_DIR, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
                         DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
 from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, RemoteShell
-from ybops.node_agent.server_pb2 import PreflightCheckInput
+from ybops.node_agent.yb_pb2 import PreflightCheckInput
 from ybops.utils.ssh import SSH_RETRY_LIMIT_PRECHECK
 
 import json

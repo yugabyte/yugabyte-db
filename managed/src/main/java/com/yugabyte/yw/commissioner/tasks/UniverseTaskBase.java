@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -5190,26 +5191,46 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         String.format("Node %s already exist. Pick different universe name.", taskParams.nodeName));
   }
 
-  // It returns 3 states - empty for not found, false for not matching and true for matching.
-  public Optional<Boolean> instanceExists(
-      NodeTaskParams taskParams, Map<String, String> expectedTags) {
-    log.info("Expected tags: {}", expectedTags);
+  public Optional<Map<String, JsonNode>> maybeGetInstanceDetails(NodeTaskParams taskParams) {
     ShellResponse response =
         nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
     if (Strings.isNullOrEmpty(response.message)) {
       // Instance does not exist.
       return Optional.empty();
     }
-    if (MapUtils.isEmpty(expectedTags)) {
-      return Optional.of(true);
-    }
     JsonNode jsonNode = Json.parse(response.message);
     if (jsonNode.isArray()) {
       jsonNode = jsonNode.get(0);
     }
-    Map<String, JsonNode> properties =
+    return Optional.of(
         Streams.stream(jsonNode.fields())
-            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+  }
+
+  public boolean isInstanceRunning(NodeTaskParams taskParams) {
+    Optional<Map<String, JsonNode>> optional = maybeGetInstanceDetails(taskParams);
+    if (!optional.isPresent()) {
+      String errMsg = String.format("Node %s is not found", taskParams.nodeName);
+      log.error(errMsg);
+      throw new RuntimeException(errMsg);
+    }
+    JsonNode node = optional.get().getOrDefault("is_running", BooleanNode.TRUE);
+    return !node.isNull() && node.asBoolean();
+  }
+
+  // It returns 3 states - empty for not found, false for not matching and true for matching.
+  public Optional<Boolean> instanceExists(
+      NodeTaskParams taskParams, Map<String, String> expectedTags) {
+    log.info("Expected tags: {}", expectedTags);
+    Optional<Map<String, JsonNode>> optional = maybeGetInstanceDetails(taskParams);
+    if (!optional.isPresent()) {
+      // Instance does not exist.
+      return Optional.empty();
+    }
+    if (MapUtils.isEmpty(expectedTags)) {
+      return Optional.of(true);
+    }
+    Map<String, JsonNode> properties = optional.get();
     int unmatchedCount = 0;
     for (Map.Entry<String, String> entry : expectedTags.entrySet()) {
       JsonNode node = properties.get(entry.getKey());

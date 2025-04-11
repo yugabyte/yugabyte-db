@@ -12,7 +12,11 @@ import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.nodeagent.Server;
+import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
+import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
+import com.yugabyte.yw.nodeagent.EarlyoomConfig;
+import com.yugabyte.yw.nodeagent.Service;
+import com.yugabyte.yw.nodeagent.ServiceConfig;
 import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -57,20 +61,20 @@ public class ConfigureOOMServiceOnNode extends NodeTaskBase {
     String homeDir =
         GFlagsUtil.getYbHomeDir(universe.getCluster(node.placementUuid).userIntent.provider);
     AdditionalServicesStateData.EarlyoomConfig earlyoomConfig = taskParams().earlyoomConfig;
-    Server.EarlyoomConfig.Builder earlyoomConfigBuilder =
-        Server.EarlyoomConfig.newBuilder()
+    EarlyoomConfig.Builder earlyoomConfigBuilder =
+        EarlyoomConfig.newBuilder()
             .setStartArgs(AdditionalServicesStateData.toArgs(earlyoomConfig));
-    Server.ConfigureServiceInput input =
-        Server.ConfigureServiceInput.newBuilder()
-            .setService(Server.Service.EARLYOOM)
+    ConfigureServiceInput input =
+        ConfigureServiceInput.newBuilder()
+            .setService(Service.EARLYOOM)
             .setEnabled(earlyoomConfig.isEnabled())
             .setConfig(
-                Server.ServiceConfig.newBuilder()
+                ServiceConfig.newBuilder()
                     .setYbHomeDir(homeDir)
                     .setEarlyoomConfig(earlyoomConfigBuilder)
                     .build())
             .build();
-    Server.ConfigureServiceOutput configureServiceOutput =
+    ConfigureServiceOutput configureServiceOutput =
         nodeAgentClient.runConfigureEarlyoom(nodeAgent.get(), input, NodeManager.YUGABYTE_USER);
     log.debug(
         "Updated {}: has error {}", nodeAgent.get().getIp(), configureServiceOutput.hasError());

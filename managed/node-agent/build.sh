@@ -87,10 +87,10 @@ build_pymodule() {
     --grpc_python_out="$grpc_python_output_dir" $grpc_proto_files
     # Python does not support custom package. Workaround to change the package name.
     if [ "$build_os" = "darwin" ]; then
-        sed -i "" -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
+        sed -i "" -e 's/^import \(.*_pb2.*\) as/from ybops.node_agent import \1 as/' \
         "$grpc_python_output_dir"/*.py
     else
-        sed -i -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
+        sed -i -e 's/^import \(.*_pb2.*\) as/from ybops.node_agent import \1 as/' \
         "$grpc_python_output_dir"/*.py
     fi
     cp -rf ../ybops "$grpc_output_dir"/
