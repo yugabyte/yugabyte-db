@@ -67,7 +67,7 @@ Memory depends on your application query pattern. Writes require memory but only
 
 YugabyteDB explicitly manages a block cache, and does not need the entire data set to fit in memory. It does not rely on the OS to keep data in its buffers. If you provide YugabyteDB sufficient memory, data accessed and present in block cache stays in memory.
 
-## Memory and tablet limits
+### Memory and tablet limits
 
 For a universe with [RF3](../../architecture/key-concepts/#replication-factor-rf), 1000 tablets imply 3000 tablet replicas. If the universe has three nodes, then each node has on average 1000 tablet replicas. A six node universe would have on average 500 tablet replicas per-node, and so on.
 
@@ -77,11 +77,26 @@ The overhead is proportional to the number of tablet replicas, so 500 tablet rep
 
 Additional memory will be required for supporting caches and the like if the tablets are being actively used. We recommend provisioning an extra 6200 MiB of memory for each 1000 tablet replicas on a node to handle these cases; that is, a TServer should have 7000 MiB of RAM allocated to it for each 1000 tablet replicas it may be expected to support.
 
-### YSQL
+You can manually provision the amount of memory each TServer uses by setting the [--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.
 
-Manually provisioning the amount of memory each TServer uses can be done using the [--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.  Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the postgres and any master process that is going to be colocated with the TServer.
+#### YSQL
 
-Accordingly, it is recommended that you instead use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives good memory division settings for using YSQL optimized for your node's size. If this flag is true, then the [memory division flag defaults](../../reference/configuration/yb-tserver/#memory-division-flags) change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
+Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the postgres and any master process that is going to be colocated with the TServer.
+
+Accordingly, it is recommended that you instead use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives good memory division settings for using YSQL optimized for your node's size.
+
+The flag does the following:
+
+- Automatically sets memory division flag defaults to provide much more memory for PostgreSQL, and optimized for the node size. For more information, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).
+- Enforces tablet limits, based on available memory. This limits the total number of tablet replicas that a cluster can support. If you try to create a table whose additional tablet replicas would bring the total number of tablet replicas in the cluster over this limit, the create table request is rejected. For more information, refer to [Tablet limits](../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
+
+{{< tip title="Tip" >}}
+
+To view the number of live tablets and the limits, open the **YB-Master UI** (`<master_host>:7000/`) and click the **Tablet Servers** tab. Under **Universe Summary**, the total number of live tablet replicas is listed as **Active Tablet-Peers**, and the limit as **Tablet Peer Limit**.
+
+![Tablet limits](/images/admin/master-tablet-limits.png)
+
+{{< /tip >}}
 
 (Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false. For more information on the defaults for memory flags, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).)
 
@@ -103,7 +118,7 @@ Also shown is an estimate of how many PostgreSQL connections that node can handl
 
 Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical PostgreSQL connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical PostgreSQL connections assuming the connections are evenly distributed among the nodes.
 
-### YCQL
+#### YCQL
 
 If you are not using YSQL, ensure the [use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-master/#use-memory-defaults-optimized-for-ysql) flag is set to false. This flag optimizes YugabyteDB's memory setup for YSQL, reserving a considerable amount of memory for PostgreSQL; if you are not using YSQL then that memory is wasted when it could be helping improve performance by allowing more data to be cached.
 
