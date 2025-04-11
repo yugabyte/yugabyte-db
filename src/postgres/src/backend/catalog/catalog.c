@@ -460,6 +460,13 @@ IsPinnedObject(Oid classId, Oid objectId)
 		return false;
 
 	/*
+	 * YB: BSON type is not pinned so that it can be dropped by the documentdb
+	 * extension.
+	 */
+	if (objectId == BSONOID)
+		return false;
+
+	/*
 	 * All other initdb-created objects are pinned.  This is overkill (the
 	 * system doesn't really depend on having every last weird datatype, for
 	 * instance) but generating only the minimum required set of dependencies

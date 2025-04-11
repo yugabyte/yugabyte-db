@@ -85,6 +85,7 @@ class TypeInfoResolver {
     AddMapping<DataType::FROZEN>();
     AddMapping<DataType::TUPLE>();
     AddMapping<DataType::VECTOR>();
+    AddMapping<DataType::BSON>();
   }
 
   template<DataType type> void AddMapping() {

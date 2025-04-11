@@ -186,6 +186,7 @@ QLType::SharedPtr QLType::Create(DataType type) {
 
     case DataType::GIN_NULL: return kDefaultType<DataType::GIN_NULL>;
     case DataType::VECTOR: return kDefaultType<DataType::VECTOR>;
+    case DataType::BSON: return kDefaultType<DataType::BSON>;
   }
   LOG(FATAL) << "Not supported datatype " << ToCQLString(type);
   return kNullType;
@@ -370,7 +371,8 @@ const std::string& QLType::ToCQLString(DataType type) {
     ((DataType::UINT32, "uint32")) \
     ((DataType::UINT64, "uint64")) \
     ((DataType::GIN_NULL, "gin_null")) \
-    ((DataType::VECTOR, "vector"))
+    ((DataType::VECTOR, "vector")) \
+    ((DataType::BSON, "bson"))
   switch (type) {
     BOOST_PP_SEQ_FOR_EACH(DATA_TYPE_SWITCH_CASE, ~, DATA_TYPE_ENUM_ELEMENTS)
   }

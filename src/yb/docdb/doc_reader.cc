@@ -1375,6 +1375,10 @@ struct MakePackedRowDecoderV2Visitor {
     return Binary();
   }
 
+  dockv::PackedColumnDecoderV2 Bson() const {
+    return Binary();
+  }
+
  private:
   template <size_t kSize>
   dockv::PackedColumnDecoderV2 Apply() const {

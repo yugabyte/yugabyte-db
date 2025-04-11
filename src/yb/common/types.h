@@ -496,6 +496,13 @@ struct DataTypeTraits<DataType::VECTOR> : public DerivedTypeTraits<DataType::BIN
   }
 };
 
+template <>
+struct DataTypeTraits<DataType::BSON> : public DerivedTypeTraits<DataType::BINARY> {
+  static const char *name() {
+    return "bson";
+  }
+};
+
 static const char* kDateFormat = "%Y-%m-%d %H:%M:%S";
 static const char* kDateMicrosAndTzFormat = "%s.%06d GMT";
 

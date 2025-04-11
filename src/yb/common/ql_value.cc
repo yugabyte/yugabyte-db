@@ -137,6 +137,7 @@ int QLValue::CompareTo(const QLValue& other) const {
     case InternalType::kGinNullValue: {
       return GenericCompare(gin_null_value(), other.gin_null_value());
     }
+    case InternalType::kBsonValue: return bson_value().compare(other.bson_value());
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << type();
@@ -241,6 +242,10 @@ void DoAppendToKey(const PB& value_pb, string* bytes) {
       for (const auto& elem_pb : value_pb.frozen_value().elems()) {
         AppendToKey(elem_pb, bytes);
       }
+      break;
+    }
+    case InternalType::kBsonValue: {
+      AppendBytesToKey(value_pb.bson_value(), bytes);
       break;
     }
     case InternalType::VALUE_NOT_SET:
@@ -581,6 +586,7 @@ string QLValue::ToValueString(const QuotesType quotes_type) const {
     case InternalType::kTimeuuidValue: return timeuuid_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "true" : "false");
     case InternalType::kBinaryValue: return "0x" + b2a_hex(binary_value());
+    case InternalType::kBsonValue: return "0x" + b2a_hex(bson_value());
 
     case InternalType::kMapValue: {
       std::stringstream ss;
@@ -1066,6 +1072,8 @@ int DoCompare(const PB& lhs, const PB& rhs) {
       break;
     case QLValuePB::kGinNullValue:
       return GenericCompare(lhs.gin_null_value(), rhs.gin_null_value());
+    case QLValuePB::kBsonValue:
+      return lhs.bson_value().compare(rhs.bson_value());
 
     // default: fall through
   }
@@ -1152,6 +1160,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
       break;
     case QLValuePB::kGinNullValue:
       return GenericCompare<uint8_t>(lhs.gin_null_value(), rhs.gin_null_value());
+    case QLValuePB::kBsonValue:
+      return lhs.bson_value().compare(rhs.bson_value());
 
     // default: fall through
   }
