@@ -137,8 +137,17 @@ void SetProxyAddress(std::string* flag, const std::string& name,
   uint16_t port, bool override_port = false) {
   if (flag->empty() || override_port) {
     std::vector<HostPort> bind_addresses;
-    Status status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
-    LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": " << status;
+    Status status;
+    if (flag->empty()) {
+      // If the flag is empty, we set ip address to the default rpc bind address.
+      status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
+      LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": "
+             << status;
+    } else {
+      // If override_port is true, we keep the existing ip addresses and just change the port.
+      status = HostPort::ParseStrings(*flag, 0, &bind_addresses);
+      LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << *flag << ": " << status;
+    }
     if (!bind_addresses.empty()) {
       for (auto& addr : bind_addresses) {
         addr.set_port(port);
