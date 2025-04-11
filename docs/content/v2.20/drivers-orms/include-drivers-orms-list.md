@@ -67,8 +67,9 @@ block_indexing = true
 | PostgreSQL node-postgres Driver | [8.7.3](https://www.npmjs.com/package/pg) | Full | [CRUD](/v2.20/drivers-orms/nodejs/postgres-node-driver/) |
 | YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/v2.20/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
-| Sequelize | 6.6.5 | Full | [CRUD](/v2.20/drivers-orms/nodejs/sequelize/) |
-| Prisma    | 3.14  | Full | [CRUD](/v2.20/drivers-orms/nodejs/prisma/) |
+| Sequelize | 6.6.5  | Full | [CRUD](/v2.20/drivers-orms/nodejs/sequelize/) |
+| Prisma    | 3.14   | Full | [CRUD](/v2.20/drivers-orms/nodejs/prisma/) |
+| TypeORM   | 0.3.21 | Full | [CRUD](/v2.20/drivers-orms/nodejs/typeorm/) |
 
   {{% /tab %}}
 
