@@ -44,6 +44,7 @@ YugabyteDB smart drivers have the following key features.
 | [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
+| [Multiple Cluster Connection](#multiple-cluster-connection) | Smart drivers support balancing of connections on multiple clusters from a single client application |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -242,6 +243,18 @@ If topology keys are specified, and `fallback-to-topology-keys-only` is true, no
 
 {{% /tab %}}
 {{</tabpane >}}
+
+### Multiple Cluster Connection
+
+For deployments involving multiple YugabyteDB clusters, smart drivers support seamless load balancing of connections on each of the clusters from a single client application. By specifying multiple JDBC URLs, the driver intelligently distributes traffic based on the connection url:
+
+```java
+url1 = "jdbc:yugabytedb://127.0.0.1:5433/database_name?load-balance=true&yb-servers-refresh-interval=30";
+url2 = "jdbc:yugabytedb://127.0.0.10:5433/database_name?load-balance=true&yb-servers-refresh-interval=30";
+```
+
+This capability is supported in YugabyteDB versions 2024.1.6.0, 2024.2.3.0, and 2.25.2.0. You may include at most one cluster that is not on one of these supported versions.  
+Currently, this multi-cluster load balancing feature is available only in the Java (JDBC) smart driver.
 
 ## Connection pooling
 
