@@ -40,11 +40,13 @@
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
 #include "parser/parsetree.h"
-#include "pg_yb_utils.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "pg_yb_utils.h"
 
 
 static RelOptInfo *recurse_set_operations(Node *setOp, PlannerInfo *root,
@@ -232,6 +234,15 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 
 		/* Build a RelOptInfo for this leaf subquery. */
 		rel = build_simple_rel(root, rtr->rtindex, NULL);
+
+		if (IsYugaByteEnabled())
+		{
+			/*
+			 * These blocks cannot be hinted so set the hint aliases to NULL.
+			 */
+			rel->ybHintAlias = NULL;
+			rte->ybHintAlias = NULL;
+		}
 
 		/* plan_params should not be in use in current query level */
 		Assert(root->plan_params == NIL);
@@ -571,9 +582,9 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 
 	/*
 	 * If any of my children are identical UNION nodes (same op, all-flag, and
-	 * colTypes) then they can be merged into this node so that we generate
-	 * only one Append and unique-ification for the lot.  Recurse to find such
-	 * nodes and compute their children's paths.
+	 * colTypes/colCollations) then they can be merged into this node so that
+	 * we generate only one Append and unique-ification for the lot.  Recurse
+	 * to find such nodes and compute their children's paths.
 	 */
 	rellist = plan_union_children(root, op, refnames_tlist, &tlist_list);
 
@@ -862,17 +873,15 @@ generate_nonunion_paths(SetOperationStmt *op, PlannerInfo *root,
 }
 
 /*
- * Pull up children of a UNION node that are identically-propertied UNIONs.
+ * Pull up children of a UNION node that are identically-propertied UNIONs,
+ * and perform planning of the queries underneath the N-way UNION.
+ *
+ * The result is a list of RelOptInfos containing Paths for sub-nodes, with
+ * one entry for each descendant that is a leaf query or non-identical setop.
+ * We also return a parallel list of the childrens' targetlists.
  *
  * NOTE: we can also pull a UNION ALL up into a UNION, since the distinct
  * output rows will be lost anyway.
- *
- * NOTE: currently, we ignore collations while determining if a child has
- * the same properties.  This is semantically sound only so long as all
- * collations have the same notion of equality.  It is valid from an
- * implementation standpoint because we don't care about the ordering of
- * a UNION child's result: UNION ALL results are always unordered, and
- * generate_union_paths will force a fresh sort if the top level is a UNION.
  */
 static List *
 plan_union_children(PlannerInfo *root,
@@ -898,7 +907,8 @@ plan_union_children(PlannerInfo *root,
 
 			if (op->op == top_union->op &&
 				(op->all == top_union->all || op->all) &&
-				equal(op->colTypes, top_union->colTypes))
+				equal(op->colTypes, top_union->colTypes) &&
+				equal(op->colCollations, top_union->colCollations))
 			{
 				/* Same UNION, so fold children into parent */
 				pending_rels = lcons(op->rarg, pending_rels);
@@ -1098,6 +1108,16 @@ choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 	tuple_fraction = root->tuple_fraction;
 	if (tuple_fraction >= 1.0)
 		tuple_fraction /= dNumOutputRows;
+
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Set the parent RelOptInfos to NULL so we do not try to use them
+		 * in the cost comparison.
+		 */
+		hashed_p.parent = NULL;
+		sorted_p.parent = NULL;
+	}
 
 	if (compare_fractional_path_costs(&hashed_p, &sorted_p,
 									  tuple_fraction) < 0)

@@ -9,7 +9,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -21,9 +20,8 @@ var countAlertCmd = &cobra.Command{
 	Use:     "count",
 	Short:   "Count YugabyteDB Anywhere alerts",
 	Long:    "Count alerts in YugabyteDB Anywhere",
-	Example: `yba alert count `,
+	Example: `yba alert count`,
 	Run: func(cmd *cobra.Command, args []string) {
-		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		alertAPIFilter := ybaclient.AlertApiFilter{}

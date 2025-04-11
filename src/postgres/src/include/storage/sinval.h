@@ -15,6 +15,8 @@
 #define SINVAL_H
 
 #include <signal.h>
+
+/* YB includes */
 #include <sys/types.h>
 
 #include "storage/relfilenode.h"
@@ -56,38 +58,63 @@
  *
  * smgr and relation mapping invalidations are non-transactional: they are
  * sent immediately when the underlying file change is made.
+ *
+ * YB Note: For each type of message (identified by id), we store a version
+ * number to support interop between different releases during YSQL upgrade.
+ * If two releases have different version numbers for a given message type,
+ * then it means the given message has changed. A list of messages received
+ * from yb-master (via local tserver) cannot be applied if it has a message's
+ * id is recognized by this PG backend but its version does not match with
+ * this PG backend's own version for the given id. Note that if a new release
+ * uses a new hash function such that the value of hash("foo") has changed,
+ * a new version is needed because the new hashvalue cannot be applied in a
+ * old release PG backend that would have a different hash("foo") value.
+ * If the incoming message's id is not recognized by this PG backend but
+ * the message's version matches, it should be fine because the id does not
+ * exist in this PG backend, which means this PG backend does not have the
+ * corresponding catalog cache so the application of the invalidation message
+ * is a nop.
  */
 
 typedef struct
 {
 	int8		id;				/* cache ID --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	uint32		hashValue;		/* hash value of key for this catcache */
 } SharedInvalCatcacheMsg;
+#define YbSharedInvalCatcacheMsgVersion 0
 
 #define SHAREDINVALCATALOG_ID	(-1)
 
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared catalog */
 	Oid			catId;			/* ID of catalog whose contents are invalid */
 } SharedInvalCatalogMsg;
+#define YbSharedInvalCatalogMsgVersion 0
 
 #define SHAREDINVALRELCACHE_ID	(-2)
 
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID, or 0 if whole relcache */
 } SharedInvalRelcacheMsg;
+#define YbSharedInvalRelcacheMsgVersion 0
 
 #define SHAREDINVALSMGR_ID		(-3)
 
@@ -95,39 +122,50 @@ typedef struct
 {
 	/* note: field layout chosen to pack into 16 bytes */
 	int8		id;				/* type field --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	int8		backend_hi;		/* high bits of backend ID, if temprel */
 	uint16		backend_lo;		/* low bits of backend ID, if temprel */
 	RelFileNode rnode;			/* spcNode, dbNode, relNode */
 } SharedInvalSmgrMsg;
+#define YbSharedInvalSmgrMsgVersion 0
 
 #define SHAREDINVALRELMAP_ID	(-4)
 
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	Oid			dbId;			/* database ID, or 0 for shared catalogs */
 } SharedInvalRelmapMsg;
+#define YbSharedInvalRelmapMsgVersion 0
 
 #define SHAREDINVALSNAPSHOT_ID	(-5)
 
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID */
 } SharedInvalSnapshotMsg;
+#define YbSharedInvalSnapshotMsgVersion 0
 
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
-	pid_t		sender_pid;		/* ID of a process which sent the message ---
+	int8		yb_version;		/* version of this type (id) of message ---
 								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 } YBSharedInvalMessageHeader;
 
 typedef union

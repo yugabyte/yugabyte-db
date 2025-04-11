@@ -290,6 +290,6 @@ To verify that the Spark job is created, do the following:
 
 1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned when you started the [`pyspark`](#start-python-spark-shell-with-yugabytedb-driver) shell.
 
-1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
+1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following illustration:
 
    ![Parallelism](/images/develop/ecosystem-integrations/parallelism.png)

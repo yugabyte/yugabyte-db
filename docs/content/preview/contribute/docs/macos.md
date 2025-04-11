@@ -22,7 +22,7 @@ private=true
 
   * Unpin Hugo to stop its formula from being updated - `brew unpin hugo`
   * Uninstall any older version if installed - `brew uninstall hugo`
-  * Download the v0.143.1 formula file from [Homebrew's repository](https://github.com/Homebrew/homebrew-core/blob/d8e25353625c26f7ae0f7ca8624c82f6ae15e74d/Formula/h/hugo.rb).
+  * Download the v0.143.1 formula file from [Homebrew's repository](https://github.com/Homebrew/homebrew-core/blob/8dda2dcd7a7e2cec735942ef69879cfba621f7b8/Formula/h/hugo.rb).
   * Install the downloaded formula - `brew install hugo.rb`
   * Lastly, prevent automatic updates of Hugo version -  `brew pin hugo`
 

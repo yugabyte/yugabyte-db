@@ -26,7 +26,6 @@
 
 #include "access/amapi.h"
 #include "access/yb_scan.h"
-
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "src/vector.h"

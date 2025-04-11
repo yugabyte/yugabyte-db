@@ -20,21 +20,17 @@
  */
 #include "postgres.h"
 
-#include <assert.h>
-
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
-#include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
-#include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
@@ -80,28 +76,29 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
 #include "lib/qunique.h"
+#include "miscadmin.h"
+#include "storage/lmgr.h"
 #include "utils/catcache.h"
+#include "utils/inval.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/pg_inherits.h"
-#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/pg_attrdef.h"
+#include "catalog/pg_constraint_d.h"
+#include "catalog/pg_inherits.h"
+#include "catalog/pg_type.h"
+#include "catalog/pg_yb_tablegroup.h"
+#include "fmgr.h"
+#include "funcapi.h"
 #include "miscadmin.h"
-#include "utils/builtins.h"
-#include "utils/fmgroids.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "pg_yb_utils.h"
-#include "fmgr.h"
-#include "funcapi.h"
-#include "catalog/pg_type.h"
-#include "utils/builtins.h"
-
+#include <assert.h>
 
 /*---------------------------------------------------------------------------
 
@@ -1859,6 +1856,109 @@ ReleaseSysCache(HeapTuple tuple)
 }
 
 /*
+ * SearchSysCacheLocked1
+ *
+ * Combine SearchSysCache1() with acquiring a LOCKTAG_TUPLE at mode
+ * InplaceUpdateTupleLock.  This is a tool for complying with the
+ * README.tuplock section "Locking to write inplace-updated tables".  After
+ * the caller's heap_update(), it should UnlockTuple(InplaceUpdateTupleLock)
+ * and ReleaseSysCache().
+ *
+ * The returned tuple may be the subject of an uncommitted update, so this
+ * doesn't prevent the "tuple concurrently updated" error.
+ */
+HeapTuple
+SearchSysCacheLocked1(int cacheId,
+					  Datum key1)
+{
+	CatCache   *cache = SysCache[cacheId];
+	ItemPointerData tid;
+	LOCKTAG		tag;
+
+	if (!YBIsPgLockingEnabled())
+	{
+		/* Locking is handled separately by YugaByte. */
+		return SearchSysCache1(cacheId, key1);
+	}
+
+	/*----------
+	 * Since inplace updates may happen just before our LockTuple(), we must
+	 * return content acquired after LockTuple() of the TID we return.  If we
+	 * just fetched twice instead of looping, the following sequence would
+	 * defeat our locking:
+	 *
+	 * GRANT:   SearchSysCache1() = TID (1,5)
+	 * GRANT:   LockTuple(pg_class, (1,5))
+	 * [no more inplace update of (1,5) until we release the lock]
+	 * CLUSTER: SearchSysCache1() = TID (1,5)
+	 * CLUSTER: heap_update() = TID (1,8)
+	 * CLUSTER: COMMIT
+	 * GRANT:   SearchSysCache1() = TID (1,8)
+	 * GRANT:   return (1,8) from SearchSysCacheLocked1()
+	 * VACUUM:  SearchSysCache1() = TID (1,8)
+	 * VACUUM:  LockTuple(pg_class, (1,8))  # two TIDs now locked for one rel
+	 * VACUUM:  inplace update
+	 * GRANT:   heap_update() = (1,9)  # lose inplace update
+	 *
+	 * In the happy case, this takes two fetches, one to determine the TID to
+	 * lock and another to get the content and confirm the TID didn't change.
+	 *
+	 * This is valid even if the row gets updated to a new TID, the old TID
+	 * becomes LP_UNUSED, and the row gets updated back to its old TID.  We'd
+	 * still hold the right LOCKTAG_TUPLE and a copy of the row captured after
+	 * the LOCKTAG_TUPLE.
+	 */
+	ItemPointerSetInvalid(&tid);
+	for (;;)
+	{
+		HeapTuple	tuple;
+		LOCKMODE	lockmode = InplaceUpdateTupleLock;
+
+		tuple = SearchSysCache1(cacheId, key1);
+		if (ItemPointerIsValid(&tid))
+		{
+			if (!HeapTupleIsValid(tuple))
+			{
+				LockRelease(&tag, lockmode, false);
+				return tuple;
+			}
+			if (ItemPointerEquals(&tid, &tuple->t_self))
+				return tuple;
+			LockRelease(&tag, lockmode, false);
+		}
+		else if (!HeapTupleIsValid(tuple))
+			return tuple;
+
+		tid = tuple->t_self;
+		ReleaseSysCache(tuple);
+
+		/*
+		 * Do like LockTuple(rel, &tid, lockmode).  While cc_relisshared won't
+		 * change from one iteration to another, it may have been a temporary
+		 * "false" until our first SearchSysCache1().
+		 */
+		SET_LOCKTAG_TUPLE(tag,
+						  cache->cc_relisshared ? InvalidOid : MyDatabaseId,
+						  cache->cc_reloid,
+						  ItemPointerGetBlockNumber(&tid),
+						  ItemPointerGetOffsetNumber(&tid));
+		(void) LockAcquire(&tag, lockmode, false, false);
+
+		/*
+		 * If an inplace update just finished, ensure we process the syscache
+		 * inval.  XXX this is insufficient: the inplace updater may not yet
+		 * have reached AtEOXact_Inval().  See test at inplace-inval.spec.
+		 *
+		 * If a heap_update() call just released its LOCKTAG_TUPLE, we'll
+		 * probably find the old tuple and reach "tuple concurrently updated".
+		 * If that heap_update() aborts, our LOCKTAG_TUPLE blocks inplace
+		 * updates while our caller works.
+		 */
+		AcceptInvalidationMessages();
+	}
+}
+
+/*
  * SearchSysCacheCopy
  *
  * A convenience routine that does SearchSysCache and (if successful)
@@ -1877,6 +1977,28 @@ SearchSysCacheCopy(int cacheId,
 				newtuple;
 
 	tuple = SearchSysCache(cacheId, key1, key2, key3, key4);
+	if (!HeapTupleIsValid(tuple))
+		return tuple;
+	newtuple = heap_copytuple(tuple);
+	ReleaseSysCache(tuple);
+	return newtuple;
+}
+
+/*
+ * SearchSysCacheLockedCopy1
+ *
+ * Meld SearchSysCacheLockedCopy1 with SearchSysCacheCopy().  After the
+ * caller's heap_update(), it should UnlockTuple(InplaceUpdateTupleLock) and
+ * heap_freetuple().
+ */
+HeapTuple
+SearchSysCacheLockedCopy1(int cacheId,
+						  Datum key1)
+{
+	HeapTuple	tuple,
+				newtuple;
+
+	tuple = SearchSysCacheLocked1(cacheId, key1);
 	if (!HeapTupleIsValid(tuple))
 		return tuple;
 	newtuple = heap_copytuple(tuple);
@@ -2451,4 +2573,124 @@ YbCopyCacheInfoToValues(int cache_id, Datum *values)
 	values[7] = Int32GetDatum(cacheinfo[cache_id].key[2]);
 	values[8] = Int32GetDatum(cacheinfo[cache_id].key[3]);
 	values[9] = Int32GetDatum(cacheinfo[cache_id].nbuckets);
+}
+
+#define YB_CHECK_CATALOG_CACHE_ID(id, value) \
+	static_assert(id == value, \
+		#id " has changed, need to increment YbSharedInvalCatcacheMsgVersion");
+void
+YbCheckCatalogCacheIds()
+{
+	/*
+	 * If any existing id has its integer value changed, we need to increment
+	 * YbSharedInvalCatcacheMsgVersion so that old release PG backend will not
+	 * apply the catalog cache invalidation message.
+	 */
+
+	YB_CHECK_CATALOG_CACHE_ID(AGGFNOID, 0);
+	YB_CHECK_CATALOG_CACHE_ID(AMNAME, 1);
+	YB_CHECK_CATALOG_CACHE_ID(AMOID, 2);
+	YB_CHECK_CATALOG_CACHE_ID(AMOPOPID, 3);
+	YB_CHECK_CATALOG_CACHE_ID(AMOPSTRATEGY, 4);
+	YB_CHECK_CATALOG_CACHE_ID(AMPROCNUM, 5);
+	YB_CHECK_CATALOG_CACHE_ID(ATTNAME, 6);
+	YB_CHECK_CATALOG_CACHE_ID(ATTNUM, 7);
+	YB_CHECK_CATALOG_CACHE_ID(AUTHMEMMEMROLE, 8);
+	YB_CHECK_CATALOG_CACHE_ID(AUTHMEMROLEMEM, 9);
+	YB_CHECK_CATALOG_CACHE_ID(AUTHNAME, 10);
+	YB_CHECK_CATALOG_CACHE_ID(AUTHOID, 11);
+	YB_CHECK_CATALOG_CACHE_ID(CASTSOURCETARGET, 12);
+	YB_CHECK_CATALOG_CACHE_ID(CLAAMNAMENSP, 13);
+	YB_CHECK_CATALOG_CACHE_ID(CLAOID, 14);
+	YB_CHECK_CATALOG_CACHE_ID(COLLNAMEENCNSP, 15);
+	YB_CHECK_CATALOG_CACHE_ID(COLLOID, 16);
+	YB_CHECK_CATALOG_CACHE_ID(CONDEFAULT, 17);
+	YB_CHECK_CATALOG_CACHE_ID(CONNAMENSP, 18);
+	YB_CHECK_CATALOG_CACHE_ID(CONSTROID, 19);
+	YB_CHECK_CATALOG_CACHE_ID(CONVOID, 20);
+	YB_CHECK_CATALOG_CACHE_ID(DATABASEOID, 21);
+	YB_CHECK_CATALOG_CACHE_ID(DEFACLROLENSPOBJ, 22);
+	YB_CHECK_CATALOG_CACHE_ID(ENUMOID, 23);
+	YB_CHECK_CATALOG_CACHE_ID(ENUMTYPOIDNAME, 24);
+	YB_CHECK_CATALOG_CACHE_ID(EVENTTRIGGERNAME, 25);
+	YB_CHECK_CATALOG_CACHE_ID(EVENTTRIGGEROID, 26);
+	YB_CHECK_CATALOG_CACHE_ID(FOREIGNDATAWRAPPERNAME, 27);
+	YB_CHECK_CATALOG_CACHE_ID(FOREIGNDATAWRAPPEROID, 28);
+	YB_CHECK_CATALOG_CACHE_ID(FOREIGNSERVERNAME, 29);
+	YB_CHECK_CATALOG_CACHE_ID(FOREIGNSERVEROID, 30);
+	YB_CHECK_CATALOG_CACHE_ID(FOREIGNTABLEREL, 31);
+	YB_CHECK_CATALOG_CACHE_ID(INDEXRELID, 32);
+	YB_CHECK_CATALOG_CACHE_ID(LANGNAME, 33);
+	YB_CHECK_CATALOG_CACHE_ID(LANGOID, 34);
+	YB_CHECK_CATALOG_CACHE_ID(NAMESPACENAME, 35);
+	YB_CHECK_CATALOG_CACHE_ID(NAMESPACEOID, 36);
+	YB_CHECK_CATALOG_CACHE_ID(OPERNAMENSP, 37);
+	YB_CHECK_CATALOG_CACHE_ID(OPEROID, 38);
+	YB_CHECK_CATALOG_CACHE_ID(OPFAMILYAMNAMENSP, 39);
+	YB_CHECK_CATALOG_CACHE_ID(OPFAMILYOID, 40);
+	YB_CHECK_CATALOG_CACHE_ID(PARAMETERACLNAME, 41);
+	YB_CHECK_CATALOG_CACHE_ID(PARAMETERACLOID, 42);
+	YB_CHECK_CATALOG_CACHE_ID(PARTRELID, 43);
+	YB_CHECK_CATALOG_CACHE_ID(PROCNAMEARGSNSP, 44);
+	YB_CHECK_CATALOG_CACHE_ID(PROCOID, 45);
+	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONNAME, 46);
+	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONNAMESPACE, 47);
+	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONNAMESPACEMAP, 48);
+	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONOID, 49);
+	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONREL, 50);
+	YB_CHECK_CATALOG_CACHE_ID(PUBLICATIONRELMAP, 51);
+	YB_CHECK_CATALOG_CACHE_ID(RANGEMULTIRANGE, 52);
+	YB_CHECK_CATALOG_CACHE_ID(RANGETYPE, 53);
+	YB_CHECK_CATALOG_CACHE_ID(RELNAMENSP, 54);
+	YB_CHECK_CATALOG_CACHE_ID(RELOID, 55);
+	YB_CHECK_CATALOG_CACHE_ID(REPLORIGIDENT, 56);
+	YB_CHECK_CATALOG_CACHE_ID(REPLORIGNAME, 57);
+	YB_CHECK_CATALOG_CACHE_ID(RULERELNAME, 58);
+	YB_CHECK_CATALOG_CACHE_ID(SEQRELID, 59);
+	YB_CHECK_CATALOG_CACHE_ID(STATEXTDATASTXOID, 60);
+	YB_CHECK_CATALOG_CACHE_ID(STATEXTNAMENSP, 61);
+	YB_CHECK_CATALOG_CACHE_ID(STATEXTOID, 62);
+	YB_CHECK_CATALOG_CACHE_ID(STATRELATTINH, 63);
+	YB_CHECK_CATALOG_CACHE_ID(SUBSCRIPTIONNAME, 64);
+	YB_CHECK_CATALOG_CACHE_ID(SUBSCRIPTIONOID, 65);
+	YB_CHECK_CATALOG_CACHE_ID(SUBSCRIPTIONRELMAP, 66);
+	YB_CHECK_CATALOG_CACHE_ID(TABLESPACEOID, 67);
+	YB_CHECK_CATALOG_CACHE_ID(TRFOID, 68);
+	YB_CHECK_CATALOG_CACHE_ID(TRFTYPELANG, 69);
+	YB_CHECK_CATALOG_CACHE_ID(TSCONFIGMAP, 70);
+	YB_CHECK_CATALOG_CACHE_ID(TSCONFIGNAMENSP, 71);
+	YB_CHECK_CATALOG_CACHE_ID(TSCONFIGOID, 72);
+	YB_CHECK_CATALOG_CACHE_ID(TSDICTNAMENSP, 73);
+	YB_CHECK_CATALOG_CACHE_ID(TSDICTOID, 74);
+	YB_CHECK_CATALOG_CACHE_ID(TSPARSERNAMENSP, 75);
+	YB_CHECK_CATALOG_CACHE_ID(TSPARSEROID, 76);
+	YB_CHECK_CATALOG_CACHE_ID(TSTEMPLATENAMENSP, 77);
+	YB_CHECK_CATALOG_CACHE_ID(TSTEMPLATEOID, 78);
+	YB_CHECK_CATALOG_CACHE_ID(TYPENAMENSP, 79);
+	YB_CHECK_CATALOG_CACHE_ID(TYPEOID, 80);
+	YB_CHECK_CATALOG_CACHE_ID(USERMAPPINGOID, 81);
+	YB_CHECK_CATALOG_CACHE_ID(USERMAPPINGUSERSERVER, 82);
+	YB_CHECK_CATALOG_CACHE_ID(YBTABLEGROUPOID, 83);
+	YB_CHECK_CATALOG_CACHE_ID(YBCONSTRAINTRELIDTYPIDNAME, 84);
+
+	/*
+	 * If an existing ID is removed, interop isn't possible so we need to
+	 * bump YbSharedInvalCatcacheMsgVersion.
+	 * If new ids are added, we need to add them at the end of the above
+	 * list. This is to allow we can keep YbSharedInvalCatcacheMsgVersion
+	 * unchanged so that old release PG backend can apply messages of any
+	 * existing ids. If a message catcache id's integer value is out of bound,
+	 * it will not be applied because the corresponding catalog cache does not
+	 * exist in the old PG backend. If there is a new id appended, we need to
+	 * evaluate whether we need to bump YbSharedInvalCatcacheMsgVersion
+	 * or not:
+	 * (1) if the new id represents a new catalog table that did not exist in
+	 * in the old release, then interop is possible when the new id is not
+	 * involved, and there is no need to bump YbSharedInvalCatcacheMsgVersion.
+	 * (2) if the new id represents an existing catalog table in the old
+	 * release, then in a new PG backend the new catcache should be invalidated
+	 * but old PG backend cannot provide that message needed. In this case
+	 * interop isn't possible so we need to bump YbSharedInvalCatcacheMsgVersion.
+	 */
+	static_assert(SysCacheSize == 85, "new catalog cache id added");
 }

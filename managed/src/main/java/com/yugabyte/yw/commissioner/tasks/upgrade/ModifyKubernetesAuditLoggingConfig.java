@@ -11,7 +11,6 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
-import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -76,11 +75,12 @@ public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBas
       log.info("Skipping Opentelemetry Operator check.");
       return;
     }
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("CheckOpentelemetryOperator", SubTaskGroupType.PreflightChecks);
-    CheckOpentelemetryOperator task = createTask(CheckOpentelemetryOperator.class);
-    task.initialize(universe.getUniverseDetails());
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    doInPrecheckSubTaskGroup(
+        "CheckOpentelemetryOperator",
+        subTaskGroup -> {
+          CheckOpentelemetryOperator task = createTask(CheckOpentelemetryOperator.class);
+          task.initialize(universe.getUniverseDetails());
+          subTaskGroup.addSubTask(task);
+        });
   }
 }

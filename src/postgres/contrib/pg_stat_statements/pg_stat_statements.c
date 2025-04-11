@@ -43,10 +43,8 @@
  */
 #include "postgres.h"
 
-#include <inttypes.h>
 #include <math.h>
 #include <sys/stat.h>
-#include <stddef.h>
 #include <unistd.h>
 
 #include "access/parallel.h"
@@ -55,7 +53,6 @@
 #include "executor/instrument.h"
 #include "funcapi.h"
 #include "jit/jit.h"
-#include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "optimizer/planner.h"
@@ -64,7 +61,6 @@
 #include "parser/scanner.h"
 #include "parser/scansup.h"
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
@@ -77,16 +73,18 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
-/* Yugabyte includes */
-#include "hdr/hdr_histogram.h"
-#include "utils/json.h"
-#include "utils/jsonb.h"
+/* YB includes */
 #include "common/jsonapi.h"
 #include "common/pg_yb_common.h"
-
-
+#include "hdr/hdr_histogram.h"
+#include "lib/stringinfo.h"
+#include "pg_yb_utils.h"
+#include "utils/json.h"
+#include "utils/jsonb.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb_query_diagnostics.h"
+#include <inttypes.h>
+#include <stddef.h>
 
 PG_MODULE_MAGIC;
 
@@ -1774,7 +1772,7 @@ pgss_store(const char *query, uint64 queryId,
 
 	/* Set up key for hashtable search */
 
-	/* memset() is required when pgssHashKey is without padding only */
+	/* clear padding */
 	memset(&key, 0, sizeof(pgssHashKey));
 
 	key.userid = GetUserId();
@@ -3187,16 +3185,16 @@ entry_reset(Oid userid, Oid dbid, uint64 queryid)
 		key.dbid = dbid;
 		key.queryid = queryid;
 
-		/* Remove the key if it exists, starting with the top-level entry  */
+		/*
+		 * Remove the key if it exists, starting with the non-top-level entry.
+		 */
 		key.toplevel = false;
 		entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_REMOVE, NULL);
 		if (entry)				/* found */
 			num_remove++;
 
-		/* Also remove entries for top level statements */
+		/* Also remove the top-level entry if it exists. */
 		key.toplevel = true;
-
-		/* Remove the key if exists */
 		entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_REMOVE, NULL);
 		if (entry)				/* found */
 			num_remove++;
@@ -3582,7 +3580,7 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 	pair.key.type = jbvString;
 	pair.value.type = jbvNumeric;
 
-	MemoryContext tempContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tempContext = AllocSetContextCreate(CurrentMemoryContext,
 													  "JSONB processing temporary context",
 													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext oldContext = MemoryContextSwitchTo(tempContext);

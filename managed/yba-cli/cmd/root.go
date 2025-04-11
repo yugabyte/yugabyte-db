@@ -6,12 +6,14 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/customer"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
@@ -35,7 +37,8 @@ import (
 )
 
 var (
-	cfgFile string
+	cfgFile      string
+	cfgDirectory string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -70,8 +73,16 @@ func init() {
 
 	setDefaults()
 	rootCmd.PersistentFlags().SortFlags = false
+	rootCmd.PersistentFlags().StringVar(&cfgDirectory, "directory", "",
+		"Directory containing YBA CLI configuration and generated files. "+
+			"If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. "+
+			"Defaults to '$HOME/.yba-cli/'.")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "",
-		"Config file, defaults to $HOME/.yba-cli.yaml")
+		"Full path to a specific configuration file for YBA CLI. "+
+			"If provided, this takes precedence over the directory specified via --directory, "+
+			"and the generated files are added to the same path. "+
+			"If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. "+
+			"Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.")
 	rootCmd.PersistentFlags().StringP("host", "H", "http://localhost:9000",
 		"YugabyteDB Anywhere Host")
 	rootCmd.PersistentFlags().StringP("apiToken", "a", "", "YugabyteDB Anywhere api token.")
@@ -86,6 +97,12 @@ func init() {
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
 		"Wait command timeout, example: 5m, 1h.")
+	rootCmd.PersistentFlags().Bool("insecure", false,
+		"Allow insecure connections to YugabyteDB Anywhere."+
+			" Value ignored for http endpoints. Defaults to false for https.")
+	rootCmd.PersistentFlags().String("ca-cert", "",
+		"CA certificate file path for secure connection to YugabyteDB Anywhere. "+
+			"Required when the endpoint is https and --insecure is not set.")
 
 	//Bind peristents flags to viper
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
@@ -96,6 +113,8 @@ func init() {
 	viper.BindPFlag("disable-color", rootCmd.PersistentFlags().Lookup("disable-color"))
 	viper.BindPFlag("wait", rootCmd.PersistentFlags().Lookup("wait"))
 	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
+	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup("insecure"))
+	viper.BindPFlag("ca-cert", rootCmd.PersistentFlags().Lookup("ca-cert"))
 
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
@@ -113,10 +132,11 @@ func init() {
 	rootCmd.AddCommand(rbac.RBACCmd)
 	rootCmd.AddCommand(user.UserCmd)
 	rootCmd.AddCommand(xcluster.XClusterCmd)
+	rootCmd.AddCommand(tools.TreeCmd)
+	rootCmd.AddCommand(customer.CustomerCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
-	// Example for adding preview commands to the list of available commands
-	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
+	addGroupsCmd(rootCmd)
 
 	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
 
@@ -143,6 +163,8 @@ func setDefaults() {
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
 	viper.SetDefault("lastVersionAvailable", "0.0.0")
 	viper.SetDefault("lastCheckedTime", 0)
+	viper.SetDefault("insecure", false)
+	viper.SetDefault("ca-cert", "")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -150,15 +172,38 @@ func initConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
+	} else if cfgDirectory != "" {
+		// Check if the directory exists
+		if stat, err := os.Stat(cfgDirectory); err == nil && stat.IsDir() {
+			configPath := filepath.Join(cfgDirectory, ".yba-cli.yaml")
+			viper.AddConfigPath(cfgDirectory)
+			viper.SetConfigType("yaml")
+			viper.SetConfigName(".yba-cli")
+			viper.SetConfigFile(configPath)
+		} else {
+			viper.SetDefault("output", formatter.TableFormatKey)
+			viper.SetDefault("logLevel", "info")
+			viper.SetDefault("debug", false)
+			logrus.Fatalf("%s",
+				formatter.Colorize(
+					"Provided configuration directory does not exist: "+cfgDirectory, formatter.RedColor,
+				))
+		}
 	} else {
 		// Find home directory.
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
-
+		homeDir, err := os.Stat(home)
+		if err != nil {
+			cobra.CheckErr(err)
+		}
+		homePerms := homeDir.Mode().Perm()
+		os.Mkdir(home+"/.yba-cli", homePerms)
 		// Search config in home directory with name ".yba-cli" (without extension).
-		viper.AddConfigPath(home)
+		viper.AddConfigPath(home + "/.yba-cli")
 		viper.SetConfigType("yaml")
 		viper.SetConfigName(".yba-cli")
+		viper.SetConfigFile(home + "/.yba-cli/.yba-cli.yaml")
 	}
 
 	//Will check every environment variable starting with YBA_
@@ -172,4 +217,62 @@ func initConfig() {
 		logrus.Debugf("Using config file: %s\n", viper.ConfigFileUsed())
 	}
 
+}
+
+func addGroupsCmd(rootCmd *cobra.Command) {
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "authentication",
+			Title: "Authentication Commands",
+		},
+	)
+
+	auth.AuthCmd.GroupID = "authentication"
+	auth.LoginCmd.GroupID = "authentication"
+	auth.RegisterCmd.GroupID = "authentication"
+	auth.HostCmd.GroupID = "authentication"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "integration",
+			Title: "Integration Commands",
+		},
+	)
+
+	ear.EARCmd.GroupID = "integration"
+	eit.EITCmd.GroupID = "integration"
+	provider.ProviderCmd.GroupID = "integration"
+	storageconfiguration.StorageConfigurationCmd.GroupID = "integration"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "universe",
+			Title: "Universe Operation Commands",
+		},
+	)
+
+	backup.BackupCmd.GroupID = "universe"
+	universe.UniverseCmd.GroupID = "universe"
+	xcluster.XClusterCmd.GroupID = "universe"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "access-management",
+			Title: "Access Management Commands",
+		},
+	)
+	customer.CustomerCmd.GroupID = "access-management"
+	user.UserCmd.GroupID = "access-management"
+	rbac.RBACCmd.GroupID = "access-management"
+
+	rootCmd.AddGroup(
+		&cobra.Group{
+			ID:    "advance",
+			Title: "Advance Commands",
+		},
+	)
+
+	runtimeconfiguration.RuntimeConfigurationCmd.GroupID = "advance"
+	release.ReleaseCmd.GroupID = "advance"
 }

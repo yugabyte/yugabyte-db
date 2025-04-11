@@ -73,11 +73,11 @@ public class AvailabilityZone extends Model {
     return getActive();
   }
 
-  @Column(length = 80)
+  @Column(length = 500)
   @ApiModelProperty(value = "AZ subnet", example = "subnet id")
   private String subnet;
 
-  @Column(length = 80)
+  @Column(length = 500)
   @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
   private String secondarySubnet;
 

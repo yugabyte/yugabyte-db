@@ -40,7 +40,7 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
@@ -349,7 +349,7 @@ stack_push()
      * free'd on stack_pop, or by our callback when the parent context is
      * destroyed.
      */
-    contextAudit = AllocSetContextCreate(GetCurrentMemoryContext(),
+    contextAudit = AllocSetContextCreate(CurrentMemoryContext,
                                          "pgaudit stack context",
                                          ALLOCSET_DEFAULT_SIZES);
 
@@ -1693,7 +1693,7 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
 
     /* Switch memory context for query */
     contextQuery = AllocSetContextCreate(
-                            GetCurrentMemoryContext(),
+                            CurrentMemoryContext,
                             "pgaudit_func_ddl_command_end temporary context",
                             ALLOCSET_DEFAULT_SIZES);
     contextOld = MemoryContextSwitchTo(contextQuery);
@@ -1804,7 +1804,7 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
 
     /* Switch memory context for the query */
     contextQuery = AllocSetContextCreate(
-                            GetCurrentMemoryContext(),
+                            CurrentMemoryContext,
                             "pgaudit_func_ddl_command_end temporary context",
                             ALLOCSET_DEFAULT_SIZES);
     contextOld = MemoryContextSwitchTo(contextQuery);

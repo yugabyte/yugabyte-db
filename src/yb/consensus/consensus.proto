@@ -273,18 +273,20 @@ message VoteResponsePB {
 
   // An upper bound on the remainder of the old leader's lease that the new leader has to wait out
   // before it can start serving read and write requests.
-  optional int32 remaining_leader_lease_duration_ms = 4;
+  repeated int32 remaining_leader_lease_duration_ms = 4;
 
   // UUID of node that has lease.
-  optional bytes leader_lease_uuid = 7;
+  repeated bytes leader_lease_uuid = 7;
 
   // An upper bound on the deadline of the old hybrid time leader's lease that the new leader has
   // to wait out before it can start serving read and write requests.
   // Contains only physical part of hybrid time.
-  optional fixed64 leader_ht_lease_expiration = 5;
+  repeated fixed64 leader_ht_lease_expiration = 5;
 
   // UUID of node that has ht lease.
-  optional bytes leader_ht_lease_uuid = 8;
+  // Lease and lease ht have different lifetime, so set of leases and corresponding UUIDs could be
+  // different.
+  repeated bytes leader_ht_lease_uuid = 8;
 
   // true if it is response to pre-election request.
   optional bool preelection = 6;

@@ -121,24 +121,6 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 
 	od_log(&instance->logger, "startup", NULL, NULL, "Starting Odyssey");
 
-	char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
-	if (stats_shm_key != NULL) {
-		instance->yb_stats = yb_get_stats_ptr(instance, stats_shm_key);
-
-		if (instance->yb_stats == (void *)-1) {
-			od_error(
-				&instance->logger, "stats", NULL, NULL,
-				"Got error while updating the stats in the shared memory, %s",
-				strerror(errno));
-			goto error;
-		}
-
-		for (int i = 0;i < YSQL_CONN_MGR_MAX_POOLS; ++i) {
-			instance->yb_stats[i].database_oid = -1;
-			instance->yb_stats[i].user_oid = -1;
-		}
-	}
-
 	char *od_max_query_size = getenv("YB_YSQL_CONN_MGR_MAX_QUERY_SIZE");
 	if (od_max_query_size != NULL)
 		yb_max_query_size = atoi(od_max_query_size);
@@ -184,9 +166,25 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 			 error.error);
 		goto error;
 	}
-	rc = yb_oid_list_init(instance);
-	if (rc == -1)
-		goto error;
+
+	char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+	if (stats_shm_key != NULL) {
+		instance->yb_stats = yb_get_stats_ptr(instance, stats_shm_key);
+
+		if (instance->yb_stats == (void *)-1) {
+			od_error(
+				&instance->logger, "stats", NULL, NULL,
+				"Got error while updating the stats in the shared memory, %s",
+				strerror(errno));
+			goto error;
+		}
+
+		for (int i = 0;i < instance->config.yb_max_pools; ++i) {
+			instance->yb_stats[i].database_oid = -1;
+			instance->yb_stats[i].user_oid = -1;
+		}
+	}
+
 
 	yb_read_conf_from_env_var(&router.rules, &instance->config,
 				 &instance->logger);

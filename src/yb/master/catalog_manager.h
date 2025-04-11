@@ -40,67 +40,47 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xcluster_types.h"
-#include "yb/common/constants.h"
-#include "yb/common/entity_ids.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/restore_sys_catalog_state.h"
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/transaction.h"
+#include "yb/cdc/cdc_service.fwd.h"
+
 #include "yb/client/client_fwd.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/thread_annotations.h"
+
+#include "yb/common/common_types_util.h"
+#include "yb/common/constants.h"
+#include "yb/common/ql_protocol.fwd.h"
+
+#include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_admin.pb.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_dcl.fwd.h"
-#include "yb/master/master_defaults.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
-#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_heartbeat.fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_types.h"
-#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_initialization.h"
-#include "yb/master/system_tablet.h"
-#include "yb/master/table_index.h"
-#include "yb/master/tablet_creation_limits.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/ysql_tablespace_manager.h"
 
-#include "yb/rpc/rpc.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/rpc/scheduler.h"
-#include "yb/server/monitored_task.h"
-#include "yb/tserver/tablet_peer_lookup.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/promise.h"
-#include "yb/util/random.h"
-#include "yb/util/rw_mutex.h"
-#include "yb/util/status_callback.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/version_tracker.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 
@@ -147,6 +127,7 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
+class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
 class YsqlManagerIf;
 class YsqlManager;
@@ -156,8 +137,6 @@ using PlacementId = std::string;
 typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
 typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
-
-constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 YB_DEFINE_ENUM(
     CDCSDKStreamCreationState,
@@ -541,7 +520,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
-      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
+      REQUIRES(ddl_txn_verifier_mutex_);
 
   void RemoveDdlTransactionState(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
@@ -1168,9 +1147,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
-  PitrCount pitr_count() const override {
-    return sys_catalog_->pitr_count();
-  }
+  PitrCount pitr_count() const override;
 
   // Returns the current valid LeaderEpoch.
   // This function should generally be avoided. RPC handlers that require the LeaderEpoch
@@ -1600,8 +1577,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetCompactionStatus(
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
 
-  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
-      tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1682,11 +1658,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status WriteToSysCatalog(
       SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
-      QLWriteRequestPB::QLStmtType op_type);
+      QLWriteRequestPB_QLStmtType op_type);
 
   Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const override;
 
   Result<TSDescriptorPtr> LookupTSByUUID(const TabletServerId& tserver_uuid);
+
+  rpc::Scheduler& Scheduler() override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2049,29 +2027,24 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // the server that is over-replicated. A new tablet server can be specified to start an election
   // immediately to become the new leader. If new_leader_ts_uuid is empty, the election will be run
   // following the protocol's default mechanism.
-  void SendLeaderStepDownRequest(
+  Result<std::shared_ptr<AsyncTryStepDown>> ScheduleTryStepDownTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
-      const std::string& new_leader_ts_uuid = "");
+      const std::string& reason, const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
-  void SendRemoveServerRequest(
+  Result<std::shared_ptr<AsyncRemoveServerTask>> ScheduleRemoveServerTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
-      const std::string& change_config_ts_uuid, const LeaderEpoch& epoch);
+      const std::string& change_config_ts_uuid, const LeaderEpoch& epoch,
+      const std::string& reason);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
-  void SendAddServerRequest(
+  Result<std::shared_ptr<AsyncAddServerTask>> ScheduleAddServerTask(
       const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
-      const LeaderEpoch& epoch);
-
-  void GetPendingServerTasksUnlocked(const TableId &table_uuid,
-                                     TabletToTabletServerMap *add_replica_tasks_map,
-                                     TabletToTabletServerMap *remove_replica_tasks_map,
-                                     TabletToTabletServerMap *stepdown_leader_tasks)
-      REQUIRES_SHARED(mutex_);
+      const LeaderEpoch& epoch, const std::string& reason);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and
   // TableInfo objects (releasing all COW locks), abort all pending
@@ -2721,8 +2694,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
       const LeaderEpoch& epoch);
 
-  rpc::Scheduler& Scheduler() override;
-
   int64_t LeaderTerm() override;
 
   static void SetTabletSnapshotsState(
@@ -2964,6 +2935,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveNamespaceFromMaps(
       YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) EXCLUDES(mutex_);
+
+  void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

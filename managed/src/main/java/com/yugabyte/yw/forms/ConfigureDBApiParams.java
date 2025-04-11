@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
@@ -53,8 +54,12 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
 
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    UserIntent userIntent = primaryCluster.userIntent;
     CommunicationPorts universePorts = universe.getUniverseDetails().communicationPorts;
+    if (CommunicationPorts.hasDuplicatePorts(universePorts)) {
+      throw new PlatformServiceException(BAD_REQUEST, "All ports must be different.");
+    }
     boolean changeInYsql =
         (enableYSQL != userIntent.enableYSQL)
             || (enableYSQLAuth != userIntent.enableYSQLAuth)
@@ -71,6 +76,11 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     if (!enableYCQL && !enableYSQL) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Need to enable at least one endpoint among YSQL and YCQL");
+    }
+
+    // Validate consistency across primary and read only clusters.
+    for (Cluster readOnlyCluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      UniverseCRUDHandler.validateConsistency(primaryCluster, readOnlyCluster);
     }
 
     RuntimeConfGetter runtimeConfGetter =

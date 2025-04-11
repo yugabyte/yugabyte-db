@@ -67,9 +67,8 @@ class PgDocResult {
   // Currently, we only have ybctids, but there could be more.
   Status ProcessSystemColumns();
 
-  // Update the reservoir with ybctids from this batch.
-  // The update is expected to be sparse, so ybctids come as index/value pairs.
-  Status ProcessSparseSystemColumns(std::string* reservoir);
+  // Processes indexed results using specified function.
+  Status ProcessIndexedEntries(std::function<Status (int32_t index, Slice* data)> processor);
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.

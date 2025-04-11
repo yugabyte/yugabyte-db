@@ -23,11 +23,10 @@
 
 #include "access/htup_details.h"
 #include "access/tupdesc.h"
-#include "utils/memutils.h"
-
 #include "catalog/yb_type.h"
 #include "executor/ybFunction.h"
 #include "pg_yb_utils.h"
+#include "utils/memutils.h"
 
 YbFuncCallContext
 YbNewFuncCallContext(FuncCallContext *funcctx)

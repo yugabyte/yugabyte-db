@@ -887,9 +887,25 @@ class PgFastBackwardScanTest
     // A helper functor to execute a select statement for the test.
     auto fetch_and_validate = [this, &conn, &table_name, with_nulls](
         const std::string& expected_without_nulls, const std::string& expected_with_nulls) {
+      const auto stmt =
+          Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).starts_with("Index Scan Backward"), RuntimeError, "");
+
       return FetchAndValidate(conn,
           Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name),
           with_nulls ? expected_with_nulls : expected_without_nulls);
+    };
+    auto fetch_and_validate_pk_only = [this, &conn, &table_name](const std::string& expected) {
+      const auto stmt = Format("SELECT r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).starts_with("Index Scan Backward"), RuntimeError, "");
+
+      return FetchAndValidate(conn, stmt, expected);
     };
 
     // Create table.
@@ -922,6 +938,7 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "1, 5, 3; 1, 5, 2; 1, 5, 1", "NULL, 5, 3; NULL, 5, 2; NULL, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("3; 2; 1"));
 
     if (intents_usage == IntentsUsage::kMixed) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
@@ -936,6 +953,7 @@ class PgFastBackwardScanTest
         "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 2; 1"));
 
     // Re-insert data for the deleted rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(3), 16383)));
@@ -944,6 +962,7 @@ class PgFastBackwardScanTest
         "256, 260, 5; 256, 260, 4; 16384, 16388, 3; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; 16384, 16388, 3; NULL, 5, 2; 4096, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 3; 2; 1"));
 
     // Delete the same records again.
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r = 3", table_name));
@@ -951,11 +970,13 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 2; 1"));
 
     // Delete records from the intents DB in such way the very first row would be in regular DB.
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r IN (4, 5, 6)", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1", "NULL, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate_pk_only("2; 1"));
 
     // Insert some data which would be positioned before all the existing rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(0), 65535)));
@@ -963,6 +984,7 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "1, 5, 2; 4096, 5, 1; 65536, 65540, 0", "NULL, 5, 2; 4096, 5, 1; 65536, 65540, 0"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("2; 1; 0"));
 
     if (intents_usage != IntentsUsage::kRegularOnly) {
       ASSERT_OK(conn.CommitTransaction());
@@ -972,6 +994,7 @@ class PgFastBackwardScanTest
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE h = 1 AND r >= 0", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     ASSERT_OK(fetch_and_validate("", ""));
+    ASSERT_OK(fetch_and_validate_pk_only(""));
 
     LOG_WITH_FUNC(INFO) << "Done";
   }

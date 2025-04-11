@@ -1667,6 +1667,11 @@ ReadCommonPlan(Plan *local_node)
 	READ_NODE_FIELD(initPlan);
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
+	READ_STRING_FIELD(ybHintAlias);
+	READ_UINT_FIELD(ybUniqueId);
+	READ_STRING_FIELD(ybInheritedHintAlias);
+	READ_BOOL_FIELD(ybIsHinted);
+	READ_BOOL_FIELD(ybHasHintedUid);
 }
 
 /*

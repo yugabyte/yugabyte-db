@@ -28,10 +28,12 @@
 
 #include "postgres.h"
 
-#include "access/relscan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapOr.h"
 #include "miscadmin.h"
+
+/* YB includes */
+#include "access/relscan.h"
 #include "nodes/tidbitmap.h"
 #include "pg_yb_utils.h"
 

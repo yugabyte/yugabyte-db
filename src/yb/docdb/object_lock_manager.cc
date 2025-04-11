@@ -27,17 +27,17 @@
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/lock_util.h"
 
-#include "yb/dockv/intent.h"
-
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/debug/long_operation_tracker.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
 namespace yb::docdb {
 
 using dockv::IntentTypeSet;
@@ -201,6 +201,7 @@ class ObjectLockManagerImpl {
 bool ObjectLockedBatchEntry::Lock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
     const ObjectLockOwner& object_lock_owner, TrackedTransactionLockEntry& transaction_entry) {
+  TRACE_FUNC();
   auto old_value = num_holding.load(std::memory_order_acquire);
   auto add = IntentTypeSetAdd(lock_entry.intent_types);
   auto conflicting_lock_state = IntentTypeSetConflict(lock_entry.intent_types);
@@ -219,6 +220,7 @@ bool ObjectLockedBatchEntry::Lock(
       tracker->FinishedWaitingOnLock(lock_entry, object_lock_owner, transaction_entry);
       num_waiters.fetch_sub(1, std::memory_order_release);
     });
+    LongOperationTracker long_operation_tracker("Waiting for object lock", 1s);
     std::unique_lock<std::mutex> lock(mutex);
     old_value = num_holding.load(std::memory_order_acquire);
     if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) != 0) {
@@ -250,6 +252,7 @@ bool ObjectLockedBatchEntry::Lock(
 void ObjectLockedBatchEntry::Unlock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     TrackedTransactionLockEntry& transaction_entry) {
+  TRACE_FUNC();
   tracker->ReleasedLock(lock_entry, object_lock_owner, transaction_entry);
   DoUnlock(IntentTypeSetAdd(lock_entry.intent_types));
 }
@@ -423,7 +426,7 @@ void ObjectLockManagerImpl::DumpStatusHtml(std::ostream& out) {
     out << "<tr>"
           << "<td>" << (!key_str.empty() ? key_str : "[empty]") << "</td>"
           << "<td>" << entry->ToString() << "</td>"
-        << "</tr>";
+        << "</tr>\n";
   }
   out << "</table>\n";
 
@@ -440,7 +443,7 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
         <th>Lock Owner</th>
         <th>Object Id</th>
         <th>Num Holders</th>
-      </tr>)";
+      </tr>\n)";
   for (const auto& [txn, txn_entry] : txn_locks_) {
     std::lock_guard txn_lock(txn_entry.mutex);
     const auto& locks =
@@ -451,7 +454,7 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
             << "<td>" << Format("{txn: $0 subtxn_id: $1}", txn, subtxn_id) << "</td>"
             << "<td>" << AsString(object_id) << "</td>"
             << "<td>" << LockStateDebugString(entry.state) << "</td>"
-            << "</tr>";
+            << "</tr>\n";
       }
     }
   }
@@ -498,6 +501,7 @@ void ObjectLockManagerImpl::DoReleaseTrackedLock(
 void ObjectLockManagerImpl::AcquiredLock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     TrackedTransactionLockEntry& txn, LocksMapType locks_map) {
+  TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
                     << ", object_lock_owner: " << AsString(object_lock_owner);
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
@@ -516,6 +520,7 @@ void ObjectLockManagerImpl::AcquiredLock(
 void ObjectLockManagerImpl::ReleasedLock(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     TrackedTransactionLockEntry& txn, LocksMapType locks_map) {
+  TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
                     << ", object_lock_owner: " << AsString(object_lock_owner);
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);

@@ -22,10 +22,11 @@
  * ----------
  */
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include <ctype.h>
 #include <float.h>
+
+#include "miscadmin.h"
 
 #pragma once
 

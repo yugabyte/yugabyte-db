@@ -7,11 +7,13 @@ DO $d$
     BEGIN
         EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (dbname '$$||current_database()||$$',
+                     -- YB note: In YugabyteDB regress tests, the host and port vary on a run-to-run basis.
                      host '$$||current_setting('listen_addresses')||$$',
                      port '$$||current_setting('port')||$$'
             )$$;
         EXECUTE $$CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (dbname '$$||current_database()||$$',
+                     -- YB note: In YugabyteDB regress tests, the host and port vary on a run-to-run basis.
                      host '$$||current_setting('listen_addresses')||$$',
                      port '$$||current_setting('port')||$$'
             )$$;
@@ -61,7 +63,7 @@ ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
-*/
+*/ -- YB
 INSERT INTO "S 1"."T 1"
 	SELECT id,
 	       id % 10,
@@ -98,7 +100,7 @@ ANALYZE "S 1"."T 4";
 -- YB note: set schema_name, table_name, column_name directly here since ALTER TABLE not supported yet, see #1124
 CREATE FOREIGN TABLE ft1 (
 	c0 int,
-	c1 int OPTIONS (column_name 'C 1') NOT NULL,
+	c1 int OPTIONS (column_name 'C 1') NOT NULL, -- YB note: see above
 	c2 int NOT NULL,
 	c3 text,
 	c4 timestamptz,
@@ -106,10 +108,10 @@ CREATE FOREIGN TABLE ft1 (
 	c6 varchar(10),
 	c7 char(10) default 'ft1',
 	c8 user_enum
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1');
+) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1'); -- YB note: see above
 ALTER FOREIGN TABLE ft1 DROP COLUMN c0;
 CREATE FOREIGN TABLE ft2 (
-	c1 int OPTIONS (column_name 'C 1') NOT NULL,
+	c1 int OPTIONS (column_name 'C 1') NOT NULL, -- YB note: see above
 	c2 int NOT NULL,
 	cx int,
 	c3 text,
@@ -118,7 +120,7 @@ CREATE FOREIGN TABLE ft2 (
 	c6 varchar(10),
 	c7 char(10) default 'ft2',
 	c8 user_enum
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1', use_remote_estimate 'true');
+) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1', use_remote_estimate 'true'); -- YB note: see above
 ALTER FOREIGN TABLE ft2 DROP COLUMN cx;
 CREATE FOREIGN TABLE ft4 (
 	c1 int NOT NULL,
@@ -138,6 +140,7 @@ CREATE FOREIGN TABLE ft6 (
 -- ===================================================================
 -- tests for validator
 -- ===================================================================
+-- YB note: The following line is changed in the upstream PG 15 test
 -- requiressl, krbsrvname and gsslib are omitted because they depend on
 -- configure options
 ALTER SERVER testserver1 OPTIONS (
@@ -163,11 +166,11 @@ ALTER SERVER testserver1 OPTIONS (
 	sslcert 'value',
 	sslkey 'value',
 	sslrootcert 'value',
-	sslcrl 'value'
+	sslcrl 'value' -- YB note: see above
 	--requirepeer 'value',
-	-- krbsrvname 'value',
-	-- gsslib 'value',
-	--replication 'value'
+	-- krbsrvname 'value', -- YB note: see above
+	-- gsslib 'value', -- YB note: see above
+	--replication 'value' -- YB note: see above
 );
 -- Error, invalid list syntax
 ALTER SERVER testserver1 OPTIONS (ADD extensions 'foo; bar');
@@ -454,12 +457,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
          ->  Foreign Scan on public.ft2 t1
                Output: t1.c1
                Remote SQL: SELECT "C 1" FROM "S 1"."T 1" ORDER BY "C 1" ASC NULLS LAST
-         ->  Sort
+         ->  Index Scan using t1_pkey on "S 1"."T 1" t2
                Output: t2."C 1"
-               Sort Key: t2."C 1"
-               ->  Seq Scan on "S 1"."T 1" t2
-                     Output: t2."C 1"
-(14 rows)
+(11 rows)
 
 SELECT t1.c1, t2."C 1" FROM ft2 t1 JOIN "S 1"."T 1" t2 ON (t1.c1 = t2."C 1") OFFSET 100 LIMIT 10;
  c1  | C 1 
@@ -491,12 +491,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
          ->  Foreign Scan on public.ft2 t1
                Output: t1.c1
                Remote SQL: SELECT "C 1" FROM "S 1"."T 1" ORDER BY "C 1" ASC NULLS LAST
-         ->  Sort
+         ->  Index Scan using t1_pkey on "S 1"."T 1" t2
                Output: t2."C 1"
-               Sort Key: t2."C 1"
-               ->  Seq Scan on "S 1"."T 1" t2
-                     Output: t2."C 1"
-(14 rows)
+(11 rows)
 
 SELECT t1.c1, t2."C 1" FROM ft2 t1 LEFT JOIN "S 1"."T 1" t2 ON (t1.c1 = t2."C 1") OFFSET 100 LIMIT 10;
  c1  | C 1 
@@ -529,12 +526,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
                Output: t3.c1
                Relations: (public.ft1 t2) INNER JOIN (public.ft2 t3)
                Remote SQL: SELECT r3."C 1" FROM ("S 1"."T 1" r2 INNER JOIN "S 1"."T 1" r3 ON (((r2."C 1" = r3."C 1")))) ORDER BY r2."C 1" ASC NULLS LAST
-         ->  Sort
+         ->  Index Scan using t1_pkey on "S 1"."T 1" t1
                Output: t1."C 1"
-               Sort Key: t1."C 1"
-               ->  Seq Scan on "S 1"."T 1" t1
-                     Output: t1."C 1"
-(15 rows)
+(12 rows)
 
 SELECT t1."C 1" FROM "S 1"."T 1" t1 left join ft1 t2 join ft2 t3 on (t2.c1 = t3.c1) on (t3.c1 = t1."C 1") OFFSET 100 LIMIT 10;
  C 1 
@@ -568,12 +562,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
                Output: t3.c1, t2.c1
                Relations: (public.ft2 t3) LEFT JOIN (public.ft1 t2)
                Remote SQL: SELECT r3."C 1", r2."C 1" FROM ("S 1"."T 1" r3 LEFT JOIN "S 1"."T 1" r2 ON (((r2."C 1" = r3."C 1")))) ORDER BY r3."C 1" ASC NULLS LAST
-         ->  Sort
+         ->  Index Scan using t1_pkey on "S 1"."T 1" t1
                Output: t1."C 1"
-               Sort Key: t1."C 1"
-               ->  Seq Scan on "S 1"."T 1" t1
-                     Output: t1."C 1"
-(15 rows)
+(12 rows)
 
 SELECT t1."C 1", t2.c1, t3.c1 FROM "S 1"."T 1" t1 left join ft1 t2 full join ft2 t3 on (t2.c1 = t3.c1) on (t3.c1 = t1."C 1") OFFSET 100 LIMIT 10;
  C 1 | c1  | c1  
@@ -605,12 +596,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
                Output: t2.c1, t3.c1
                Relations: (public.ft1 t2) FULL JOIN (public.ft2 t3)
                Remote SQL: SELECT r2."C 1", r3."C 1" FROM ("S 1"."T 1" r2 FULL JOIN "S 1"."T 1" r3 ON (((r2."C 1" = r3."C 1")))) ORDER BY r3."C 1" ASC NULLS LAST
-         ->  Sort
+         ->  Index Scan using t1_pkey on "S 1"."T 1" t1
                Output: t1."C 1"
-               Sort Key: t1."C 1"
-               ->  Seq Scan on "S 1"."T 1" t1
-                     Output: t1."C 1"
-(15 rows)
+(12 rows)
 
 SELECT t1."C 1", t2.c1, t3.c1 FROM "S 1"."T 1" t1 full join ft1 t2 full join ft2 t3 on (t2.c1 = t3.c1) on (t3.c1 = t1."C 1") OFFSET 100 LIMIT 10;
  C 1 | c1  | c1  
@@ -704,6 +692,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 = ANY(ARRAY[c2, 1, c1
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" WHERE (("C 1" = ANY (ARRAY[c2, 1, ("C 1" + 0)])))
 (4 rows)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 = (ARRAY[c1,c2,3])[1]; -- ArrayRef
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
@@ -774,13 +763,114 @@ EXPLAIN (VERBOSE, COSTS OFF)
                Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" WHERE ((c2 = 6))
 (13 rows)
 
--- YB note: Added ORDER BY here and in other places for deterministic results
 SELECT * FROM ft2 a, ft2 b
-WHERE a.c2 = 6 AND b.c1 = a.c1 AND a.c8 = 'foo' AND b.c7 = upper(a.c7) ORDER BY c1;
-ERROR:  ORDER BY "c1" is ambiguous
-LINE 2: ... = a.c1 AND a.c8 = 'foo' AND b.c7 = upper(a.c7) ORDER BY c1;
-                                                                    ^
+WHERE a.c2 = 6 AND b.c1 = a.c1 AND a.c8 = 'foo' AND b.c7 = upper(a.c7);
+ c1  | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  | c1  | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
+-----+----+-------+------------------------------+--------------------------+----+------------+-----+-----+----+-------+------------------------------+--------------------------+----+------------+-----
+   6 |  6 | 00006 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo |   6 |  6 | 00006 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+  16 |  6 | 00016 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo |  16 |  6 | 00016 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+  26 |  6 | 00026 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo |  26 |  6 | 00026 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+  36 |  6 | 00036 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo |  36 |  6 | 00036 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+  46 |  6 | 00046 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo |  46 |  6 | 00046 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+  56 |  6 | 00056 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo |  56 |  6 | 00056 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+  66 |  6 | 00066 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo |  66 |  6 | 00066 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+  76 |  6 | 00076 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo |  76 |  6 | 00076 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+  86 |  6 | 00086 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo |  86 |  6 | 00086 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+  96 |  6 | 00096 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo |  96 |  6 | 00096 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 106 |  6 | 00106 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 106 |  6 | 00106 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 116 |  6 | 00116 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 116 |  6 | 00116 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 126 |  6 | 00126 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 126 |  6 | 00126 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 136 |  6 | 00136 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 136 |  6 | 00136 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 146 |  6 | 00146 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 146 |  6 | 00146 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 156 |  6 | 00156 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 156 |  6 | 00156 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 166 |  6 | 00166 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 166 |  6 | 00166 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 176 |  6 | 00176 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 176 |  6 | 00176 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 186 |  6 | 00186 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 186 |  6 | 00186 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 196 |  6 | 00196 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 196 |  6 | 00196 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 206 |  6 | 00206 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 206 |  6 | 00206 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 216 |  6 | 00216 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 216 |  6 | 00216 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 226 |  6 | 00226 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 226 |  6 | 00226 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 236 |  6 | 00236 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 236 |  6 | 00236 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 246 |  6 | 00246 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 246 |  6 | 00246 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 256 |  6 | 00256 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 256 |  6 | 00256 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 266 |  6 | 00266 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 266 |  6 | 00266 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 276 |  6 | 00276 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 276 |  6 | 00276 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 286 |  6 | 00286 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 286 |  6 | 00286 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 296 |  6 | 00296 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 296 |  6 | 00296 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 306 |  6 | 00306 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 306 |  6 | 00306 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 316 |  6 | 00316 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 316 |  6 | 00316 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 326 |  6 | 00326 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 326 |  6 | 00326 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 336 |  6 | 00336 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 336 |  6 | 00336 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 346 |  6 | 00346 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 346 |  6 | 00346 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 356 |  6 | 00356 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 356 |  6 | 00356 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 366 |  6 | 00366 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 366 |  6 | 00366 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 376 |  6 | 00376 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 376 |  6 | 00376 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 386 |  6 | 00386 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 386 |  6 | 00386 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 396 |  6 | 00396 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 396 |  6 | 00396 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 406 |  6 | 00406 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 406 |  6 | 00406 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 416 |  6 | 00416 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 416 |  6 | 00416 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 426 |  6 | 00426 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 426 |  6 | 00426 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 436 |  6 | 00436 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 436 |  6 | 00436 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 446 |  6 | 00446 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 446 |  6 | 00446 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 456 |  6 | 00456 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 456 |  6 | 00456 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 466 |  6 | 00466 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 466 |  6 | 00466 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 476 |  6 | 00476 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 476 |  6 | 00476 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 486 |  6 | 00486 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 486 |  6 | 00486 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 496 |  6 | 00496 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 496 |  6 | 00496 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 506 |  6 | 00506 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 506 |  6 | 00506 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 516 |  6 | 00516 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 516 |  6 | 00516 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 526 |  6 | 00526 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 526 |  6 | 00526 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 536 |  6 | 00536 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 536 |  6 | 00536 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 546 |  6 | 00546 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 546 |  6 | 00546 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 556 |  6 | 00556 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 556 |  6 | 00556 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 566 |  6 | 00566 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 566 |  6 | 00566 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 576 |  6 | 00576 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 576 |  6 | 00576 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 586 |  6 | 00586 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 586 |  6 | 00586 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 596 |  6 | 00596 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 596 |  6 | 00596 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 606 |  6 | 00606 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 606 |  6 | 00606 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 616 |  6 | 00616 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 616 |  6 | 00616 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 626 |  6 | 00626 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 626 |  6 | 00626 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 636 |  6 | 00636 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 636 |  6 | 00636 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 646 |  6 | 00646 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 646 |  6 | 00646 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 656 |  6 | 00656 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 656 |  6 | 00656 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 666 |  6 | 00666 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 666 |  6 | 00666 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 676 |  6 | 00676 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 676 |  6 | 00676 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 686 |  6 | 00686 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 686 |  6 | 00686 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 696 |  6 | 00696 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 696 |  6 | 00696 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 706 |  6 | 00706 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 706 |  6 | 00706 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 716 |  6 | 00716 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 716 |  6 | 00716 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 726 |  6 | 00726 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 726 |  6 | 00726 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 736 |  6 | 00736 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 736 |  6 | 00736 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 746 |  6 | 00746 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 746 |  6 | 00746 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 756 |  6 | 00756 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 756 |  6 | 00756 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 766 |  6 | 00766 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 766 |  6 | 00766 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 776 |  6 | 00776 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 776 |  6 | 00776 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 786 |  6 | 00786 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 786 |  6 | 00786 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 796 |  6 | 00796 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 796 |  6 | 00796 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 806 |  6 | 00806 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 806 |  6 | 00806 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 816 |  6 | 00816 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 816 |  6 | 00816 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 826 |  6 | 00826 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 826 |  6 | 00826 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 836 |  6 | 00836 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 836 |  6 | 00836 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 846 |  6 | 00846 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 846 |  6 | 00846 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 856 |  6 | 00856 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 856 |  6 | 00856 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 866 |  6 | 00866 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 866 |  6 | 00866 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 876 |  6 | 00876 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 876 |  6 | 00876 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 886 |  6 | 00886 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 886 |  6 | 00886 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 896 |  6 | 00896 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 896 |  6 | 00896 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+ 906 |  6 | 00906 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo | 906 |  6 | 00906 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
+ 916 |  6 | 00916 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo | 916 |  6 | 00916 | Sat Jan 17 00:00:00 1970 PST | Sat Jan 17 00:00:00 1970 | 6  | 6          | foo
+ 926 |  6 | 00926 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo | 926 |  6 | 00926 | Tue Jan 27 00:00:00 1970 PST | Tue Jan 27 00:00:00 1970 | 6  | 6          | foo
+ 936 |  6 | 00936 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo | 936 |  6 | 00936 | Fri Feb 06 00:00:00 1970 PST | Fri Feb 06 00:00:00 1970 | 6  | 6          | foo
+ 946 |  6 | 00946 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo | 946 |  6 | 00946 | Mon Feb 16 00:00:00 1970 PST | Mon Feb 16 00:00:00 1970 | 6  | 6          | foo
+ 956 |  6 | 00956 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo | 956 |  6 | 00956 | Thu Feb 26 00:00:00 1970 PST | Thu Feb 26 00:00:00 1970 | 6  | 6          | foo
+ 966 |  6 | 00966 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo | 966 |  6 | 00966 | Sun Mar 08 00:00:00 1970 PST | Sun Mar 08 00:00:00 1970 | 6  | 6          | foo
+ 976 |  6 | 00976 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo | 976 |  6 | 00976 | Wed Mar 18 00:00:00 1970 PST | Wed Mar 18 00:00:00 1970 | 6  | 6          | foo
+ 986 |  6 | 00986 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo | 986 |  6 | 00986 | Sat Mar 28 00:00:00 1970 PST | Sat Mar 28 00:00:00 1970 | 6  | 6          | foo
+ 996 |  6 | 00996 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo | 996 |  6 | 00996 | Tue Apr 07 00:00:00 1970 PST | Tue Apr 07 00:00:00 1970 | 6  | 6          | foo
+(100 rows)
+
 -- bug before 9.3.5 due to sloppy handling of remote-estimate parameters
+-- YB note: The following line is changed in the upstream PG 15 test
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM ft1 WHERE c1 = ANY (ARRAY(SELECT c1 FROM ft2 WHERE c1 < 5));
                                                   QUERY PLAN                                                   
@@ -800,9 +890,9 @@ SELECT * FROM ft2 WHERE c1 = ANY (ARRAY(SELECT c1 FROM ft1 WHERE c1 < 5));
  c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
 ----+----+-------+------------------------------+--------------------------+----+------------+-----
   1 |  1 | 00001 | Fri Jan 02 00:00:00 1970 PST | Fri Jan 02 00:00:00 1970 | 1  | 1          | foo
-  4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
   2 |  2 | 00002 | Sat Jan 03 00:00:00 1970 PST | Sat Jan 03 00:00:00 1970 | 2  | 2          | foo
   3 |  3 | 00003 | Sun Jan 04 00:00:00 1970 PST | Sun Jan 04 00:00:00 1970 | 3  | 3          | foo
+  4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
 (4 rows)
 
 -- we should not push order by clause with volatile expressions or unsafe
@@ -1046,7 +1136,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT 
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 1" r1 LEFT JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")))) LEFT JOIN "S 1"."T 3" r4 ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  11 |  1 | 
@@ -1074,7 +1164,7 @@ SELECT t1.c1, t1.c2, t2.c1, t2.c2 FROM ft4 t1 LEFT JOIN (SELECT * FROM ft5 WHERE
    Remote SQL: SELECT r1.c1, r1.c2, r4.c1, r4.c2 FROM ("S 1"."T 3" r1 LEFT JOIN "S 1"."T 4" r4 ON (((r1.c1 = r4.c1)) AND ((r4.c1 < 10)))) WHERE ((r1.c1 < 10))
 (4 rows)
 
-SELECT t1.c1, t1.c2, t2.c1, t2.c2 FROM ft4 t1 LEFT JOIN (SELECT * FROM ft5 WHERE c1 < 10) t2 ON (t1.c1 = t2.c1) WHERE t1.c1 < 10 ORDER BY t1.c1;
+SELECT t1.c1, t1.c2, t2.c1, t2.c2 FROM ft4 t1 LEFT JOIN (SELECT * FROM ft5 WHERE c1 < 10) t2 ON (t1.c1 = t2.c1) WHERE t1.c1 < 10;
  c1 | c2 | c1 | c2 
 ----+----+----+----
   2 |  3 |    |   
@@ -1097,7 +1187,7 @@ SELECT t1.c1, t1.c2, t2.c1, t2.c2 FROM ft4 t1 LEFT JOIN (SELECT * FROM ft5 WHERE
 (4 rows)
 
 SELECT t1.c1, t1.c2, t2.c1, t2.c2 FROM ft4 t1 LEFT JOIN (SELECT * FROM ft5 WHERE c1 < 10) t2 ON (t1.c1 = t2.c1)
-			WHERE (t2.c1 < 10 OR t2.c1 IS NULL) AND t1.c1 < 10 ORDER BY t1.c1;
+			WHERE (t2.c1 < 10 OR t2.c1 IS NULL) AND t1.c1 < 10;
  c1 | c2 | c1 | c2 
 ----+----+----+----
   2 |  3 |    |   
@@ -1134,16 +1224,16 @@ SELECT t1.c1, t2.c1 FROM ft5 t1 RIGHT JOIN ft4 t2 ON (t1.c1 = t2.c1) ORDER BY t2
 
 -- right outer join three tables
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
-                                                                                                                    QUERY PLAN                                                                                                                    
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+                                                                                                   QUERY PLAN                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan
    Output: t1.c1, t2.c2, t3.c3
    Relations: ((public.ft4 t3) LEFT JOIN (public.ft2 t2)) LEFT JOIN (public.ft2 t1)
-   Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 3" r4 LEFT JOIN "S 1"."T 1" r2 ON (((r2."C 1" = r4.c1)))) LEFT JOIN "S 1"."T 1" r1 ON (((r1."C 1" = r2."C 1")))) ORDER BY r1."C 1" ASC NULLS LAST LIMIT 10::bigint OFFSET 10::bigint
+   Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 3" r4 LEFT JOIN "S 1"."T 1" r2 ON (((r2."C 1" = r4.c1)))) LEFT JOIN "S 1"."T 1" r1 ON (((r1."C 1" = r2."C 1")))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  22 |  2 | AAA022
@@ -1368,7 +1458,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL 
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 1" r1 FULL JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")))) FULL JOIN "S 1"."T 3" r4 ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  11 |  1 | 
@@ -1394,7 +1484,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 3" r4 LEFT JOIN "S 1"."T 1" r2 ON (((r2."C 1" = r4.c1)))) LEFT JOIN "S 1"."T 1" r1 ON (((r1."C 1" = r2."C 1")))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  22 |  2 | AAA022
@@ -1420,7 +1510,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 1" r2 LEFT JOIN "S 1"."T 1" r1 ON (((r1."C 1" = r2."C 1")))) FULL JOIN "S 1"."T 3" r4 ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  11 |  1 | 
@@ -1446,6 +1536,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT 
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 1" r1 FULL JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")))) LEFT JOIN "S 1"."T 3" r4 ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
+-- YB note: Vanilla PG uses Hash Join while YB uses Batched NL + Merge Join. Use ORDER BY to get same output
 SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
@@ -1472,7 +1563,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL 
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 1" r1 LEFT JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")))) FULL JOIN "S 1"."T 3" r4 ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  11 |  1 | 
@@ -1498,7 +1589,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM (("S 1"."T 1" r2 LEFT JOIN "S 1"."T 1" r1 ON (((r1."C 1" = r2."C 1")))) LEFT JOIN "S 1"."T 3" r4 ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  11 |  1 | 
@@ -1524,7 +1615,7 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT
    Remote SQL: SELECT r1."C 1", r2.c2, r4.c3 FROM ("S 1"."T 3" r4 LEFT JOIN ("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")))) ON (((r2."C 1" = r4.c1)))) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
  c1 | c2 |   c3   
 ----+----+--------
  22 |  2 | AAA022
@@ -1576,7 +1667,8 @@ SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE
    Remote SQL: SELECT r1."C 1", r2.c2, r1.c3 FROM ("S 1"."T 1" r1 FULL JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")))) WHERE ((public.postgres_fdw_abs(r1."C 1") > 0)) LIMIT 10::bigint OFFSET 10::bigint
 (4 rows)
 
-SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+-- YB note: The following line is a YB test. This should ideally be in a yb.orig file.
+SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 OFFSET 10 LIMIT 10;
  c1 | c2 |  c3   
 ----+----+-------
  11 |  1 | 00011
@@ -1606,7 +1698,8 @@ SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE
          Remote SQL: SELECT r1."C 1", r2.c2, r1.c3 FROM ("S 1"."T 1" r1 FULL JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1"))))
 (7 rows)
 
-SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 ORDER BY t1.c1 OFFSET 10 LIMIT 10;
+-- YB note: The following line is a YB test. This should ideally be in a yb.orig file.
+SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 OFFSET 10 LIMIT 10;
  c1 | c2 |  c3   
 ----+----+-------
  11 |  1 | 00011
@@ -1726,8 +1819,9 @@ SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c3, t
 (10 rows)
 
 -- join in CTE
+-- YB note: The following line is changed in the upstream PG 15 test
 EXPLAIN (VERBOSE, COSTS OFF)
-WITH t (c1_1, c1_3, c2_1) AS (SELECT t1.c1, t1.c3, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1)) SELECT c1_1, c2_1 FROM t ORDER BY c1_3, c1_1 OFFSET 100 LIMIT 10;
+WITH t (c1_1, c1_3, c2_1) AS (SELECT t1.c1, t1.c3, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1)) SELECT c1_1, c2_1 FROM t ORDER BY c1_3, c1_1 OFFSET 100 LIMIT 10; -- YB note: see above
                                                                                                        QUERY PLAN                                                                                                       
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan
@@ -1736,6 +1830,7 @@ WITH t (c1_1, c1_3, c2_1) AS (SELECT t1.c1, t1.c3, t2.c1 FROM ft1 t1 JOIN ft2 t2
    Remote SQL: SELECT r2."C 1", r3."C 1", r2.c3 FROM ("S 1"."T 1" r2 INNER JOIN "S 1"."T 1" r3 ON (((r2."C 1" = r3."C 1")))) ORDER BY r2.c3 ASC NULLS LAST, r2."C 1" ASC NULLS LAST LIMIT 10::bigint OFFSET 100::bigint
 (4 rows)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 WITH t (c1_1, c1_3, c2_1) AS (SELECT t1.c1, t1.c3, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1)) SELECT c1_1, c2_1 FROM t ORDER BY c1_3, c1_1 OFFSET 100 LIMIT 10;
  c1_1 | c2_1 
 ------+------
@@ -1756,6 +1851,7 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.ctid, t1, t2, t1.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c3, t1.c1 OFFSET 100 LIMIT 10;
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: EXPLAIN SELECT r1.ctid, CASE WHEN (r1.*)::text IS NOT NULL THEN ROW(r1."C 1", r1.c2, r1.c3, r1.c4, r1.c5, r1.c6, r1.c7, r1.c8) END, r1."C 1", r1.c3, CASE WHEN (r2.*)::text IS NOT NULL THEN ROW(r2."C 1", r2.c2, r2.c3, r2.c4, r2.c5, r2.c6, r2.c7, r2.c8) END FROM ("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1"))))
+-- YB note: The following line is a YB test. This should ideally be in a yb.orig file.
 SELECT t1.ctid, t1, t2, t1.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c3, t1.c1 OFFSET 100 LIMIT 10;
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: EXPLAIN SELECT r1.ctid, CASE WHEN (r1.*)::text IS NOT NULL THEN ROW(r1."C 1", r1.c2, r1.c3, r1.c4, r1.c5, r1.c6, r1.c7, r1.c8) END, r1."C 1", r1.c3, CASE WHEN (r2.*)::text IS NOT NULL THEN ROW(r2."C 1", r2.c2, r2.c3, r2.c4, r2.c5, r2.c6, r2.c7, r2.c8) END FROM ("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1"))))
@@ -1766,23 +1862,16 @@ SELECT t1.c1 FROM ft1 t1 WHERE EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c1)
 ---------------------------------------------------------------------------------------
  Limit
    Output: t1.c1
-   ->  Merge Join
+   ->  Merge Semi Join
          Output: t1.c1
-         Inner Unique: true
          Merge Cond: (t1.c1 = t2.c1)
          ->  Foreign Scan on public.ft1 t1
                Output: t1.c1
                Remote SQL: SELECT "C 1" FROM "S 1"."T 1" ORDER BY "C 1" ASC NULLS LAST
-         ->  Sort
+         ->  Foreign Scan on public.ft2 t2
                Output: t2.c1
-               Sort Key: t2.c1
-               ->  HashAggregate
-                     Output: t2.c1
-                     Group Key: t2.c1
-                     ->  Foreign Scan on public.ft2 t2
-                           Output: t2.c1
-                           Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-(18 rows)
+               Remote SQL: SELECT "C 1" FROM "S 1"."T 1" ORDER BY "C 1" ASC NULLS LAST
+(11 rows)
 
 SELECT t1.c1 FROM ft1 t1 WHERE EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c1) ORDER BY t1.c1 OFFSET 100 LIMIT 10;
  c1  
@@ -1832,6 +1921,7 @@ SELECT t1.c1 FROM ft1 t1 WHERE NOT EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2
  119
 (10 rows)
 
+ -- YB note: The following line is changed in the upstream PG 15 test
 -- CROSS JOIN, not pushed down
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1 FROM ft1 t1 CROSS JOIN ft2 t2 ORDER BY t1.c1, t2.c1 OFFSET 100 LIMIT 10;
@@ -2044,35 +2134,33 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 
 -- join with lateral reference
 -- YB note: This is commented out as it ends up doing rescans on a remote relation
--- which uses an unsupported MOVE BACKWARD ALL IN command. See issue #11422.
+-- YB note: which uses an unsupported MOVE BACKWARD ALL IN command. See issue #11422.
 /*
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
-*/
+*/ -- YB
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
 -- unable to push {ft1, ft2}
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT q.a, ft2.c1 FROM (SELECT 13 FROM ft1 WHERE c1 = 13) q(a) RIGHT JOIN ft2 ON (q.a = ft2.c1) WHERE ft2.c1 BETWEEN 10 AND 15;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
  Nested Loop Left Join
    Output: (13), ft2.c1
    Join Filter: (13 = ft2.c1)
    ->  Foreign Scan on public.ft2
          Output: ft2.c1
          Remote Filter: ((ft2.c1 >= 10) AND (ft2.c1 <= 15))
-         Remote SQL: SELECT "C 1" FROM "S 1"."T 1" WHERE (("C 1" >= 10)) AND (("C 1" <= 15))
-   ->  Materialize
-         Output: (13)
-         ->  Foreign Scan on public.ft1
-               Output: 13
-               Remote Filter: (ft1.c1 = 13)
-               Remote SQL: SELECT NULL FROM "S 1"."T 1" WHERE (("C 1" = 13))
-(13 rows)
+         Remote SQL: SELECT "C 1" FROM "S 1"."T 1" WHERE (("C 1" >= 10)) AND (("C 1" <= 15)) ORDER BY "C 1" ASC NULLS LAST
+   ->  Foreign Scan on public.ft1
+         Output: 13
+         Remote Filter: (ft1.c1 = 13)
+         Remote SQL: SELECT NULL FROM "S 1"."T 1" WHERE (("C 1" = 13))
+(11 rows)
 
-SELECT q.a, ft2.c1 FROM (SELECT 13 FROM ft1 WHERE c1 = 13) q(a) RIGHT JOIN ft2 ON (q.a = ft2.c1) WHERE ft2.c1 BETWEEN 10 AND 15 ORDER BY ft2.c1;
+SELECT q.a, ft2.c1 FROM (SELECT 13 FROM ft1 WHERE c1 = 13) q(a) RIGHT JOIN ft2 ON (q.a = ft2.c1) WHERE ft2.c1 BETWEEN 10 AND 15;
  a  | c1 
 ----+----
     | 10
@@ -2103,7 +2191,7 @@ SELECT ft4.c1, q.* FROM ft4 LEFT JOIN (SELECT 13, ft1.c1, ft2.c1 FROM ft1 RIGHT 
                Remote SQL: SELECT r4."C 1", r5."C 1" FROM ("S 1"."T 1" r4 INNER JOIN "S 1"."T 1" r5 ON (((r5."C 1" = 12)) AND ((r4."C 1" = 12)))) ORDER BY r4."C 1" ASC NULLS LAST
 (13 rows)
 
-SELECT ft4.c1, q.* FROM ft4 LEFT JOIN (SELECT 13, ft1.c1, ft2.c1 FROM ft1 RIGHT JOIN ft2 ON (ft1.c1 = ft2.c1) WHERE ft1.c1 = 12) q(a, b, c) ON (ft4.c1 = q.b) WHERE ft4.c1 BETWEEN 10 AND 15 ORDER BY ft4.c1;
+SELECT ft4.c1, q.* FROM ft4 LEFT JOIN (SELECT 13, ft1.c1, ft2.c1 FROM ft1 RIGHT JOIN ft2 ON (ft1.c1 = ft2.c1) WHERE ft1.c1 = 12) q(a, b, c) ON (ft4.c1 = q.b) WHERE ft4.c1 BETWEEN 10 AND 15;
  c1 | a  | b  | c  
 ----+----+----+----
  10 |    |    |   
@@ -2134,11 +2222,13 @@ SELECT ft5, ft5.c1, ft5.c2, ft5.c3, ft4.c1, ft4.c2 FROM ft5 left join ft4 on ft5
 
 -- multi-way join involving multiple merge joins
 -- (this case used to have EPQ-related planning problems)
+-- YB note: The following line is changed in the upstream PG 15 test
 SET enable_nestloop TO false;
 SET yb_enable_batchednl TO false;
 SET enable_hashjoin TO false;
+-- YB note: The following line is changed in the upstream PG 15 test
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
+SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1 -- YB note: see above
     AND ft1.c2 = ft5.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
                                                                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                          
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2148,8 +2238,9 @@ SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
    Remote SQL: SELECT r1."C 1", r1.c2, r1.c3, r1.c4, r1.c5, r1.c6, r1.c7, r1.c8, r2."C 1", r2.c2, r2.c3, r2.c4, r2.c5, r2.c6, r2.c7, r2.c8, r3.c1, r3.c2, r3.c3, r4.c1, r4.c2, r4.c3, CASE WHEN (r1.*)::text IS NOT NULL THEN ROW(r1."C 1", r1.c2, r1.c3, r1.c4, r1.c5, r1.c6, r1.c7, r1.c8) END, CASE WHEN (r2.*)::text IS NOT NULL THEN ROW(r2."C 1", r2.c2, r2.c3, r2.c4, r2.c5, r2.c6, r2.c7, r2.c8) END, CASE WHEN (r3.*)::text IS NOT NULL THEN ROW(r3.c1, r3.c2, r3.c3) END, CASE WHEN (r4.*)::text IS NOT NULL THEN ROW(r4.c1, r4.c2, r4.c3) END FROM ((("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (((r1."C 1" = r2."C 1")) AND ((r2."C 1" < 100)) AND ((r1."C 1" < 100)))) INNER JOIN "S 1"."T 3" r3 ON (((r1.c2 = r3.c1)))) INNER JOIN "S 1"."T 4" r4 ON (((r1.c2 = r4.c1)))) FOR UPDATE OF r1 FOR UPDATE OF r2 FOR UPDATE OF r3 FOR UPDATE OF r4
 (4 rows)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
-    AND ft1.c2 = ft5.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 ORDER BY ft1.c1 FOR UPDATE;
+    AND ft1.c2 = ft5.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
  c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  | c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  | c1 | c2 |   c3   | c1 | c2 |   c3   
 ----+----+-------+------------------------------+--------------------------+----+------------+-----+----+----+-------+------------------------------+--------------------------+----+------------+-----+----+----+--------+----+----+--------
   6 |  6 | 00006 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo |  6 |  6 | 00006 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo |  6 |  7 | AAA006 |  6 |  7 | AAA006
@@ -2776,14 +2867,14 @@ select sum(c2) filter (where c2 in (select c2 from ft1 where c2 < 5)) from ft1;
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Aggregate
-   Output: sum(ft1.c2) FILTER (WHERE (hashed SubPlan 1))
-   ->  Foreign Scan on public.ft1
-         Output: ft1.c2
+   Output: sum(ft1_1.c2) FILTER (WHERE (hashed SubPlan 1))
+   ->  Foreign Scan on public.ft1 ft1_1
+         Output: ft1_1.c2
          Remote SQL: SELECT c2 FROM "S 1"."T 1"
    SubPlan 1
-     ->  Foreign Scan on public.ft1 ft1_1
-           Output: ft1_1.c2
-           Remote Filter: (ft1_1.c2 < 5)
+     ->  Foreign Scan on public.ft1
+           Output: ft1.c2
+           Remote Filter: (ft1.c2 < 5)
            Remote SQL: SELECT c2 FROM "S 1"."T 1" WHERE ((c2 < 5))
 (10 rows)
 
@@ -2958,13 +3049,16 @@ alter server loopback options (set extensions 'postgres_fdw');
 -- Now this will be pushed as sort operator is part of the extension.
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
-                                                                           QUERY PLAN                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------------------------
- Foreign Scan
-   Output: (array_agg(c1 ORDER BY c1 USING <^ NULLS LAST)), c2
-   Relations: Aggregate on (public.ft2)
-   Remote SQL: SELECT array_agg("C 1" ORDER BY "C 1" USING OPERATOR(public.<^) NULLS LAST), c2 FROM "S 1"."T 1" WHERE (("C 1" < 100)) AND ((c2 = 6)) GROUP BY 2
-(4 rows)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ GroupAggregate
+   Output: array_agg(c1 ORDER BY c1 USING <^ NULLS LAST), c2
+   Group Key: ft2.c2
+   ->  Foreign Scan on public.ft2
+         Output: c1, c2
+         Remote Filter: ((ft2.c1 < 100) AND (ft2.c2 = 6))
+         Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1" WHERE (("C 1" < 100)) AND ((c2 = 6))
+(7 rows)
 
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
            array_agg            
@@ -3132,12 +3226,11 @@ select sum(c2) * (random() <= 1)::int as sum from ft1 order by 1;
 (1 row)
 
 -- LATERAL join, with parameterization
--- YB note: ERROR:  FETCH BACKWARD not supported yet, see issue #11422
 set enable_hashagg to false;
-/*
+/* YB note: ERROR:  FETCH BACKWARD not supported yet, see issue #11422
 explain (verbose, costs off)
 select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
-*/
+*/ -- YB
 select c2, sum from "S 1"."T 1" t1, lateral (select sum(t2.c1 + t1."C 1") sum from ft2 t2 group by t2.c1) qry where t1.c2 * 2 = qry.sum and t1.c2 < 3 and t1."C 1" < 100 order by 1;
  c2 | sum 
 ----+-----
@@ -3159,29 +3252,24 @@ FROM
     ) AS subq_1
 WHERE ref_0."C 1" < 10 AND subq_1.c3 = '00001'
 ORDER BY ref_0."C 1";
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Sort
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Nested Loop
    Output: ref_0.c2, ref_0."C 1", (ref_0.c2), ref_1.c3, ref_0."C 1"
-   Sort Key: ref_0."C 1"
    ->  Nested Loop
-         Output: ref_0.c2, ref_0."C 1", (ref_0.c2), ref_1.c3, ref_0."C 1"
-         ->  Nested Loop
-               Output: ref_0.c2, ref_0."C 1", ref_1.c3, (ref_0.c2)
-               ->  Seq Scan on "S 1"."T 1" ref_0
-                     Output: ref_0.c2, ref_0."C 1"
-                     Storage Filter: (ref_0."C 1" < 10)
-               ->  Foreign Scan on public.ft1 ref_1
-                     Output: ref_1.c3, ref_0.c2
-                     Remote Filter: (ref_1.c3 = '00001'::text)
-                     Remote SQL: SELECT c3 FROM "S 1"."T 1" WHERE ((c3 = '00001'))
-         ->  Materialize
-               Output: ref_3.c3
-               ->  Foreign Scan on public.ft2 ref_3
-                     Output: ref_3.c3
-                     Remote Filter: (ref_3.c3 = '00001'::text)
-                     Remote SQL: SELECT c3 FROM "S 1"."T 1" WHERE ((c3 = '00001'))
-(20 rows)
+         Output: ref_0.c2, ref_0."C 1", ref_1.c3, (ref_0.c2)
+         ->  Index Scan using t1_pkey on "S 1"."T 1" ref_0
+               Output: ref_0.c2, ref_0."C 1"
+               Index Cond: (ref_0."C 1" < 10)
+         ->  Foreign Scan on public.ft1 ref_1
+               Output: ref_1.c3, ref_0.c2
+               Remote Filter: (ref_1.c3 = '00001'::text)
+               Remote SQL: SELECT c3 FROM "S 1"."T 1" WHERE ((c3 = '00001'))
+   ->  Foreign Scan on public.ft2 ref_3
+         Output: ref_3.c3
+         Remote Filter: (ref_3.c3 = '00001'::text)
+         Remote SQL: SELECT c3 FROM "S 1"."T 1" WHERE ((c3 = '00001'))
+(15 rows)
 
 SELECT ref_0.c2, subq_1.*
 FROM
@@ -3500,14 +3588,14 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st2(10, 20);
  Sort
    Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
    Sort Key: t1.c1
-   ->  Hash Semi Join
+   ->  Nested Loop Semi Join
          Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
-         Hash Cond: (t1.c3 = t2.c3)
+         Join Filter: (t1.c3 = t2.c3)
          ->  Foreign Scan on public.ft1 t1
                Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
                Remote Filter: (t1.c1 < 20)
                Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" WHERE (("C 1" < 20))
-         ->  Hash
+         ->  Materialize
                Output: t2.c3
                ->  Foreign Scan on public.ft2 t2
                      Output: t2.c3
@@ -3531,29 +3619,25 @@ EXECUTE st2(101, 121);
 -- subquery using immutable function (can be sent to remote)
 PREPARE st3(int) AS SELECT * FROM ft1 t1 WHERE t1.c1 < $2 AND t1.c3 IN (SELECT c3 FROM ft2 t2 WHERE c1 > $1 AND date(c5) = '1970-01-17'::date) ORDER BY c1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st3(10, 20);
-                                                         QUERY PLAN                                                          
------------------------------------------------------------------------------------------------------------------------------
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
  Sort
    Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
    Sort Key: t1.c1
-   ->  Hash Join
+   ->  Nested Loop Semi Join
          Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
-         Inner Unique: true
-         Hash Cond: (t1.c3 = t2.c3)
+         Join Filter: (t1.c3 = t2.c3)
          ->  Foreign Scan on public.ft1 t1
                Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
                Remote Filter: (t1.c1 < 20)
                Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" WHERE (("C 1" < 20))
-         ->  Hash
+         ->  Materialize
                Output: t2.c3
-               ->  HashAggregate
+               ->  Foreign Scan on public.ft2 t2
                      Output: t2.c3
-                     Group Key: t2.c3
-                     ->  Foreign Scan on public.ft2 t2
-                           Output: t2.c3
-                           Remote Filter: ((t2.c1 > 10) AND (date(t2.c5) = '01-17-1970'::date))
-                           Remote SQL: SELECT c3 FROM "S 1"."T 1" WHERE (("C 1" > 10)) AND ((date(c5) = '1970-01-17'::date))
-(20 rows)
+                     Remote Filter: ((t2.c1 > 10) AND (date(t2.c5) = '01-17-1970'::date))
+                     Remote SQL: SELECT c3 FROM "S 1"."T 1" WHERE (("C 1" > 10)) AND ((date(c5) = '1970-01-17'::date))
+(16 rows)
 
 EXECUTE st3(10, 20);
  c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
@@ -3704,20 +3788,20 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                           QUERY PLAN                                                                                            
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
-   ->  Result
-         Output: NULL::integer, 1001, 101, 'foo'::text, NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying, 'ft1       '::character(10), NULL::user_enum
+   ->  Result *RESULT*
+         Output: NULL::integer, 1001, 101, 'foo'::text, NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying(10), 'ft1       '::character(10), NULL::user_enum
 (5 rows)
 
 -- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 /*
 ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
 ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 0');
-*/
+*/ -- YB
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
@@ -3730,40 +3814,40 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 EXECUTE st6;
  c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
 ----+----+-------+------------------------------+--------------------------+----+------------+-----
-  5 |  5 | 00005 | Tue Jan 06 00:00:00 1970 PST | Tue Jan 06 00:00:00 1970 | 5  | 5          | foo
   1 |  1 | 00001 | Fri Jan 02 00:00:00 1970 PST | Fri Jan 02 00:00:00 1970 | 1  | 1          | foo
+  2 |  2 | 00002 | Sat Jan 03 00:00:00 1970 PST | Sat Jan 03 00:00:00 1970 | 2  | 2          | foo
+  3 |  3 | 00003 | Sun Jan 04 00:00:00 1970 PST | Sun Jan 04 00:00:00 1970 | 3  | 3          | foo
+  4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
+  5 |  5 | 00005 | Tue Jan 06 00:00:00 1970 PST | Tue Jan 06 00:00:00 1970 | 5  | 5          | foo
   6 |  6 | 00006 | Wed Jan 07 00:00:00 1970 PST | Wed Jan 07 00:00:00 1970 | 6  | 6          | foo
   7 |  7 | 00007 | Thu Jan 08 00:00:00 1970 PST | Thu Jan 08 00:00:00 1970 | 7  | 7          | foo
-  9 |  9 | 00009 | Sat Jan 10 00:00:00 1970 PST | Sat Jan 10 00:00:00 1970 | 9  | 9          | foo
-  4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
-  2 |  2 | 00002 | Sat Jan 03 00:00:00 1970 PST | Sat Jan 03 00:00:00 1970 | 2  | 2          | foo
   8 |  8 | 00008 | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
-  3 |  3 | 00003 | Sun Jan 04 00:00:00 1970 PST | Sun Jan 04 00:00:00 1970 | 3  | 3          | foo
+  9 |  9 | 00009 | Sat Jan 10 00:00:00 1970 PST | Sat Jan 10 00:00:00 1970 | 9  | 9          | foo
 (9 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                           QUERY PLAN                                                                                            
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
-   ->  Result
-         Output: NULL::integer, 1001, 101, 'foo'::text, NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying, 'ft1       '::character(10), NULL::user_enum
+   ->  Result *RESULT*
+         Output: NULL::integer, 1001, 101, 'foo'::text, NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying(10), 'ft1       '::character(10), NULL::user_enum
 (5 rows)
 
 -- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 /*
 ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
 ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 1');
-*/
+*/ -- YB
 PREPARE st8 AS SELECT count(c3) FROM ft1 t1 WHERE t1.c1 === t1.c2;
-/*
+/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
 ALTER SERVER loopback OPTIONS (DROP extensions);
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
 EXECUTE st8;
 ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
-*/
+*/ -- YB
 -- cleanup
 DEALLOCATE st1;
 DEALLOCATE st2;
@@ -3787,9 +3871,9 @@ SELECT * FROM ft1 t1 WHERE t1.tableoid = 'pg_class'::regclass LIMIT 1;
 (6 rows)
 
 SELECT * FROM ft1 t1 WHERE t1.tableoid = 'ft1'::regclass LIMIT 1;
- c1  | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
------+----+-------+------------------------------+--------------------------+----+------------+-----
- 854 |  4 | 00854 | Tue Feb 24 00:00:00 1970 PST | Tue Feb 24 00:00:00 1970 | 4  | 4          | foo
+ c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
+----+----+-------+------------------------------+--------------------------+----+------------+-----
+  1 |  1 | 00001 | Fri Jan 02 00:00:00 1970 PST | Fri Jan 02 00:00:00 1970 | 1  | 1          | foo
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -3802,9 +3886,9 @@ SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
 (3 rows)
 
 SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
- tableoid | c1  | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
-----------+-----+----+-------+------------------------------+--------------------------+----+------------+-----
- ft1      | 854 |  4 | 00854 | Tue Feb 24 00:00:00 1970 PST | Tue Feb 24 00:00:00 1970 | 4  | 4          | foo
+ tableoid | c1 | c2 |  c3   |              c4              |            c5            | c6 |     c7     | c8  
+----------+----+----+-------+------------------------------+--------------------------+----+------------+-----
+ ft1      |  1 |  1 | 00001 | Fri Jan 02 00:00:00 1970 PST | Fri Jan 02 00:00:00 1970 | 1  | 1          | foo
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -3830,9 +3914,9 @@ SELECT ctid, * FROM ft1 t1 LIMIT 1;
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" LIMIT 1::bigint
 (3 rows)
 
-/*
+/* YB note: See above
 SELECT ctid, * FROM ft1 t1 LIMIT 1;
-*/
+*/ -- YB
 -- ===================================================================
 -- used in PL/pgSQL function
 -- ===================================================================
@@ -4050,13 +4134,13 @@ explain (verbose, costs off) select * from ft3 f, loct3 l
 -- ===================================================================
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
-                                                                                                                    QUERY PLAN                                                                                                                    
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                      QUERY PLAN                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Subquery Scan on "*SELECT*"
-         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::integer, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying, 'ft2       '::character(10), NULL::user_enum
+         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::integer, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying(10), 'ft2       '::character(10), NULL::user_enum
          ->  Foreign Scan on public.ft2 ft2_1
                Output: (ft2_1.c1 + 1000), (ft2_1.c2 + 100), (ft2_1.c3 || ft2_1.c3)
                Remote SQL: SELECT "C 1", c2, c3 FROM "S 1"."T 1" LIMIT 20::bigint
@@ -4092,7 +4176,7 @@ DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;                -- can be pushed down
 DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;
-*/
+*/ -- YB
 SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
   c1  | c2  |     c3     |              c4              
 ------+-----+------------+------------------------------
@@ -5096,43 +5180,43 @@ SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
   998 |   8 | 00998      | Thu Apr 09 00:00:00 1970 PST
   999 |   9 | 00999      | Fri Apr 10 00:00:00 1970 PST
  1000 |   0 | 01000      | Thu Jan 01 00:00:00 1970 PST
- 1081 | 101 | 0008100081 | 
+ 1001 | 101 | 0000100001 | 
+ 1002 | 102 | 0000200002 | 
+ 1003 | 103 | 0000300003 | 
+ 1004 | 104 | 0000400004 | 
+ 1005 | 105 | 0000500005 | 
+ 1006 | 106 | 0000600006 | 
+ 1007 | 107 | 0000700007 | 
+ 1008 | 108 | 0000800008 | 
+ 1009 | 109 | 0000900009 | 
+ 1010 | 100 | 0001000010 | 
+ 1011 | 101 | 0001100011 | 
+ 1012 | 102 | 0001200012 | 
+ 1013 | 103 | 0001300013 | 
+ 1014 | 104 | 0001400014 | 
+ 1015 | 105 | 0001500015 | 
+ 1016 | 106 | 0001600016 | 
+ 1017 | 107 | 0001700017 | 
+ 1018 | 108 | 0001800018 | 
+ 1019 | 109 | 0001900019 | 
+ 1020 | 100 | 0002000020 | 
  1101 | 201 | aaa        | 
  1102 | 202 | bbb        | 
  1103 | 203 | ccc        | 
  1104 | 204 | ddd        | 
  1105 | 205 | eee        | 
- 1115 | 105 | 0011500115 | 
- 1135 | 105 | 0013500135 | 
- 1144 | 104 | 0014400144 | 
- 1149 | 109 | 0014900149 | 
- 1311 | 101 | 0031100311 | 
- 1399 | 109 | 0039900399 | 
- 1488 | 108 | 0048800488 | 
- 1489 | 109 | 0048900489 | 
- 1600 | 100 | 0060000600 | 
- 1789 | 109 | 0078900789 | 
- 1835 | 105 | 0083500835 | 
- 1840 | 100 | 0084000840 | 
- 1854 | 104 | 0085400854 | 
- 1967 | 107 | 0096700967 | 
- 1970 | 100 | 0097000970 | 
- 1984 | 104 | 0098400984 | 
- 1985 | 105 | 0098500985 | 
- 1988 | 108 | 0098800988 | 
- 1990 | 100 | 0099000990 | 
 (1025 rows)
 
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
-                                                                                           QUERY PLAN                                                                                            
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Output: (ft2.tableoid)::regclass
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
-   ->  Result
-         Output: 1200, 999, NULL::integer, 'foo'::text, NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying, 'ft2       '::character(10), NULL::user_enum
+   ->  Result *RESULT*
+         Output: 1200, 999, NULL::integer, 'foo'::text, NULL::timestamp with time zone, NULL::timestamp without time zone, NULL::character varying(10), 'ft2       '::character(10), NULL::user_enum
 (6 rows)
 
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
@@ -5173,7 +5257,7 @@ UPDATE ft2 SET c3 = 'foo'
   RETURNING ft2, ft2.*, ft4, ft4.*;       -- can be pushed down
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: EXPLAIN SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" WHERE (("C 1" > 1200)) FOR UPDATE
-/*
+/* YB note: See above
 UPDATE ft2 SET c3 = 'foo'
   FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
   WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
@@ -5188,14 +5272,14 @@ DELETE FROM ft2
   WHERE ft2.c1 > 1200 AND ft2.c1 % 10 = 0 AND ft2.c2 = ft4.c1
   RETURNING 100;
 DELETE FROM ft2 WHERE ft2.c1 > 1200;
-*/
+*/ -- YB
 -- Test UPDATE/DELETE with WHERE or JOIN/ON conditions containing
 -- user-defined operators/functions
 ALTER SERVER loopback OPTIONS (DROP extensions);
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 INSERT INTO ft2 (c1,c2,c3)
   SELECT id, id % 10, to_char(id, 'FM00000') FROM generate_series(2001, 2010) id;
-/*
+/* YB note: See above
 EXPLAIN (verbose, costs off)
 UPDATE ft2 SET c3 = 'bar' WHERE postgres_fdw_abs(c1) > 2000 RETURNING *;            -- can't be pushed down
 UPDATE ft2 SET c3 = 'bar' WHERE postgres_fdw_abs(c1) > 2000 RETURNING *;
@@ -5218,7 +5302,7 @@ DELETE FROM ft2
   WHERE ft2.c1 > 2000 AND ft2.c2 = ft4.c1
   RETURNING ft2.c1, ft2.c2, ft2.c3;
 DELETE FROM ft2 WHERE ft2.c1 > 2000;
-*/
+*/ -- YB
 ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
 -- Test that trigger on remote table works as expected
 CREATE OR REPLACE FUNCTION "S 1".F_BRTRIG() RETURNS trigger AS $$
@@ -5250,109 +5334,111 @@ INSERT INTO ft2 (c1,c2,c3,c6) VALUES (1218, 818, 'ggg', '(--;') RETURNING *;
 -- the RETURNING clause.
 WITH cte AS (UPDATE ft1 SET c2 = c2 + 600 WHERE c1 % 10 = 8 AND c1 < 1200 RETURNING *)
 SELECT * FROM cte ORDER BY c1;
- c1  | c2  |        c3         |              c4              |            c5            | c6 |     c7     | c8  
------+-----+-------------------+------------------------------+--------------------------+----+------------+-----
-   8 | 608 | 00008_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
-  18 | 608 | 00018_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
-  28 | 608 | 00028_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
-  38 | 608 | 00038_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
-  48 | 608 | 00048_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
-  58 | 608 | 00058_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
-  68 | 608 | 00068_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
-  78 | 608 | 00078_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
-  88 | 608 | 00088_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
-  98 | 608 | 00098_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 108 | 608 | 00108_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 118 | 608 | 00118_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 128 | 608 | 00128_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 138 | 608 | 00138_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 148 | 608 | 00148_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 158 | 608 | 00158_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 168 | 608 | 00168_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 178 | 608 | 00178_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 188 | 608 | 00188_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 198 | 608 | 00198_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 208 | 608 | 00208_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 218 | 608 | 00218_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 228 | 608 | 00228_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 238 | 608 | 00238_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 248 | 608 | 00248_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 258 | 608 | 00258_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 268 | 608 | 00268_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 278 | 608 | 00278_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 288 | 608 | 00288_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 298 | 608 | 00298_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 308 | 608 | 00308_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 318 | 608 | 00318_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 328 | 608 | 00328_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 338 | 608 | 00338_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 348 | 608 | 00348_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 358 | 608 | 00358_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 368 | 608 | 00368_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 378 | 608 | 00378_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 388 | 608 | 00388_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 398 | 608 | 00398_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 408 | 608 | 00408_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 418 | 608 | 00418_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 428 | 608 | 00428_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 438 | 608 | 00438_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 448 | 608 | 00448_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 458 | 608 | 00458_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 468 | 608 | 00468_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 478 | 608 | 00478_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 488 | 608 | 00488_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 498 | 608 | 00498_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 508 | 608 | 00508_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 518 | 608 | 00518_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 528 | 608 | 00528_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 538 | 608 | 00538_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 548 | 608 | 00548_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 558 | 608 | 00558_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 568 | 608 | 00568_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 578 | 608 | 00578_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 588 | 608 | 00588_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 598 | 608 | 00598_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 608 | 608 | 00608_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 618 | 608 | 00618_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 628 | 608 | 00628_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 638 | 608 | 00638_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 648 | 608 | 00648_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 658 | 608 | 00658_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 668 | 608 | 00668_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 678 | 608 | 00678_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 688 | 608 | 00688_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 698 | 608 | 00698_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 708 | 608 | 00708_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 718 | 608 | 00718_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 728 | 608 | 00728_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 738 | 608 | 00738_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 748 | 608 | 00748_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 758 | 608 | 00758_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 768 | 608 | 00768_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 778 | 608 | 00778_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 788 | 608 | 00788_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 798 | 608 | 00798_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 808 | 608 | 00808_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 818 | 608 | 00818_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 828 | 608 | 00828_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 838 | 608 | 00838_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 848 | 608 | 00848_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 858 | 608 | 00858_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 868 | 608 | 00868_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 878 | 608 | 00878_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 888 | 608 | 00888_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 898 | 608 | 00898_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
- 908 | 608 | 00908_trig_update | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
- 918 | 608 | 00918_trig_update | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
- 928 | 608 | 00928_trig_update | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
- 938 | 608 | 00938_trig_update | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
- 948 | 608 | 00948_trig_update | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
- 958 | 608 | 00958_trig_update | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
- 968 | 608 | 00968_trig_update | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
- 978 | 608 | 00978_trig_update | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
- 988 | 608 | 00988_trig_update | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
- 998 | 608 | 00998_trig_update | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
-(100 rows)
+  c1  | c2  |           c3           |              c4              |            c5            | c6 |     c7     | c8  
+------+-----+------------------------+------------------------------+--------------------------+----+------------+-----
+    8 | 608 | 00008_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+   18 | 608 | 00018_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+   28 | 608 | 00028_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+   38 | 608 | 00038_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+   48 | 608 | 00048_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+   58 | 608 | 00058_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+   68 | 608 | 00068_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+   78 | 608 | 00078_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+   88 | 608 | 00088_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+   98 | 608 | 00098_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  108 | 608 | 00108_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  118 | 608 | 00118_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  128 | 608 | 00128_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  138 | 608 | 00138_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  148 | 608 | 00148_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  158 | 608 | 00158_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  168 | 608 | 00168_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  178 | 608 | 00178_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  188 | 608 | 00188_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  198 | 608 | 00198_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  208 | 608 | 00208_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  218 | 608 | 00218_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  228 | 608 | 00228_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  238 | 608 | 00238_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  248 | 608 | 00248_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  258 | 608 | 00258_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  268 | 608 | 00268_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  278 | 608 | 00278_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  288 | 608 | 00288_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  298 | 608 | 00298_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  308 | 608 | 00308_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  318 | 608 | 00318_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  328 | 608 | 00328_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  338 | 608 | 00338_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  348 | 608 | 00348_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  358 | 608 | 00358_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  368 | 608 | 00368_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  378 | 608 | 00378_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  388 | 608 | 00388_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  398 | 608 | 00398_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  408 | 608 | 00408_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  418 | 608 | 00418_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  428 | 608 | 00428_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  438 | 608 | 00438_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  448 | 608 | 00448_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  458 | 608 | 00458_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  468 | 608 | 00468_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  478 | 608 | 00478_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  488 | 608 | 00488_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  498 | 608 | 00498_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  508 | 608 | 00508_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  518 | 608 | 00518_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  528 | 608 | 00528_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  538 | 608 | 00538_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  548 | 608 | 00548_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  558 | 608 | 00558_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  568 | 608 | 00568_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  578 | 608 | 00578_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  588 | 608 | 00588_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  598 | 608 | 00598_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  608 | 608 | 00608_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  618 | 608 | 00618_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  628 | 608 | 00628_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  638 | 608 | 00638_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  648 | 608 | 00648_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  658 | 608 | 00658_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  668 | 608 | 00668_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  678 | 608 | 00678_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  688 | 608 | 00688_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  698 | 608 | 00698_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  708 | 608 | 00708_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  718 | 608 | 00718_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  728 | 608 | 00728_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  738 | 608 | 00738_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  748 | 608 | 00748_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  758 | 608 | 00758_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  768 | 608 | 00768_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  778 | 608 | 00778_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  788 | 608 | 00788_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  798 | 608 | 00798_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  808 | 608 | 00808_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  818 | 608 | 00818_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  828 | 608 | 00828_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  838 | 608 | 00838_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  848 | 608 | 00848_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  858 | 608 | 00858_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  868 | 608 | 00868_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  878 | 608 | 00878_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  888 | 608 | 00888_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  898 | 608 | 00898_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+  908 | 608 | 00908_trig_update      | Fri Jan 09 00:00:00 1970 PST | Fri Jan 09 00:00:00 1970 | 8  | 8          | foo
+  918 | 608 | 00918_trig_update      | Mon Jan 19 00:00:00 1970 PST | Mon Jan 19 00:00:00 1970 | 8  | 8          | foo
+  928 | 608 | 00928_trig_update      | Thu Jan 29 00:00:00 1970 PST | Thu Jan 29 00:00:00 1970 | 8  | 8          | foo
+  938 | 608 | 00938_trig_update      | Sun Feb 08 00:00:00 1970 PST | Sun Feb 08 00:00:00 1970 | 8  | 8          | foo
+  948 | 608 | 00948_trig_update      | Wed Feb 18 00:00:00 1970 PST | Wed Feb 18 00:00:00 1970 | 8  | 8          | foo
+  958 | 608 | 00958_trig_update      | Sat Feb 28 00:00:00 1970 PST | Sat Feb 28 00:00:00 1970 | 8  | 8          | foo
+  968 | 608 | 00968_trig_update      | Tue Mar 10 00:00:00 1970 PST | Tue Mar 10 00:00:00 1970 | 8  | 8          | foo
+  978 | 608 | 00978_trig_update      | Fri Mar 20 00:00:00 1970 PST | Fri Mar 20 00:00:00 1970 | 8  | 8          | foo
+  988 | 608 | 00988_trig_update      | Mon Mar 30 00:00:00 1970 PST | Mon Mar 30 00:00:00 1970 | 8  | 8          | foo
+  998 | 608 | 00998_trig_update      | Thu Apr 09 00:00:00 1970 PST | Thu Apr 09 00:00:00 1970 | 8  | 8          | foo
+ 1008 | 708 | 0000800008_trig_update |                              |                          |    | ft2        | 
+ 1018 | 708 | 0001800018_trig_update |                              |                          |    | ft2        | 
+(102 rows)
 
 -- Test errors thrown on remote side during update
 ALTER TABLE "S 1"."T 1" ADD CONSTRAINT c2positive CHECK (c2 >= 0);
@@ -5375,6 +5461,7 @@ INSERT INTO ft1(c1, c2) VALUES(1111, -2);  -- c2positive
 ERROR:  new row for relation "T 1" violates check constraint "c2positive"
 DETAIL:  Failing row contains (1111, -2, null, null, null, null, ft1       , null).
 CONTEXT:  remote SQL command: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+-- YB note: The following line is changed in the upstream PG 15 test
 INSERT INTO ft1(c1, c2) VALUES(1, 12);
 ERROR:  duplicate key value violates unique constraint "t1_pkey"
 CONTEXT:  remote SQL command: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -5383,6 +5470,7 @@ ERROR:  new row for relation "T 1" violates check constraint "c2positive"
 DETAIL:  Failing row contains (1, -1, 00001_trig_update, 1970-01-02 08:00:00+00, 1970-01-02 00:00:00, 1, 1         , foo).
 CONTEXT:  remote SQL command: UPDATE "S 1"."T 1" SET c2 = (- c2) WHERE (("C 1" = 1))
 -- Test savepoint/rollback behavior
+-- YB note: In the following block "ft2" has been changed to "ft1".
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -5485,19 +5573,21 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(111 rows)
+(113 rows)
 
 select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
  c2  | count 
@@ -5601,22 +5691,26 @@ select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(111 rows)
+(113 rows)
 
 begin;
+-- YB note: See above
 update ft1 set c2 = 42 where c2 = 0;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -5718,21 +5812,24 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(110 rows)
+(112 rows)
 
 savepoint s1;
+-- YB note: See above
 update ft1 set c2 = 44 where c2 = 4;
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
@@ -5834,21 +5931,24 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 release savepoint s1;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -5949,21 +6049,24 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 savepoint s2;
+-- YB note: See above
 update ft1 set c2 = 46 where c2 = 6;
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
@@ -6064,21 +6167,24 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(108 rows)
+(110 rows)
 
 rollback to savepoint s2;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -6179,21 +6285,24 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 release savepoint s2;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -6294,26 +6403,30 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 savepoint s3;
+-- YB note: See above
 update ft1 set c2 = -2 where c2 = 42 and c1 = 10; -- fail on remote side
 ERROR:  new row for relation "T 1" violates check constraint "c2positive"
 DETAIL:  Failing row contains (10, -2, 00010_trig_update_trig_update, 1970-01-11 08:00:00+00, 1970-01-11 00:00:00, 0, 0         , foo).
 CONTEXT:  remote SQL command: UPDATE "S 1"."T 1" SET c2 = (-2) WHERE ((c2 = 42)) AND (("C 1" = 10))
 rollback to savepoint s3;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -6414,21 +6527,24 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 release savepoint s3;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -6529,19 +6645,21 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 -- none of the above is committed yet remotely
 select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
@@ -6646,21 +6764,24 @@ select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(111 rows)
+(113 rows)
 
 commit;
+-- YB note: See above
 select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
  c2  | count 
 -----+-------
@@ -6761,19 +6882,21 @@ select c2, count(*) from ft1 where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
  c2  | count 
@@ -6875,19 +6998,21 @@ select c2, count(*) from "S 1"."T 1" where c2 < 500 group by 1 order by 1;
   97 |     1
   98 |     1
   99 |     1
- 100 |     5
+ 100 |     3
  101 |     2
- 104 |     3
- 105 |     4
- 107 |     1
- 108 |     2
- 109 |     4
+ 102 |     2
+ 103 |     2
+ 104 |     2
+ 105 |     2
+ 106 |     2
+ 107 |     2
+ 109 |     2
  201 |     1
  202 |     1
  203 |     1
  204 |     1
  205 |     1
-(109 rows)
+(111 rows)
 
 VACUUM ANALYZE "S 1"."T 1";
 NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
@@ -6927,18 +7052,18 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 ORDER BY c6 DESC NULLS FIRST, c1 
 (3 rows)
 
 SELECT * FROM ft1 ORDER BY c6 DESC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
-  c1  | c2  |       c3        | c4 | c5 | c6 |     c7     | c8 
-------+-----+-----------------+----+----+----+------------+----
- 1205 |   5 | 01205           |    |    |    | ft2        | 
- 1206 |   6 | 01206           |    |    |    | ft2        | 
- 1207 |   7 | 01207           |    |    |    | ft2        | 
- 1208 | 818 | fff_trig_update |    |    |    | ft2        | 
- 1209 |   9 | 01209           |    |    |    | ft2        | 
- 1210 |  10 | 01210           |    |    |    | ft2        | 
- 1211 |  11 | 01211           |    |    |    | ft2        | 
- 1212 |  12 | 01212           |    |    |    | ft2        | 
- 1213 |  13 | 01213           |    |    |    | ft2        | 
- 1214 |  14 | 01214           |    |    |    | ft2        | 
+  c1  | c2  |           c3           | c4 | c5 | c6 |     c7     | c8 
+------+-----+------------------------+----+----+----+------------+----
+ 1016 | 106 | 0001600016             |    |    |    | ft2        | 
+ 1017 | 107 | 0001700017             |    |    |    | ft2        | 
+ 1018 | 708 | 0001800018_trig_update |    |    |    | ft2        | 
+ 1019 | 109 | 0001900019             |    |    |    | ft2        | 
+ 1020 | 100 | 0002000020             |    |    |    | ft2        | 
+ 1101 | 201 | aaa                    |    |    |    | ft2        | 
+ 1102 | 202 | bbb                    |    |    |    | ft2        | 
+ 1103 | 203 | ccc                    |    |    |    | ft2        | 
+ 1104 | 204 | ddd                    |    |    |    | ft2        | 
+ 1105 | 205 | eee                    |    |    |    | ft2        | 
 (10 rows)
 
 -- ORDER BY ASC NULLS FIRST options
@@ -6951,18 +7076,18 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 O
 (3 rows)
 
 SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
-  c1  | c2  |       c3        | c4 | c5 | c6 |     c7     | c8 
-------+-----+-----------------+----+----+----+------------+----
- 1205 |   5 | 01205           |    |    |    | ft2        | 
- 1206 |   6 | 01206           |    |    |    | ft2        | 
- 1207 |   7 | 01207           |    |    |    | ft2        | 
- 1208 | 818 | fff_trig_update |    |    |    | ft2        | 
- 1209 |   9 | 01209           |    |    |    | ft2        | 
- 1210 |  10 | 01210           |    |    |    | ft2        | 
- 1211 |  11 | 01211           |    |    |    | ft2        | 
- 1212 |  12 | 01212           |    |    |    | ft2        | 
- 1213 |  13 | 01213           |    |    |    | ft2        | 
- 1214 |  14 | 01214           |    |    |    | ft2        | 
+  c1  | c2  |           c3           | c4 | c5 | c6 |     c7     | c8 
+------+-----+------------------------+----+----+----+------------+----
+ 1016 | 106 | 0001600016             |    |    |    | ft2        | 
+ 1017 | 107 | 0001700017             |    |    |    | ft2        | 
+ 1018 | 708 | 0001800018_trig_update |    |    |    | ft2        | 
+ 1019 | 109 | 0001900019             |    |    |    | ft2        | 
+ 1020 | 100 | 0002000020             |    |    |    | ft2        | 
+ 1101 | 201 | aaa                    |    |    |    | ft2        | 
+ 1102 | 202 | bbb                    |    |    |    | ft2        | 
+ 1103 | 203 | ccc                    |    |    |    | ft2        | 
+ 1104 | 204 | ddd                    |    |    |    | ft2        | 
+ 1105 | 205 | eee                    |    |    |    | ft2        | 
 (10 rows)
 
 -- ===================================================================
@@ -6998,7 +7123,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 --------------------------------
  Aggregate
    Output: count(*)
-   ->  Result
+   ->  Result ft1
          One-Time Filter: false
 (4 rows)
 
@@ -7056,7 +7181,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 >= 0;
 --------------------------------
  Aggregate
    Output: count(*)
-   ->  Result
+   ->  Result ft1
          One-Time Filter: false
 (4 rows)
 
@@ -7085,36 +7210,40 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2negative;
 CREATE TABLE base_tbl (a int, b int);
 ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
 NOTICE:  storage parameters are currently ignored in YugabyteDB
+-- YB note: The following line is changed in the upstream PG 15 test
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
-  SERVER loopback OPTIONS(table_name 'base_tbl');
+  SERVER loopback OPTIONS(table_name 'base_tbl'); -- YB note: see above
 CREATE VIEW rw_view AS SELECT * FROM foreign_tbl
   WHERE a < b WITH CHECK OPTION;
 ERROR:  VIEW WITH CHECK OPTION not supported yet
 LINE 2:   WHERE a < b WITH CHECK OPTION;
                       ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-/*
+/* YB note: ERROR:  VIEW WITH CHECK OPTION not supported yet, reenable when supported
 \d+ rw_view
 
+-- YB note: The following line is changed in the upstream PG 15 test
 INSERT INTO rw_view VALUES (0, 10); -- ok
 INSERT INTO rw_view VALUES (10, 0); -- should fail
+-- YB note: The following line is changed in the upstream PG 15 test
 EXPLAIN (VERBOSE, COSTS OFF)
-UPDATE rw_view SET b = 20 WHERE a = 0; -- not pushed down
+UPDATE rw_view SET b = 20 WHERE a = 0; -- not pushed down -- YB note: see above
 UPDATE rw_view SET b = 20 WHERE a = 0; -- ok
+-- YB note: The following line is changed in the upstream PG 15 test
 EXPLAIN (VERBOSE, COSTS OFF)
-UPDATE rw_view SET b = -20 WHERE a = 0; -- not pushed down
+UPDATE rw_view SET b = -20 WHERE a = 0; -- not pushed down -- YB note: see above
 UPDATE rw_view SET b = -20 WHERE a = 0; -- should fail
 SELECT * FROM foreign_tbl;
-*/
+*/ -- YB
 DROP FOREIGN TABLE foreign_tbl CASCADE;
 DROP TABLE base_tbl;
 -- ===================================================================
 -- test serial columns (ie, sequence-based defaults)
 -- ===================================================================
 create table loc1 (f1 serial, f2 text);
-/*
+/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 alter table loc1 set (autovacuum_enabled = 'false');
-*/
+*/ -- YB
 create foreign table rem1 (f1 serial, f2 text)
   server loopback options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
@@ -7127,30 +7256,29 @@ insert into loc1(f2) values('hi');
 insert into rem1(f2) values('hi remote');
 insert into loc1(f2) values('bye');
 insert into rem1(f2) values('bye remote');
-select * from loc1 order by f1;
+select * from loc1;
  f1 |     f2     
 ----+------------
   1 | hi
-  2 | bye
  10 | hi remote
+  2 | bye
  11 | bye remote
 (4 rows)
 
-select * from rem1 order by f1;
+select * from rem1;
  f1 |     f2     
 ----+------------
   1 | hi
-  2 | bye
  10 | hi remote
+  2 | bye
  11 | bye remote
 (4 rows)
 
 -- ===================================================================
 -- test local triggers
 -- ===================================================================
--- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 -- Trigger functions "borrowed" from triggers regress test.
-/*
+/* YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
 	RAISE NOTICE 'trigger_func(%) called: action = %, when = %, level = %',
@@ -7201,9 +7329,9 @@ begin
 	end if;
 end;
 $$;
-*/
+*/ -- YB
 -- Test basic functionality
-/*
+/* YB note: See above
 CREATE TRIGGER trig_row_before
 BEFORE INSERT OR UPDATE OR DELETE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
@@ -7216,18 +7344,18 @@ delete from rem1;
 insert into rem1 values(1,'insert');
 update rem1 set f2  = 'update' where f1 = 1;
 update rem1 set f2 = f2 || f2;
-*/
+*/ -- YB
 -- cleanup
-/*
+/* YB note: See above
 DROP TRIGGER trig_row_before ON rem1;
 DROP TRIGGER trig_row_after ON rem1;
 DROP TRIGGER trig_stmt_before ON rem1;
 DROP TRIGGER trig_stmt_after ON rem1;
 
 DELETE from rem1;
-*/
+*/ -- YB
 -- Test WHEN conditions
-/*
+/* YB note: See above
 CREATE TRIGGER trig_row_before_insupd
 BEFORE INSERT OR UPDATE ON rem1
 FOR EACH ROW
@@ -7239,14 +7367,14 @@ AFTER INSERT OR UPDATE ON rem1
 FOR EACH ROW
 WHEN (NEW.f2 like '%update%')
 EXECUTE PROCEDURE trigger_data(23,'skidoo');
-*/
+*/ -- YB
 -- Insert or update not matching: nothing happens
-/*
+/* YB note: See above
 INSERT INTO rem1 values(1, 'insert');
 UPDATE rem1 set f2 = 'test';
-*/
+*/ -- YB
 -- Insert or update matching: triggers are fired
-/*
+/* YB note: See above
 INSERT INTO rem1 values(2, 'update');
 UPDATE rem1 set f2 = 'update update' where f1 = '2';
 
@@ -7261,18 +7389,18 @@ AFTER DELETE ON rem1
 FOR EACH ROW
 WHEN (OLD.f2 like '%update%')
 EXECUTE PROCEDURE trigger_data(23,'skidoo');
-*/
+*/ -- YB
 -- Trigger is fired for f1=2, not for f1=1
-/*
+/* YB note: See above
 DELETE FROM rem1;
-*/
+*/ -- YB
 -- cleanup
-/*
+/* YB note: See above
 DROP TRIGGER trig_row_before_insupd ON rem1;
 DROP TRIGGER trig_row_after_insupd ON rem1;
 DROP TRIGGER trig_row_before_delete ON rem1;
 DROP TRIGGER trig_row_after_delete ON rem1;
-*/
+*/ -- YB
 -- Test various RETURN statements in BEFORE triggers.
 CREATE FUNCTION trig_row_before_insupdate() RETURNS TRIGGER AS $$
   BEGIN
@@ -7292,14 +7420,14 @@ select pg_sleep(1);
 
 -- The new values should have 'triggered' appended
 INSERT INTO rem1 values(1, 'insert');
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |         f2         
 ----+--------------------
   1 | hi
-  1 | insert triggered !
-  2 | bye
  10 | hi remote
+  2 | bye
  11 | bye remote
+  1 | insert triggered !
 (5 rows)
 
 INSERT INTO rem1 values(2, 'insert') RETURNING f2;
@@ -7308,43 +7436,43 @@ INSERT INTO rem1 values(2, 'insert') RETURNING f2;
  insert triggered !
 (1 row)
 
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |         f2         
 ----+--------------------
   1 | hi
-  1 | insert triggered !
-  2 | bye
-  2 | insert triggered !
  10 | hi remote
+  2 | bye
  11 | bye remote
+  1 | insert triggered !
+  2 | insert triggered !
 (6 rows)
 
 UPDATE rem1 set f2 = '';
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |         f2         
 ----+--------------------
   1 | hi
-  1 | insert triggered !
-  2 | bye
-  2 | insert triggered !
  10 | hi remote
+  2 | bye
  11 | bye remote
+  1 | insert triggered !
+  2 | insert triggered !
 (6 rows)
 
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |         f2         
 ----+--------------------
   1 | hi
-  1 | insert triggered !
-  2 | bye
-  2 | insert triggered !
  10 | hi remote
+  2 | bye
  11 | bye remote
+  1 | insert triggered !
+  2 | insert triggered !
 (6 rows)
 
 DELETE FROM rem1;
@@ -7361,7 +7489,7 @@ select pg_sleep(1);
 (1 row)
 
 INSERT INTO rem1 values(1, 'insert');
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |               f2               
 ----+--------------------------------
   1 | insert triggered ! triggered !
@@ -7373,7 +7501,7 @@ INSERT INTO rem1 values(2, 'insert') RETURNING f2;
  insert triggered ! triggered !
 (1 row)
 
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |               f2               
 ----+--------------------------------
   1 | insert triggered ! triggered !
@@ -7383,7 +7511,7 @@ SELECT * from loc1 ORDER BY f1, f2;
 UPDATE rem1 set f2 = '';
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |               f2               
 ----+--------------------------------
   1 | insert triggered ! triggered !
@@ -7393,7 +7521,7 @@ SELECT * from loc1 ORDER BY f1, f2;
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
-SELECT * from loc1 ORDER BY f1, f2;
+SELECT * from loc1;
  f1 |               f2               
 ----+--------------------------------
   1 | insert triggered ! triggered !
@@ -7422,7 +7550,7 @@ select pg_sleep(1);
 
 -- Nothing should have changed.
 INSERT INTO rem1 VALUES (2, 'test2');
-SELECT * from loc1 order by f1;
+SELECT * from loc1;
  f1 |  f2  
 ----+------
   1 | test
@@ -7431,8 +7559,8 @@ SELECT * from loc1 order by f1;
 -- YB note: CTID not supported yet, see issue #11419, reenable commented out part below when fixed
 /*
 UPDATE rem1 SET f2 = 'test2';
-*/
-SELECT * from loc1 order by f1;
+*/ -- YB
+SELECT * from loc1;
  f1 |  f2  
 ----+------
   1 | test
@@ -7441,7 +7569,7 @@ SELECT * from loc1 order by f1;
 DELETE from rem1;
 ERROR:  system column "ctid" is not supported yet
 CONTEXT:  remote SQL command: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
-SELECT * from loc1 order by f1;
+SELECT * from loc1;
  f1 |  f2  
 ----+------
   1 | test
@@ -7679,20 +7807,19 @@ ERROR:  trigger "trig_row_after_delete" for table "rem1" does not exist
 -- ===================================================================
 -- test inheritance features
 -- ===================================================================
--- YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
 CREATE TABLE a (aa TEXT);
 CREATE TABLE loct (aa TEXT, bb TEXT);
-/*
+/* YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
 ALTER TABLE a SET (autovacuum_enabled = 'false');
 ALTER TABLE loct SET (autovacuum_enabled = 'false');
-*/
+*/ -- YB
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
   SERVER loopback OPTIONS (table_name 'loct');
 ERROR:  INHERITS not supported yet
 LINE 5: CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
                                          ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-/*
+/* YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
 INSERT INTO a(aa) VALUES('aaa');
 INSERT INTO a(aa) VALUES('aaaa');
 INSERT INTO a(aa) VALUES('aaaaa');
@@ -7728,11 +7855,11 @@ DELETE FROM a;
 SELECT tableoid::regclass, * FROM a;
 SELECT tableoid::regclass, * FROM b;
 SELECT tableoid::regclass, * FROM ONLY a;
-*/
+*/ -- YB
 DROP TABLE a CASCADE;
 DROP TABLE loct;
 -- Check SELECT FOR UPDATE/SHARE with an inherited source table
-/*
+/* YB note: See above
 create table loct1 (f1 int, f2 int, f3 int);
 create table loct2 (f1 int, f2 int, f3 int);
 
@@ -7767,17 +7894,17 @@ select * from bar where f1 in (select f1 from foo) for update;
 explain (verbose, costs off)
 select * from bar where f1 in (select f1 from foo) for share;
 select * from bar where f1 in (select f1 from foo) for share;
-*/
+*/ -- YB
 -- Check UPDATE with inherited target and an inherited source table
-/*
+/* YB note: See above
 explain (verbose, costs off)
 update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
 update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
 
 select tableoid::regclass, * from bar order by 1,2;
-*/
+*/ -- YB
 -- Check UPDATE with inherited target and an appendrel subquery
-/*
+/* YB note: See above
 explain (verbose, costs off)
 update bar set f2 = f2 + 100
 from
@@ -7789,10 +7916,10 @@ from
 where bar.f1 = ss.f1;
 
 select tableoid::regclass, * from bar order by 1,2;
-*/
+*/ -- YB
 -- Test forcing the remote server to produce sorted data for a merge join,
 -- but the foreign table is an inheritance child.
-/*
+/* YB note: See above
 truncate table loct1;
 truncate table only foo;
 \set num_rows_foo 2000
@@ -7805,24 +7932,24 @@ create index i_loct1_f1 on loct1(f1);
 create index i_foo_f1 on foo(f1);
 analyze foo;
 analyze loct1;
-*/
+*/ -- YB
 -- inner join; expressions in the clauses appear in the equivalence class list
-/*
+/* YB note: See above
 explain (verbose, costs off)
 	select foo.f1, loct1.f1 from foo join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
 select foo.f1, loct1.f1 from foo join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
-*/
+*/ -- YB
 -- outer join; expressions in the clauses do not appear in equivalence class
 -- list but no output change as compared to the previous query
-/*
+/* YB note: See above
 explain (verbose, costs off)
 	select foo.f1, loct1.f1 from foo left join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
 select foo.f1, loct1.f1 from foo left join loct1 on (foo.f1 = loct1.f1) order by foo.f2 offset 10 limit 10;
 RESET enable_hashjoin;
 RESET enable_nestloop;
-*/
+*/ -- YB
 -- Test that WHERE CURRENT OF is not supported
-/*
+/* YB note: See above
 begin;
 declare c cursor for select * from bar where f1 = 7;
 fetch from c;
@@ -7835,9 +7962,9 @@ delete from foo where f1 < 5 returning *;
 explain (verbose, costs off)
 update bar set f2 = f2 + 100 returning *;
 update bar set f2 = f2 + 100 returning *;
-*/
+*/ -- YB
 -- Test that UPDATE/DELETE with inherited target works with row-level triggers
-/*
+/* YB note: See above
 CREATE TRIGGER trig_row_before
 BEFORE UPDATE OR DELETE ON bar2
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
@@ -7853,16 +7980,16 @@ update bar set f2 = f2 + 100;
 explain (verbose, costs off)
 delete from bar where f2 < 400;
 delete from bar where f2 < 400;
-*/
+*/ -- YB
 -- cleanup
-/*
+/* YB note: See above
 drop table foo cascade;
 drop table bar cascade;
 drop table loct1;
 drop table loct2;
-*/
+*/ -- YB
 -- Test pushing down UPDATE/DELETE joins to the remote server
-/*
+/* YB note: See above
 create table parent (a int, b text);
 create table loct1 (a int, b text);
 create table loct2 (a int, b text);
@@ -7886,15 +8013,15 @@ update parent set b = parent.b || remt2.b from remt2 where parent.a = remt2.a re
 explain (verbose, costs off)
 delete from parent using remt2 where parent.a = remt2.a returning parent;
 delete from parent using remt2 where parent.a = remt2.a returning parent;
-*/
+*/ -- YB
 -- cleanup
-/*
+/* YB note: See above
 drop foreign table remt1;
 drop foreign table remt2;
 drop table loct1;
 drop table loct2;
 drop table parent;
-*/
+*/ -- YB
 -- ===================================================================
 -- test tuple routing for foreign-table partitions
 -- ===================================================================
@@ -7927,6 +8054,7 @@ insert into itrtest values (1, 'test1'), (2, 'test2') returning *;
  2 | test2
 (2 rows)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 select tableoid::regclass, * FROM itrtest order by 1, 2, 3;
  tableoid | a |   b   
 ----------+---+-------
@@ -7956,16 +8084,17 @@ select tableoid::regclass, * FROM remp2 order by 1, 2, 3;
 
 delete from itrtest;
 create unique index loct1_idx on loct1 (a);
-DO NOTHING without an inference specification is supported
-insert into itrtest values (1, 'foo') on conflict do nothing returning *;
-ERROR:  syntax error at or near "NOTHING"
-LINE 1: DO NOTHING without an inference specification is supported
-           ^
+-- DO NOTHING without an inference specification is supported
 insert into itrtest values (1, 'foo') on conflict do nothing returning *;
  a |  b  
 ---+-----
  1 | foo
 (1 row)
+
+insert into itrtest values (1, 'foo') on conflict do nothing returning *;
+ a | b 
+---+---
+(0 rows)
 
 -- But other cases are not supported
 insert into itrtest values (1, 'bar') on conflict (a) do nothing;
@@ -8037,6 +8166,13 @@ create foreign table remp (a int check (a in (1)), b text) server loopback optio
 create table locp (a int check (a in (2)), b text);
 alter table utrtest attach partition remp for values in (1);
 alter table utrtest attach partition locp for values in (2);
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 insert into utrtest values (1, 'foo');
 insert into utrtest values (2, 'qux');
 select tableoid::regclass, * FROM utrtest;
@@ -8065,52 +8201,52 @@ DETAIL:  Failing row contains (2, foo).
 CONTEXT:  remote SQL command: UPDATE public.loct SET a = 2 WHERE ((b = 'foo')) RETURNING a, b
 -- But the reverse is allowed
 -- YB note: The query below produces a check constraint violation, while it
--- must produce a tuple routing violation.
+-- YB note: must produce a tuple routing violation.
 /*
 update utrtest set a = 1 where b = 'qux' returning *;
 
 select tableoid::regclass, * FROM utrtest;
 select tableoid::regclass, * FROM remp;
 select tableoid::regclass, * FROM locp;
-*/
+*/ -- YB
 -- The executor should not let unexercised FDWs shut down
-/*
+/* YB note: See above
 update utrtest set a = 1 where b = 'foo';
-*/
+*/ -- YB
 -- Test that remote triggers work with update tuple routing
-/*
+/* YB note: See above
 create trigger loct_br_insert_trigger before insert on loct
 	for each row execute procedure br_insert_trigfunc();
 
 delete from utrtest;
 insert into utrtest values (2, 'qux');
-*/
+*/ -- YB
 -- Check case where the foreign partition is a subplan target rel
-/*
+/* YB note: See above
 explain (verbose, costs off)
 update utrtest set a = 1 where a = 1 or a = 2 returning *;
-*/
+*/ -- YB
 -- The new values are concatenated with ' triggered !'
-/*
+/* YB note: See above
 update utrtest set a = 1 where a = 1 or a = 2 returning *;
 
 delete from utrtest;
 insert into utrtest values (2, 'qux');
-*/
+*/ -- YB
 -- Check case where the foreign partition isn't a subplan target rel
-/*
+/* YB note: See above
 explain (verbose, costs off)
 update utrtest set a = 1 where a = 2 returning *;
-*/
+*/ -- YB
 -- The new values are concatenated with ' triggered !'
-/*
+/* YB note: See above
 update utrtest set a = 1 where a = 2 returning *;
 
 drop trigger loct_br_insert_trigger on loct;
 
 drop table utrtest;
 drop table loct;
-*/
+*/ -- YB
 -- Test copy tuple routing
 create table ctrtest (a int, b text) partition by list (a);
 create table loct1 (a int check (a in (1)), b text);
@@ -8120,6 +8256,7 @@ create foreign table remp2 (b text, a int check (a in (2))) server loopback opti
 alter table ctrtest attach partition remp1 for values in (1);
 alter table ctrtest attach partition remp2 for values in (2);
 copy ctrtest from stdin;
+-- YB note: The following line is changed in the upstream PG 15 test
 select tableoid::regclass, * FROM ctrtest order by 1, 2, 3;
  tableoid | a |  b  
 ----------+---+-----
@@ -8144,6 +8281,7 @@ copy remp1 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
+-- YB note: The following line is a YB test. This should ideally be in a yb.orig file.
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
@@ -8151,6 +8289,7 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
  remp1 | COPY FROM | SUCCESS   | PIPE |               9 |           0 |                1 |               0
 (1 row)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 select tableoid::regclass, * FROM remp1 order by 1, 2, 3;
  tableoid | a |  b  
 ----------+---+-----
@@ -8180,7 +8319,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 | f2  
 ----+-----
   1 | foo
@@ -8211,7 +8350,7 @@ ERROR:  new row for relation "loc2" violates check constraint "loc2_f1positive"
 DETAIL:  Failing row contains (-1, xyzzy).
 CONTEXT:  remote SQL command: INSERT INTO public.loc2(f1, f2) VALUES ($1, $2)
 COPY rem2, line 1: "-1	xyzzy"
-select * from rem2 order by f1;
+select * from rem2;
  f1 | f2  
 ----+-----
   1 | foo
@@ -8252,7 +8391,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 | f2  
 ----+-----
   1 | foo
@@ -8268,8 +8407,9 @@ ERROR:  trigger "trig_stmt_before" for table "rem2" does not exist
 drop trigger trig_stmt_after on rem2;
 ERROR:  trigger "trig_stmt_after" for table "rem2" does not exist
 delete from rem2;
+-- YB note: The following line is changed in the upstream PG 15 test
 create trigger trig_row_before_insert before insert on rem2
-for each row execute procedure trig_row_before_insupdate();
+for each row execute procedure trig_row_before_insupdate(); -- YB note: see above
 -- YB note: triggers don't work immediately, remove once #11555 is fixed
 select pg_sleep(1);
  pg_sleep 
@@ -8282,7 +8422,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 |       f2        
 ----+-----------------
   1 | foo triggered !
@@ -8305,7 +8445,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 | f2 
 ----+----
 (0 rows)
@@ -8327,7 +8467,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 |       f2        
 ----+-----------------
   1 | foo triggered !
@@ -8350,7 +8490,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 | f2 
 ----+----
 (0 rows)
@@ -8377,7 +8517,7 @@ copy rem2 from stdin;
 WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
-select * from rem2 order by f1;
+select * from rem2;
  f1 |       f2        
 ----+-----------------
   1 | foo triggered !
@@ -8400,7 +8540,7 @@ WARNING:  batched COPY is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 commit;
-select * from rem3 order by f1;
+select * from rem3;
  f1 | f2  
 ----+-----
   1 | foo
@@ -8550,8 +8690,9 @@ Server: loopback
 FDW options: (schema_name 'import_source', table_name 'x 5')
 
 CREATE SCHEMA import_dest3;
+-- YB note: The following line is changed in the upstream PG 15 test
 IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest3
-  OPTIONS (import_collate 'false', import_not_null 'false');
+  OPTIONS (import_collate 'false', import_not_null 'false'); -- YB note: see above
 \det+ import_dest3.*
                                      List of foreign tables
     Schema    | Table |  Server  |                   FDW options                   | Description 
@@ -8614,6 +8755,7 @@ FDW options: (schema_name 'import_source', table_name 'x 5')
 
 -- Check LIMIT TO and EXCEPT
 CREATE SCHEMA import_dest4;
+-- YB note: The following line is changed in the upstream PG 15 test
 IMPORT FOREIGN SCHEMA import_source LIMIT TO (t1, nonesuch)
   FROM SERVER loopback INTO import_dest4;
 \det+ import_dest4.*
@@ -8623,6 +8765,7 @@ IMPORT FOREIGN SCHEMA import_source LIMIT TO (t1, nonesuch)
  import_dest4 | t1    | loopback | (schema_name 'import_source', table_name 't1') | 
 (1 row)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 IMPORT FOREIGN SCHEMA import_source EXCEPT (t1, "x 4", nonesuch)
   FROM SERVER loopback INTO import_dest4;
 \det+ import_dest4.*
@@ -8704,13 +8847,13 @@ AND ftoptions @> array['fetch_size=30000'];
      1
 (1 row)
 
--- YB note: ERROR: ALTER TABLE OPTIONS not supported yet
+-- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '60000');
 ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '600...
                                        ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
-/*
+/* YB note: See above
 SELECT COUNT(*)
 FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
@@ -8720,7 +8863,7 @@ SELECT COUNT(*)
 FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
 AND ftoptions @> array['fetch_size=60000'];
-*/
+*/ -- YB
 ROLLBACK;
 -- ===================================================================
 -- test partitionwise joins
@@ -8729,10 +8872,10 @@ SET enable_partitionwise_join=on;
 CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 CREATE TABLE fprt1_p1 (LIKE fprt1);
 CREATE TABLE fprt1_p2 (LIKE fprt1);
-/*
+/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
 ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
-*/
+*/ -- YB
 INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
@@ -8745,10 +8888,10 @@ ANALYZE fprt1_p2;
 CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 CREATE TABLE fprt2_p1 (LIKE fprt2);
 CREATE TABLE fprt2_p2 (LIKE fprt2);
-/*
+/* YB note: See above
 ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
 ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
-*/
+*/ -- YB
 INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
@@ -8756,6 +8899,7 @@ CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
 ALTER TABLE fprt2 ATTACH PARTITION ftprt2_p1 FOR VALUES FROM (0) TO (250);
 CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (250) TO (500)
 	SERVER loopback OPTIONS (table_name 'fprt2_p2', use_remote_estimate 'true');
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
 select pg_sleep(1);
  pg_sleep 
 ----------
@@ -8794,6 +8938,7 @@ SELECT t1.a,t2.b,t3.c FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) INNER J
  400 | 400 | 0008
 (4 rows)
 
+-- YB note: The following line is changed in the upstream PG 15 test
 -- left outer join + nullable clasue
 EXPLAIN (COSTS OFF)
 SELECT t1.a,t2.b,t2.c FROM fprt1 t1 LEFT JOIN (SELECT * FROM fprt2 WHERE a < 10) t2 ON (t1.a = t2.b and t1.b = t2.a) WHERE t1.a < 10 ORDER BY 1,2,3;
@@ -8926,7 +9071,7 @@ SELECT t1.a, t1.phv, t2.b, t2.phv FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE 
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) WHERE t1.a % 25 = 0 ORDER BY 1,2 FOR UPDATE OF t1;
 SELECT t1.a, t2.b FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) WHERE t1.a % 25 = 0 ORDER BY 1,2 FOR UPDATE OF t1;
-*/
+*/ -- YB
 RESET enable_partitionwise_join;
 -- ===================================================================
 -- test partitionwise aggregates
@@ -8940,6 +9085,7 @@ INSERT INTO pagg_tab_p2 SELECT i % 30, i % 50, to_char(i/30, 'FM0000') FROM gene
 INSERT INTO pagg_tab_p3 SELECT i % 30, i % 50, to_char(i/30, 'FM0000') FROM generate_series(1, 3000) i WHERE (i % 30) < 30 and (i % 30) >= 20;
 -- Create foreign partitions
 CREATE FOREIGN TABLE fpagg_tab_p1 PARTITION OF pagg_tab FOR VALUES FROM (0) TO (10) SERVER loopback OPTIONS (table_name 'pagg_tab_p1');
+-- YB note: The following line is changed in the upstream PG 15 test (to remove extra semicolon)
 CREATE FOREIGN TABLE fpagg_tab_p2 PARTITION OF pagg_tab FOR VALUES FROM (10) TO (20) SERVER loopback OPTIONS (table_name 'pagg_tab_p2');;
 CREATE FOREIGN TABLE fpagg_tab_p3 PARTITION OF pagg_tab FOR VALUES FROM (20) TO (30) SERVER loopback OPTIONS (table_name 'pagg_tab_p3');;
 ANALYZE pagg_tab;

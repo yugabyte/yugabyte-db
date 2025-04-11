@@ -36,8 +36,13 @@ DEFINE_RUNTIME_uint64(ysql_lease_refresher_rpc_timeout_ms, 15000,
 DEFINE_RUNTIME_uint64(ysql_lease_refresher_interval_ms, 1000,
     "The interval between requests from a tablet server to the master to refresh its ysql lease.");
 
-DEFINE_test_flag(bool, tserver_enable_ysql_lease_refresh, false,
+DEFINE_test_flag(bool, tserver_enable_ysql_lease_refresh, true,
     "Whether to enable the lease refresh RPCs tablet servers send to the master leader.");
+
+DEFINE_test_flag(double, tserver_ysql_lease_refresh_failure_prob, 0.0,
+    "Probablity to pretend we got a failure in response to a lease refresh RPC.");
+
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace tserver {
@@ -102,7 +107,7 @@ YsqlLeasePoller::YsqlLeasePoller(TabletServer& server, MasterLeaderFinder& finde
     : server_(server), finder_(finder) {}
 
 Status YsqlLeasePoller::Poll() {
-  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh) {
+  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !server_.YSQLLeaseEnabled()) {
     return Status::OK();
   }
 
@@ -115,11 +120,16 @@ Status YsqlLeasePoller::Poll() {
 
   master::RefreshYsqlLeaseRequestPB req;
   *req.mutable_instance() = server_.instance_pb();
+  req.set_needs_bootstrap(!server_.HasBootstrappedLocalLockManager());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;
   MonoTime pre_request_time = MonoTime::Now();
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
+  if (RandomActWithProbability(
+          GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
+    return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
+  }
   RETURN_NOT_OK(ResponseStatus(resp));
   return server_.ProcessLeaseUpdate(resp.info(), pre_request_time);
 }

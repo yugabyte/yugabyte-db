@@ -178,13 +178,13 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
    Workers Planned: 2
    ->  Parallel Append
          ->  Hash Join
-               Hash Cond: (t.k = t2.k)
-               ->  Seq Scan on t
+               Hash Cond: (t_1.k = t2.k)
+               ->  Seq Scan on t t_1
                ->  Hash
                      ->  Seq Scan on t2
          ->  Hash Join
-               Hash Cond: (t_1.k = t1.k)
-               ->  Seq Scan on t t_1
+               Hash Cond: (t.k = t1.k)
+               ->  Seq Scan on t
                ->  Hash
                      ->  Seq Scan on t1
 (13 rows)
@@ -207,14 +207,14 @@ select * from lp;
 -- union of non-YB relations (#21733)
 explain (costs off)
 /*+ Set(enable_seqscan OFF) */ select 'l' UNION ALL (SELECT 'g') ORDER BY 1;
-         QUERY PLAN          
------------------------------
+             QUERY PLAN              
+-------------------------------------
  Sort
    Sort Key: ('l'::text)
    ->  Gather
          Workers Planned: 2
          ->  Parallel Append
-               ->  Result
-               ->  Result
+               ->  Result *RESULT*
+               ->  Result *RESULT*_1
 (7 rows)
 

@@ -67,16 +67,16 @@ DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
 DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
                  "Log new object id returned by per database oid allocator");
 
-DEFINE_test_flag(int32, yb_invalidation_message_expiration_secs, 10,
-                 "The function yb_increment_db_catalog_version_with_inval_messages or "
-                 "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
-                 "invalidation messages older than this time");
+DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
+                       "The function yb_increment_db_catalog_version_with_inval_messages or "
+                       "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
+                       "invalidation messages older than this time");
 
-DEFINE_test_flag(int32, yb_max_num_invalidation_messages, 4096,
-                 "If a DDL statement generates more than this number of invalidation messages "
-                 "we do not associate the messages with the new catalog version caused by this "
-                 "DDL statement. This effetively turns off incremental catalog cache refresh "
-                 "for this new catalog version.");
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+                       "If a DDL statement generates more than this number of invalidation "
+                       "messages we do not associate the messages with the new catalog version "
+                       "caused by this DDL statement. This effetively turns off incremental "
+                       "catalog cache refresh for this new catalog version.");
 
 namespace yb::pggate {
 namespace {
@@ -558,33 +558,26 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropTable(const PgObjectId& table_id) {
+Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transaction_block) {
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
 Status PgSession::DropIndex(
     const PgObjectId& index_id,
+    bool use_regular_transaction_block,
     client::YBTableName* indexed_table_name) {
   tserver::PgDropTableRequestPB req;
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
   }
   return Status::OK();
-}
-
-Status PgSession::DropTablegroup(const PgOid database_oid,
-                                 PgOid tablegroup_oid) {
-  tserver::PgDropTablegroupRequestPB req;
-  PgObjectId tablegroup_id(database_oid, tablegroup_oid);
-  tablegroup_id.ToPB(req.mutable_tablegroup_id());
-  Status s = pg_client_.DropTablegroup(&req, CoarseTimePoint());
-  InvalidateTableCache(PgObjectId(database_oid, tablegroup_oid), InvalidateOnPgClient::kFalse);
-  return s;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -757,7 +750,13 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
   //
   // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
   // optimization of allowing docdb (which serves the operation) to pick the read time.
-  return Perform(std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet::kTrue});
+  auto ensure_read_time = pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
+      ? EnsureReadTimeIsSet::kFalse : EnsureReadTimeIsSet::kTrue;
+  auto non_transactional_buffered_write =
+      pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL;
+  return Perform(std::move(ops),
+      {.ensure_read_time_is_set = ensure_read_time,
+       .non_transactional_buffered_write = non_transactional_buffered_write});
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
@@ -770,7 +769,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     options.set_use_catalog_session(true);
   } else {
     RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
-        &options, ops_options.ensure_read_time_is_set));
+        &options, ops_options.ensure_read_time_is_set,
+        ops_options.non_transactional_buffered_write));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }

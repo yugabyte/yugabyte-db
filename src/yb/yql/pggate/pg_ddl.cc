@@ -28,6 +28,8 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
                  "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
@@ -75,7 +77,8 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
                                    PgOid next_oid,
                                    YbcCloneInfo *yb_clone_info,
                                    bool colocated,
-                                   bool use_transaction)
+                                   bool use_transaction,
+                                   bool use_regular_transaction_block)
     : BaseType(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
@@ -83,6 +86,7 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
   req_.set_next_oid(next_oid);
   req_.set_colocated(colocated);
   req_.set_use_transaction(use_transaction);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
   if (yb_clone_info) {
     req_.set_source_database_name(yb_clone_info->src_db_name);
     req_.set_clone_time(yb_clone_info->clone_time);
@@ -127,9 +131,10 @@ void PgAlterDatabase::RenameDatabase(const char *newname) {
 
 PgCreateTablegroup::PgCreateTablegroup(
     const PgSession::ScopedRefPtr& pg_session, const char* database_name, const PgOid database_oid,
-    const PgOid tablegroup_oid, const PgOid tablespace_oid)
+    const PgOid tablegroup_oid, const PgOid tablespace_oid, bool use_regular_transaction_block)
     : BaseType(pg_session) {
   req_.set_database_name(database_name);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
   PgObjectId(database_oid, tablespace_oid).ToPB(req_.mutable_tablespace_id());
 }
@@ -139,8 +144,10 @@ Status PgCreateTablegroup::Exec() {
 }
 
 PgDropTablegroup::PgDropTablegroup(
-    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid)
+    const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
+    bool use_regular_transaction_block)
     : BaseType(pg_session) {
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
   PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
 }
 
@@ -170,7 +177,8 @@ PgCreateTableBase::PgCreateTableBase(
     const PgObjectId& pg_table_oid,
     const PgObjectId& old_relfilenode_oid,
     bool is_truncate,
-    bool use_transaction)
+    bool use_transaction,
+    bool use_regular_transaction_block)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -191,6 +199,7 @@ PgCreateTableBase::PgCreateTableBase(
   old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
   req_.set_is_truncate(is_truncate);
   req_.set_use_transaction(use_transaction);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   switch (ybrowid_mode) {
@@ -297,12 +306,13 @@ PgCreateTable::PgCreateTable(
     const PgObjectId& pg_table_oid,
     const PgObjectId& old_relfilenode_oid,
     bool is_truncate,
-    bool use_transaction)
+    bool use_transaction,
+    bool use_regular_transaction_block)
     : BaseType(
           pg_session, database_name, schema_name, table_name, table_id, is_shared_table,
           is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-          old_relfilenode_oid, is_truncate, use_transaction) {}
+          old_relfilenode_oid, is_truncate, use_transaction, use_regular_transaction_block) {}
 
 PgCreateIndex::PgCreateIndex(
     const PgSession::ScopedRefPtr& pg_session,
@@ -323,6 +333,7 @@ PgCreateIndex::PgCreateIndex(
     const PgObjectId& old_relfilenode_oid,
     bool is_truncate,
     bool use_transaction,
+    bool use_regular_transaction_block,
     const PgObjectId& base_table_id,
     bool is_unique_index,
     bool skip_index_backfill)
@@ -330,7 +341,7 @@ PgCreateIndex::PgCreateIndex(
           pg_session, database_name, schema_name, table_name, table_id, is_shared_table,
           is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-          old_relfilenode_oid, is_truncate, use_transaction) {
+          old_relfilenode_oid, is_truncate, use_transaction, use_regular_transaction_block) {
   base_table_id.ToPB(req_.mutable_base_table_id());
   req_.set_is_unique_index(is_unique_index);
   req_.set_skip_index_backfill(skip_index_backfill);
@@ -341,12 +352,14 @@ PgCreateIndex::PgCreateIndex(
 //--------------------------------------------------------------------------------------------------
 
 PgDropTable::PgDropTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist)
-    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist) {
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+    bool use_regular_transaction_block)
+    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist),
+      use_regular_transaction_block_(use_regular_transaction_block) {
 }
 
 Status PgDropTable::Exec() {
-  Status s = pg_session_->DropTable(table_id_);
+  Status s = pg_session_->DropTable(table_id_, use_regular_transaction_block_);
   pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
@@ -374,14 +387,15 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
-    bool ddl_rollback_enabled)
+    bool ddl_rollback_enabled, bool use_regular_transaction_block)
     : BaseType(pg_session),
-      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
+      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled),
+      use_regular_transaction_block_(use_regular_transaction_block) {
 }
 
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
-  auto s = pg_session_->DropIndex(index_id_, &indexed_table_name);
+  auto s = pg_session_->DropIndex(index_id_, use_regular_transaction_block_, &indexed_table_name);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
     PgObjectId indexed_table_id(indexed_table_name.table_id());
@@ -399,10 +413,14 @@ Status PgDropIndex::Exec() {
 //--------------------------------------------------------------------------------------------------
 
 PgAlterTable::PgAlterTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool use_transaction)
+    const PgSession::ScopedRefPtr& pg_session,
+    const PgObjectId& table_id,
+    bool use_transaction,
+    bool use_regular_transaction_block)
     : BaseType(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_use_transaction(use_transaction);
+  req_.set_use_regular_transaction_block(use_regular_transaction_block);
 }
 
 Status PgAlterTable::AddColumn(const char *name,
@@ -510,7 +528,8 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
-    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type)
+    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
+    YbcOrderingMode yb_ordering_mode)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
@@ -543,6 +562,22 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(
         break;
       default:
         req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+    }
+  }
+
+  if (yb_allow_replication_slot_ordering_modes) {
+    switch (yb_ordering_mode) {
+      case YB_REPLICATION_SLOT_ORDERING_MODE_ROW:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_ROW);
+        break;
+      case YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_TRANSACTION);
+        break;
+      default:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_TRANSACTION);
     }
   }
 }

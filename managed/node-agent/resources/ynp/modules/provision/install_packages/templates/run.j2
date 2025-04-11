@@ -1,71 +1,77 @@
 # Exit if air gap is enabled
-if [[ "{{ air_gap }}" == "true" ]]; then
-  echo "Air gap environment detected. Exiting."
-  exit 0
-fi
+if [[ {{ is_airgap }} == 'True' ]]; then
+  echo "Air gap environment detected. Skipping package installation."
+else
+  # Define packages
+  linux_packages=("rsync" "openssl")
+  aarch64_packages=("libatomic" "glibc-langpack-en")
+  debian_aarch64_packages=("libatomic1" "libncurses6")
 
-# Define packages
-linux_packages=("rsync" "openssl")
-aarch64_packages=("libatomic" "glibc-langpack-en")
-debian_aarch64_packages=("libatomic1" "libncurses6")
+  # Install packages using the detected package manager
+  install_packages() {
+    local pkg_mgr=$1
+    shift
+    local packages=("$@")
 
-# Install packages using the detected package manager
-install_packages() {
-  local pkg_mgr=$1
-  shift
-  local packages=("$@")
+    case "$pkg_mgr" in
+      yum|dnf)
+        sudo "$pkg_mgr" install -y "${packages[@]}"
+        ;;
+      apt)
+        sudo apt-get update
+        sudo apt-get install -y "${packages[@]}"
+        ;;
+      *)
+        echo "Unsupported package manager: $pkg_mgr"
+        exit 1
+        ;;
+    esac
+  }
 
-  case "$pkg_mgr" in
-    yum|dnf)
-      sudo "$pkg_mgr" install -y "${packages[@]}"
-      ;;
-    apt)
-      sudo apt-get update
-      sudo apt-get install -y "${packages[@]}"
-      ;;
-    *)
-      echo "Unsupported package manager: $pkg_mgr"
-      exit 1
-      ;;
-  esac
-}
+  # Detect architecture
+  detect_architecture() {
+    uname -m
+  }
 
-# Detect architecture
-detect_architecture() {
-  uname -m
-}
+  # Detect package manager
+  detect_package_manager() {
+    if command -v dnf >/dev/null 2>&1; then
+      echo "dnf"
+    elif command -v yum >/dev/null 2>&1; then
+      echo "yum"
+    elif command -v apt-get >/dev/null 2>&1; then
+      echo "apt"
+    else
+      echo "unknown"
+    fi
+  }
 
-# Detect package manager
-detect_package_manager() {
-  if command -v dnf >/dev/null 2>&1; then
-    echo "dnf"
-  elif command -v yum >/dev/null 2>&1; then
-    echo "yum"
-  elif command -v apt-get >/dev/null 2>&1; then
-    echo "apt"
-  else
-    echo "unknown"
+  linux_flavor={{ os_family }}
+  architecture=$(detect_architecture)
+  pkg_mgr=$(detect_package_manager)
+
+
+  # Install common packages
+  if [[ "$pkg_mgr" != "unknown" ]]; then
+    echo "Installing common packages..."
+    install_packages "$pkg_mgr" "${linux_packages[@]}"
   fi
-}
 
-linux_flavor={{ os_family }}
-architecture=$(detect_architecture)
-pkg_mgr=$(detect_package_manager)
+  # Install architecture-specific packages
+  if [[ "$architecture" == "aarch64" ]]; then
+    if [[ "$linux_flavor" == "Debian" ]]; then
+      echo "Installing Debian ARM-specific packages..."
+      install_packages "$pkg_mgr" "${debian_aarch64_packages[@]}"
+    elif [[ "$linux_flavor" == "RedHat" ]]; then
+      echo "Installing RedHat ARM-specific packages..."
+      install_packages "$pkg_mgr" "${aarch64_packages[@]}"
+    fi
+  fi
 
-
-# Install common packages
-if [[ "$pkg_mgr" != "unknown" ]]; then
-  echo "Installing common packages..."
-  install_packages "$pkg_mgr" "${linux_packages[@]}"
-fi
-
-# Install architecture-specific packages
-if [[ "$architecture" == "aarch64" ]]; then
-  if [[ "$linux_flavor" == "Debian" ]]; then
-    echo "Installing Debian ARM-specific packages..."
-    install_packages "$pkg_mgr" "${debian_aarch64_packages[@]}"
-  elif [[ "$linux_flavor" == "RedHat" ]]; then
-    echo "Installing RedHat ARM-specific packages..."
-    install_packages "$pkg_mgr" "${aarch64_packages[@]}"
+  if [[ "{{ os_family }}" == "RedHat" ]]; then
+    if [[ "{{ cloud_type }}" == "gcp" || "{{ cloud_type }}" == "azu" ]]; then
+      # Required for GCP/Azure AMIs
+      dnf install -y tuned
+    fi
   fi
 fi

@@ -35,7 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/catalog.h"
 #include "pg_yb_utils.h"
 

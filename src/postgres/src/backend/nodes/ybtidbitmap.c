@@ -55,7 +55,7 @@ struct YbTBMIterator
 /*
  * yb_tbm_create - create an initially-empty bitmap
  *
- * The bitmap will live in the memory context that is GetCurrentMemoryContext()
+ * The bitmap will live in the memory context that is CurrentMemoryContext
  * at the time of this call. It will be limited to (approximately) maxbytes
  */
 YbTIDBitmap *

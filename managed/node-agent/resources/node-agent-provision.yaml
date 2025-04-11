@@ -44,7 +44,12 @@ ynp:
   # Validate all nodes are consistent for this port
   node_exporter_port: 9300
 
+  # Configure clockbound as part of provisioning.
+  # Clockbound in sync with a reliable NTP server reduces read-restart errors.
+  # Ref: https://github.com/aws/clock-bound
+  is_configure_clockbound: false
 
+  configure_thp_settings: true
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.

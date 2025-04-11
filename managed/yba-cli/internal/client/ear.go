@@ -33,3 +33,10 @@ func (a *AuthAPIClient) EditKMSConfig(
 ) ybaclient.EncryptionAtRestApiApiEditKMSConfigRequest {
 	return a.APIClient.EncryptionAtRestApi.EditKMSConfig(a.ctx, a.CustomerUUID, configUUID)
 }
+
+// RefreshKMSConfig refreshes kms config
+func (a *AuthAPIClient) RefreshKMSConfig(
+	configUUID string,
+) ybaclient.EncryptionAtRestApiApiRefreshKMSConfigRequest {
+	return a.APIClient.EncryptionAtRestApi.RefreshKMSConfig(a.ctx, a.CustomerUUID, configUUID)
+}

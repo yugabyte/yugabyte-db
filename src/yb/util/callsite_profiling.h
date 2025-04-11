@@ -90,7 +90,7 @@ struct ProfilingHelper {
   explicit ProfilingHelper(Callsite* callsite_)
       : callsite(callsite_),
         use_time(FLAGS_enable_callsite_profile_timing),
-        start_time(use_time ? MonoTime::Now() : MonoTime()),
+        start_time(MonoTime::NowIf(use_time)),
         start_cycles(CycleClock::Now()) {
   }
 

@@ -26,7 +26,7 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages', 'BackupUtils']
+    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
     onprem_only_modules = ['ConfigureSystemd', 'RebootNode']
 
     def __init__(self, config):
@@ -154,6 +154,11 @@ class ProvisionCommand(Command):
                     self.config[key].get('is_install_node_agent', 'True') == 'False':
                 print(f"Skipping {key} because is_install_node_agent is "
                       f"{self.config[key].get('is_install_node_agent')}")
+                continue
+            if key == 'ConfigureClockbound' and \
+                    self.config[key].get('configure_clockbound', 'False') == 'False':
+                print(f"Skipping {key} because {key}.configure_clockbound is "
+                      f"{self.config[key].get('configure_clockbound')}")
                 continue
             context = self.config[key]
 

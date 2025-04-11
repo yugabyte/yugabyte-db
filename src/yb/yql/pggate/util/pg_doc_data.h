@@ -36,6 +36,11 @@ class PgDocData : public PgWire {
   static bool ReadHeaderIsNull(Slice *cursor) {
     return cursor->consume_byte() != 0;
   }
+
+  static Result<bool> CheckedReadHeaderIsNull(Slice* cursor) {
+    SCHECK_GE(cursor->size(), std::size_t{1}, InvalidArgument, "Unexpected end of data");
+    return ReadHeaderIsNull(cursor);
+  }
 };
 
 }  // namespace pggate

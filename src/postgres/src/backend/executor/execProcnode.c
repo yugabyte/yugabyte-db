@@ -119,7 +119,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/nodeYbBitmapTablescan.h"

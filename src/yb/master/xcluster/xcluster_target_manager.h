@@ -14,10 +14,11 @@
 #pragma once
 
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_fwd.h"
 

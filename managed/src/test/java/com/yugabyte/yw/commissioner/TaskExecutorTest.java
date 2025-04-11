@@ -97,6 +97,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ReplaceNodeInUniverse,
           TaskType.EditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.ReadOnlyClusterDelete,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
@@ -127,6 +128,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
+          TaskType.TlsToggle,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
           TaskType.StartMasterOnNode,
@@ -151,8 +153,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.EditDrConfig,
           TaskType.SetDatabasesDrConfig,
           TaskType.SetTablesDrConfig,
-          TaskType.RestartXClusterConfig,
-          TaskType.RestartDrConfig,
           TaskType.DecommissionNode);
 
   @Override

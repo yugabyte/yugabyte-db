@@ -393,6 +393,7 @@ extern void array_bitmap_copy(bits8 *destbitmap, int destoffset,
 extern ArrayType *construct_array(Datum *elems, int nelems,
 								  Oid elmtype,
 								  int elmlen, bool elmbyval, char elmalign);
+extern ArrayType *construct_array_builtin(Datum *elems, int nelems, Oid elmtype);
 extern ArrayType *construct_md_array(Datum *elems,
 									 bool *nulls,
 									 int ndims,

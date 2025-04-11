@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/mini_cluster.h"

@@ -17,6 +17,7 @@
 #include "access/htup_details.h"
 #include "access/xlog.h"
 #include "access/xlogprefetcher.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_type.h"
 #include "common/ip.h"
@@ -34,6 +35,7 @@
 
 /* YB includes */
 #include "commands/progress.h"
+#include "commands/yb_cmds.h"
 #include "inttypes.h"
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"
@@ -648,6 +650,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	YbcPgSessionTxnInfo *txn_infos = NULL;
 
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
+
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
 		txn_infos = (YbcPgSessionTxnInfo *)
@@ -664,6 +669,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
 	}
+
+	if (IsYugaByteEnabled())
+		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -735,6 +743,21 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			values[16] = TransactionIdGetDatum(local_beentry->backend_xmin);
 		else
 			nulls[16] = true;
+
+		if (IsYugaByteEnabled())
+		{
+			int slotno;
+			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
+			{
+				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+				if (slot->active_pid == beentry->st_procpid)
+				{
+					values[16] = slot->xmin;
+					nulls[16]  = false;
+					break;
+				}
+			}
+		}
 
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
@@ -2275,13 +2298,17 @@ pg_stat_reset_shared(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-/* Reset a single counter in the current database */
+/*
+ * Reset a statistics for a single object, which may be of current
+ * database or shared across all databases in the cluster.
+ */
 Datum
 pg_stat_reset_single_table_counters(PG_FUNCTION_ARGS)
 {
 	Oid			taboid = PG_GETARG_OID(0);
+	Oid			dboid = (IsSharedRelation(taboid) ? InvalidOid : MyDatabaseId);
 
-	pgstat_reset(PGSTAT_KIND_RELATION, MyDatabaseId, taboid);
+	pgstat_reset(PGSTAT_KIND_RELATION, dboid, taboid);
 
 	PG_RETURN_VOID();
 }

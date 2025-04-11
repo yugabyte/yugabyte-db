@@ -13,7 +13,6 @@
 
 package org.yb.pgsql;
 
-import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -365,5 +364,89 @@ public class TestPgYbStat extends BasePgSQLTest {
             resultSet.next());
         return true;
     }));
+  }
+
+  @Test
+  public void testYbTerminatedQueriesPersistence() throws Exception {
+    // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
+    // that can potentially be leftover from another test in this class. This would let us start
+    // with a clean slate.
+    restartCluster();
+    setupMinTempFileConfigs(connection);
+
+    final int num_queries = 100;
+
+    try (Statement statement = connection.createStatement()) {
+      for (int i = 0; i < num_queries; i++) {
+        final String query = String.format("SELECT * FROM generate_series(0, 1000000 + %d)", i);
+        executeQueryAndExpectTempFileLimitExceeded(query, connection);
+
+        if (i == num_queries / 2)
+        {
+          miniCluster.restart();
+          connection = getConnectionBuilder().connect();
+          setupMinTempFileConfigs(connection);
+        }
+      }
+
+      // Restarting the cluster without wiping previously reported terminated queries.
+      miniCluster.restart();
+
+      // Re-establishing a connection to the cluster.
+      connection = getConnectionBuilder().connect();
+
+      // Terminated queries reported before cluster restart should be persistent after the restart.
+      assertTrue(waitUntilConditionSatisfiedOrTimeout(
+        "SELECT query_text FROM yb_terminated_queries", connection,
+        (ResultSet resultSet) -> {
+          for (int i = 0; i < num_queries; i++) {
+            String expected_query = String.format("SELECT * FROM generate_series(0, 1000000 + %d)",
+                                                  i);
+            if (!resultSet.next() || !expected_query.equals(resultSet.getString("query_text")))
+              return false;
+          }
+          return true;
+        }));
+    }
+  }
+
+  @Test
+  public void testYbTerminatedQueriesQueryId() throws Exception {
+    // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
+    // that can potentially be leftover from another test in this class. This would let us start
+    // with a clean slate.
+    restartCluster();
+    setupMinTempFileConfigs(connection);
+
+    List<String> test_queries = new ArrayList<>();
+
+    test_queries.add("SELECT * FROM generate_series(0, 1000000)");
+    test_queries.add("SELECT gs % 10 AS mod_group, COUNT(*)\n" +
+                            "FROM generate_series(1, 1000000) AS gs\n" +
+                            "GROUP BY mod_group");
+    test_queries.add("SELECT * FROM generate_series(1, 500000) UNION\n"+
+                            "SELECT * FROM generate_series(500001, 1000000)");
+    test_queries.add("SELECT A.series AS series_a, B.series AS series_b\n" +
+                            "FROM generate_series(1, 1000000) A(series)\n" +
+                            "JOIN generate_series(500000, 1500000) B(series)\n" +
+                            "ON A.series = B.series");
+
+    final String validation_query = "SELECT COUNT(*) AS num_queries\n" +
+                                    "FROM yb_terminated_queries AS S\n" +
+                                    "LEFT JOIN pg_stat_statements AS P\n" +
+                                    "ON (S.query_id = P.queryid)";
+
+    try (Statement statement = connection.createStatement()) {
+      for (int i=0; i<test_queries.size(); i++) {
+        executeQueryAndExpectTempFileLimitExceeded(test_queries.get(i), connection);
+      }
+
+      assertTrue(waitUntilConditionSatisfiedOrTimeout(
+        validation_query, connection,
+        (ResultSet result) -> {
+          if (!result.next()) return false;
+          return result.getInt("num_queries") == test_queries.size();
+        }));
+    }
   }
 }

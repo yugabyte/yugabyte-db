@@ -276,7 +276,7 @@ func init() {
 	createConfigurationAlertCmd.Flags().String("template", "",
 		"[Required] Template name for the alert policy. "+
 			"Use single quotes ('') to provide values with special characters. "+
-			"Run \"yba alert template list\" to check list of available template names.")
+			"Run \"yba alert policy template list\" to check list of available template names.")
 	createConfigurationAlertCmd.MarkFlagRequired("template")
 	createConfigurationAlertCmd.Flags().Int("duration", 0,
 		"[Optional] Duration in seconds, while condition is met to raise an alert. (default 0)")

@@ -359,6 +359,7 @@ pg_advisory_unlock_all
 
 
 starting permutation: s1_unlock s1_lock s1_unlock_shared s1_lock_shared s1_unlock_shared s1_unlock
+s1: WARNING:  you don't own a lock of type ExclusiveLock
 step s1_unlock: SELECT pg_advisory_unlock(1);
 pg_advisory_unlock
 ------------------
@@ -371,6 +372,7 @@ pg_advisory_lock
                 
 (1 row)
 
+s1: WARNING:  you don't own a lock of type ShareLock
 step s1_unlock_shared: SELECT pg_advisory_unlock_shared(1);
 pg_advisory_unlock_shared
 -------------------------

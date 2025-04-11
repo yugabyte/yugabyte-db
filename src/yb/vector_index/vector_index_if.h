@@ -64,10 +64,13 @@ class VectorIndexWriterIf {
   virtual Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
 
-  // Returns the number of reserved vectors
-  virtual size_t MaxVectors() const = 0;
+  // Returns current number of vectors.
+  virtual size_t Size() const = 0;
 
-  virtual Status Insert(VectorId vertex_id, const Vector& vector) = 0;
+  // Returns the number of reserved vectors
+  virtual size_t Capacity() const = 0;
+
+  virtual Status Insert(VectorId vector_id, const Vector& vector) = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -85,6 +88,11 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   // Implementation could load index partially, fetching data on demand and unload it if necessary.
   // max_concurrent_reads - max number of concurrent reads that could be run against this index.
   virtual Status LoadFromFile(const std::string& path, size_t max_concurrent_reads) = 0;
+
+  // Allows to attach a custom object that will be destroyed when the vector index does. Only one
+  // object can be attached. Returns previously attached object or nullptr if nothing was attached.
+  // Could be considered as a variation of cleanup paradigm rocskdb::Cleanable.
+  virtual std::shared_ptr<void> Attach(std::shared_ptr<void>) = 0;
 
   virtual ~VectorIndexIf() = default;
 };

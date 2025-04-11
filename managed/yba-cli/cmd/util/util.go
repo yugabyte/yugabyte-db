@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -135,6 +137,20 @@ func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
+// GetPrintableList returns a string representation of a list
+func GetPrintableList(in []string) string {
+	out := "["
+	for i, v := range in {
+		if i == 0 {
+			out = fmt.Sprintf("%s%s", out, v)
+		} else {
+			out = fmt.Sprintf("%s, %s", out, v)
+		}
+	}
+	out = fmt.Sprintf("%s]", out)
+	return out
+}
+
 // FindCommonStringElements finds common elements in two string slices
 func FindCommonStringElements(list1, list2 []string) []string {
 	// Create a map to store elements from list1
@@ -196,11 +212,11 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		logrus.Debug("There was an error reading the response from the API\n")
-		return errorTag
+		return fmt.Errorf("%w: %w", errorTag, err)
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
 		logrus.Debugf("There was an error unmarshalling the response from the API\n")
-		return errorTag
+		return fmt.Errorf("%w: %w", errorTag, err)
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
@@ -214,26 +230,14 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 	}
 
 	errorMap := (*errorBlock.Error).(map[string]interface{})
-	for k, v := range errorMap {
-		if k != "" {
-			errorString = fmt.Sprintf("Field: %s, Error:", k)
-		}
-		var checkType []interface{}
-		var checkTypeMap map[string]interface{}
-		if reflect.TypeOf(v) == reflect.TypeOf(checkType) {
-			for _, s := range *StringSlice(v.([]interface{})) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
-			}
-		} else if reflect.TypeOf(v) == reflect.TypeOf(checkTypeMap) {
-			for _, s := range *StringMap(v.(map[string]interface{})) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
-			}
-			errorString = fmt.Sprintf("%s %v", errorString, v)
-		} else {
-			errorString = fmt.Sprintf("%s %s", errorString, v.(string))
-		}
 
+	bytes, err := json.Marshal(errorMap)
+	if err != nil {
+		errorString = fmt.Sprintf("%s %v", errorString, errorMap)
+	} else {
+		errorString = fmt.Sprintf("%s %s", errorString, string(bytes))
 	}
+
 	return errorString
 }
 
@@ -383,7 +387,33 @@ func YAMLtoString(filePath string) string {
 				formatter.RedColor))
 	}
 	return string(contentBytes)
+}
 
+// StringToYAMLFile converts a string to a yaml file
+func StringToYAMLFile(contentString string, filePath string, perms fs.FileMode) (bool, error) {
+	logrus.Debug("YAML File Path: ", filePath)
+
+	var data yaml.MapSlice
+
+	// Unmarshal the YAML string into MapSlice
+	err := yaml.Unmarshal([]byte(contentString), &data)
+	if err != nil {
+		return false, fmt.Errorf("Error unmarshalling YAML string: " + err.Error())
+	}
+
+	// Marshal it again to ensure proper formatting (optional)
+	contentBytes, err := yaml.Marshal(data)
+	if err != nil {
+		return false, fmt.Errorf("Error marshalling YAML string: " + err.Error())
+	}
+
+	// Write YAML content to file
+	err = os.WriteFile(filePath, contentBytes, perms)
+	if err != nil {
+		return false, fmt.Errorf("Error writing YAML to file: " + err.Error())
+	}
+
+	return true, nil
 }
 
 // IsOutputType check if the output type is t
@@ -521,4 +551,28 @@ func MissingKeyFromStringDeclaration(key, flag string) {
 		formatter.Colorize(
 			fmt.Sprintf("%s not specified in %s.\n", key, flag),
 			formatter.RedColor))
+}
+
+// GetCLIConfigDirectoryPath returns the CLI config directory path
+func GetCLIConfigDirectoryPath() (string, fs.FileMode, error) {
+	configFileUsed := viper.GetViper().ConfigFileUsed()
+	directory := filepath.Dir(configFileUsed)
+
+	info, err := os.Stat(directory)
+	if err != nil {
+		return "", 0644, err
+	}
+	return directory, info.Mode(), nil
+}
+
+// GetCLIOutputFormat returns the output format for the CLI
+func GetCLIOutputFormat(outputType string) string {
+	outputFormat := strings.TrimPrefix(outputType, "cli-")
+	if outputFormat == "flags" || outputFormat == "" {
+		outputFormat = "flag"
+	}
+	if outputFormat == "yml" {
+		outputFormat = "yaml"
+	}
+	return outputFormat
 }

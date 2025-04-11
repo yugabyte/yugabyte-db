@@ -24,8 +24,10 @@
 #include "utils/resowner.h"
 #include "utils/snapshot.h"
 
+/* YB includes */
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 
 /* support for buffer refcount management */
 extern void ResourceOwnerEnlargeBuffers(ResourceOwner owner);

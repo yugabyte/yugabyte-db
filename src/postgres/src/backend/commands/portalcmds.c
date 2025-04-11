@@ -33,7 +33,10 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /*
  * PerformCursorOpen

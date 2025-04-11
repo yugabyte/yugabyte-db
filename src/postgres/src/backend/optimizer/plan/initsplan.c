@@ -14,12 +14,10 @@
  */
 #include "postgres.h"
 
-#include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/parse_coerce.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/inherit.h"
@@ -37,8 +35,10 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "catalog/namespace.h"
 #include "catalog/pg_opfamily.h"
+#include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 
 /* These parameters are set by GUC */
@@ -2826,7 +2826,7 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 			Oid			finalargtypmod = innerTypMod;
 			Node	   *coerced = NULL;
 
-			MemoryContext cxt = GetCurrentMemoryContext();
+			MemoryContext cxt = CurrentMemoryContext;
 
 			PG_TRY();
 			{

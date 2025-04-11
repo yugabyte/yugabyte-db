@@ -34,6 +34,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.azure.core.http.rest.PagedIterable;
+import com.azure.core.util.BinaryData;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobItem;
@@ -1025,7 +1026,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         ((StubbedCustomerConfigValidator) customerConfigValidator).blobContainerClient;
 
     if (shouldCreateValidateFail) {
-      doThrow(new BlobStorageException("Upload failed", null, null)).when(blobClient).upload(any());
+      doThrow(new BlobStorageException("Upload failed", null, null))
+          .when(blobClient)
+          .upload(any(BinaryData.class));
     }
 
     String incorrectData = "notdummy";

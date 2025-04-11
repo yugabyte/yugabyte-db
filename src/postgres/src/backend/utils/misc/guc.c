@@ -115,13 +115,13 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
 #include "commands/copy.h"
 #include "executor/ybModifyTable.h"
-#include "tcop/pquery.h"
 #include "pg_yb_utils.h"
+#include "tcop/pquery.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
@@ -1389,7 +1389,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"is_superuser", PGC_INTERNAL, UNGROUPED,
 			gettext_noop("Shows whether the current user is a superuser."),
 			NULL,
-			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_ALLOW_IN_PARALLEL
 		},
 		&session_auth_is_superuser,
 		false,
@@ -1444,7 +1444,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"fsync", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Forces synchronization of updates to disk."),
 			gettext_noop("The server will use the fsync() system call in several places to make "
-						 "sure that updates are physically written to disk. This insures "
+						 "sure that updates are physically written to disk. This ensures "
 						 "that a database cluster will recover to a consistent state after "
 						 "an operating system or hardware crash.")
 		},
@@ -1973,7 +1973,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"logging_collector", PGC_POSTMASTER, LOGGING_WHERE,
-			gettext_noop("Start a subprocess to capture stderr output and/or csvlogs into log files."),
+			gettext_noop("Start a subprocess to capture stderr, csvlog and/or jsonlog into log files."),
 			NULL
 		},
 		&Logging_collector,
@@ -2504,6 +2504,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pg_locks_integrate_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Enables pg_locks to integrate and display advisory locks details correctly."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pg_locks_integrate_advisory_locks,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_commands", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
 			NULL,
@@ -2546,6 +2557,17 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_allow_replication_slot_lsn_types,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_allow_replication_slot_ordering_modes", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow specifying ordering mode while creating replication slot"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_replication_slot_ordering_modes,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -2593,6 +2615,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ignore_pg_class_oids,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ignore_relfilenode_ids", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores requests to set relfilenode IDs in yb_binary_restore mode"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_relfilenode_ids,
 		true,
 		NULL, NULL, NULL
 	},
@@ -3110,6 +3143,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_planner_trace", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables planner tracing."),
+			NULL
+		},
+		&yb_enable_planner_trace,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_query_diagnostics", PGC_POSTMASTER, STATS_MONITORING,
 			gettext_noop("Enables the collection of query diagnostics data "
 						 "for YSQL queries, facilitating the creation of diagnostic bundles."),
@@ -3183,6 +3226,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_separate_requests_for_sampling_stages", PGC_SUSET,
+			CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to allow using separate requests for "
+						 "block-based sampling stages. Not to be touched by "
+						 "users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_separate_requests_for_sampling_stages,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_refresh_matview_in_place", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Refresh materialized views in place."),
 			NULL,
@@ -3204,18 +3261,67 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-  {
-    {"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
-      gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
-          "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
-          "any other method is not allowed."),
-      NULL,
-      GUC_NOT_IN_SAMPLE
-    },
-    &yb_disable_auto_analyze,
-    false,
-    yb_disable_auto_analyze_check_hook, NULL, NULL
-  },
+	{
+		{"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
+						 "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
+						 "any other method is not allowed."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_auto_analyze,
+		false,
+		yb_disable_auto_analyze_check_hook, NULL, NULL
+	},
+
+	{
+		{"yb_extension_upgrade", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Set to true when upgrading extensions during "
+						 "a YSQL major version upgrade."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_extension_upgrade,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_mixed_mode_expression_pushdown", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables expression pushdown for queries in mixed "
+						 "mode of a YSQL Major version upgrade."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_mixed_mode_expression_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable invalidation messages"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_invalidation_messages,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_extended_sql_codes", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allow to return to the client SQL status codes "
+						 "defined by YugabyteDB (YBxxx). Those codes are used "
+						 "internally to determine if transparent retry is "
+						 "possible. If disabled, they are replaced with "
+						 "similar Postgres defined codes."),
+			NULL
+		},
+		&yb_enable_extended_sql_codes,
+		false,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -3404,7 +3510,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_walsender_poll_sleep_duration_empty_ms,
-		1 * 1000, 0, INT_MAX,
+		10, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5106,6 +5212,40 @@ static struct config_int ConfigureNamesInt[] =
 	 assign_tcmalloc_sample_period,
 	 show_tcmalloc_sample_period},
 
+	{
+		{"yb_test_delay_after_applying_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay after applying invalidation messages."),
+			NULL
+		},
+		&yb_test_delay_after_applying_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Invalidation messages expiration time in catalog table "
+						 "pg_yb_invalidation_messages."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_invalidation_message_expiration_secs,
+		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_max_num_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Max number of invalidation messages supported for incremental "
+						 "catalog cache refresh."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_max_num_invalidation_messages,
+		4096, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -6301,7 +6441,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Sets relation kinds of non-system relation to restrict use"),
+			gettext_noop("Prohibits access to non-system relations of specified kinds."),
 			NULL,
 			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
 		},
@@ -6345,6 +6485,17 @@ static struct config_string ConfigureNamesString[] =
 		&yb_default_replica_identity,
 		"CHANGE",
 		check_default_replica_identity, NULL, NULL
+	},
+
+	{
+		{"yb_hinted_uids", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Node UIDS to prefer in cost comparisons."),
+			NULL,
+			GUC_LIST_INPUT
+		},
+		&yb_hinted_uids,
+		"",
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -6584,7 +6735,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&pgstat_fetch_consistency,
 		PGSTAT_FETCH_CONSISTENCY_CACHE, stats_fetch_consistency,
-		NULL, NULL, NULL
+		NULL, assign_stats_fetch_consistency, NULL
 	},
 
 	{
@@ -7481,10 +7632,10 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 static int
 guc_var_compare(const void *a, const void *b)
 {
-	const struct config_generic *confa = *(struct config_generic *const *) a;
-	const struct config_generic *confb = *(struct config_generic *const *) b;
+	const char *namea = **(const char **const *) a;
+	const char *nameb = **(const char **const *) b;
 
-	return guc_name_compare(confa->name, confb->name);
+	return guc_name_compare(namea, nameb);
 }
 
 /*
@@ -8687,18 +8838,41 @@ ReportChangedGUCOptions(void)
  *
  * We need not transmit the value if it's the same as what we last
  * transmitted.  However, clear the NEEDS_REPORT flag in any case.
+ *
+ * YB: Always send back a ParameterStatus packet back, atleast to
+ * Connection Manager for full correctness. If the value is the same
+ * as what was previously transmitted, do not send the packet to the
+ * client from Connection Manager.
  */
 static void
 ReportGUCOption(struct config_generic *record)
 {
 	char	   *val = _ShowOption(record, false);
 
-	if (record->last_reported == NULL ||
+	if (YbIsClientYsqlConnMgr() ||
+		record->last_reported == NULL ||
 		strcmp(val, record->last_reported) != 0)
 	{
 		StringInfoData msgbuf;
 
-		pq_beginmessage(&msgbuf, 'S');
+		/*
+		 * YB: Do not bombard the client with ParameterStatus packets.
+		 * Send a specialized ParameterStatus packet to instruct Connection
+		 * Manager to not forward the packet to the client.
+		 *
+		 * 1. If GUC_REPORT is not enabled for the variable.
+		 * 2. If GUC_REPORT is enabled, but the previous value is the
+		 * same as the current value.
+		 */
+		bool guc_report_not_enabled = !(record->flags & GUC_REPORT);
+		bool guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
+			record->last_reported &&
+			strcmp(val, record->last_reported) == 0;
+
+		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
+			pq_beginmessage(&msgbuf, 'r');
+		else
+			pq_beginmessage(&msgbuf, 'S');
 		pq_sendstring(&msgbuf, record->name);
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);
@@ -9451,10 +9625,12 @@ parse_and_validate_value(struct config_generic *record,
  *
  * Return value:
  *	+1: the value is valid and was successfully applied.
- *	0:	the name or value is invalid (but see below).
- *	-1: the value was not applied because of context, priority, or changeVal.
+ *	0:	the name or value is invalid, or it's invalid to try to set
+ *		this GUC now; but elevel was less than ERROR (see below).
+ *	-1: no error detected, but the value was not applied, either
+ *		because changeVal is false or there is some overriding setting.
  *
- * If there is an error (non-existing option, invalid value) then an
+ * If there is an error (non-existing option, invalid value, etc) then an
  * ereport(ERROR) is thrown *unless* this is called for a source for which
  * we don't want an ERROR (currently, those are defaults, the config file,
  * and per-database or per-user settings, as well as callers who specify
@@ -9551,6 +9727,10 @@ set_config_option_ext(const char *name, const char *value,
 			elevel = ERROR;
 	}
 
+	record = find_option(name, true, false, elevel);
+	if (record == NULL)
+		return 0;
+
 	/*
 	 * GUC_ACTION_SAVE changes are acceptable during a parallel operation,
 	 * because the current worker will also pop the change.  We're probably
@@ -9558,16 +9738,19 @@ set_config_option_ext(const char *name, const char *value,
 	 * body should observe the change, and peer workers do not share in the
 	 * execution of a function call started by this worker.
 	 *
+	 * Also allow normal setting if the GUC is marked GUC_ALLOW_IN_PARALLEL.
+	 *
 	 * Other changes might need to affect other workers, so forbid them.
 	 */
-	if (IsInParallelMode() && changeVal && action != GUC_ACTION_SAVE)
+	if (IsInParallelMode() && changeVal && action != GUC_ACTION_SAVE &&
+		(record->flags & GUC_ALLOW_IN_PARALLEL) == 0)
+	{
 		ereport(elevel,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
-				 errmsg("cannot set parameters during a parallel operation")));
-
-	record = find_option(name, true, false, elevel);
-	if (record == NULL)
+				 errmsg("parameter \"%s\" cannot be set during a parallel operation",
+						name)));
 		return 0;
+	}
 
 	/*
 	 * Check if the option can be set at this time. See guc.h for the precise
@@ -9658,6 +9841,10 @@ set_config_option_ext(const char *name, const char *value,
 				 * backends.  This is a tad klugy, but necessary because we
 				 * don't re-read the config file during backend start.
 				 *
+				 * However, if changeVal is false then plow ahead anyway since
+				 * we are trying to find out if the value is potentially good,
+				 * not actually use it.
+				 *
 				 * In EXEC_BACKEND builds, this works differently: we load all
 				 * non-default settings from the CONFIG_EXEC_PARAMS file
 				 * during backend start.  In that case we must accept
@@ -9668,7 +9855,7 @@ set_config_option_ext(const char *name, const char *value,
 				 * started it. is_reload will be true when either situation
 				 * applies.
 				 */
-				if (IsUnderPostmaster && !is_reload)
+				if (IsUnderPostmaster && changeVal && !is_reload)
 					return -1;
 			}
 			else if (context != PGC_POSTMASTER &&
@@ -10175,6 +10362,9 @@ set_config_option_ext(const char *name, const char *value,
 		case PGC_STRING:
 			{
 				struct config_string *conf = (struct config_string *) record;
+				GucContext	orig_context = context;
+				GucSource	orig_source = source;
+				Oid			orig_srole = srole;
 
 #define newval (newval_union.stringval)
 
@@ -10260,6 +10450,45 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+
+					/*
+					 * Ugly hack: during SET session_authorization, forcibly
+					 * do SET ROLE NONE with the same context/source/etc, so
+					 * that the effects will have identical lifespan.  This is
+					 * required by the SQL spec, and it's not possible to do
+					 * it within the variable's check hook or assign hook
+					 * because our APIs for those don't pass enough info.
+					 * However, don't do it if is_reload: in that case we
+					 * expect that if "role" isn't supposed to be default, it
+					 * has been or will be set by a separate reload action.
+					 *
+					 * Also, for the call from InitializeSessionUserId with
+					 * source == PGC_S_OVERRIDE, use PGC_S_DYNAMIC_DEFAULT for
+					 * "role"'s source, so that it's still possible to set
+					 * "role" from pg_db_role_setting entries.  (See notes in
+					 * InitializeSessionUserId before changing this.)
+					 *
+					 * A fine point: for RESET session_authorization, we do
+					 * "RESET role" not "SET ROLE NONE" (by passing down NULL
+					 * rather than "none" for the value).  This would have the
+					 * same effects in typical cases, but if the reset value
+					 * of "role" is not "none" it seems better to revert to
+					 * that.
+					 */
+					if (!is_reload &&
+						strcmp(conf->gen.name, "session_authorization") == 0)
+						(void) set_config_option_ext("role",
+													 value ? "none" : NULL,
+													 orig_context,
+													  (orig_source == PGC_S_OVERRIDE)
+													  ? PGC_S_DYNAMIC_DEFAULT
+													  : orig_source,
+													 orig_srole,
+													 action,
+													 true,
+													 elevel,
+													 false);
+
 					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
 					{
 						elog(LOG, "Making connection sticky for setting %s", name);
@@ -11843,6 +12072,7 @@ MarkGUCPrefixReserved(const char *className)
 			num_guc_variables--;
 			memmove(&guc_variables[i], &guc_variables[i + 1],
 					(num_guc_variables - i) * sizeof(struct config_generic *));
+			i--;
 		}
 	}
 
@@ -12106,7 +12336,14 @@ get_explain_guc_options(int *num)
 				{
 					struct config_string *lconf = (struct config_string *) conf;
 
-					modified = (strcmp(lconf->boot_val, *(lconf->variable)) != 0);
+					if (lconf->boot_val == NULL &&
+						*lconf->variable == NULL)
+						modified = false;
+					else if (lconf->boot_val == NULL ||
+							 *lconf->variable == NULL)
+						modified = true;
+					else
+						modified = (strcmp(lconf->boot_val, *(lconf->variable)) != 0);
 				}
 				break;
 
@@ -12921,7 +13158,8 @@ write_one_nondefault_variable(FILE *fp, struct config_generic *gconf)
 			{
 				struct config_string *conf = (struct config_string *) gconf;
 
-				fprintf(fp, "%s", *conf->variable);
+				if (*conf->variable)
+					fprintf(fp, "%s", *conf->variable);
 			}
 			break;
 
@@ -13121,12 +13359,6 @@ can_skip_gucvar(struct config_generic *gconf)
 	 * mechanisms (if indeed they aren't compile-time constants).  So we may
 	 * always skip these.
 	 *
-	 * Role must be handled specially because its current value can be an
-	 * invalid value (for instance, if someone dropped the role since we set
-	 * it).  So if we tried to serialize it normally, we might get a failure.
-	 * We skip it here, and use another mechanism to ensure the worker has the
-	 * right value.
-	 *
 	 * For all other GUCs, we skip if the GUC has its compiled-in default
 	 * value (i.e., source == PGC_S_DEFAULT).  On the leader side, this means
 	 * we don't send GUCs that have their default values, which typically
@@ -13135,8 +13367,8 @@ can_skip_gucvar(struct config_generic *gconf)
 	 * comments in RestoreGUCState for more info.
 	 */
 	return gconf->context == PGC_POSTMASTER ||
-		gconf->context == PGC_INTERNAL || gconf->source == PGC_S_DEFAULT ||
-		strcmp(gconf->name, "role") == 0;
+		gconf->context == PGC_INTERNAL ||
+		gconf->source == PGC_S_DEFAULT;
 }
 
 /*

@@ -81,6 +81,8 @@ export default class UniverseStatus extends Component {
       showAlertsBadge,
       shouldDisplayTaskButton,
       runtimeConfigs,
+      featureFlags,
+      showTaskDetailsInDrawer,
       showTaskDetails = false
     } = this.props;
 
@@ -95,6 +97,8 @@ export default class UniverseStatus extends Component {
       customerTaskList
     );
     let taskToDisplayInDrawer = universePendingTask;
+    const isNewTaskDetailsUIEnabled = featureFlags.test.newTaskDetailsUI || featureFlags.released.newTaskDetailsUI;
+    
     const universeUpgradeState = _.get(currentUniverse, 'universeDetails.softwareUpgradeState');
     let statusDisplay = (
       <div className="status-pending-display-container">
@@ -132,6 +136,7 @@ export default class UniverseStatus extends Component {
                   btnText={'View Details'}
                   btnClass="btn btn-default view-task-details-btn"
                   onClick={() =>
+                    isNewTaskDetailsUIEnabled ? showTaskDetailsInDrawer(failedTask?.id) : 
                     this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)
                   }
                 />
@@ -229,6 +234,7 @@ export default class UniverseStatus extends Component {
                 btnText={'View Details'}
                 btnClass="btn btn-default view-task-details-btn"
                 onClick={() =>
+                  isNewTaskDetailsUIEnabled ? showTaskDetailsInDrawer(failedTask?.id) :
                   this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)
                 }
               />

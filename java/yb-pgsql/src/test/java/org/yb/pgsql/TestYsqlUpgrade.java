@@ -981,7 +981,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotent() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     upgradeCheckingIdempotency(false /* useSingleConnection */);
@@ -996,7 +996,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     // Ensures there's never more that one connection opened by an upgrade.
@@ -1061,7 +1061,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     boolean snapshot_has_pg_yb_tablegroup = false;
@@ -1969,7 +1969,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     SysCatalogSnapshot simplifiedMigratedSnapshot = simplifyCatalogSnapshot.apply(migratedSnapshot);
 
     List<String> tablesToSkip = Arrays.asList(
-      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE);
+      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE,
+      INVALIDATION_MESSAGES_TABLE);
 
     simplifiedMigratedSnapshot.catalog.forEach((tableName, migratedRows) -> {
       if (tablesToSkip.contains(tableName))
@@ -1977,15 +1978,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       List<Row> reinitdbRows = simplifiedFreshSnapshot.catalog.get(tableName);
 
-      // The table pg_yb_invalidation_messages isn't empty in reinitdbRows because of DDLs
-      // executed in test setup code. Also it may not be empty after running migration scripts
-      // that contain DDLs if they are executed after the table pg_yb_invalidation_messages is
-      // created, so we are not expected to see pg_yb_invalidation_messages has same size or
-      // contents between reinitdbRows and migratedRows.
-      if (!tableName.equals(INVALIDATION_MESSAGES_TABLE)) {
-        assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
-            reinitdbRows, migratedRows);
-      }
+      assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
+          reinitdbRows, migratedRows);
 
       for (int i = 0; i < migratedRows.size(); ++i) {
         Row reinitdbRow = reinitdbRows.get(i);

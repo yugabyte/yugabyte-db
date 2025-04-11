@@ -374,8 +374,6 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 
 			break;
 		case EXPR_KIND_FROM_SUBSELECT:
-			/* Should only be possible in a LATERAL subquery */
-			Assert(pstate->p_lateral_active);
 
 			/*
 			 * Aggregate/grouping scope rules make it worth being explicit
@@ -746,8 +744,7 @@ check_agg_arguments_walker(Node *node,
 				context->min_agglevel > agglevelsup)
 				context->min_agglevel = agglevelsup;
 		}
-		/* no need to examine args of the inner aggregate */
-		return false;
+		/* Continue and descend into subtree */
 	}
 	if (IsA(node, GroupingFunc))
 	{

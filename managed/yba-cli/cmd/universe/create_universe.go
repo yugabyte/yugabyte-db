@@ -29,6 +29,7 @@ var v1 = viper.New()
 var createUniverseCmd = &cobra.Command{
 	Use:     "create",
 	Aliases: []string{"add"},
+	GroupID: "action",
 	Short:   "Create YugabyteDB Anywhere universe",
 	Long:    "Create an universe in YugabyteDB Anywhere",
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
@@ -302,6 +303,7 @@ func init() {
 	createUniverseCmd.Flags().StringArray("preferred-region", []string{},
 		"[Optional] Preferred region to place the node of the cluster in. "+
 			"Provide preferred regions for each cluster as a separate flag. (default [])")
+	// Zones would be a []([]string) array
 
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
@@ -358,6 +360,7 @@ func init() {
 	createUniverseCmd.Flags().StringArray("storage-type", []string{},
 		"[Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type "+
 			" of volumes for each cluster as a separate flag. "+
+			"Run \"yba provider [aws/azure/gcp] instance-type supported-storage\" to check list of supported storage types. "+
 			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure and \"Persistent\" for gcp.")
 	createUniverseCmd.Flags().StringArray("storage-class", []string{},
 		"[Optional] Name of the storage class, supported for Kubernetes. Provide "+
@@ -413,12 +416,10 @@ func init() {
 	createUniverseCmd.Flags().Int("dedicated-master-throughput", 125,
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
 			"supported only for AWS.")
-	createUniverseCmd.Flags().Float64Slice("k8s-master-mem-size", []float64{4, 4},
-		"[Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size "+
-			"for each cluster as a separate flag or as comma separated values.")
-	createUniverseCmd.Flags().Float64Slice("k8s-master-cpu-core-count", []float64{2, 2},
-		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
-			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64("k8s-master-mem-size", 4,
+		"[Optional] Memory size of the kubernetes master node in GB.")
+	createUniverseCmd.Flags().Float64("k8s-master-cpu-core-count", 2,
+		"[Optional] CPU core count of the kubernetes master node.")
 
 	createUniverseCmd.Flags().Bool("use-spot-instance", false,
 		"[Optional] Use spot instances for cloud provider based universe nodes. (default false)")

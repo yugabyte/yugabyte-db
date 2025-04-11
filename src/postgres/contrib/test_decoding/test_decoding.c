@@ -22,7 +22,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;

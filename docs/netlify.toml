@@ -836,8 +836,18 @@
   force = true
 
 [[redirects]]
+  from = "/v2.14/*"
+  to = "https://docs-archive.yugabyte.com/v2.14/"
+  force = true
+
+[[redirects]]
   from = "/v2.16/*"
   to = "https://docs-archive.yugabyte.com/v2.16/"
+  force = true
+
+[[redirects]]
+  from = "/v2.18/*"
+  to = "https://docs-archive.yugabyte.com/v2.18/"
   force = true
 
 # Build an app for orms

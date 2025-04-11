@@ -33,10 +33,10 @@
 
 #include <math.h>
 
+#include "access/relation.h"
 #include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBatchedNestloop.h"
-#include "access/relation.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"
@@ -523,7 +523,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->js.ps.inneropsset = inneropsset;
 
 	/* Per batch memory context for the hash table to work with */
-	MemoryContext tablecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tablecxt = AllocSetContextCreate(CurrentMemoryContext,
 												   "BNL_HASHTABLE",
 												   ALLOCSET_DEFAULT_SIZES);
 

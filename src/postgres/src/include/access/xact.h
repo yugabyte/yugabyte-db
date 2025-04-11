@@ -22,6 +22,7 @@
 #include "storage/relfilenode.h"
 #include "storage/sinval.h"
 
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*

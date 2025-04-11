@@ -29,9 +29,8 @@
 #include "nodes/parsenodes.h"
 #include "replication/walsender.h"
 #include "storage/lock.h"
-#include "utils/relcache.h"
 #include "tcop/utility.h"
-
+#include "utils/relcache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*  Database Functions -------------------------------------------------------------------------- */
@@ -99,12 +98,13 @@ extern List *YBCPrepareAlterTable(List **subcmds,
 								  int subcmds_size,
 								  Oid relationId,
 								  YbcPgStatement *rollbackHandle,
-								  bool isPartitionOfAlteredTable,
-								  List *volatile *ybAlteredTableIds);
+								  bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YbcPgStatement handle, Oid relationId);
 
-extern void YBCRename(RenameStmt *stmt, Oid relationId);
+extern void YBCRename(Oid relationId, ObjectType renameType,
+					  const char *relname,
+					  const char *colname);
 
 extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
 
@@ -126,7 +126,8 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time,
-									 YbCRSLsnType lsn_type);
+									 YbCRSLsnType lsn_type,
+									 YbCRSOrderingMode yb_ordering_mode);
 
 extern void YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 									size_t *numreplicationslots);
@@ -139,7 +140,8 @@ extern void YBCDropReplicationSlot(const char *slot_name);
 extern void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations,
-						const YbcReplicationSlotHashRange *slot_hash_range);
+						const YbcReplicationSlotHashRange *slot_hash_range,
+						uint64_t active_pid);
 
 extern void YBCUpdatePublicationTableList(const char *stream_id,
 										  Oid *relations,
@@ -157,3 +159,5 @@ extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   YbcPgXLogRecPtr *restart_lsn);
 
 extern void YBCDropColumn(Relation rel, AttrNumber attnum);
+
+extern void YBCGetLagMetrics(const char *stream_id, int64_t *lag_metric);

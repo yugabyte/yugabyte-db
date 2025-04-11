@@ -1266,7 +1266,7 @@ INSERT INTO test VALUES(1), (2), (3);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1331,7 +1331,7 @@ INSERT INTO test VALUES(1), (2), (3);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1396,7 +1396,7 @@ INSERT INTO test VALUES(1), (2), (3);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1461,7 +1461,7 @@ INSERT INTO test VALUES(1), (2), (3);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1548,7 +1548,7 @@ INSERT INTO test VALUES(1), (2), (3);
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
-               ->  Bitmap Index Scan on testindex
+               ->  Bitmap Index Scan on test_pkey
                      Index Cond: (k > 0)
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = ANY (ARRAY[(count(test.v2)), $1, $2, ..., $1023]))
@@ -1617,7 +1617,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1682,7 +1682,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1747,7 +1747,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1812,7 +1812,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -1897,7 +1897,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
-               ->  Bitmap Index Scan on testindex
+               ->  Bitmap Index Scan on test_pkey
                      Index Cond: (k > 0)
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
@@ -1982,7 +1982,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
-               ->  Bitmap Index Scan on testindex
+               ->  Bitmap Index Scan on test_pkey
                      Index Cond: (k > 0)
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
@@ -2067,7 +2067,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
-               ->  Bitmap Index Scan on testindex
+               ->  Bitmap Index Scan on test_pkey
                      Index Cond: (k > 0)
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = ANY (ARRAY[(count(test.v1)), $1, $2, ..., $1023]))
@@ -2152,7 +2152,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
    ->  Finalize Aggregate
          ->  YB Bitmap Table Scan on test
                Partial Aggregate: true
-               ->  Bitmap Index Scan on testindex
+               ->  Bitmap Index Scan on test_pkey
                      Index Cond: (k > 0)
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = ANY (ARRAY[(count(test.v2)), $1, $2, ..., $1023]))
@@ -2229,7 +2229,7 @@ AlTER TABLE test DROP v1;
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -2294,7 +2294,7 @@ AlTER TABLE test DROP v1;
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -2359,7 +2359,7 @@ AlTER TABLE test DROP v1;
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 
@@ -2424,7 +2424,7 @@ AlTER TABLE test DROP v1;
  Finalize Aggregate
    ->  YB Bitmap Table Scan on test
          Partial Aggregate: true
-         ->  Bitmap Index Scan on testindex
+         ->  Bitmap Index Scan on test_pkey
                Index Cond: (k > 0)
 (5 rows)
 

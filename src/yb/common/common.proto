@@ -150,9 +150,16 @@ message PgVectorIdxOptionsPB {
   optional PgHnswIndexOptionsPB hnsw = 7;
 }
 
+message PgHnswReadOptionsPB {
+  required uint32 ef_search = 1;
+}
+
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  oneof index_params {
+    PgHnswReadOptionsPB hnsw_options = 3;
+  }
 }
 
 message TablePropertiesPB {
@@ -625,6 +632,10 @@ message TServerDBCatalogVersionInfo {
   optional int32 shm_index = 2;
 }
 
+message TServerDBCatalogMessageListInfo {
+  optional bytes message_list = 2;
+}
+
 message DatumMessagePB {
   optional string column_name = 1;
   optional int64 column_type = 2;
@@ -671,6 +682,13 @@ enum ReplicationSlotLsnType {
   ReplicationSlotLsnType_UNSPECIFIED = 0;
   ReplicationSlotLsnType_SEQUENCE = 1;
   ReplicationSlotLsnType_HYBRID_TIME = 2;
+}
+
+// The type of ordering mode to be used while using logical replication.
+enum ReplicationSlotOrderingMode {
+  ReplicationSlotOrderingMode_UNSPECIFIED = 0;
+  ReplicationSlotOrderingMode_ROW = 1;
+  ReplicationSlotOrderingMode_TRANSACTION = 2;
 }
 
 message AshMetadataPB {
@@ -728,6 +746,8 @@ message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
+  optional ReplicationSlotOrderingMode ordering_mode =
+    13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 message TserverMetricsInfoPB {

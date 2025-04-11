@@ -104,7 +104,7 @@ func (c *ColumnContext) startSubsection(format string) (*template.Template, erro
 }
 
 func (c *ColumnContext) subSection(name string) {
-	c.Output.Write([]byte("\n\n"))
+	c.Output.Write([]byte("\n"))
 	c.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	c.Output.Write([]byte("\n"))
 }

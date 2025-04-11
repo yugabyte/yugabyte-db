@@ -123,6 +123,7 @@ reset enable_sort;
 -- forced parallel scan by PK
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
+/*+ Parallel(pcustomer 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_id = 42;
                          QUERY PLAN                          
@@ -133,6 +134,7 @@ SELECT * FROM pcustomer WHERE pc_id = 42;
          Index Cond: (pc_id = 42)
 (4 rows)
 
+/*+ Parallel(pcustomer 2 hard) */
 SELECT * FROM pcustomer WHERE pc_id = 42;
  pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance 
 -------+--------------+------------------------------------------------+---------------+------------------------+----------------

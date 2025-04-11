@@ -41,21 +41,35 @@ GRANT CREATE ON SCHEMA public TO <username>;
 
 - Create a sample user with password.
 
-```plpgsql
-yugabyte=# CREATE USER John WITH PASSWORD 'password';
-```
+  ```plpgsql
+  yugabyte=# CREATE USER John WITH PASSWORD 'password';
+  ```
 
 - Grant John all permissions on the `yugabyte` database.
 
-```plpgsql
-yugabyte=# GRANT ALL ON DATABASE yugabyte TO John;
-```
+  ```plpgsql
+  yugabyte=# GRANT ALL ON DATABASE yugabyte TO John;
+  ```
 
 - Remove John's permissions from the `yugabyte` database.
 
-```plpgsql
-yugabyte=# REVOKE ALL ON DATABASE yugabyte FROM John;
-```
+  ```plpgsql
+  yugabyte=# REVOKE ALL ON DATABASE yugabyte FROM John;
+  ```
+
+- Create a user with a password that expires in 4 hours.
+
+  ```plpgsql
+  yugabyte=# DO $$
+  DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
+  BEGIN 
+    EXECUTE format(
+      'CREATE USER Edwin WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
+      time
+    ); 
+  END
+  $$;
+  ```
 
 ## See also
 

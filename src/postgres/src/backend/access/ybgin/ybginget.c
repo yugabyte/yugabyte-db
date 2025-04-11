@@ -36,6 +36,7 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/elog.h"
 #include "utils/lsyscache.h"
@@ -43,8 +44,6 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/yb_like_support.h"
-
-#include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /* Copied from ginget.c. */
@@ -102,7 +101,7 @@ entryIndexByFrequencyCmp(const void *a1, const void *a2, void *arg)
 static void
 startScanKey(GinScanOpaque so, GinScanKey key)
 {
-	MemoryContext oldCtx = GetCurrentMemoryContext();
+	MemoryContext oldCtx = CurrentMemoryContext;
 	int			i;
 	int			j;
 	int		   *entryIndexes;

@@ -31,7 +31,7 @@ To account for the distributed nature of the data, YugabyteDB has implemented a 
 
 {{<tip>}}
 
-The YugabyteDB CBO is {{<tags/feature/ea>}} and disabled by default. To enable it, turn ON the [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) configuration parameter as follows:
+The YugabyteDB CBO is {{<tags/feature/ea idea="483">}} and disabled by default. To enable it, turn ON the [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) configuration parameter as follows:
 
 ```sql
 -- Enable for current session

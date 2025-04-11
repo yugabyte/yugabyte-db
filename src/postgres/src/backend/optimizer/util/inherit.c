@@ -35,9 +35,10 @@
 #include "partitioning/partprune.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
+
 
 static void expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 									   RangeTblEntry *parentrte,
@@ -383,8 +384,17 @@ expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 		Index		childRTindex;
 		RelOptInfo *childrelinfo;
 
-		/* Open rel, acquiring required locks */
-		childrel = table_open(childOID, lockmode);
+		/*
+		 * Open rel, acquiring required locks.  If a partition was recently
+		 * detached and subsequently dropped, then opening it will fail.  In
+		 * this case, behave as though the partition had been pruned.
+		 */
+		childrel = try_table_open(childOID, lockmode);
+		if (childrel == NULL)
+		{
+			relinfo->live_parts = bms_del_member(relinfo->live_parts, i);
+			continue;
+		}
 
 		/*
 		 * Temporary partitions belonging to other sessions should have been
@@ -918,7 +928,8 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
 				 * Hence re-evaluate pushability.
 				 */
 				childri->yb_pushable = rinfo->yb_pushable ||
-					YbCanPushdownExpr(childri->clause, NULL);
+					YbCanPushdownExpr(childri->clause, NULL,
+									  planner_rt_fetch(parentrel->relid, root)->relid);
 			}
 			childquals = lappend(childquals, childri);
 			/* track minimum security level among child quals */

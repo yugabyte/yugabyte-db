@@ -139,7 +139,7 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
             "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
             timestamp,
             earliest_read_time_allowed,
-            earliest_read_time_allowed.PhysicalDiff(timestamp)),
+            earliest_read_time_allowed.PhysicalDiff(timestamp).ToPrettyString()),
         TransactionError(TransactionErrorCode::kSnapshotTooOld));
   }
   active_readers_.insert(timestamp);
@@ -158,12 +158,20 @@ bool TabletRetentionPolicy::ShouldRetainDeleteMarkersInMajorCompaction() const {
 }
 
 HybridTime TabletRetentionPolicy::GetEarliestAllowedReadHt() {
-  // If cotables_cutoff_ht is invalid i.e. kMin,
-  // then we choose the value of primary_cutoff_ht as the earliest point.
-  // If both are valid then we take a more conservative value which is the max of both.
-  return std::max(
-      committed_history_cutoff_information_.cotables_cutoff_ht,
-      committed_history_cutoff_information_.primary_cutoff_ht);
+  // cotables_cutoff_ht is invalid (i.e kMin, kInvalid) when (1) any tablet other than the master
+  // tablet or (2) the master tablet when there is no snapshot schedule in the cluster.
+  // Check HistoryCutoff struct definition for more details.
+  if (committed_history_cutoff_information_.cotables_cutoff_ht == HybridTime::kMin ||
+      committed_history_cutoff_information_.cotables_cutoff_ht == HybridTime::kInvalid) {
+    return committed_history_cutoff_information_.primary_cutoff_ht;
+  }
+  // cotables_cutoff_ht should only be set on the master tablet. It is used to determine the
+  // retention for rows in pg catalog tables. Here we assume callers want to read pg catalog tables,
+  // so we return cotables_cutoff_ht.
+  // If callers are trying to read the syscatalog data (i.e. sys catalog entities in the sys.catalog
+  // table used for YB metadata) then this is incorrect. However all logic that reads sys catalog
+  // entities today reads from in memory state so this is currently safe.
+  return committed_history_cutoff_information_.cotables_cutoff_ht;
 }
 
 HistoryCutoff TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write_ht) {

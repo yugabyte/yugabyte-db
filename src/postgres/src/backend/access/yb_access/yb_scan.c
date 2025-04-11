@@ -20,57 +20,55 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
+#include "postgres.h"
 
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
-#include "postgres.h"
 
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/nbtree.h"
+#include "access/relation.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_pg_inherits_scan.h"
+#include "access/yb_scan.h"
+#include "catalog/catalog.h"
 #include "catalog/heap.h"
-#include "commands/dbcommands.h"
-#include "commands/tablegroup.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
-#include "catalog/catalog.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
+#include "catalog/yb_type.h"
+#include "commands/dbcommands.h"
+#include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "access/relation.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker_internals.h"	/* for MAX_PARALLEL_WORKER_LIMIT */
 #include "utils/datum.h"
+#include "utils/elog.h"
 #include "utils/fmgroids.h"
-#include "utils/rel.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
 #include "utils/resowner_private.h"
-#include "utils/syscache.h"
 #include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
-
-/* Yugabyte includes */
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
-#include "access/nbtree.h"
-#include "access/yb_scan.h"
-#include "catalog/yb_type.h"
-#include "utils/elog.h"
+#include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 typedef struct YbAttnumBmsState
 {
@@ -574,16 +572,14 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 
 		if (status && !IsolationIsSerializable())
 		{
-			const uint16_t txn_error = YBCStatusTransactionError(status);
+			const uint32_t err_code = YBCStatusPgsqlError(status);
 
-			if (ybScan->exec_params != NULL && YBCIsTxnConflictError(txn_error))
+			if (ybScan->exec_params != NULL && err_code == ERRCODE_YB_TXN_CONFLICT)
 			{
 				elog(DEBUG2, "Error when trying to lock row. "
-					 "pg_wait_policy=%d docdb_wait_policy=%d "
-					 "txn_errcode=%d message=%s",
+					 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
 					 ybScan->exec_params->pg_wait_policy,
 					 ybScan->exec_params->docdb_wait_policy,
-					 txn_error,
 					 YBCStatusMessageBegin(status));
 				YBCFreeStatus(status);
 				status = NULL;
@@ -594,11 +590,10 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 									RelationGetRelationName(tsdesc->rs_rd))));
 				else
 					ereport(ERROR,
-							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							 errmsg("could not serialize access due to concurrent update"),
-							 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+							(errcode(ERRCODE_YB_TXN_CONFLICT),
+							 errmsg("could not serialize access due to concurrent update")));
 			}
-			else if (YBCIsTxnSkipLockingError(txn_error))
+			else if (err_code == ERRCODE_YB_TXN_SKIP_LOCKING)
 			{
 				/* For skip locking, it's correct to simply return no results. */
 				has_data = false;
@@ -3980,9 +3975,8 @@ YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 	{
 		/*
 		 * In case the user has specified NOWAIT, the intention is to error out
-		 * immediately. If we raise TransactionErrorCode::kConflict, the
-		 * statement might be retried by our retry logic in
-		 * yb_attempt_to_restart_on_error().
+		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
+		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
 		 */
 
 		if (rel)
@@ -4004,18 +3998,17 @@ YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 	}
 
 	ereport(ERROR,
-			(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-			 errmsg("could not serialize access due to concurrent update"),
-			 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+			(errcode(ERRCODE_YB_TXN_CONFLICT),
+			 errmsg("could not serialize access due to concurrent update")));
 }
 
 static bool
 YBCIsExplicitRowLockConflictStatus(YbcStatus status)
 {
 	Assert(status);
-	const uint16_t txn_error = YBCStatusTransactionError(status);
+	const uint32_t err_code = YBCStatusPgsqlError(status);
 
-	return YBCIsTxnConflictError(txn_error) || YBCIsTxnAbortedError(txn_error);
+	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
 }
 
 static void
@@ -4087,7 +4080,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
 	TM_Result	res = TM_Ok;
-	MemoryContext exec_context = GetCurrentMemoryContext();
+	MemoryContext exec_context = CurrentMemoryContext;
 
 	PG_TRY();
 	{
@@ -4114,13 +4107,13 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		ErrorData  *edata = CopyErrorData();
 
 		elog(DEBUG2, "Error when trying to lock row. "
-			 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
+			 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
 			 lock_params.pg_wait_policy, lock_params.docdb_wait_policy,
-			 edata->yb_txn_errcode, edata->message);
+			 edata->message);
 
-		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+		if (edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
 			res = TM_Updated;
-		else if (YBCIsTxnSkipLockingError(edata->yb_txn_errcode))
+		else if (edata->sqlerrcode == ERRCODE_YB_TXN_SKIP_LOCKING)
 			res = TM_WouldBlock;
 		else
 		{

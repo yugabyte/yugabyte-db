@@ -83,6 +83,7 @@ The following commands are available:
 - [start](#start)
 - [status](#status)
 - [stop](#stop)
+- [upgrade](#upgrade)
 - [version](#version)
 - [xcluster](#xcluster)
 
@@ -581,6 +582,10 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 ### finalize_upgrade
 
+{{< warning title="Performing upgrades" >}}
+This command is deprecated. Use 'upgrade finalize_new_version' instead.
+{{< /warning >}}
+
 Use the `yugabyted finalize_upgrade` command to finalize and upgrade the AutoFlags and YSQL catalog to the new version and complete the upgrade process.
 
 #### Syntax
@@ -900,6 +905,92 @@ Usage: yugabyted stop [flags]
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be stopped.
 
+--upgrade *bool*
+:  Stop the node for version upgrade. Default: `false`.
+
+-----
+
+### upgrade
+
+Use the `yugabyted upgrade` command to prepare and perform a YugabyteDB major version upgrade.
+
+```sh
+Usage: yugabyted upgrade [command] [flags]
+```
+
+#### Commands
+
+The following sub-commands are available for the `yugabyted upgrade` command:
+
+- [ysql_catalog](#ysql-catalog)
+- [finalize_new_version](#finalize-new-version)
+- [check_version_compatibility](#check-version-compatibility)
+
+#### ysql_catalog
+
+Use the sub-command `yugabyted upgrade ysql_catalog` to upgrade the cluster YSQL catalog to a newer version. This command needs
+to be executed only once per upgrade, from any node in the cluster.
+
+For example, to upgrade the YSQL catalog of a cluster, you would execute the following command:
+
+```sh
+./bin/yugabyted upgrade ysql_catalog
+```
+
+##### ysql_catalog flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--timeout *timeout*
+: Custom timeout for the YSQL catalog upgrade in milliseconds.
+
+#### finalize_new_version
+
+Use the sub-command `yugabyted upgrade finalize_new_version` to finalize the upgrade of a YugabyteDB Cluster. This command needs
+to be executed only once per upgrade, after all the nodes in the cluster have been upgraded, from any node in the cluster.
+
+For example, to finalize an upgrade to a cluster, you would execute the following command:
+
+```sh
+./bin/yugabyted upgrade finalize_new_version
+```
+
+##### finalize_new_version flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--timeout *timeout*
+: Custom timeout for the upgrade finalize operation in milliseconds.
+
+#### check_version_compatibility
+
+Use the sub-command `yugabyted upgrade check_version_compatibility` to verify if the existing YugabyteDB cluster is compatible with the new version. This command needs to be executed only once per upgrade, from any node in the cluster.
+
+For example, to verify the compatibility of a cluster with a new version, you would execute the following command:
+
+```sh
+./bin/yugabyted upgrade check_version_compatibility
+```
+
+##### check_version_compatibility flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--timeout *timeout*
+: Custom timeout for the version check in milliseconds.
+
 -----
 
 ### version
@@ -951,7 +1042,8 @@ For example, to create a new xCluster replication, execute the following command
 ```sh
 ./bin/yugabyted xcluster create_checkpoint \
     --replication_id <replication_id> \
-    --databases <comma_separated_database_names>
+    --databases <comma_separated_database_names> \
+    [--automatic_mode]
 ```
 
 The `create_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be replicated need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
@@ -971,6 +1063,9 @@ The `create_checkpoint` command outputs directions for bootstrapping the databas
 
 --replication_id *xcluster-replication-id*
 : A string to uniquely identify the replication.
+
+--automatic_mode  {{<tags/feature/tp idea="2176">}}
+: Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 #### add_to_checkpoint
 
@@ -1875,158 +1970,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 
 ### Set up xCluster replication between clusters
 
-Use the following steps to set up [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two YugabyteDB clusters.
-
-To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). In addition, if you need to bootstrap the databases in the target cluster, set the `--backup_daemon` flag to true and install YB Controller. See the [start](#start) command.
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Secure clusters" lang="secure-2" %}}
-
-To set up xCluster replication between two secure clusters, do the following:
-
-1. Checkpoint the xCluster replication from the source cluster.
-
-    Run the `yugabyted xcluster create_checkpoint` command from any source cluster node, with the `--replication_id` and `--databases` flags. For `--replication_id`, provide a string to uniquely identify this replication. The `--databases` flag takes a comma-separated list of databases to be replicated.
-
-    ```sh
-    ./bin/yugabyted xcluster create_checkpoint \
-        --replication_id <replication_id> \
-        --databases <list_of_databases>
-    ```
-
-    The output for this command provides directions for bootstrapping the databases that you included.
-
-1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication using the commands provided in the output from the previous step.
-
-    - For databases that have data, this will include backing up the source database and restoring to the target cluster.
-    - For databases that don't have any data, this will include creating the database schema on the target cluster.
-
-1. If the root certificates for the source and target clusters are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source cluster to all target nodes, and vice-versa. If the root certificate for both source and target clusters is the same, you can skip this step.
-
-    Locate the `ca.crt` file for the source cluster on any node at `<base_dir>/certs/ca.crt`. Copy this file to all target nodes at `<base_dir>/certs/xcluster/<replication_id>/`. The `<replication_id>` must be the same as you configured in Step 1.
-
-    Similarly, copy the `ca.crt` file for the target cluster on any node at `<base_dir>/certs/ca.crt` to source cluster nodes at `<base_dir>/certs/xcluster/<replication_id>/`.
-
-1. Set up the xCluster replication between the clusters by running the `yugabyted xcluster set_up` command from any of the source cluster nodes.
-
-    Provide the `--replication_id` you created in step 1, along with the `--target_address`, which is the IP address of any node in the target cluster.
-
-    ```sh
-    ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
-        --bootstrap_done
-    ```
-
-  {{% /tab %}}
-
-  {{% tab header="Insecure clusters" lang="basic-2" %}}
-
-To set up xCluster replication between two clusters, do the following:
-
-1. Checkpoint the xCluster replication from source cluster.
-
-    Run the `yugabyted xcluster create_checkpoint` command from any source cluster node, with the `--replication_id` and `--databases` flags. For `--replication_id`, provide a string to uniquely identify this replication. The `--databases` flag takes a comma-separated list of databases to be replicated.
-
-    ```sh
-    ./bin/yugabyted xcluster create_checkpoint \
-        --replication_id <replication_id> \
-        --databases <list_of_databases>
-    ```
-
-    The output for this command provides directions for bootstrapping the databases that you included.
-
-1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication using the commands provided in the output from the previous step.
-
-    - For databases that have data, this will include backing up the source database and restoring to the target cluster.
-    - For databases that don't have any data, this will include creating the database schema on the target cluster.
-
-1. Set up the xCluster replication between the clusters by running the `yugabyted xcluster set_up` command from any of the source cluster nodes.
-
-    Provide the `--replication_id` you created in step 1, along with the `--target_address`, which is the IP address of any node in the target cluster.
-
-    ```sh
-    ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
-        --bootstrap_done
-    ```
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-#### Bootstrap databases for xCluster
-
-After running `yugabyted xcluster create_checkpoint`, you must bootstrap the databases before you can set up the xCluster replication. Bootstrapping is the process of preparing the databases on the target cluster for replication, and involves the following:
-
-- For databases that don't have any data, apply the same database and schema to the target cluster.
-- For databases that do have data, you need to back up the databases on the source, and restore to the target. The commands to do this are provided in the output of the `yugabyted xcluster create_checkpoint` command.
-
-If the cluster was not started using the `--backup_daemon` flag, you must manually complete the backup and restore using [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/).
-
-#### Monitor and delete xCluster replication
-
-After setting up the replication between the clusters, you can display the replication status using the `yugabyted xcluster status` command:
-
-```sh
-./bin/yugabyted xcluster status
-```
-
-To delete an xCluster replication, use the `yugabyted xcluster delete_replication` command as follows:
-
-```sh
-./bin/yugabyted xcluster delete_replication \
-    --replication_id <replication_id> \
-    --target_address <IP-of-any-target-node>
-```
-
-#### Add databases to an existing xCluster replication
-
-You add databases to an existing xCluster replication using the `yugabyted xcluster add_to_checkpoint` and `yugabyted xcluster add_to_replication` commands.
-
-1. Add databases to xCluster replication checkpoint from the source cluster.
-
-    Run the `yugabyted xcluster add_to_checkpoint` command from any source cluster node, with the --replication_id and --databases flags. For --replication_id, provide the `replication_id` of the xCluster replication to which the databases are to be added. The --databases flag takes a comma-separated list of databases to be added.
-
-    ```sh
-    ./bin/yugabyted xcluster add_to_checkpoint \
-        --replication_id <replication_id> \
-        --databases <comma_separated_database_names>
-    ```
-
-    The output for this command provides directions for bootstrapping the databases that you included.
-
-1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication using the commands provided in the output from the previous step.
-
-    - For databases that have data, this will include backing up the source database and restoring to the target cluster.
-    - For databases that don't have any data, this will include creating the database schema on the target cluster.
-
-1. Add the databases to the xCluster replication by running the `yugabyted xcluster add_to_replication` command from any of the source cluster nodes.
-
-    Provide the `--replication_id` of the xCluster replication to which the databases are to be added, along with the `--target_address`, which is the IP address of any node in the target cluster node. Use `--databases` flag to give the list of databases to be added.
-
-    ```sh
-    ./bin/yugabyted xcluster add_to_replication \
-        --databases <comma_separated_database_names> \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
-        --bootstrap_done
-    ```
-
-#### Remove databases from an existing xCluster replication
-
-To remove databases from an existing xCluster replication, use the `yugabyted xcluster remove_database_from_replication` command as follows:
-
-```sh
-./bin/yugabyted xcluster remove_database_from_replication \
-    --replication_id <replication_id> \
-    --databases <comma_separated_database_names> \
-    --target_address <IP-of-any-target-node>
-```
-
-Provide the `--replication_id` of the xCluster replication from which the databases are to be removed, along with the `--target_address`, which is the IP address of any node in the target cluster node. Use `--databases` flag to give the list of databases to be removed.
+Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 ### Pass additional flags to YB-Master and YB-TServer
 
@@ -2049,18 +1993,28 @@ For more information on additional server configuration options, see [YB-Master]
 ## Upgrade a YugabyteDB cluster
 
 {{< warning title="Upgrading to v2.25" >}}
-Upgrading to v2.25 from earlier versions is not yet available.
+For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [Major YSQL upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
+
+Upgrading to v2.25.1 is only supported from v2024.2.2 release.
 {{< /warning >}}
 
 To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/#/).
 
 Upgrading an existing YugabyteDB cluster that was deployed using yugabyted includes the following steps:
 
-1. Stop the one running YugabyteDB node using the `yugabyted stop` command.
+1. Verify the version compatibility before upgrading the cluster.
 
     ```sh
-    ./bin/yugabyted stop --base_dir <path_to_base_dir>
+    ./bin/yugabyted upgrade check_version_compatibility
     ```
+
+1. Stop one of the running nodes using the `yugabyted stop` command with the `--upgrade` flag.
+
+    ```sh
+    ./bin/yugabyted stop --upgrade true --base_dir <path_to_base_dir>
+    ```
+
+1. Wait for 60 seconds.
 
 1. Start the new yugabyted process (from the new downloaded release) by executing the `yugabyted start` command. Use the previously configured `--base_dir` when restarting the instance.
 
@@ -2068,21 +2022,31 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
     ./bin/yugabyted start --base_dir <path_to_base_dir>
     ```
 
-1. Repeat steps 1 and 2 for all nodes.
+1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
 
-1. Finish the upgrade by running `yugabyted finalize_upgrade` command. This command can be run from any node.
-
-    ```sh
-    ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir>
-    ```
-
-    Use the `--upgrade_ysql_timeout` flag to specify custom [YSQL upgrade timeout](../../../manage/upgrade-deployment/#2-upgrade-the-ysql-system-catalog). Default value is 60000 ms.
+1. After restarting all the nodes, upgrade the YSQL catalog of the cluster. This command can be run from any node.
 
     ```sh
-    ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir> --upgrade_ysql_timeout 10000
+    ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
     ```
 
-### Upgrade a cluster from single to multi zone
+1. After successful YSQL catalog upgrade, restart all the nodes for a second time.
+
+    Repeat steps 2-3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
+
+1. After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
+
+    ```sh
+    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir>
+    ```
+
+    Use the `timeout` flag to specify a custom timeout for the operation. Default value is 60000 ms.
+
+    ```sh
+    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
+    ```
+
+## Scale a cluster from single to multi zone
 
 The following steps assume that you have a running YugabyteDB cluster deployed using yugabyted, and have downloaded the update:
 

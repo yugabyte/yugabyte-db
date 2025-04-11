@@ -119,7 +119,59 @@ WITH foo AS (SELECT * FROM gtest1) SELECT * FROM foo;
 
 -- inheritance
 CREATE TABLE gtest1_1 () INHERITS (gtest1);
--- YB note: port additional tests once INHERITS is supported.
+SELECT * FROM gtest1_1;
+\d gtest1_1
+INSERT INTO gtest1_1 VALUES (4);
+SELECT * FROM gtest1_1;
+SELECT * FROM gtest1;
+
+CREATE TABLE gtest_normal (a int, b int);
+CREATE TABLE gtest_normal_child (a int, b int GENERATED ALWAYS AS (a * 2) STORED) INHERITS (gtest_normal);
+\d gtest_normal_child
+INSERT INTO gtest_normal (a) VALUES (1);
+INSERT INTO gtest_normal_child (a) VALUES (2);
+SELECT * FROM gtest_normal;
+
+CREATE TABLE gtest_normal_child2 (a int, b int GENERATED ALWAYS AS (a * 3) STORED);
+ALTER TABLE gtest_normal_child2 INHERIT gtest_normal;
+INSERT INTO gtest_normal_child2 (a) VALUES (3);
+SELECT * FROM gtest_normal;
+
+-- test inheritance mismatches between parent and child
+CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- error
+CREATE TABLE gtestx (x int, b int DEFAULT 10) INHERITS (gtest1);  -- error
+CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS IDENTITY) INHERITS (gtest1);  -- error
+
+CREATE TABLE gtestxx_1 (a int NOT NULL, b int);
+ALTER TABLE gtestxx_1 INHERIT gtest1;  -- error
+CREATE TABLE gtestxx_2 (a int NOT NULL, b int GENERATED ALWAYS AS (a * 22) STORED);
+ALTER TABLE gtestxx_2 INHERIT gtest1;  -- error
+CREATE TABLE gtestxx_3 (a int NOT NULL, b int GENERATED ALWAYS AS (a * 2) STORED);
+ALTER TABLE gtestxx_3 INHERIT gtest1;  -- ok
+CREATE TABLE gtestxx_4 (b int GENERATED ALWAYS AS (a * 2) STORED, a int NOT NULL);
+ALTER TABLE gtestxx_4 INHERIT gtest1;  -- ok
+
+-- test multiple inheritance mismatches
+CREATE TABLE gtesty (x int, b int);
+CREATE TABLE gtest1_2 () INHERITS (gtest1, gtesty);  -- error
+DROP TABLE gtesty;
+
+CREATE TABLE gtesty (x int, b int GENERATED ALWAYS AS (x * 22) STORED);
+CREATE TABLE gtest1_2 () INHERITS (gtest1, gtesty);  -- error
+DROP TABLE gtesty;
+
+CREATE TABLE gtesty (x int, b int DEFAULT 55);
+CREATE TABLE gtest1_2 () INHERITS (gtest0, gtesty);  -- error
+DROP TABLE gtesty;
+
+-- test correct handling of GENERATED column that's only in child
+CREATE TABLE gtestp (f1 int);
+CREATE TABLE gtestc (f2 int GENERATED ALWAYS AS (f1+1) STORED) INHERITS(gtestp);
+INSERT INTO gtestc values(42);
+TABLE gtestc;
+UPDATE gtestp SET f1 = f1 * 10;
+TABLE gtestc;
+DROP TABLE gtestp CASCADE;
 
 -- test stored update
 CREATE TABLE gtest3 (a int, b int GENERATED ALWAYS AS (a * 3) STORED);
@@ -205,6 +257,7 @@ SELECT * FROM gtest_tableoid;
 CREATE TABLE gtest10 (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (b * 2) STORED);
 ALTER TABLE gtest10 DROP COLUMN b;  -- fails
 ALTER TABLE gtest10 DROP COLUMN b CASCADE;  -- drops c too
+
 \d gtest10
 
 CREATE TABLE gtest10a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) STORED);
@@ -397,7 +450,19 @@ CREATE TABLE gtest30 (
     b int GENERATED ALWAYS AS (a * 2) STORED
 );
 CREATE TABLE gtest30_1 () INHERITS (gtest30);
--- YB note: port additional tests once INHERITS is supported.
+ALTER TABLE gtest30 ALTER COLUMN b DROP EXPRESSION; -- YB: this is not supported yet, which impacts the following queries
+\d gtest30
+\d gtest30_1
+DROP TABLE gtest30 CASCADE;
+CREATE TABLE gtest30 (
+    a int,
+    b int GENERATED ALWAYS AS (a * 2) STORED
+);
+CREATE TABLE gtest30_1 () INHERITS (gtest30);
+ALTER TABLE ONLY gtest30 ALTER COLUMN b DROP EXPRESSION;  -- error
+\d gtest30
+\d gtest30_1
+ALTER TABLE gtest30_1 ALTER COLUMN b DROP EXPRESSION;  -- error
 
 -- triggers
 CREATE TABLE gtest26 (

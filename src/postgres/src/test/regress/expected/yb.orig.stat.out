@@ -25,6 +25,7 @@ SELECT pg_sleep(1);
 --------------------+--------------------------+-----------+----------+---------
  databasename       | name                     |           |          | 
  backend_pid        | integer                  |           |          | 
+ query_id           | bigint                   |           |          | 
  query_text         | text                     |           |          | 
  termination_reason | text                     |           |          | 
  query_start_time   | timestamp with time zone |           |          | 

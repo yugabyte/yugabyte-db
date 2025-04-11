@@ -355,6 +355,7 @@ as $body$
 $body$;
 select f('dog');
 ERROR:  duplicate key value violates unique constraint "t_v_key"
+CONTEXT:  SQL function "f"
 execute dummy_query; -- this should find the prepared statement and run fine
  k |                                                                         v                                                                         
 ---+---------------------------------------------------------------------------------------------------------------------------------------------------

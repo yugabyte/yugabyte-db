@@ -26,6 +26,7 @@ DELETE FROM airports WHERE ident != '9LA6';
 \set filename :abs_srcdir '/data/airport-codes.csv'
 COPY airports FROM :'filename' CSV HEADER;
 ERROR:  duplicate key value violates unique constraint "airports_pkey"
+CONTEXT:  COPY airports, line 10001: ""
 -- table should just have one row
 SELECT COUNT(*) FROM airports;
  count 

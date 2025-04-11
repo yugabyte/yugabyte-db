@@ -18,6 +18,7 @@
 
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"

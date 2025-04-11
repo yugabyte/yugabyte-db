@@ -161,6 +161,10 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
     );
   }
 
+  if(generalSettings?.incrementalBackupProps?.singleKeyspaceRestore){
+    sortByTableDuplicate = sortByTableDuplicate.filter((e) => e.perBackupLocationKeyspaceTables.originalKeyspace === generalSettings?.selectedKeyspace?.label);
+  };
+
   const methods = useForm<IRenameKeyspace>({
     defaultValues: {
       renamedKeyspaces:

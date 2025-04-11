@@ -523,6 +523,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       createXClusterRemoveNamespaceFromTargetUniverseTask(xClusterConfig, dbId);
       createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(
           xClusterConfig, dbId, keepEntry);
+      if (keepEntry) {
+        // Reset the backup/restore objects for the config to ensure bootstrapping happens
+        // properly. These fields are set in the parent task and thus cannot be reset in the
+        // subtasks.
+        XClusterNamespaceConfig namespaceConfig = xClusterConfig.getNamespaceById(dbId);
+        namespaceConfig.setBackup(null);
+        namespaceConfig.setRestore(null);
+        namespaceConfig.update();
+      }
     }
 
     if (xClusterConfig.isUsedForDr()) {

@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -95,7 +96,6 @@ import org.yb.client.GetUniverseReplicationInfoResponse;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
-import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.TableInfoPB;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import play.libs.Json;
 import play.mvc.Http.Request;
@@ -117,6 +117,7 @@ public class DrConfigController extends AuthenticatedController {
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
   private final UniverseTableHandler tableHandler;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   public DrConfigController(
@@ -129,7 +130,8 @@ public class DrConfigController extends AuthenticatedController {
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
       XClusterScheduler xClusterScheduler,
-      UniverseTableHandler tableHandler) {
+      UniverseTableHandler tableHandler,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -140,6 +142,7 @@ public class DrConfigController extends AuthenticatedController {
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
     this.tableHandler = tableHandler;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   /**
@@ -243,7 +246,8 @@ public class DrConfigController extends AuthenticatedController {
         sourceTableInfoList,
         targetUniverse,
         targetTableInfoList,
-        confGetter);
+        confGetter,
+        softwareUpgradeHelper);
 
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     BootstrapParams bootstrapParams =
@@ -378,6 +382,15 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
 
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+
     DrConfigEditForm editForm = parseEditForm(request);
     validateEditForm(editForm, customer.getUuid(), drConfig);
 
@@ -492,7 +505,8 @@ public class DrConfigController extends AuthenticatedController {
             setTablesForm.tables,
             bootstrapParams,
             setTablesForm.autoIncludeIndexTables,
-            false /* dryRun */);
+            false /* dryRun */,
+            softwareUpgradeHelper);
 
     UUID taskUUID = commissioner.submit(TaskType.SetTablesDrConfig, taskParams);
     CustomerTask.create(
@@ -606,19 +620,18 @@ public class DrConfigController extends AuthenticatedController {
               restartForm.bootstrapParams,
               false /* dryRun */,
               isForceDelete,
-              drConfig.isHalted() /*isForceBootstrap*/);
+              drConfig.isHalted() /*isForceBootstrap*/,
+              softwareUpgradeHelper);
     } else {
       taskParams =
           XClusterConfigController.getDbScopedRestartTaskParams(
-              ybService,
               xClusterConfig,
               sourceUniverse,
               targetUniverse,
               restartForm.dbs,
               restartForm.bootstrapParams,
-              false /* dryRun */,
-              isForceDelete,
-              drConfig.isHalted() /*isForceBootstrap*/);
+              drConfig.isHalted() /*isForceBootstrap*/,
+              softwareUpgradeHelper);
     }
 
     UUID taskUUID = commissioner.submit(TaskType.RestartDrConfig, taskParams);
@@ -693,6 +706,9 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
 
     DrConfigReplaceReplicaForm replaceReplicaForm =
         parseReplaceReplicaForm(customerUUID, sourceUniverse, targetUniverse, request);
@@ -884,6 +900,9 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(targetUniverse, sourceUniverse);
@@ -1126,6 +1145,9 @@ public class DrConfigController extends AuthenticatedController {
     // The following will be the new primary universe.
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
 
     DrConfigTaskParams taskParams;
     Set<String> namespaceIdsWithSafetime =
@@ -1845,6 +1867,10 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
     }
@@ -1857,21 +1883,18 @@ public class DrConfigController extends AuthenticatedController {
     Set<String> newDatabaseIds = setDatabasesForm.dbs;
     Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
     Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
+
     if (databaseIdsToAdd.isEmpty() && databaseIdsToRemove.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "The list of new databases to add/remove is empty.");
     }
+
     XClusterUtil.checkDbScopedNonEmptyDbs(newDatabaseIds);
-
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
-
-    RestartBootstrapParams restartBootstrapParams = drConfig.getBootstrapBackupParams();
-    BootstrapParams bootstrapParams =
-        getBootstrapParamsFromRestartBootstrapParams(restartBootstrapParams, null);
 
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getSetDatabasesTaskParams(
-            xClusterConfig, bootstrapParams, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
+            xClusterConfig, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
 
     UUID taskUUID = commissioner.submit(TaskType.SetDatabasesDrConfig, taskParams);
     CustomerTask.create(

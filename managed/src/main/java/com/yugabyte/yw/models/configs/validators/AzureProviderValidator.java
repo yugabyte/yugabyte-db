@@ -11,6 +11,7 @@ import com.azure.resourcemanager.network.models.Network;
 import com.azure.resourcemanager.network.models.NetworkSecurityGroup;
 import com.azure.resourcemanager.network.models.Subnet;
 import com.azure.resourcemanager.privatedns.models.PrivateDnsZone;
+import com.azure.resourcemanager.resources.models.GenericResource;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -31,6 +32,8 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -39,6 +42,14 @@ import play.libs.Json;
 public class AzureProviderValidator extends ProviderFieldsValidator {
 
   private final RuntimeConfGetter confGetter;
+  private final String AZURE_PRIVATE_DNS_ZONE_ID_REGEX =
+      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/privateDnsZones/([^/]+)$";
+  private final String AZURE_VNET_ID_REGEX =
+      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/virtualNetworks/([^/]+)$";
+  private final String AZURE_SUBNET_ID_REGEX =
+      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/virtualNetworks/([^/]+)/subnets/([^/]+)$";
+  private final String AZURE_SECURITY_GROUP_ID_REGEX =
+      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/networkSecurityGroups/([^/]+)$";
 
   @Inject
   public AzureProviderValidator(RuntimeConfGetter confGetter, BeanValidator beanValidator) {
@@ -351,15 +362,25 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
 
         // verify security group exists
         if (securityGroup != null) {
+          String sgResourceGroup = resourceGroup;
+          String sgName = securityGroup;
           try {
-            NetworkSecurityGroup azureNetworkSecurityGroup =
-                azure.networkSecurityGroups().getByResourceGroup(resourceGroup, securityGroup);
+            Matcher sgMatcher =
+                Pattern.compile(AZURE_SECURITY_GROUP_ID_REGEX).matcher(securityGroup);
+            if (sgMatcher.matches()) {
+              sgResourceGroup = sgMatcher.group(2);
+              sgName = sgMatcher.group(3);
+              NetworkSecurityGroup azureNetworkSecurityGroup =
+                  azure.networkSecurityGroups().getById(securityGroup);
+            } else {
+              NetworkSecurityGroup azureNetworkSecurityGroup =
+                  azure.networkSecurityGroups().getByResourceGroup(sgResourceGroup, securityGroup);
+            }
           } catch (Exception e) {
             String sgJsonPath = cloudInfoJson.get("securityGroupId").get("jsonPath").asText();
             String err =
                 String.format(
-                    "Security Group: %s not found in Resource Group: %s!",
-                    securityGroup, resourceGroup);
+                    "Security Group: %s not found in Resource Group: %s!", sgName, sgResourceGroup);
             validationErrorsMap.put(sgJsonPath, err);
           }
         }
@@ -367,8 +388,18 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
         // verify virtual network exists
         String vnet = regionInfo.getVnet();
         String vnetJsonPath = cloudInfoJson.get("vnet").get("jsonPath").asText();
+        String vnetResourceGroup = resourceGroup;
+        String vnetName = vnet;
         try {
-          Network network = azure.networks().getByResourceGroup(resourceGroup, vnet);
+          Network network;
+          Matcher vnetMatcher = Pattern.compile(AZURE_VNET_ID_REGEX).matcher(vnet);
+          if (vnetMatcher.matches()) {
+            vnetResourceGroup = vnetMatcher.group(2);
+            vnetName = vnetMatcher.group(3);
+            network = azure.networks().getById(vnet);
+          } else {
+            network = azure.networks().getByResourceGroup(vnetResourceGroup, vnetName);
+          }
           // verify all subnets exist
           int zoneIndex = 0;
           ArrayNode zoneArrayJson = (ArrayNode) regionJson.get("zones");
@@ -377,16 +408,32 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
             String subnet = zone.getSubnet();
             String subnetJsonPath =
                 zoneArrayJson.get(zoneIndex++).get("subnet").get("jsonPath").asText();
-            if (!subnets.containsKey(subnet)) {
-              String err =
-                  String.format("Subnet %s not found under Virtual Network %s!", subnet, vnet);
-              validationErrorsMap.put(subnetJsonPath, err);
+            Matcher subnetMatcher = Pattern.compile(AZURE_SUBNET_ID_REGEX).matcher(subnet);
+            if (subnetMatcher.matches()) {
+              vnetName = subnetMatcher.group(3);
+              String subnetName = subnetMatcher.group(4);
+              try {
+                GenericResource subnetResource = azure.genericResources().getById(subnet);
+              } catch (Exception e) {
+                String err =
+                    String.format(
+                        "Subnet %s not found under Virtual Network %s!", subnetName, vnetName);
+                validationErrorsMap.put(subnetJsonPath, err);
+              }
+            } else {
+              if (!subnets.containsKey(subnet)) {
+                String err =
+                    String.format(
+                        "Subnet %s not found under Virtual Network %s!", subnet, vnetName);
+                validationErrorsMap.put(subnetJsonPath, err);
+              }
             }
           }
         } catch (Exception e) {
           String err =
               String.format(
-                  "Virtual Network: %s not found in Resource Group: %s", vnet, resourceGroup);
+                  "Virtual Network: %s not found in Resource Group: %s",
+                  vnetName, vnetResourceGroup);
           validationErrorsMap.put(vnetJsonPath, err);
         }
       }
@@ -433,8 +480,12 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     String resourceGroup = cloudInfo.getAzuRG();
     if (privateDnsZone != null) {
       try {
-        PrivateDnsZone zone =
-            azure.privateDnsZones().getByResourceGroup(resourceGroup, privateDnsZone);
+        if (Pattern.compile(AZURE_PRIVATE_DNS_ZONE_ID_REGEX).matcher(privateDnsZone).matches()) {
+          PrivateDnsZone zone = azure.privateDnsZones().getById(privateDnsZone);
+        } else {
+          PrivateDnsZone zone =
+              azure.privateDnsZones().getByResourceGroup(resourceGroup, privateDnsZone);
+        }
       } catch (Exception e) {
         String dnsZoneJsonPath = cloudInfoJson.get("azuHostedZoneId").get("jsonPath").asText();
         String err =

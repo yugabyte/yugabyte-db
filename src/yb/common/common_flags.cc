@@ -161,8 +161,12 @@ DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
 DEFINE_test_flag(bool, check_catalog_version_overflow, false,
                  "Check whether received catalog version is unreasonably too big");
 
-DEFINE_test_flag(bool, yb_enable_invalidation_messages, false,
-                 "True to enable invalidation messages");
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_invalidation_messages, true,
+    "True to enable invalidation messages");
+
+DEFINE_test_flag(bool, ysql_yb_ddl_transaction_block_enabled, false,
+    "If true, DDL operations in YSQL will execute within the active transaction"
+    "block instead of their separate transactions.");
 
 namespace {
 
@@ -253,6 +257,10 @@ DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
                     true,
                     "When this flag is set to true, cdc service will send null values for columns "
                     "of composite types");
+
+DEFINE_RUNTIME_bool(ysql_enable_inheritance, false,
+                    "Enable YSQL support for table inheritance");
+TAG_FLAG(ysql_enable_inheritance, experimental);
 
 namespace yb {
 

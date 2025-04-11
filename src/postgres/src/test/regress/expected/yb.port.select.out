@@ -945,7 +945,7 @@ create table list_parted_tbl1 partition of list_parted_tbl
 explain (costs off) select * from list_parted_tbl;
         QUERY PLAN        
 --------------------------
- Result
+ Result list_parted_tbl
    One-Time Filter: false
 (2 rows)
 

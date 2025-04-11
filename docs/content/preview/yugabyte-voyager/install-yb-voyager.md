@@ -19,7 +19,7 @@ The following sections describe the prerequisites for installing YugabyteDB Voya
 
 You can install YugabyteDB Voyager on the following:
 
-- RHEL 8
+- RHEL 8, 9
 - CentOS 8
 - Ubuntu 18.04, 20.04, 22.04
 - macOS (for MySQL/Oracle source databases on macOS, [install yb-voyager](#install-yb-voyager) using the Docker option.)
@@ -235,11 +235,16 @@ Usage:
 
 The options are as follows.
 
-| Argument | Description/valid options |
-| :------- | :------------------------ |
-| -d, --check-only-dependencies | Check only dependencies and exit. |
-| -f, --force-install | Force install packages without checking dependencies. |
-| -h, --help | Display this help message. |
+| Argument                       | Description/valid options                                                     |
+| :----------------------------- | :--------------------------------------------------------------------------- |
+| -d, --check-dependencies-only | Check the dependencies only, then exit without installing.                                           |
+| -f, --force-install           | Force install packages without checking dependencies.                       |
+| -p, --pg-only                 | Check and install only PostgreSQL source-related voyager dependencies.     |
+| -m, --mysql-only              | Check and install only MySQL source-related voyager dependencies.          |
+| -o, --oracle-only             | Check and install only Oracle source-related voyager dependencies.         |
+| -h, --help                    | Display this help message.                                                 |
+
+You can only specify one of `--pg-only`, `--oracle-only`, or `--mysql-only`. If none are provided, the script checks and installs dependencies for all database types. When one of the flags is specified, `--help` and `--check-dependencies-only` are specific to the selected database.
 
 ### Oracle Instant Client installation help for Centos/RHEL
 
@@ -340,11 +345,16 @@ Usage:
 
 The options are as follows.
 
-| Argument | Description/valid options |
-| :------- | :------------------------ |
-| -d, --check-only-dependencies | Check only dependencies and exit. |
-| -f, --force-install | Force install packages without checking dependencies. |
-| -h, --help | Display this help message. |
+| Argument                       | Description/valid options                                                     |
+| :----------------------------- | :--------------------------------------------------------------------------- |
+| -d, --check-dependencies-only | Check the dependencies only, then exit without installing.                                           |
+| -f, --force-install           | Force install packages without checking dependencies.                       |
+| -p, --pg-only                 | Check and install only PostgreSQL source-related voyager dependencies.     |
+| -m, --mysql-only              | Check and install only MySQL source-related voyager dependencies.          |
+| -o, --oracle-only             | Check and install only Oracle source-related voyager dependencies.         |
+| -h, --help                    | Display this help message.                                                 |
+
+You can only specify one of `--pg-only`, `--oracle-only`, or `--mysql-only`. If none are provided, the script checks and installs dependencies for all database types. When one of the flags is specified, `--help` and `--check-dependencies-only` are specific to the selected database.
 
 ### Oracle Instant Client installation help for Ubuntu
 

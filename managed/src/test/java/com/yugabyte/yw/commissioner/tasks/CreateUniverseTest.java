@@ -49,6 +49,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
+          TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -69,11 +70,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
-          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
@@ -85,17 +86,18 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_CREATE_TASK_RETRY_SEQUENCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
+          TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
-          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
@@ -186,6 +188,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
               primaryCluster.userIntent.enableYSQLAuth = enableAuth;
               primaryCluster.userIntent.ysqlPassword = "Admin@123";
               primaryCluster.userIntent.enableYEDIS = false;
+              primaryCluster.userIntent.useSystemd = true;
               for (NodeDetails node : universeDetails.nodeDetailsSet) {
                 // Reset for creation.
                 node.state = NodeDetails.NodeState.ToBeAdded;
@@ -254,6 +257,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     primaryCluster.userIntent.enableYSQL = true;
     primaryCluster.userIntent.enableYSQLAuth = true;
     primaryCluster.userIntent.ysqlPassword = "Admin@123";
+    primaryCluster.userIntent.useSystemd = true;
     taskInfo = submitTask(taskParams);
     // Task is already successful, so the passwords must have been cleared.
     assertEquals(Failure, taskInfo.getTaskState());
@@ -361,5 +365,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         updated.getUniverseUUID(),
         TaskType.CreateUniverse,
         taskParams);
+    checkUniverseNodesStates(updated.getUniverseUUID());
   }
 }

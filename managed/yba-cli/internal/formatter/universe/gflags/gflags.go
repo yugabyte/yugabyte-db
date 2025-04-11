@@ -6,7 +6,6 @@ package gflags
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -88,7 +87,7 @@ func NewGFlagsUniverseContext() *Context {
 func (c *Context) SpecificGFlags() string {
 	jsonBytes, err := json.MarshalIndent(c.g, "", "  ")
 	if err != nil {
-		fmt.Println("Error converting JSON to string:", err)
+		logrus.Error("Error converting JSON to string:", err)
 		return ""
 	}
 	return string(jsonBytes)

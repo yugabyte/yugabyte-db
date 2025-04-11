@@ -158,6 +158,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda, Runnable onFailureTask) {
     Throwable th = null;
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     checkUniverseVersion();
     Universe universe =
         lockAndFreezeUniverseForUpdate(
@@ -667,7 +670,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   protected void createSoftwareUpgradePrecheckTasks(
       String ybSoftwareVersion, boolean ysqlMajorVersionUpgrade) {
-    createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
+    createCheckUpgradeTask(ybSoftwareVersion);
     // Skip PG Upgrade check on tserver nodes if it is an retry task.
     // Pre-check will still be executed after the master upgrade as part of main task.
     if (ysqlMajorVersionUpgrade && taskParams().getPreviousTaskUUID() == null) {
@@ -679,8 +682,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       Universe universe,
       String softwareVersion,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+
     createSetYBMajorVersionUpgradeCompatibility(
         universe,
+        ServerType.MASTER,
+        universe.getMasters(),
+        UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
+
+    createSetYBMajorVersionUpgradeCompatibility(
+        universe,
+        ServerType.TSERVER,
         universe.getTServers(),
         UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
 
@@ -708,7 +719,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           universe.getName(),
           upgradeParams.getPlacement(),
           upgradeParams.getMasterAddresses(),
-          ServerType.TSERVER,
+          ServerType.EITHER,
           upgradeParams.getYbSoftwareVersion(),
           upgradeParams.getUniverseOverrides(),
           upgradeParams.getAzOverrides(),

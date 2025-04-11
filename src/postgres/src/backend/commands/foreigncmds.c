@@ -39,7 +39,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 
@@ -86,11 +86,11 @@ optionListToArray(List *options)
 
 		astate = accumArrayResult(astate, PointerGetDatum(t),
 								  false, TEXTOID,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 	}
 
 	if (astate)
-		return makeArrayResult(astate, GetCurrentMemoryContext());
+		return makeArrayResult(astate, CurrentMemoryContext);
 
 	return PointerGetDatum(NULL);
 }

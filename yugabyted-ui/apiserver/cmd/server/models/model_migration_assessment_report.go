@@ -3,6 +3,12 @@ package models
 // MigrationAssessmentReport - Details of the migration assessment report
 type MigrationAssessmentReport struct {
 
+    OperatingSystem string `json:"operating_system"`
+
+    VoyagerVersion string `json:"voyager_version"`
+
+    TargetDbVersion string `json:"target_db_version"`
+
     AssessmentStatus bool `json:"assessment_status"`
 
     Summary AssessmentReportSummary `json:"summary"`
@@ -13,11 +19,7 @@ type MigrationAssessmentReport struct {
 
     TargetRecommendations TargetClusterRecommendationDetails `json:"target_recommendations"`
 
-    RecommendedRefactoring RecommendedRefactoringGraph `json:"recommended_refactoring"`
+    RecommendedRefactoring []RefactoringCount `json:"recommended_refactoring"`
 
-    UnsupportedDataTypes []UnsupportedSqlInfo `json:"unsupported_data_types"`
-
-    UnsupportedFunctions []UnsupportedSqlInfo `json:"unsupported_functions"`
-
-    UnsupportedFeatures []UnsupportedSqlInfo `json:"unsupported_features"`
+    AssessmentIssues []AssessmentCategoryInfo `json:"assessment_issues"`
 }

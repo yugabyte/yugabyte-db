@@ -1,7 +1,7 @@
 package models
 
-// RefactoringCount - Count of automatic, manual and
-// invalid SQL objects displayed in Schema analysis page
+// RefactoringCount -
+// Count of automatic, manual and invalid SQL objects displayed in Schema analysis page
 type RefactoringCount struct {
 
     SqlObjectType string `json:"sql_object_type"`

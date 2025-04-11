@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include "yb/client/client.h"
 #include "yb/docdb/wait_queue.h"
 #include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"

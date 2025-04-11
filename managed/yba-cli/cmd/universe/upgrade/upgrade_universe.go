@@ -11,9 +11,10 @@ import (
 
 // UpgradeUniverseCmd represents the universe command
 var UpgradeUniverseCmd = &cobra.Command{
-	Use:   "upgrade",
-	Short: "Upgrade a YugabyteDB Anywhere universe",
-	Long:  "Upgrade a universe in YugabyteDB Anywhere",
+	Use:     "upgrade",
+	GroupID: "action",
+	Short:   "Upgrade a YugabyteDB Anywhere universe",
+	Long:    "Upgrade a universe in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},

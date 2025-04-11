@@ -53,6 +53,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/primitive_value.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/qlexpr/ql_expr_util.h"
 #include "yb/qlexpr/ql_rowblock.h"

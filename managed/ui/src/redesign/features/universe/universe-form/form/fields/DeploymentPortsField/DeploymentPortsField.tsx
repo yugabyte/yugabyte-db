@@ -15,7 +15,6 @@ import {
   COMMUNICATION_PORTS_FIELD,
   YCQL_FIELD,
   YSQL_FIELD,
-  YEDIS_FIELD,
   CUSTOMIZE_PORT_FIELD,
   PROVIDER_FIELD,
   CONNECTION_POOLING_FIELD
@@ -61,7 +60,6 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
   //watchers
   const ysqlEnabled = useWatch({ name: YSQL_FIELD });
   const ycqlEnabled = useWatch({ name: YCQL_FIELD });
-  const yedisEnabled = useWatch({ name: YEDIS_FIELD });
   const connectionPoolingEnabled = useWatch({ name: CONNECTION_POOLING_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
   const customizePort = useWatch({ name: CUSTOMIZE_PORT_FIELD });
@@ -115,10 +113,10 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
   ].filter((ports) => ports.visible);
 
   const OTHER_PORTS = [
-    { id: 'redisServerHttpPort', visible: yedisEnabled, disabled: isEditMode },
-    { id: 'redisServerRpcPort', visible: yedisEnabled, disabled: isEditMode },
+    { id: 'redisServerHttpPort', visible: false, disabled: isEditMode },
+    { id: 'redisServerRpcPort', visible: false, disabled: isEditMode },
     { id: 'nodeExporterPort', visible: provider?.code !== CloudType.onprem, disabled: disabled },
-    { id: 'ybControllerrRpcPort', visible: true, disabled: isEditMode },
+    { id: 'ybControllerrRpcPort', visible: true, disabled: isEditMode }
   ];
 
   const PORT_GROUPS = [

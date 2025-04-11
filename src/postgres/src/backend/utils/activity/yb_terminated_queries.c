@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------
  *
  * yb_terminated_queries.c
- *	  Implementation of YB terminated queries.
+ *	  Implementation of YB Terminated Queries.
  *
  * This file contains the implementation of yb terminated queries. It is kept
  * separate from pgstat.c to enforce the line between the statistics access /
@@ -27,17 +27,21 @@
  * -------------------------------------------------------------------------
  */
 
-#include "yb_terminated_queries.h"
+#include "postgres.h"
 
 #include "catalog/pg_authid.h"
 #include "funcapi.h"
 #include "nodes/execnodes.h"
 #include "pg_yb_utils.h"
+#include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/acl.h"
 #include "utils/backend_status.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
+#include "yb_file_utils.h"
+#include "yb_terminated_queries.h"
 
 /* Caps the number of queries which can be stored in the array. */
 #define YB_TERMINATED_QUERIES_SIZE 1000
@@ -45,12 +49,20 @@
 #define YB_QUERY_TEXT_SIZE 256
 #define YB_QUERY_TERMINATION_SIZE 256
 
+#define YB_TERMINATED_QUERIES_FILE_FORMAT_ID	0x20250401
+#define YB_TERMINATED_QUERIES_FILENAME		"pg_stat/yb_terminated_queries.stat"
+#define YB_TERMINATED_QUERIES_TMPFILE		"pg_stat/yb_terminated_queries.tmp"
+
+#define YB_TERMINATED_QUERIES_COLS_V1 6
+#define YB_TERMINATED_QUERIES_COLS_V2 7
+
 /* Structure defining the format of a terminated query. */
 typedef struct YbTerminatedQuery
 {
 	Oid			userid;
 	Oid			databaseoid;
 	int32		backend_pid;
+	int64		query_id;
 	TimestampTz activity_start_timestamp;
 	TimestampTz activity_end_timestamp;
 	char		query_string[YB_QUERY_TEXT_SIZE];
@@ -65,6 +77,10 @@ typedef struct YbTerminatedQueries {
 
 static LWLock *yb_terminated_queries_lock;
 static YbTerminatedQueriesBuffer *yb_terminated_queries;
+
+static YbTerminatedQuery *yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries);
+static void yb_save_terminated_queries(int code, Datum arg);
+static void yb_restore_terminated_queries();
 
 Size
 YbTerminatedQueriesShmemSize(void)
@@ -95,7 +111,13 @@ YbTerminatedQueriesShmemInit(void)
 													&found);
 
 	if (!found)
+	{
 		MemSet(yb_terminated_queries, 0, sizeof(YbTerminatedQueriesBuffer));
+		yb_restore_terminated_queries();
+	}
+
+	if (!IsUnderPostmaster)
+		on_shmem_exit(yb_save_terminated_queries, (Datum) 0);
 
 	return;
 }
@@ -126,6 +148,7 @@ yb_report_query_termination(char *message, int pid)
 			SUB_SET(activity_start_timestamp, beentry->st_activity_start_timestamp);
 			SUB_SET(activity_end_timestamp, GetCurrentTimestamp());
 			SUB_SET(backend_pid, beentry->st_procpid);
+			SUB_SET(query_id, beentry->st_query_id);
 			SUB_SET(databaseoid, beentry->st_databaseid);
 			SUB_SET(userid, beentry->st_userid);
 #undef SUB_SET
@@ -148,7 +171,7 @@ yb_report_query_termination(char *message, int pid)
  * Returns terminated queries filtered by db_oid, else returns all terminated queries if db_oid is
  * not mentioned. Returns NULL if no terminated queries have been reported.
  */
-YbTerminatedQuery *
+static YbTerminatedQuery *
 yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 {
 	LWLockAcquire(yb_terminated_queries_lock, LW_SHARED);
@@ -190,6 +213,22 @@ yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 	return queries;
 }
 
+static void
+yb_save_terminated_queries(int code, Datum arg)
+{
+	yb_write_struct_to_file(YB_TERMINATED_QUERIES_TMPFILE, YB_TERMINATED_QUERIES_FILENAME,
+							yb_terminated_queries, sizeof(YbTerminatedQueriesBuffer),
+							YB_TERMINATED_QUERIES_FILE_FORMAT_ID);
+}
+
+static void
+yb_restore_terminated_queries()
+{
+	yb_read_struct_from_file(YB_TERMINATED_QUERIES_FILENAME,
+							 yb_terminated_queries, sizeof(YbTerminatedQueriesBuffer),
+							 YB_TERMINATED_QUERIES_FILE_FORMAT_ID);
+}
+
 /*
  * For this function, there exists a corresponding entry in pg_proc which dictates the input and
  * schema of the output row. This is used in a different manner from other methods like
@@ -201,12 +240,15 @@ yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 Datum
 yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 {
-#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
+	static int	ncols = 0;
+
+	if (ncols < YB_TERMINATED_QUERIES_COLS_V2)
+		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_PG_STAT_GET_QUERIES);
 
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
 		ereport(ERROR,
@@ -240,18 +282,23 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 			is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) ||
 			IsYbDbAdminUser(GetUserId()))
 		{
-			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
-			bool		nulls[PG_YBSTAT_TERMINATED_QUERIES_COLS];
+			Datum		values[ncols];
+			bool		nulls[ncols];
+			int			j = 0;
 
 			MemSet(values, 0, sizeof(values));
 			MemSet(nulls, 0, sizeof(nulls));
 
-			values[0] = ObjectIdGetDatum(queries[i].databaseoid);
-			values[1] = Int32GetDatum(queries[i].backend_pid);
-			values[2] = CStringGetTextDatum(queries[i].query_string);
-			values[3] = CStringGetTextDatum(queries[i].termination_reason);
-			values[4] = TimestampTzGetDatum(queries[i].activity_start_timestamp);
-			values[5] = TimestampTzGetDatum(queries[i].activity_end_timestamp);
+			values[j++] = ObjectIdGetDatum(queries[i].databaseoid);
+			values[j++] = Int32GetDatum(queries[i].backend_pid);
+
+			if (ncols >= YB_TERMINATED_QUERIES_COLS_V2)
+				values[j++] = Int64GetDatum(queries[i].query_id);
+
+			values[j++] = CStringGetTextDatum(queries[i].query_string);
+			values[j++] = CStringGetTextDatum(queries[i].termination_reason);
+			values[j++] = TimestampTzGetDatum(queries[i].activity_start_timestamp);
+			values[j++] = TimestampTzGetDatum(queries[i].activity_end_timestamp);
 
 			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 		}

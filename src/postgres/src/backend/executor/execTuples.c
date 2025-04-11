@@ -69,10 +69,10 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/sysattr.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList,
 										bool skipjunk);
@@ -1149,7 +1149,7 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 	if (tupleDesc != NULL)
 		slot->tts_flags |= TTS_FLAG_FIXED;
 	slot->tts_tupleDescriptor = tupleDesc;
-	slot->tts_mcxt = GetCurrentMemoryContext();
+	slot->tts_mcxt = CurrentMemoryContext;
 	slot->tts_nvalid = 0;
 
 	if (tupleDesc != NULL)

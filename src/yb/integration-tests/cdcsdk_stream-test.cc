@@ -15,19 +15,26 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
+
+#include "yb/client/client.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/common.pb.h"
+
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.proxy.h"
+
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(cdc_enable_implicit_checkpointing);

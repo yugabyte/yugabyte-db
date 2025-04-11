@@ -191,8 +191,7 @@ Status AutoFlagsManagerBase::LoadFromMasterLeader(const server::MasterAddresses&
 
     LOG(WARNING) << "Loading AutoFlags from master Leader failed: '" << res.status()
                  << "'. Attempts: " << attempts << ", Total Time: "
-                 << clock_->Now().PhysicalDiff(start_time) / MonoTime::kMicrosecondsPerMillisecond
-                 << "ms. Retrying...";
+                 << clock_->Now().PhysicalDiff(start_time).ToPrettyString() << ". Retrying...";
 
     // Delay before retrying so that we don't accidentally DDoS the mater.
     // Time increases linearly by delay_increment up to max_delay.
@@ -216,7 +215,7 @@ Result<MonoDelta> AutoFlagsManagerBase::GetTimeLeftToApplyConfig() const {
   RETURN_NOT_OK(apply_ht.FromUint64(current_config_.config_apply_time()));
   const auto now = clock_->Now();
   if (now < apply_ht) {
-    return MonoDelta::FromMicroseconds(apply_ht.PhysicalDiff(now));
+    return apply_ht.PhysicalDiff(now);
   }
 
   return uninitialized_delta;
@@ -314,7 +313,7 @@ void AutoFlagsManagerBase::AsyncApplyConfig(uint32 apply_version) {
 Status AutoFlagsManagerBase::ApplyConfig() const {
   const auto delay = VERIFY_RESULT(GetTimeLeftToApplyConfig());
   if (delay) {
-    LOG(INFO) << "Sleeping for " << delay << "us before applying AutoFlags.";
+    LOG(INFO) << "Sleeping for " << delay.ToPrettyString() << " before applying AutoFlags.";
     ThreadRestrictions::ScopedAllowWait scoped_allow_wait;
     SleepFor(delay);
   }

@@ -20,7 +20,7 @@
 #include "access/tupdesc.h"
 #include "storage/buf.h"
 
-/* YB includes. */
+/* YB includes */
 #include "ybctid.h"
 
 /*----------

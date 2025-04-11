@@ -85,10 +85,10 @@ public class OperatorUtils {
 
   private final RuntimeConfGetter confGetter;
   private final String namespace;
-  private final Config k8sClientConfig;
   private final YbcManager ybcManager;
   private final ValidatingFormFactory validatingFormFactory;
 
+  private Config _k8sClientConfig;
   private ReleaseManager releaseManager;
   private ObjectMapper objectMapper;
 
@@ -102,15 +102,21 @@ public class OperatorUtils {
     this.confGetter = confGetter;
     this.ybcManager = ybcManager;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
-    ConfigBuilder confBuilder = new ConfigBuilder();
-    if (namespace == null || namespace.trim().isEmpty()) {
-      confBuilder.withNamespace(null);
-    } else {
-      confBuilder.withNamespace(namespace);
-    }
-    k8sClientConfig = confBuilder.build();
     this.validatingFormFactory = validatingFormFactory;
     this.objectMapper = new ObjectMapper();
+  }
+
+  private synchronized Config getK8sClientConfig() {
+    if (_k8sClientConfig == null) {
+      ConfigBuilder confBuilder = new ConfigBuilder();
+      if (namespace == null || namespace.trim().isEmpty()) {
+        confBuilder.withNamespace(null);
+      } else {
+        confBuilder.withNamespace(namespace);
+      }
+      _k8sClientConfig = confBuilder.build();
+    }
+    return _k8sClientConfig;
   }
 
   public Customer getOperatorCustomer() throws Exception {
@@ -147,7 +153,7 @@ public class OperatorUtils {
 
   public YBUniverse getYBUniverse(KubernetesResourceDetails name) throws Exception {
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
       log.debug("lookup ybuniverse {}/{}", name.namespace, name.name);
       return kubernetesClient
           .resources(YBUniverse.class)
@@ -172,7 +178,7 @@ public class OperatorUtils {
   public <T extends CustomResource<?, ?>> OwnerReference getResourceOwnerReference(
       KubernetesResourceDetails resourceDetails, Class<T> clazz) throws Exception {
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
       T resource = getResource(resourceDetails, kubernetesClient.resources(clazz), clazz);
       return new OwnerReferenceBuilder()
           .withKind(resource.getKind())
@@ -523,7 +529,7 @@ public class OperatorUtils {
     log.info("Removing Release {}", releaseMetadata.getName());
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
       if (releaseManager.getInUse(releasePair.getFirst())) {
         log.info("Release " + releasePair.getFirst() + " is in use!, Skipping deletion");
         return;
@@ -554,7 +560,7 @@ public class OperatorUtils {
 
   public Secret getSecret(String name, @Nullable String namespace) {
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
       if (StringUtils.isBlank(namespace)) {
         log.info("Getting secret '{}' from default namespace", name);
         namespace = "default";
@@ -729,7 +735,7 @@ public class OperatorUtils {
       String basebackupCrName, String namespace, Customer customer) throws Exception {
     Backup backup = null;
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
       backup =
           getResource(
               new KubernetesResourceDetails(basebackupCrName, namespace),
@@ -812,7 +818,7 @@ public class OperatorUtils {
     crStatus.setTaskUUID(backup.getTaskUUID().toString());
 
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
       kubernetesClient
           .resources(Backup.class)
           .inNamespace(params.getKubernetesResourceDetails().namespace)

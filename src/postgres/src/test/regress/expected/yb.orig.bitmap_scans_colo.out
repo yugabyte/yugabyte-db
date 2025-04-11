@@ -540,13 +540,13 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
 --
 -- #22065: test pushdowns on Subplans
 --
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple) */
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple_1) BitmapScan(simple) */
 SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
- YB Bitmap Table Scan on simple (actual rows=0 loops=1)
+ YB Bitmap Table Scan on simple simple_1 (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
-     ->  YB Bitmap Table Scan on simple simple_1 (actual rows=0 loops=1)
+     ->  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
            ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=0 loops=1)
                  Index Cond: (ind_b = 1)
    ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=0 loops=1)
@@ -554,7 +554,7 @@ SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHER
          Storage Index Filter: (ind_a <> $0)
 (8 rows)
 
-/*+ BitmapScan(simple) */
+/*+ BitmapScan(simple_1) BitmapScan(simple) */
 SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);
  k | ind_a | ind_b 
 ---+-------+-------

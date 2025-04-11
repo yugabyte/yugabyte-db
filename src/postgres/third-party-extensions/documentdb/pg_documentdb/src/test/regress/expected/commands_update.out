@@ -1,0 +1,1615 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 1500;
+SET documentdb.next_collection_index_id TO 1500;
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":1,"_id":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":2,"_id":2,"b":2}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":3,"_id":3,"b":3}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":4,"_id":4,"b":4}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":5,"_id":5,"b":5}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":6,"_id":6,"b":6}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":7,"_id":7,"b":7}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":8,"_id":8,"b":8}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":9,"_id":9,"b":9}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":10,"_id":10,"b":10}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- exercise invalid update syntax errors
+select documentdb_api.update('db', NULL);
+ERROR:  update document cannot be NULL
+select documentdb_api.update(NULL, '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  database name cannot be NULL
+select documentdb_api.update('db', '{"updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  BSON field 'update.update' is missing but a required field
+select documentdb_api.update('db', '{"update":"updateme"}');
+ERROR:  BSON field 'update.updates' is missing but is a required field
+select documentdb_api.update('db', '{"update":["updateme"], "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  collection name has invalid type array
+select documentdb_api.update('db', '{"update":"updateme", "updates":{"q":{},"u":{"$set":{"b":0}},"multi":true}}');
+ERROR:  BSON field 'update.updates' is the wrong type 'object', expected type 'array'
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}], "extra":1}');
+ERROR:  BSON field 'update.extra' is an unknown field
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{}}]}');
+ERROR:  BSON field 'update.updates.u' is missing but a required field
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"multi":true}]}');
+ERROR:  BSON field 'update.updates.u' is missing but a required field
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"multi":true}]}');
+ERROR:  BSON field 'update.updates.q' is missing but a required field
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"u":{"$set":{"b":0}}}]}');
+ERROR:  BSON field 'update.updates.q' is missing but a required field
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":"text"}]}');
+ERROR:  BSON field 'update.updates.u' is the wrong type 'string', expected type 'object' or 'array'
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":[],"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  BSON field 'update.updates.q' is the wrong type 'array', expected type 'object'
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":1}]}');
+ERROR:  BSON field 'update.updates.multi' is the wrong type 'int', expected type 'bool'
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"extra":1}]}');
+ERROR:  BSON field 'update.updates.extra' is an unknown field
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}],"ordered":1}');
+ERROR:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$bork":{"b":0}},"multi":true}]}');
+                                                                                                                                                                                     update                                                                                                                                                                                      
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50331677"" }, ""errmsg"" : ""Unknown modifier: $bork. Expected a valid update modifier or pipeline-style update specified as an array"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"upsert":[]}]}');
+ERROR:  BSON field 'update.updates.upsert' is the wrong type 'array', expected type 'bool'
+-- Disallow writes to system.views
+select documentdb_api.update('db', '{"update":"system.views", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
+ERROR:  cannot write to db.system.views
+-- update all
+begin;
+SET LOCAL search_path TO '';
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                 update                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""10"" }, ""n"" : { ""$numberLong"" : ""10"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document OPERATOR(documentdb_api_catalog.@@) '{"b":0}';
+ count 
+-------
+    10
+(1 row)
+
+rollback;
+-- update some
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""3"" }, ""n"" : { ""$numberLong"" : ""3"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     3
+(1 row)
+
+rollback;
+-- update multi with a replace is not supported
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"b":0},"multi":true}]}');
+                                                                                                                                                              update                                                                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50331677"" }, ""errmsg"" : ""multi update is not supported for replacement-style update"" } ] }",f)
+(1 row)
+
+rollback;
+-- update multi with an aggregation pipeline is supported
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":[{"$unset":["b"]}],"multi":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""3"" }, ""n"" : { ""$numberLong"" : ""3"" } }",t)
+(1 row)
+
+rollback;
+-- update all from non-existent collection
+select documentdb_api.update('db', '{"update":"notexists", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+-- query syntax errors are added the response
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$ltr":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                                                                                            update                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+(1 row)
+
+-- when ordered, expect only first update to be executed
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}]}');
+                                                                                                                                                                                                update                                                                                                                                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}],"ordered":true}');
+                                                                                                                                                                                                update                                                                                                                                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- when not ordered, expect first and last update to be executed
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}],"ordered":false}');
+                                                                                                                                                                                                update                                                                                                                                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2"" }, ""n"" : { ""$numberLong"" : ""2"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme');
+ count 
+-------
+    10
+(1 row)
+
+rollback;
+-- update 1 without filters is supported for unsharded collections
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 with a replace that preserves the _id
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"b":0},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 with a replace that tries to change the _id
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"_id":0,"b":0},"multi":false}]}');
+                                                                                                                                                                            update                                                                                                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""486539293"" }, ""errmsg"" : ""After applying the update, the (immutable) field '_id' was found to have been altered"" } ] }",f)
+(1 row)
+
+rollback;
+-- update 1 is retryable on unsharded collection (second call is a noop)
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-1');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-1');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":1}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+(1 row)
+
+-- third call is considered a new try
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-1');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":1}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "3" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the _id case
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":6},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the multiple identical _id case
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":6}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the multiple distinct _id case
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":5}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "6" } }
+(1 row)
+
+rollback;
+-- update some with range filter that excludes all rows
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lt":0}},"u":{"$set":{"b":0,"_id":11}},"multi":true,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 with range filter is supported for unsharded collections
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":{"$lt":0}},"u":{"$set":{"b":0,"_id":11}},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 with a replace that preserves the _id
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":11},"u":{"b":0},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 with a replace that set the _id
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33},"u":{"_id":0,"b":0},"multi":false,"upsert":true}]}');
+                                                                                                                  update                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""0"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 is retryable on unsharded collection (second call is a noop)
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":33}';
+ count 
+-------
+     1
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":66}';
+ count 
+-------
+     0
+(1 row)
+
+-- third call is considered a new try
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":33}';
+ count 
+-------
+     0
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":66}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 is supported in the _id case
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":0}},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- test _id extraction from update
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":3}},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":3}';
+ count 
+-------
+     1
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":4}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":0}},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":0}';
+ count 
+-------
+     1
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":1}},"multi":true,"upsert":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":1}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- shard the collection
+select documentdb_api.shard_collection('db', 'updateme', '{"a":"hashed"}', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- make sure we get the expected results after sharding a collection
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""5"" }, ""n"" : { ""$numberLong"" : ""5"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":1}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":10}';
+                                             document                                              
+---------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     5
+(1 row)
+
+rollback;
+-- test pruning logic in update
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":5}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":5}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 without filters is unsupported for sharded collections
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                                                                                                                                      update                                                                                                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50856066"" }, ""errmsg"" : ""A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard"" } ] }",f)
+(1 row)
+
+-- update 1 with shard key filters is supported for sharded collections
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":5}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 with shard key filters is retryable
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":10}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-2');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":10}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-2');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"a":10}';
+                                             document                                              
+---------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "11" } }
+(1 row)
+
+rollback;
+-- upsert 1 with shard key filters is retryable
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":33}';
+ count 
+-------
+     1
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":66}';
+ count 
+-------
+     0
+(1 row)
+
+-- third call is considered a new try
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":33}';
+ count 
+-------
+     0
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"c":66}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 that does not match any rows is still retryable
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":15}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-3');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":15,"_id":15}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":15}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-3');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+rollback;
+-- update 1 is supported in the _id case even on sharded collections
+begin;
+-- add an additional _id 10
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":11,"_id":10}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- update first row where _id = 10
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":10}';
+ count 
+-------
+     2
+(1 row)
+
+-- update second row where _id = 10
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":0}';
+ count 
+-------
+     2
+(1 row)
+
+-- no more row where _id = 10 and b != 0
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+rollback;
+-- update 1 with with _id filter on a sharded collection is retryable
+begin;
+-- add an additional _id 10
+select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":11,"_id":10}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- update first row where _id = 10
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-4');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- second time is a noop
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-4');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":10}' ORDER BY object_id;
+                                             document                                              
+---------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "11" } }
+(2 rows)
+
+rollback;
+-- upsert on sharded collection with multi:true
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":33},"u":{"$set":{"b":33,"_id":11}},"multi":true,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"b":33}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- updating shard key is disallowed when using multi:true
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":true}]}');
+                                                                                                                                                                              update                                                                                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
+(1 row)
+
+rollback;
+-- updating shard key is disallowed when using multi:true, even with a shard key filter
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":true}]}');
+                                                                                                                                                                              update                                                                                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
+(1 row)
+
+rollback;
+-- updating shard key is disallowed without a shard key filter
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                                                                                                                                                      update                                                                                                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50856066"" }, ""errmsg"" : ""A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard"" } ] }",f)
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                                                                                                                                                   update                                                                                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""shard key value update is only supported when filtering by the full shard key and specifying multi:false"" } ] }",f)
+(1 row)
+
+rollback;
+-- updating shard key is allowed when multi:false and shard key filter is specified
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"a":2}';
+ count 
+-------
+     2
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":10},"u":{"$set":{"a":20}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"a":20}';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- empty shard key value is allowed (hash becomes 0)
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$unset":{"a":1}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"b":1}';
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the multiple identical _id case
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":6}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 is unsupported in the multiple distinct _id case
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":5}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                                                                                                                                      update                                                                                                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50856066"" }, ""errmsg"" : ""A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard"" } ] }",f)
+(1 row)
+
+select document from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "6" } }
+(1 row)
+
+rollback;
+-- test _id extraction from update
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":3}},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":3 }';
+ count 
+-------
+     1
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":4 }';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}]}');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":1 }';
+ count 
+-------
+     1
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":2 }';
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update with docs specified on special section
+begin;
+select documentdb_api.update('db', '{"update":"updateme"}', '{ "":[{"q":{"_id":36, "a": 10 },"u":{"$set":{"bz":1}},"multi":false,"upsert":true}] }');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""36"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{ "bz":1 }';
+ count 
+-------
+     1
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme"}', '{ "":[{"q":{"_id":37, "a": 10 },"u":{"$set":{"bz":1}},"multi":false,"upsert":true}] }');
+                                                                                                                   update                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""37"" } } ] }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{ "bz":1 }';
+ count 
+-------
+     2
+(1 row)
+
+select documentdb_api.update('db', '{"update":"updateme"}', '{ "":[{"q":{"_id":36, "a": 10 },"u":{"$set":{"bz":2}},"multi":false }, {"q":{"_id":37, "a": 10 },"u":{"$set":{"bz":2}},"multi":false}] }');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2"" }, ""n"" : { ""$numberLong"" : ""2"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db', 'updateme') where document @@ '{ "bz":2 }';
+ count 
+-------
+     2
+(1 row)
+
+rollback;
+-- update with docs specified on both
+begin;
+select documentdb_api.update('db', '{"update":"updateme",  "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}', '{ "":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}] }');
+ERROR:  Unexpected additional updates
+rollback;
+select documentdb_api.drop_collection('db','updateme');
+ drop_collection 
+-----------------
+ t
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'test_sort_returning', '{"_id":1,"a":3,"b":7}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'test_sort_returning', '{"_id":2,"a":2,"b":5}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'test_sort_returning', '{"_id":3,"a":1,"b":6}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- sort in ascending order and project & return old document
+SELECT collection_id AS test_sort_returning FROM documentdb_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning' \gset
+SELECT documentdb_api_internal.update_worker(
+    p_collection_id=>:test_sort_returning,
+    p_shard_key_value=>:test_sort_returning,
+    p_shard_oid => 0,
+    p_update_internal_spec => '{ "updateOne": { "query": { "a": {"$gte": 1} }, "update": { "": { "c": 3 } }, "isUpsert": false, "sort": { "b": 1 }, "returnDocument": 1, "returnFields": { "_id": 0, "b": 1 } } }'::bson,
+    p_update_internal_docs=>null::bsonsequence,
+    p_transaction_id=>null::text
+) FROM documentdb_api.collection('update', 'test_sort_returning');
+                                                       update_worker                                                        
+----------------------------------------------------------------------------------------------------------------------------
+ { "isRowUpdated" : true, "updateSkipped" : false, "isRetry" : false, "resultDocument" : { "b" : { "$numberInt" : "5" } } }
+(1 row)
+
+-- sort by multiple fields (i) and project & return new document
+BEGIN;
+    SELECT documentdb_api_internal.update_worker(
+        p_collection_id=>:test_sort_returning,
+        p_shard_key_value=>:test_sort_returning,
+        p_shard_oid => 0,
+        p_update_internal_spec => '{ "updateOne": { "query": { "a": {"$gte": 1} }, "update": { "": { "c": 4 } }, "isUpsert": false, "sort": { "b": -1, "a": 1 }, "returnDocument": 2 } }'::bson,
+        p_update_internal_docs=>null::bsonsequence,
+        p_transaction_id=>null::text
+    ) FROM documentdb_api.collection('update', 'test_sort_returning');
+                                                                       update_worker                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "isRowUpdated" : true, "updateSkipped" : false, "isRetry" : false, "resultDocument" : { "_id" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" } } }
+(1 row)
+
+    SELECT document FROM documentdb_api.collection('update', 'test_sort_returning') ORDER BY 1;
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
+(3 rows)
+
+ROLLBACK;
+SELECT documentdb_api_internal.update_worker(
+    p_collection_id=>:test_sort_returning,
+    p_shard_key_value=>:test_sort_returning,
+    p_shard_oid => 0,
+    p_update_internal_spec => '{ "updateOne": { "query": { "a": {"$gte": 1} }, "update": { "": { "c": 4 } }, "isUpsert": false, "sort": { "a": 1, "b": -1 }, "returnDocument": 2 } }'::bson,
+    p_update_internal_docs=>null::bsonsequence,
+    p_transaction_id=>null::text
+    ) FROM documentdb_api.collection('update', 'test_sort_returning');
+                                                                       update_worker                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "isRowUpdated" : true, "updateSkipped" : false, "isRetry" : false, "resultDocument" : { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('update', 'test_sort_returning') ORDER BY 1;
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "7" } }
+ { "_id" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- show that we validate "update" document even if collection doesn't exist
+-- i) ordered=true
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                            update                                                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                             update                                                                                                                                                                                                                                             
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- show that we validate "query" document even if collection doesn't exist
+-- i) ordered=true
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                                                                update                                                                                                                                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                                                                                                      update                                                                                                                                                                                                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+SELECT documentdb_api.create_collection('update', 'no_match');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+-- show that we validate "update" document even if we can't match any documents
+-- i) ordered=true
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                            update                                                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                             update                                                                                                                                                                                                                                             
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- show that we validate "query" document even if we can't match any documents
+-- i) ordered=true
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                                                                update                                                                                                                                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT documentdb_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                                                                                                      update                                                                                                                                                                                                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+-- Validate multi and single updates with no-op return matched and updated as expected
+SELECT 1 FROM documentdb_api.insert_one('update', 'multi', '{"_id":1,"a":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'multi', '{"_id":2,"a":2,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'multi', '{"_id":3,"a":3,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'multi', '{"_id":4,"a":100,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'multi', '{"_id":5,"a":200,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update', 'multi', '{"_id":6,"a":6,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":3}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2"" }, ""n"" : { ""$numberLong"" : ""6"" } }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":7}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""4"" }, ""n"" : { ""$numberLong"" : ""6"" } }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":150}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""6"" } }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":99}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2"" }, ""n"" : { ""$numberLong"" : ""6"" } }",t)
+(1 row)
+
+-- no match
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 50 },"u":{"$min":{"a":99}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+-- all updated
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":500}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""6"" }, ""n"" : { ""$numberLong"" : ""6"" } }",t)
+(1 row)
+
+-- all match, no-op update
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":100}},"multi":true,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""6"" } }",t)
+(1 row)
+
+-- single update
+SELECT 1 FROM documentdb_api.insert_one('update', 'single', '{"_id":1,"a":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":100}},"multi":false,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":50}},"multi":false,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- no-op update single
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":50}},"multi":false,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":50}},"multi":false,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+-- no match
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"b": 50 },"u":{"$max":{"a":50}},"multi":false,"upsert":false}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+--upsert with same field in querySpec 
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id":1234, "$and" : [{"x" : {"$eq": 1}}, {"x": 2}]},"u":{},"upsert":true}]}');
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""1234"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id":2345, "x": 1, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""2345"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id":3456, "x": {}, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""3456"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id":4567, "x": {"x": 1}, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""4567"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id":5678, "x": {"x": 1}, "x.y": 1},"u":{},"upsert":true}]}');
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""5678"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id":6789, "x": [1, {"x": 1}], "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""6789"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{},"upsert":true}]}');
+                                                                                                                                                                update                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"x": 1, "x": 5},"u":{"$set" : {"x":10}},"upsert":true}]}');
+                                                                                                                                                               update                                                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path 'x' is matched twice"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+                                                                                                                                                                      update                                                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""603979805"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.b'found"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_idab.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+                                                                                                                  update                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""3"" } } ] }",t)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id.c": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+                                                                                                                                                                      update                                                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""603979805"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.c'found"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"_id":3},"upsert":true}]}');
+                                                                                                                                                                update                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"$set" : {"_id":3} },"upsert":true}]}');
+                                                                                                                                                                update                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+(1 row)
+
+-- array filters sent to final update command.
+BEGIN;
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 134111, "b": [ 5, 2, 4 ] },"u":{"$set" : {"b.$[a]":3} },"upsert":true, "arrayFilters": [ { "a": 2 } ]}]}');
+                                                                                                                     update                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""134111"" } } ] }",t)
+(1 row)
+
+SELECT documentdb_api.insert_one('update', 'multi', '{ "_id": 134112, "blah": [ 5, 1, 4 ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('update', 'multi', '{ "_id": 134113, "blah": [ 6, 3, 1 ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":true,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2"" }, ""n"" : { ""$numberLong"" : ""2"" } }",t)
+(1 row)
+
+-- no match here.
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
+(1 row)
+
+-- updates one of the two.
+select documentdb_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 99 },"u":{"$max":{"blah.$[a]":109}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 99 } ]}]}');
+                                                                update                                                                
+--------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+(1 row)
+
+ROLLBACK;
+-- test replace with upsert
+select documentdb_api.update('test@', '{ "update" : "shell_wc_a", "ordered" : true, "updates" : [ { "q" : { "_id" : 1.0 }, "u" : { "_id" : 1.0 }, "multi" : false, "upsert" : true } ] }');
+NOTICE:  creating collection
+                                                                                                                     update                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberDouble"" : ""1.0"" } } ] }",t)
+(1 row)
+
+--upsert with $expr
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"$expr" : {"$eq": ["$a",1]}}]},"u":{},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : [{"$expr" : {"$gt": ["$b",1]}}, {"x": 2}]},"u":{"$set" : {"a": 10}},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : [{"$expr" : {"$gte": ["$c", 100]}}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : [{"$or" : [{"$expr" : {"$gte": ["$c", 100]}}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$expr": {"$gt" : ["$x",10]}},"u":{},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"a": 10}, {"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}, {"b":11} ]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                              update                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50593821"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+--upsert with $ref
+PREPARE distinctQueryWithFilter(text, text, text, bson) AS (WITH r1 AS (SELECT DISTINCT 
+    bson_distinct_unwind(document, $3) AS document FROM documentdb_api.collection($1, $2) WHERE document @@ $4 )
+    SELECT bson_build_distinct_response(COALESCE(array_agg(document), '{}'::bson[])) FROM r1);
+select documentdb_api.update('update', '{"update":"server1470", "updates":[{"q": {"_id": 1, "name": "first", "pic": {"$ref": "foo", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                  update                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""1"" } } ] }",t)
+(1 row)
+
+EXECUTE distinctQueryWithFilter('update', 'server1470', 'name', '{ "pic": {"$ref" : "foo", "$id": { "$oid" : "4c48d04cd33a5a92628c9af6" } } }');
+                  bson_build_distinct_response                  
+----------------------------------------------------------------
+ { "values" : [ "first" ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select documentdb_api.update('update', '{"update":"server1470_1", "updates":[{"q": {"_id": 1, "name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                  update                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""1"" } } ] }",t)
+(1 row)
+
+EXECUTE distinctQueryWithFilter('update', 'server1470_1', 'name', '{ "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "$ref": "foo" } }');
+                  bson_build_distinct_response                  
+----------------------------------------------------------------
+ { "values" : [ "first" ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+select documentdb_api.update('update', '{"update":"server1470_2", "updates":[{"q": {"_id": 1, "name": "first", "pic": {"$ref": "foo", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraField" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                  update                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""1"" }, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""1"" } } ] }",t)
+(1 row)
+
+EXECUTE distinctQueryWithFilter('update', 'server1470_2', 'name', '{ "pic": {"$ref": "foo", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraField" } }');
+                  bson_build_distinct_response                  
+----------------------------------------------------------------
+ { "values" : [ "first" ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--upsert with $ref negative test
+select documentdb_api.update('update', '{"update":"server1470_noid", "updates":[{"q": {"name": "first", "pic": {"$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                                            update                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $ref"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"server1470_noref", "updates":[{"q": {"name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                                            update                                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $id"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"server1470_extraf_1", "updates":[{"q": {"name": "first", "pic": {"$ref": "foo", "extraField": "extraField", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                                                            update                                                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""592445469"" }, ""errmsg"" : ""The DBRef $ref field must be followed by a $id field"" } ] }",f)
+(1 row)
+
+select documentdb_api.update('update', '{"update":"server1470_extraf_2", "updates":[{"q": {"name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraFiele", "$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+NOTICE:  creating collection
+                                                                                                                                            update                                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $id"" } ] }",f)
+(1 row)
+

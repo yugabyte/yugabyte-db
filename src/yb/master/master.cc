@@ -62,6 +62,7 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
@@ -208,7 +209,7 @@ Status Master::Init() {
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
   if (!bound_addresses.empty()) {
-    shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
+    shared_object()->SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
   cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
@@ -336,6 +337,7 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
   DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
+  DisplayIconTile(output, "fa-lock", "Object lock manager", "/ObjectLockManager");
 }
 
 Status Master::StartAsync() {
@@ -702,6 +704,12 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   }
   LOG(INFO) << "resp: " << resp->ShortDebugString();
   return Status::OK();
+}
+
+Status Master::GetTserverCatalogMessageLists(
+    const tserver::GetTserverCatalogMessageListsRequestPB& req,
+    tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
+  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
 }
 
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {

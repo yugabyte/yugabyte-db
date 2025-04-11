@@ -51,8 +51,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 static int	extractRemainingColumns(ParseNamespaceColumn *src_nscolumns,
 									List *src_colnames,

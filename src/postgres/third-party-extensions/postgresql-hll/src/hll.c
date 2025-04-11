@@ -28,7 +28,6 @@
 #include <funcapi.h>
 #include <limits.h>
 #include <math.h>
-#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
@@ -68,6 +67,9 @@
 #include "miscadmin.h"
 
 #include "MurmurHash3.h"
+
+/* YB includes */
+#include <stddef.h>
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;

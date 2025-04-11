@@ -2,8 +2,8 @@
 title: Planned Switchover with transactional xCluster replication
 headerTitle: Planned switchover
 linkTitle: Switchover
-description: Switchover using transactional (active-standby) replication between universes
-headContent: Switch application traffic to the standby universe
+description: Switchover using transactional xCluster replication between universes
+headContent: Switch application traffic to the standby universe without data loss
 menu:
   preview:
     parent: async-replication-transactional
@@ -14,170 +14,57 @@ tags:
 type: docs
 ---
 
-Planned switchover is the process of switching write access from the Primary universe to the Standby universe without losing any data (zero RPO). Planned switchover is typically performed during a maintenance window.
+Planned switchover is the process of switching write access from the Primary universe to the Standby universe without losing any data (zero RPO). This operation primarily involves updating metadata and typically completes within 30 seconds. However, since application traffic needs to be redirected to the new universe, it is advisable to perform this operation during a maintenance window.
 
-## Manual switchover
+## Perform switchover
 
-Assuming universe A is the Primary and universe B is the Standby, use the following steps to perform a planned switchover.
+Assuming universe A is the Primary and universe B is the Standby, use the following steps to perform a planned switchover to change the replication direction from A->B to B->A.
 
-### Stop and drain the universe
+### Precheck
 
-You start by draining pending updates and ensuring that the replication lag is zero, thus guaranteeing zero RPO. You wait for pending updates to propagate to B by running the `wait_for_replication_drain` command on A.
+- Check existing replication group health
 
-Proceed as follows:
+  To minimize disruptions and the duration of the switchover, ensure that the existing replication is healthy and the lag is under 5 seconds. For information, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
 
-1. Stop the application traffic to ensure no more data changes are attempted.
+- Check prerequisites
 
-1. Obtain the `stream_ids` for Primary (A):
+  Ensure that all prerequisites for setting up xCluster are satisfied for the new replication direction. For more information, refer to the [xCluster prerequisites](../#prerequisites).
 
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
-        -certs_dir_name <dir_name>  \
-        list_cdc_streams
-    ```
+### Setup replication in the reverse direction
 
-    Expect output similar to the following:
+Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Set up transactional xCluster](../async-replication-transactional/). 
+Skip the bootstrap (backup/restore) step, since the data is already present in both universes.
 
-    ```output.json
-    CDC Streams:
-    streams {
-      stream_id: "56bf794172da49c6804cbab59b978c7e"
-      table_id: "000033e8000030008000000000004000"
-      options {
-        key: "record_type"
-        value: "CHANGE"
-      }
-      options {
-        key: "checkpoint_type"
-        value: "IMPLICIT"
-      }
-      options {
-        key: "record_format"
-        value: "WAL"
-      }
-      options {
-        key: "source_type"
-        value: "XCLUSTER"
-      }
-      options {
-        key: "state"
-        value: "ACTIVE"
-      }
-    }
-    ```
+Ensure that the mode of replication used matches the original setup. Continuously monitor the health of the new replication to prevent any unexpected issues post-switchover.
 
-1. Run the following script to get the current time on Primary (A):
+This step puts both universes in read-only mode, allowing universe B to catch up with universe A.
 
-    ```python
-    python3 checkTime.py
+### Wait for replication to catch up
 
-    import datetime
-    print(datetime.datetime.now().strftime("%s%f"))
-    print(datetime.datetime.now())
-    ```
+Wait for any pending updates to propagate to B:
 
-    ```output
-    1665548814177072
-    2023-02-16 12:20:22.245984
-    ```
+1. Get the current time on A.
 
-1. Run the following command for each ACTIVE replication `stream_id` reported on Primary (A) using the output of the two previous commands, in the form of a comma-separated list of the stream IDs and the timestamp:
+1. Wait until the [xCluster safe time](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/#xcluster-safe-time) on B is a few seconds greater than the time obtained in the previous step.
+{{< note title="Note" >}}
+The lag and skew values might be non-zero as they are estimates based on the last time the tablets were polled. Since no new writes can occur during this period, you can be certain that no data is lost within this timeframe.
+{{< /note >}}
 
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
-        -certs_dir_name <dir_name> \
-        wait_for_replication_drain 56bf794172da49c6804cbab59b978c7e,..,..<comma_separated_list_of_stream_ids> 1665548814177072
-    ```
+### Fix up sequences and serial columns
 
-    ```output
-    All replications are caught-up.
-    ```
+{{< note >}}
+_Not applicable for Automatic mode_
+{{< /note >}}
 
-    Note that this step may take some time.
+Since xCluster does not replicate sequence data, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 
-    If you get output similar to the following, then it is not yet safe to switch Standby (B) to active:
+Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence next values appropriately.
 
-    ```output
-    Found undrained replications:
-    - Under Stream b7306a8068484634801fd925a41f17f6:
-      - Tablet: 04dd056e79a14f48aac3bdf196546fd0
-      - Tablet: ebc07bd926b647a5ba8cea41421ec7ca
-      - Tablet: 3687d4d51cda4f0394b4c36aa66f4ffd
-      - Tablet: 318745aee32c463c81d4242924d679a2
-    ```
+### Delete the old replication group
 
-1. Wait until [xCluster safe time](../async-transactional-setup/#verify-replication) on Standby (B) is greater than the current time obtained on Primary (A).
+Run the following command against A to delete the old replication group.
 
-1. Use `change_xcluster_role` to promote Standby (B) to ACTIVE as follows.
+{{% readfile "includes/transactional-drop.md" %}}
 
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
-        -certs_dir_name <dir_name> \
-        change_xcluster_role ACTIVE
-    ```
-
-1. Delete the replication from A to B as follows:
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
-        delete_universe_replication <A_universe_uuid>_<replication_name>
-    ```
-
-### Set up replication
-
-In the second stage, set up replication from the new Primary (B) universe as follows:
-
-1. Run `bootstrap_cdc_producer` command on the new Primary (B) for all tables involved in replication and capture the bootstrap IDs. This is a preemptive step to be used during the failover workflow while setting up replication from B to A. This prevents the WAL from being garbage collected and lets A catch up.
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <B_master_addresses>
-        -certs_dir_name <cert_dir> \
-        bootstrap_cdc_producer <comma_separated_B_table_ids>
-    ```
-
-1. Resume the application traffic on the new Primary (B).
-
-1. Prepare certificates on all nodes of A for replication setup:
-
-    - Create a directory for the replication certificate:
-
-        ```sh
-        mkdir -p <home>/yugabyte-tls-producer/<B_universe_uuid>_<replicaten_name>
-        ```
-
-    - Copy the certificates:
-
-        ```sh
-        cp -rf <home>/yugabyte-tls-producer/<B_universe_uuid> <home>/yugabyte-tls-producer/<B_universe_uuid>_<replicaten_name>
-        ```
-
-    Repeat these steps on all A nodes.
-
-1. Set up replication from B to A using the bootstrap IDs obtained in step 1.
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
-        -certs_dir_name <cert_dir> \
-        setup_universe_replication \
-        <B_universe_uuid>_<replication_name> \
-        <B_master_addresses> \
-        <comma_separated_B_table_ids>  \
-        <comma_separated_B_bootstrap_ids> transactional
-    ```
-
-1. Use `change_xcluster_role` to demote A to Standby:
-
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <A_master-addresses> \
-        -certs_dir_name <dir_name> \
-        change_xcluster_role STANDBY
-    ```
-
-After completing the preceding steps, the Standby (B) becomes the new Primary universe, and the old Primary (A) becomes the new Standby universe. No updates are lost during the process, so the RPO is zero. There is expected to be no data loss in this workflow.
+### Switch applications to the new Primary universe (B)
+The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).

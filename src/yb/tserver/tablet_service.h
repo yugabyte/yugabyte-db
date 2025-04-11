@@ -176,6 +176,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                     GetTserverCatalogVersionInfoResponsePB* resp,
                                     rpc::RpcContext context) override;
 
+  void GetTserverCatalogMessageLists(const GetTserverCatalogMessageListsRequestPB* req,
+                                     GetTserverCatalogMessageListsResponsePB* resp,
+                                     rpc::RpcContext context) override;
+
   void ListMasterServers(const ListMasterServersRequestPB* req,
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;
@@ -226,6 +230,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void ReleaseObjectLocks(
       const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
+
+  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo(
+      const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) override;
 
   void AdminExecutePgsql(
       const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
@@ -351,6 +358,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
+
+  void GetPgSocketDir(
+      const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp,
+      rpc::RpcContext context) override;
 
  private:
   TabletServer* const server_;

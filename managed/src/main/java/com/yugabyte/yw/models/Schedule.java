@@ -110,10 +110,10 @@ public class Schedule extends Model {
     Paused(),
 
     @EnumValue("Stopped")
-    Stopped("Active", "Deleting"),
+    Stopped("Active", "Deleting", "Editing"),
 
     @EnumValue("Editing")
-    Editing("Active", "Deleting", "Error");
+    Editing("Active", "Deleting", "Error", "Stopped");
 
     private final String[] allowedTransitions;
 
@@ -197,8 +197,14 @@ public class Schedule extends Model {
       value = "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
       accessMode = READ_ONLY)
   @Column(nullable = false)
-  @Enumerated(EnumType.STRING)
   private State status = State.Active;
+
+  @ApiModelProperty(
+      value = "Previous status of the schedule. Used to restore status in case of crash.",
+      accessMode = READ_ONLY,
+      hidden = true)
+  @Column(nullable = true, name = "prev_status")
+  private State prevStableStatus;
 
   @Column
   @ApiModelProperty(value = "Cron expression for the schedule")
@@ -242,6 +248,15 @@ public class Schedule extends Model {
 
   public void updateNextIncrementScheduleTaskTime(Date nextIncrementScheduleTime) {
     this.nextIncrementScheduleTaskTime = nextIncrementScheduleTime;
+    save();
+  }
+
+  public void setStatus(State status) {
+    // Only save "stable" states as previous states.
+    if (this.status.equals(State.Active) || this.status.equals(State.Stopped)) {
+      this.prevStableStatus = this.status;
+    }
+    this.status = status;
     save();
   }
 
@@ -328,12 +343,12 @@ public class Schedule extends Model {
   public void setFailureCount(int count) {
     this.failureCount = count;
     if (count >= MAX_FAIL_COUNT) {
-      this.status = State.Paused;
+      this.setStatus(State.Paused);
     }
   }
 
   public void resetSchedule() {
-    this.status = State.Active;
+    this.setStatus(State.Active);
     // Update old next Expected Task time if it expired due to non-active state.
     if (this.nextScheduleTaskTime == null || Util.isTimeExpired(this.nextScheduleTaskTime)) {
       updateNextScheduleTaskTime(nextExpectedTaskTime(null /* lastScheduledTime */));
@@ -342,7 +357,7 @@ public class Schedule extends Model {
   }
 
   public void resetIncrementSchedule() {
-    this.status = State.Active;
+    this.setStatus(State.Active);
     // Update old next Expected Task time if it expired due to non-active state.
     if (this.nextIncrementScheduleTaskTime == null
         || Util.isTimeExpired(this.nextIncrementScheduleTaskTime)) {
@@ -354,7 +369,7 @@ public class Schedule extends Model {
   // Use locking updater based status change.
   @Deprecated
   public void stopSchedule() {
-    this.status = State.Stopped;
+    this.setStatus(State.Stopped);
     save();
   }
 
@@ -363,7 +378,7 @@ public class Schedule extends Model {
       throw new RuntimeException(
           String.format("Transition of Schedule from %s to %s not allowed.", this.status, state));
     }
-    this.status = state;
+    this.setStatus(state);
   }
 
   public static Schedule updateStatusAndSave(UUID customerUUID, UUID scheduleUUID, State state) {
@@ -373,11 +388,12 @@ public class Schedule extends Model {
 
   private void updateNewBackupScheduleTimes() {
     ScheduleTask lastTask = ScheduleTask.getLastTask(this.getScheduleUUID());
-    Date nextScheduleTaskTime = null;
+    // nextScheduleTaskTime should be updated first since
+    // ScheduleUtil.nextExpectedIncrementTaskTime uses it.
     if (lastTask == null || Util.isTimeExpired(nextExpectedTaskTime(lastTask.getScheduledTime()))) {
-      nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
+      this.nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
     } else {
-      nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
+      this.nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
     }
     Date nextExpectedIncrementScheduleTaskTime = null;
     long incrementalBackupFrequency =
@@ -385,7 +401,6 @@ public class Schedule extends Model {
     if (incrementalBackupFrequency != 0L) {
       nextExpectedIncrementScheduleTaskTime = ScheduleUtil.nextExpectedIncrementTaskTime(this);
     }
-    this.nextScheduleTaskTime = nextScheduleTaskTime;
     this.nextIncrementScheduleTaskTime = nextExpectedIncrementScheduleTaskTime;
   }
 
@@ -459,6 +474,14 @@ public class Schedule extends Model {
     this.taskParams = Json.toJson(params);
     save();
     resetIncrementSchedule();
+  }
+
+  public void updateBackupRetentionPeriod(long timeBeforeDelete) {
+    ObjectMapper mapper = new ObjectMapper();
+    BackupRequestParams params = mapper.convertValue(getTaskParams(), BackupRequestParams.class);
+    params.timeBeforeDelete = timeBeforeDelete;
+    this.taskParams = Json.toJson(params);
+    save();
   }
 
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};

@@ -631,7 +631,7 @@ SELECT voidtest2(11,22);
 EXPLAIN (verbose, costs off) SELECT voidtest2(11,22);
        QUERY PLAN        
 -------------------------
- Result
+ Result *RESULT*
    Output: voidtest1(33)
 (2 rows)
 

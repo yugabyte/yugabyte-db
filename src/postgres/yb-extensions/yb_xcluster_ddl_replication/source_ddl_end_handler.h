@@ -20,6 +20,7 @@
 #define YB_XCLUSTER_DDL_REPLICATION_SOURCE_DDL_END
 
 #include "postgres.h"
+
 #include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 

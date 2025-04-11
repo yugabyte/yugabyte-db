@@ -13,7 +13,9 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
@@ -25,6 +27,9 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -601,7 +606,7 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
 
   // We check for xcluster_table_info to determine if we need to do this cleanup, so clean up other
   // fields first.
-  if (table_info->IsColocatedUserTable()) {
+  if (table_info->IsSecondaryTable()) {
     bool found = false;
     for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
       if (HasNamespace(*universe, table_info->namespace_id())) {

@@ -131,6 +131,7 @@ public class Backup extends Model {
           .put(BackupState.InProgress, BackupState.FailedToDelete)
           .put(BackupState.QueuedForDeletion, BackupState.FailedToDelete)
           .put(BackupState.DeleteInProgress, BackupState.FailedToDelete)
+          .put(BackupState.DeleteInProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Failed, BackupState.FailedToDelete)
           .put(BackupState.Completed, BackupState.FailedToDelete)
           .put(BackupState.InProgress, BackupState.Stopping)
@@ -420,25 +421,19 @@ public class Backup extends Model {
                 customerUUID,
                 backup.getCategory(),
                 backup.getVersion(),
-                backupLocationTS,
-                backup.getUniverseName());
+                backupLocationTS);
           }
         }
       } else {
         // Only for incremental backup object creation
-        populateChildParams(params, previousBackup, backupLocationTS, backup.getUniverseName());
+        populateChildParams(params, previousBackup, backupLocationTS);
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.getBackupUUID();
       params.baseBackupUUID = backup.getBaseBackupUUID();
       // We would derive the storage location based on the parameters
       BackupUtil.updateDefaultStorageLocation(
-          params,
-          customerUUID,
-          backup.getCategory(),
-          backup.getVersion(),
-          backupLocationTS,
-          backup.getUniverseName());
+          params, customerUUID, backup.getCategory(), backup.getVersion(), backupLocationTS);
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -453,10 +448,7 @@ public class Backup extends Model {
   // If a previous sub-param consist of a keyspace-tables match with this request, assign the
   // same params identifier to this child param.
   private static void populateChildParams(
-      BackupTableParams params,
-      Backup previousBackup,
-      String backupLocationTS,
-      String universeName) {
+      BackupTableParams params, Backup previousBackup, String backupLocationTS) {
     BackupTableParams previousBackupInfo = previousBackup.getBackupInfo();
     List<BackupTableParams> paramsCollection = previousBackup.getBackupParamsCollection();
     for (BackupTableParams childParams : params.backupList) {
@@ -488,8 +480,7 @@ public class Backup extends Model {
             params.customerUuid,
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2,
-            backupLocationTS,
-            universeName);
+            backupLocationTS);
       }
     }
     if (previousBackup != null) {
@@ -515,7 +506,7 @@ public class Backup extends Model {
       List<BackupTableParams> paramsCollection,
       BackupTableParams incrementalParam,
       TableType backupType) {
-    return paramsCollection.parallelStream()
+    return paramsCollection.stream()
         .filter(
             backupParams ->
                 incrementalParam.getKeyspace().equals(backupParams.getKeyspace())
@@ -633,7 +624,7 @@ public class Backup extends Model {
     List<BackupTableParams> params = getBackupParamsCollection();
     if (CollectionUtils.isNotEmpty(params)) {
       oParams =
-          params.parallelStream()
+          params.stream()
               .filter(bP -> bP.backupParamsIdentifier.equals(paramsIdentifier))
               .findAny();
     }

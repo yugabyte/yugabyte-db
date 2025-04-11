@@ -111,6 +111,13 @@ class GcpCloud(AbstractCloud):
                      name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
+    def get_disk(self, host_info, volume_id, args):
+        logging.info("Retrieving disk {} from host {} in zone {}".format(
+                     volume_id, host_info['search_pattern'], host_info['zone']))
+        return self.get_admin().get_disk(host_info['zone'],
+                                         host_info['search_pattern'],
+                                         volume_id)
+
     def stop_instance(self, host_info):
         instance = self.get_admin().get_instances(host_info['zone'], host_info['search_pattern'],
                                                   node_uuid=host_info.get('node_uuid', None))

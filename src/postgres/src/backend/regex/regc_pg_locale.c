@@ -15,10 +15,13 @@
  *-------------------------------------------------------------------------
  */
 
-#include "c.h"
+#include "c.h"	/* YB include */
+
 #include "catalog/pg_collation.h"
-#include "utils/palloc.h"
 #include "utils/pg_locale.h"
+
+/* YB includes */
+#include "utils/palloc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

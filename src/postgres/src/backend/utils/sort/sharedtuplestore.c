@@ -166,7 +166,7 @@ sts_initialize(SharedTuplestore *sts, int participants,
 	accessor->participant = my_participant_number;
 	accessor->sts = sts;
 	accessor->fileset = fileset;
-	accessor->context = GetCurrentMemoryContext();
+	accessor->context = CurrentMemoryContext;
 
 	return accessor;
 }
@@ -188,7 +188,7 @@ sts_attach(SharedTuplestore *sts,
 	accessor->participant = my_participant_number;
 	accessor->sts = sts;
 	accessor->fileset = fileset;
-	accessor->context = GetCurrentMemoryContext();
+	accessor->context = CurrentMemoryContext;
 
 	return accessor;
 }

@@ -107,7 +107,7 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
   return (
     <div className={classes.pillContainer}>
       {statusLabel}
-      {tableCountsOfConcern.uniqueTableCount === 0 && (
+      {tableCountsOfConcern.uniqueTableCount > 0 && (
         <Typography variant="body2" className={clsx(pillClasses.pill, pillClasses.danger)}>
           {t('tablesOfConcernExist', { keyPrefix: 'clusterDetail.xCluster.shared' })}
         </Typography>

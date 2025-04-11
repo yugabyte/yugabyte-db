@@ -24,7 +24,7 @@
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "utils/builtins.h"
 
 

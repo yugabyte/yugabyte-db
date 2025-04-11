@@ -176,12 +176,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
             if (requireYsqlMajorVersionUpgrade) {
-              if (catalogUpgradeState != null
-                  && catalogUpgradeState.equals(
-                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
-                createPGUpgradeTServerCheckTask(newVersion, false /* downloadPackage */);
-              }
-
               createRunYsqlMajorVersionCatalogUpgradeTask();
 
               if (requireAdditionalSuperUserForCatalogUpgrade) {

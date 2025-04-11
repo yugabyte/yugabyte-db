@@ -41,6 +41,9 @@
 #include "access/xlogrecord.h"
 #include "storage/buf.h"
 
+/* YB includes */
+#include "replication/yb_virtual_wal_client_typedefs.h"
+
 /* WALOpenSegment represents a WAL segment being read. */
 typedef struct WALOpenSegment
 {
@@ -55,9 +58,6 @@ typedef struct WALSegmentContext
 	char		ws_dir[MAXPGPATH];
 	int			ws_segsize;
 } WALSegmentContext;
-
-/* YB includes. */
-#include "replication/yb_virtual_wal_client_typedefs.h"
 
 typedef struct XLogReaderState XLogReaderState;
 

@@ -33,8 +33,7 @@ DECLARE_int32(TEST_strand_done_inject_delay_ms);
 
 using namespace std::literals;
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 class ThreadPoolTest : public YBTest {
 };
@@ -151,16 +150,17 @@ TEST_F(ThreadPoolTest, TestMultiProducers) {
   ThreadPool pool(ThreadPoolOptions {
     .name = "test",
     .max_workers = kTotalWorkers,
+    .idle_timeout = 1s,
   });
 
   CountDownLatch latch(kTotalTasks);
   std::vector<TestTask> tasks(kTotalTasks);
-  std::vector<std::thread> threads;
+  ThreadHolder threads;
   size_t begin = 0;
+  auto threads_before = CountManagedThreads();
   for (size_t i = 0; i != kProducers; ++i) {
     size_t end = kTotalTasks * (i + 1) / kProducers;
-    threads.emplace_back([&pool, &latch, &tasks, begin, end] {
-      CDSAttacher attacher;
+    threads.AddThreadFunctor([&pool, &latch, &tasks, begin, end] {
       for (size_t i = begin; i != end; ++i) {
         tasks[i].SetLatch(&latch);
         ASSERT_TRUE(pool.Enqueue(&tasks[i]));
@@ -172,9 +172,12 @@ TEST_F(ThreadPoolTest, TestMultiProducers) {
   for (auto& task : tasks) {
     ASSERT_TRUE(task.IsCompleted());
   }
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  threads.JoinAll();
+  ASSERT_OK(WaitFor([threads_before] {
+    auto running_threads = CountManagedThreads();
+    LOG(INFO) << "Running threads: " << running_threads;
+    return running_threads <= threads_before;
+  }, 10s * kTimeMultiplier, "Wait finish workers"));
 }
 
 TEST_F(ThreadPoolTest, TestQueueOverflow) {
@@ -488,5 +491,4 @@ TEST_F(ThreadPoolTest, SubPool) {
 
 } // namespace strand
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

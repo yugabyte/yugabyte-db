@@ -21,7 +21,7 @@ step s1_update: UPDATE test SET v=v+1 WHERE k=1;
 step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_update: <... completed>
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_rollback: ROLLBACK;
 step s2_select: SELECT * FROM test;
 k|v
@@ -51,7 +51,7 @@ step s1_update: UPDATE test SET v=v+1 WHERE k=1;
 step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_update: <... completed>
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_rollback: ROLLBACK;
 step s2_select: SELECT * FROM test;
 k|v
@@ -83,7 +83,7 @@ step s1_update: UPDATE test SET v=v+1 WHERE k=1;
 step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_update: <... completed>
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_rollback: ROLLBACK;
 step s2_select: SELECT * FROM test;
 k|v
@@ -113,7 +113,7 @@ step s1_update: UPDATE test SET v=v+1 WHERE k=1;
 step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_update: <... completed>
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_rollback: ROLLBACK;
 step s2_select: SELECT * FROM test;
 k|v
@@ -259,7 +259,7 @@ k|v
 
 step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
 step s2_update: UPDATE test SET v=v*2 WHERE k=1;
-ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_update: <... completed>
 step s1_commit: COMMIT;
 step s2_rollback: ROLLBACK;
@@ -289,7 +289,7 @@ k|v
 
 step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
 step s2_update: UPDATE test SET v=v*2 WHERE k=1;
-ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_update: <... completed>
 step s1_commit: COMMIT;
 step s2_rollback: ROLLBACK;
@@ -321,7 +321,7 @@ k|v
 
 step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
 step s2_update: UPDATE test SET v=v*2 WHERE k=1;
-ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_update: <... completed>
 step s1_commit: COMMIT;
 step s2_rollback: ROLLBACK;
@@ -351,7 +351,7 @@ k|v
 
 step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
 step s2_update: UPDATE test SET v=v*2 WHERE k=1;
-ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_update: <... completed>
 step s1_commit: COMMIT;
 step s2_rollback: ROLLBACK;

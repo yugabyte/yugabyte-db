@@ -324,12 +324,46 @@ int od_router_expire(od_router_t *router, od_list_t *expire_list)
 	return count;
 }
 
+/* Mark the route as inactive for the provided db oid or user oid */
+static inline int yb_mark_route_inactive(od_route_t *route, void **argv)
+{
+	int *db_oid = argv[0];
+	int *user_oid = argv[1];
+
+	od_route_lock(route);
+
+	if (*db_oid != -1 && *db_oid == route->id.yb_db_oid) {
+		route->status = YB_ROUTE_INACTIVE;
+		od_route_unlock(route);
+		return 0;
+	}
+
+	if (*user_oid != -1 && *user_oid == route->id.yb_user_oid) {
+		route->status = YB_ROUTE_INACTIVE;
+		od_route_unlock(route);
+		return 0;
+	}
+
+	od_route_unlock(route);
+
+	return 0;
+}
+
+void yb_mark_routes_inactive(od_router_t *router, int db_oid, int user_oid)
+{
+	void *argv[] = { &db_oid, &user_oid };
+	od_router_foreach(router, yb_mark_route_inactive, argv);
+}
+
 static inline int od_router_gc_cb(od_route_t *route, void **argv)
 {
 	od_route_pool_t *pool = argv[0];
 	od_instance_t *instance = argv[1];
 	int index = route->id.yb_stats_index;
 	od_route_lock(route);
+
+	if (route->status == YB_ROUTE_INACTIVE)
+		goto clean;
 
 	if (od_server_pool_total(&route->server_pool) > 0 ||
 	    od_client_pool_total(&route->client_pool) > 0)
@@ -338,6 +372,7 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 	if (!od_route_is_dynamic(route) && !route->rule->obsolete)
 		goto done;
 
+clean:
 	/* remove route from route pool */
 	assert(pool->count > 0);
 	pool->count--;
@@ -386,10 +421,44 @@ void od_router_stat(od_router_t *router, uint64_t prev_time_us,
 	od_router_unlock(router);
 }
 
+static inline int yb_update_name(od_route_t *route, void **argv)
+{
+	int *obj_type = argv[0];
+	int *oid = argv[1];
+	const char *name = argv[2];
+	od_route_lock(route);
+	if (*obj_type == YB_DATABASE && route->id.yb_db_oid == *oid) {
+		strcpy(route->yb_database_name, name);
+		route->yb_database_name_len = strlen(name);
+	} else if (*obj_type == YB_USER && route->id.yb_user_oid == *oid) {
+		strcpy(route->yb_user_name, name);
+		route->yb_user_name_len = strlen(name);
+	}
+	od_route_unlock(route);
+	return 0;
+}
+
+/*
+* Update the name of the database or user in all the routes created using
+* given database_oid or user_oid.
+*/
+void yb_route_pool_update_name(od_router_t *router, int obj_type, int oid,
+				  char *name)
+{
+	void *argv[] = { &obj_type, &oid, name };
+	/*
+	 * Restrict from using od_router_foreach as it acquires lock on router object.
+	 * This function is called from od_router_route which already acquires lock
+	 * on router object.
+	 */
+	od_route_pool_foreach(&router->route_pool, yb_update_name, argv);
+}
+
 od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 {
 	kiwi_be_startup_t *startup = &client->startup;
 	od_instance_t *instance = router->global->instance;
+	bool is_auth_backend = client->yb_is_authenticating;
 
 	/* match route */
 	assert(startup->database.value_len);
@@ -509,12 +578,65 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	od_route_t *route;
 	route = od_route_pool_match(&router->route_pool, &id, rule);
 	if (route == NULL) {
+		if (router->route_pool.count >= instance->config.yb_max_pools) {
+			od_router_unlock(router);
+			od_error(
+				&instance->logger, "routing", client, NULL,
+				"Limit reached to create maximum number of pools");
+			return OD_ROUTER_ERROR;
+		}
 		route = od_route_pool_new(&router->route_pool, &id, rule);
 		if (route == NULL) {
 			od_router_unlock(router);
 			return OD_ROUTER_ERROR;
 		}
+		od_log(&instance->logger, "routing", NULL, NULL,
+		       "new route: %s %s", startup->database.value, startup->user.value);
+		if (!is_auth_backend &&
+			(id.yb_db_oid == YB_CTRL_CONN_OID || id.yb_user_oid == YB_CTRL_CONN_OID)) {
+
+				// Set the user and database of control connection pool to "yugabyte"
+				// and "yugabyte" respectively for purpose of creating backends for
+				// auth pass through authentication in control connection pool.
+				strcpy(route->yb_database_name, YB_CTRL_CONN_DB_NAME);
+				route->yb_database_name_len = strlen(YB_CTRL_CONN_DB_NAME);
+
+				strcpy(route->yb_user_name, YB_CTRL_CONN_USER_NAME);
+				route->yb_user_name_len = strlen(YB_CTRL_CONN_USER_NAME);
+		}
+		else {
+			strcpy(route->yb_database_name, startup->database.value);
+			route->yb_database_name_len = strlen(startup->database.value);
+
+			strcpy(route->yb_user_name, startup->user.value);
+			route->yb_user_name_len = strlen(startup->user.value);
+		}
 	}
+	else
+	{
+		if (route->id.yb_db_oid > YB_CTRL_CONN_OID &&
+			strcmp(route->yb_database_name, startup->database.value) != 0) {
+			/*
+			 * The database has been renamed.
+			 * We need to update the name in all the routes created using given
+			 * database_oid.
+			 */
+			yb_route_pool_update_name(router, YB_DATABASE, client->yb_db_oid,
+						  startup->database.value);
+		}
+
+		if (route->id.yb_user_oid > YB_CTRL_CONN_OID &&
+			strcmp(route->yb_user_name, startup->user.value) != 0) {
+			/*
+			 * The user has been renamed.
+			 * We need to update the name in all the routes created using given
+			 * user_oid.
+			 */
+			yb_route_pool_update_name(router, YB_USER, client->yb_user_oid,
+						  startup->user.value);
+		}
+	}
+
 	od_rules_ref(rule);
 
 	od_route_lock(route);

@@ -13,6 +13,51 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.15 - April 8, 2025
+
+### Enhancements
+
+- Improved layout for guardrails for the single table list in live migration, with better output for readability, especially for large table lists.
+- Improved consistency in table list output by always showing fully qualified table names.
+- Added `--pg-only`, `--oracle-only`, and `--mysql-only` flags to the airgapped installation script to check/install dependencies for a specific database.
+- Enhanced the assessment report to provide more detailed information about each datatype under Unsupported datatypes.
+
+### Bug fixes
+
+- Fixed an issue in the fall back scenario where restoring sequences was failing due to missing permissions. The necessary SELECT, USAGE, and UPDATE permissions are now correctly granted in `yb-voyager-pg-grant-migration-permissions.sql`.
+
+## v1.8.14 - March 25, 2025
+
+### Enhancements
+
+- Enhanced the import-data ingestion logic to limit the number of batches for colocated tables that can be ingested at a time to improve the performance.
+- Modified the PostgreSQL migrations to only migrate the sequences attached or linked to the migrating tables.
+- Enhanced the assessment issues for the category Unsupported PL/pgSQL objects to also report the suggestion in the description.
+- Enhanced sizing recommendation logic in the assessment report for recommending more accurate vCPUs per node.
+
+### Bug fixes
+
+- Fixed an export-schema [failure](https://github.com/yugabyte/yb-voyager/issues/2402) for the Oracle source databases for certain cases.
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2321) in the `import data` resumption process to correctly recognize an earlier initiated `cutover to target` .
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2406) in `export data from source` / `export data from target` for live migration workflow when the tables that are not being migrated and existed in only one of the source or target databases.
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2386) in `end-migration` where deleting the CDC stream ID on the target failed if the `ssl-root-cert` was only provided during `export data from target` phase.
+- Fixed an import data [bug](https://github.com/yugabyte/yb-voyager/issues/2414) for the resumption scenario.
+
+## v1.8.13 - March 11, 2025
+
+### Enhancements
+
+- Merged the ALTER TABLE ADD constraints DDL (Primary Key, Unique Key, and Check Constraints) with the CREATE TABLE statement, reducing the number of DDLs to analyze/review and improving overall import schema performance.
+- Introduced a guardrails check to ensure live migration uses a single, fixed table list throughout the migration, preventing any changes to the table list after the migration has started.
+
+### Bug Fixes
+
+- Fixed an issue where the `iops-capture-interval` flag in the assess-migration command did not honor the user-defined value and always defaulted to its preset.
+- Fixed an issue in the IOPs calculation logic, ensuring it counts the number of scans (both sequential and index) instead of using `seq_tup_read` for read statistics.
+- Fixed an issue causing a NumberFormatException during the cutover phase of live migration if a sequence was assigned to a non-integer column.
+- Fixed an issue leading to a nil pointer exception when sending the diagnostics for import data to the source/source-replica.
+- Fixed an issue where importing data to the target for a new migration (if CDC was enabled in a previous run) failed due to ALTER operations on metadata tables carrying over from the last migration.
+
 ## v1.8.12 - February 25, 2025
 
 ### Enhancements

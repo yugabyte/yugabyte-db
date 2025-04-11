@@ -64,10 +64,6 @@ class TableTitle extends Component {
             <Image src={tableIcon} className="table-type-logo" />
             <YBResourceCount kind="YCQL" size={numCassandraTables} />
           </div>
-          <div className="table-type-count">
-            <Image src={tableIcon} className="table-type-logo" />
-            <YBResourceCount kind="YEDIS" size={numRedisTables} />
-          </div>
         </div>
         <div className="pull-right">
           <YBButtonLink

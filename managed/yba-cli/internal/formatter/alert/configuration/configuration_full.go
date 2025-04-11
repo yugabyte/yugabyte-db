@@ -168,7 +168,7 @@ func (fa *FullAlertConfigurationContext) startSubsection(
 }
 
 func (fa *FullAlertConfigurationContext) subSection(name string) {
-	fa.Output.Write([]byte("\n\n"))
+	fa.Output.Write([]byte("\n"))
 	fa.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fa.Output.Write([]byte("\n"))
 }

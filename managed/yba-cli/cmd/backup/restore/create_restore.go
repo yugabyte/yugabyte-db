@@ -125,8 +125,12 @@ var createRestoreCmd = &cobra.Command{
 		rList = storageConfigsName
 
 		if len(rList) < 1 {
-			fmt.Println("No storage configurations with name " + storageName + " found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					"No storage configurations with name "+storageName+" found",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		var storageUUID string

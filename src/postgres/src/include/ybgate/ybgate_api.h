@@ -30,6 +30,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "ybgate/ybgate_status.h"
 
@@ -241,8 +242,6 @@ extern char *DecodeRangeArrayDatum(char const *arr_fn_name, uintptr_t datum, int
 
 extern char *DecodeRecordDatum(uintptr_t datum, void *attrs, size_t natts);
 
-extern char *GetOutFuncName(const int pg_data_type);
-
 extern uint32_t GetRecordTypeId(uintptr_t datum);
 
 extern uintptr_t HeapFormTuple(void *attrs, size_t natts, uintptr_t *values,
@@ -255,7 +254,7 @@ extern void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
  * PG Version
  *-----------------------------------------------------------------------------
  */
-extern YbgStatus YbgGetPgVersion(const char **version);
+extern int YbgGetPgVersion();
 
 #ifdef __cplusplus
 }

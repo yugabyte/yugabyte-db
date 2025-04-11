@@ -16,33 +16,44 @@ python_interpreter=$(command -v python3 || command -v python3.11 || \
                      command -v python3.6 || echo "python3")
 prefix=""
 bin_path="/usr/local/bin"
+echo "Using Python: $python_interpreter"
 
 # Determine prefix based on OS family
-if [[ "{{ ansible_os_family }}" != "Debian" ]]; then
+{% if os_family != 'Debian' %}
   prefix="--prefix /usr"
+{% endif %}
+
+# Define package_path if not already set
+if [[ -z "{{ package_path | default('') }}" ]]; then
+  package_path="{{ ynp_dir }}/../../thirdparty"
+else
+  package_path="{{ package_path }}"
 fi
 
 # Extract current Python version
 py_version=$($python_interpreter --version 2>&1)
 
 # Download python3-distutils if required
-if [[ ! "{{ is_airgap }}" == "true" && "$py_version" == "Python 3."* && "{{ ansible_os_family }}" == "Debian" ]]; then
-  apt-get update
-  apt-get install -y python3-distutils
-fi
+{% if is_airgap is not true and os_family == 'Debian' %}
+  if [[ "$py_version" == "Python 3."* ]]; then
+      apt-get update
+      apt-get install -y python3-distutils
+  fi
+{% endif %}
 
 # List of required packages
-packages=("setuptools-44.1.1" "python-magic-0.4.18" "python-dateutil-2.8.2" "$s3cmd_package_name" "setuptools_scm-1.17.0")
+packages=("setuptools-44.1.1" "python-magic-0.4.18" "setuptools_scm-1.17.0" "python-dateutil-2.8.2" "$s3cmd_package_name")
 
 # Copy and unarchive required packages
 for package in "${packages[@]}"; do
-  tar -xzvf "{{ package_path }}/$package.tar.gz" -C "/usr/local/"
+  tar -xzvf "$package_path/$package.tar.gz" -C "/usr/local/"
 done
 
+export PYTHONPATH="$setuptools_package_path:$python_magic_package_path:$setuptools_scm_package_path:$python_dateutil_package_path"
 # Install packages using setup.py
 for package in "${packages[@]}"; do
   cd "/usr/local/$package"
-  PYTHONPATH="$setuptools_package_path:$python_magic_package_path:$setuptools_scm_package_path:$python_dateutil_package_path" $python_interpreter setup.py install $prefix
+  sudo $python_interpreter setup.py install $prefix
 done
 
 echo "s3cmd version: $($python_interpreter $s3cmd_package_path/s3cmd --version)"
@@ -51,15 +62,15 @@ if [[ ! -f $bin_path/s3cmd ]]; then
 fi
 
 # Extract and install the new azcopy version
-echo "Extracting azcopy package from {{ package_path }}/{{ azcopy_package }}."
-/usr/bin/tar --strip-components=1 --exclude="ThirdPartyNotice.txt" -xzf {{ package_path }}/"$azcopy_package".tar.gz -C "/usr/local/bin"
+echo "Extracting azcopy package from $package_path/{{ azcopy_package }}."
+/usr/bin/tar --strip-components=1 --exclude="ThirdPartyNotice.txt" -xzf $package_path/"$azcopy_package".tar.gz -C "/usr/local/bin"
 chmod 0755 "$bin_path/azcopy"
 
 # Define gsutil package path
 gsutil_package_path="/usr/local/gsutil"
 
-echo "Extracting gsutil package from {{ package_path }}/{{ gsutil_package }}"
-tar -xzvf {{ package_path }}/"$gsutil_package".tar.gz -C "/usr/local"
+echo "Extracting gsutil package from $package_path}/{{ gsutil_package }}"
+tar -xzvf $package_path/"$gsutil_package".tar.gz -C "/usr/local"
 # Create symlink to the bin_path
 if [[ ! -f $bin_path/gsutil ]]; then
   ln -sf "$gsutil_package_path/gsutil" "$bin_path/gsutil"

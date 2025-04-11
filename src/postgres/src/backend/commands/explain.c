@@ -19,7 +19,6 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
-#include "executor/ybModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -41,9 +40,12 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "executor/ybModifyTable.h"
+#include "optimizer/planner.h"
 #include "pg_yb_utils.h"
 #include "utils/guc.h"
+
 
 /* Hook for plugins to get control in ExplainOneQuery() */
 ExplainOneQuery_hook_type ExplainOneQuery_hook = NULL;
@@ -943,6 +945,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 								opt->defname, p),
 						 parser_errposition(pstate, opt->location)));
 		}
+		else if (strcmp(opt->defname, "hints") == 0)
+			es->ybShowHints = defGetBoolean(opt);
+		else if (strcmp(opt->defname, "uids") == 0)
+			es->ybShowUniqueIds = defGetBoolean(opt);
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -1424,6 +1430,15 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		ExplainOpenGroup("Planning", "Planning", true, es);
 		show_buffer_usage(es, bufusage, true);
 		ExplainCloseGroup("Planning", "Planning", true, es);
+	}
+
+	if (es->ybShowHints)
+	{
+		char *generatedHints = ybGenerateHintString(plannedstmt);
+		if (generatedHints != NULL)
+			ExplainPropertyText("Generated hints", generatedHints, es);
+		else
+			ExplainPropertyText("Generated hints", "none", es);
 	}
 
 	if (es->summary && planduration && show_variable_fields)
@@ -2043,6 +2058,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	{
 		case T_Result:
 			pname = sname = "Result";
+
+			if (plan->ybHintAlias != NULL)
+			{
+				StringInfoData buf;
+				initStringInfo(&buf);
+				appendStringInfo(&buf, "%s %s", pname, plan->ybHintAlias);
+				pname = sname = buf.data;
+			}
+
 			break;
 		case T_ProjectSet:
 			pname = sname = "ProjectSet";
@@ -2510,6 +2534,37 @@ ExplainNode(PlanState *planstate, List *ancestors,
 								 0, es);
 			ExplainPropertyInteger("Plan Width", NULL, plan->plan_width,
 								   es);
+		}
+	}
+
+	/*
+	 * If this node was an input to a trivial subquery scan that was removed then show the
+	 * hint alias that was 'inherited' from the subquery scan.
+	 */
+	if (plan->ybInheritedHintAlias != NULL && es->ybShowHints)
+	{
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+		{
+			appendStringInfo(es->str, " (Hint Alias : %s)", plan->ybInheritedHintAlias);
+		}
+		else
+		{
+			ExplainPropertyText("Hint Alias", plan->ybInheritedHintAlias, es);
+		}
+	}
+
+	/*
+	 * Display unique ids for Plan nodes (passed from corresponding Path nodes).
+	 */
+	if (es->ybShowUniqueIds)
+	{
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+		{
+			appendStringInfo(es->str, " (UID %u)", plan->ybUniqueId);
+		}
+		else
+		{
+			ExplainPropertyUInteger("UID", NULL, plan->ybUniqueId, es);
 		}
 	}
 
@@ -4712,7 +4767,7 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 
 			if (has_timing)
 			{
-				appendStringInfoString(es->str, " shared/local");
+				appendStringInfoString(es->str, " shared");
 				if (!INSTR_TIME_IS_ZERO(usage->blk_read_time))
 					appendStringInfo(es->str, " read=%0.3f",
 									 INSTR_TIME_GET_MILLISEC(usage->blk_read_time));

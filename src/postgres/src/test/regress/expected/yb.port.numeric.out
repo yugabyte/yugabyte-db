@@ -1739,21 +1739,9 @@ SELECT to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
  -24926804.04504742
 (10 rows)
 
-SELECT to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
-              to_char               
-------------------------------------
- $                 .000000000000000
- $                 .000000000000000
- $        -34338492.215397047000000
- $                4.310000000000000
- $          7799461.411900000000000
- $            16397.038491000000000
- $            93901.577630260000000
- $        -83028485.000000000000000
- $            74881.000000000000000
- $        -24926804.045047420000000
-(10 rows)
-
+-- YB: TODO: Disabled the test below as it relies on the current locale which is
+--  configured in pg_regress using ALTER which we do not support yet.
+-- SELECT to_char(val, 'L9999999999999999.099999999999999')	FROM num_data; -- YB
 SELECT to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
        to_char       
 ---------------------

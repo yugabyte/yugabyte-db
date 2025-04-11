@@ -17,7 +17,7 @@
 # Simple linter for regress test.
 set -u
 
-. "${BASH_SOURCE%/*}/util.sh"
+. "${BASH_SOURCE%/*}/common.sh"
 
 if ! [[ "$1" =~ /yb[^/]+$ ]]; then
   echo "Unexpected file $1" >&2
@@ -76,7 +76,7 @@ if [[ "$1" =~ /yb.port.[^/]+$ ]]; then
       diff "$1" "$pg_orig_test" \
         | perl -ne 'print if /^(< (?!.*(YB|Yb|yb))|\d)/' \
         | grep -B1 '^<' \
-        | grep -Eo '^[0-9]+,[0-9]+' \
+        | grep -Eo '^[0-9]+' \
         | while read -r line_ranges; do
             grep -n '' "$1" \
               | sed -n "$line_ranges"p \

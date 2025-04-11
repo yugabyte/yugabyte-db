@@ -21,10 +21,10 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
@@ -35,12 +35,14 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"

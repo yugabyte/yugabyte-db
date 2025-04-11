@@ -49,9 +49,8 @@ namespace master {
   class BOOST_PP_CAT(name, Loader) : \
       public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
   public: \
-    explicit BOOST_PP_CAT(name, Loader)( \
-                                         CatalogManager* catalog_manager, \
-                                         SysCatalogLoadingState* state) \
+    explicit BOOST_PP_CAT(name, Loader)(CatalogManager* catalog_manager, \
+                                        SysCatalogLoadingState* state) \
       : catalog_manager_(catalog_manager), state_(state) {} \
     \
   private: \
@@ -59,9 +58,8 @@ namespace master {
         const key_type& key, \
         const entry_pb_name& metadata) REQUIRES(mutex) override; \
     \
-    CatalogManager *catalog_manager_; \
-    \
-    SysCatalogLoadingState* state_; \
+    CatalogManager* catalog_manager_; \
+    SysCatalogLoadingState* state_ MAYBE_UNUSED_MEMBER; \
     \
     DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
   };
@@ -94,10 +92,10 @@ DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB,        catalo
 DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB, catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB,   catalog_manager_->mutex_);
 DECLARE_LOADER_CLASS(ObjectLock,    std::string, SysObjectLockEntryPB,    catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(Role,       RoleName,    SysRoleEntryPB,
-    catalog_manager_->permissions_manager()->mutex());
+DECLARE_LOADER_CLASS(Role,          RoleName,    SysRoleEntryPB,
+                     catalog_manager_->permissions_manager()->mutex());
 DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB,
-    catalog_manager_->permissions_manager()->mutex());
+                     catalog_manager_->permissions_manager()->mutex());
 
 #undef DECLARE_LOADER_CLASS
 

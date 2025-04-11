@@ -1373,9 +1373,9 @@ pg_locks| SELECT l.locktype,
     NULL::smallint AS tuple,
     NULL::text AS virtualxid,
     NULL::xid AS transactionid,
-    NULL::oid AS classid,
-    NULL::oid AS objid,
-    NULL::smallint AS objsubid,
+    l.classid,
+    l.objid,
+    l.objsubid,
     NULL::text AS virtualtransaction,
     l.pid,
     array_to_string(l.mode, ','::text) AS mode,
@@ -1384,7 +1384,7 @@ pg_locks| SELECT l.locktype,
     l.waitstart,
     l.waitend,
     jsonb_build_object('node', l.node, 'transactionid', l.transaction_id, 'subtransaction_id', l.subtransaction_id, 'is_explicit', l.is_explicit, 'tablet_id', l.tablet_id, 'blocked_by', l.blocked_by, 'keyrangedetails', jsonb_build_object('cols', to_jsonb((l.hash_cols || l.range_cols)), 'attnum', l.attnum, 'column_id', l.column_id, 'multiple_rows_locked', l.multiple_rows_locked)) AS ybdetails
-   FROM yb_lock_status(NULL::oid, NULL::uuid) l(locktype, database, relation, pid, mode, granted, fastpath, waitstart, waitend, node, tablet_id, transaction_id, subtransaction_id, status_tablet_id, is_explicit, hash_cols, range_cols, attnum, column_id, multiple_rows_locked, blocked_by);
+   FROM yb_lock_status(NULL::oid, NULL::uuid) l(locktype, database, relation, pid, mode, granted, fastpath, waitstart, waitend, node, tablet_id, transaction_id, subtransaction_id, status_tablet_id, is_explicit, hash_cols, range_cols, attnum, column_id, multiple_rows_locked, blocked_by, classid, objid, objsubid);
 pg_matviews| SELECT n.nspname AS schemaname,
     c.relname AS matviewname,
     pg_get_userbyid(c.relowner) AS matviewowner,
@@ -2536,10 +2536,7 @@ pg_stats_ext| SELECT cn.nspname AS schemaname,
             array_agg(pg_mcv_list_items.frequency) AS most_common_freqs,
             array_agg(pg_mcv_list_items.base_frequency) AS most_common_base_freqs
            FROM pg_mcv_list_items(sd.stxdmcv) pg_mcv_list_items(index, "values", nulls, frequency, base_frequency)) m ON ((sd.stxdmcv IS NOT NULL)))
-  WHERE ((NOT (EXISTS ( SELECT 1
-           FROM (unnest(s.stxkeys) k(k)
-             JOIN pg_attribute a ON (((a.attrelid = s.stxrelid) AND (a.attnum = k.k))))
-          WHERE (NOT has_column_privilege(c.oid, a.attnum, 'select'::text))))) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
+  WHERE (pg_has_role(c.relowner, 'USAGE'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
     c.relname AS tablename,
     sn.nspname AS statistics_schemaname,
@@ -2612,7 +2609,8 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
      LEFT JOIN pg_namespace cn ON ((cn.oid = c.relnamespace)))
      LEFT JOIN pg_namespace sn ON ((sn.oid = s.stxnamespace)))
      JOIN LATERAL ( SELECT unnest(pg_get_statisticsobjdef_expressions(s.oid)) AS expr,
-            unnest(sd.stxdexpr) AS a) stat ON ((stat.expr IS NOT NULL)));
+            unnest(sd.stxdexpr) AS a) stat ON ((stat.expr IS NOT NULL)))
+  WHERE (pg_has_role(c.relowner, 'USAGE'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 pg_tables| SELECT n.nspname AS schemaname,
     c.relname AS tablename,
     pg_get_userbyid(c.relowner) AS tableowner,
@@ -2710,11 +2708,12 @@ yb_servers_metrics| SELECT yb_servers_metrics.uuid,
    FROM yb_servers_metrics() yb_servers_metrics(uuid, metrics, status, error);
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
+    s.query_id,
     s.query_text,
     s.termination_reason,
     s.query_start AS query_start_time,
     s.query_end AS query_end_time
-   FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
+   FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_id, query_text, termination_reason, query_start, query_end)
      LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
 yb_wait_event_desc| SELECT yb_wait_event_desc.wait_event_class,
     yb_wait_event_desc.wait_event_type,

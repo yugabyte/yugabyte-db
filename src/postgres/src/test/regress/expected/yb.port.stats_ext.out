@@ -215,11 +215,10 @@ SELECT 1 FROM pg_statistic_ext WHERE stxrelid = 'stxdinp'::regclass;
         1
 (1 row)
 
--- YB: broken until #23592 is fixed (Should be 10 but 200)
 SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinp GROUP BY 1, 2');
  estimated | actual 
 -----------+--------
-       200 |     10
+        10 |     10
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT a + 1, b FROM ONLY stxdinp GROUP BY 1, 2');

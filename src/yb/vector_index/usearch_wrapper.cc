@@ -155,8 +155,9 @@ class UsearchIndex :
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
     auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
+    auto num_members = std::max<size_t>(rounded_num_vectors * 2 / 3, 1);
     index_.reserve(unum::usearch::index_limits_t(
-        rounded_num_vectors * 2 / 3, max_concurrent_inserts + max_concurrent_reads));
+      num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
     return Status::OK();
   }
@@ -169,15 +170,23 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  size_t MaxVectors() const override {
+  size_t Size() const override {
+    return index_.size();
+  }
+
+  size_t Capacity() const override {
     return index_.limits().members;
   }
 
   Status DoSaveToFile(const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
-    if (!index_.save(output_file_t(path.c_str()))) {
-      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+    try {
+      if (!index_.save(output_file_t(path.c_str()))) {
+        return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+      }
+    } catch(std::exception& exc) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file $0: $1", path, exc.what());
     }
     return Status::OK();
   }

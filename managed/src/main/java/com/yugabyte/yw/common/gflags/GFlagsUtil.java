@@ -145,6 +145,7 @@ public class GFlagsUtil {
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
+  public static final String TIME_SOURCE = "time_source";
 
   public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
       "timestamp_history_retention_interval_sec";
@@ -316,6 +317,10 @@ public class GFlagsUtil {
           String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
     }
 
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()) {
+      extra_gflags.put(TIME_SOURCE, "clockbound");
+    }
+
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
@@ -389,6 +394,14 @@ public class GFlagsUtil {
       extra_gflags.put(
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
+    }
+    // This flag needs to be set during major version upgrade to being compatible with the old
+    // postgres version.
+    if (taskParam.enableYSQL
+        && taskParam.ysqlMajorVersionUpgradeState != null
+        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+            taskParam.ysqlMajorVersionUpgradeState)) {
+      extra_gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
     }
 
     return extra_gflags;
@@ -669,14 +682,6 @@ public class GFlagsUtil {
       gflags.put(
           TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
           Long.toString(timestampHistoryRetentionForPITR.toSeconds() + historyRetentionBufferSecs));
-    }
-    // This flag needs to be set during major version upgrade to being compatible with the old
-    // postgres version.
-    if (taskParam.enableYSQL
-        && taskParam.ysqlMajorVersionUpgradeState != null
-        && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
-            taskParam.ysqlMajorVersionUpgradeState)) {
-      gflags.put(YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
     }
     return gflags;
   }
@@ -1108,6 +1113,7 @@ public class GFlagsUtil {
    * @param allowOverrideAll - indicates whether we allow user flags to override platform flags
    */
   public static void processUserGFlags(
+      Universe universe,
       NodeDetails node,
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
@@ -1132,7 +1138,11 @@ public class GFlagsUtil {
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, node.ysqlServerRpcPort);
+      int ysqlPort = node.ysqlServerRpcPort;
+      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling) {
+        ysqlPort = node.internalYsqlServerRpcPort;
+      }
+      mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);

@@ -1,0 +1,1276 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 560000;
+SET documentdb.next_collection_id TO 5600;
+SET documentdb.next_collection_index_id TO 5600;
+SET documentdb.enable_large_unique_index_keys TO false;
+-- insert a document
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"1", "a": { "b": 1 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Create a unique index on the collection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a.b": 1 }, "name": "rumConstraint1", "unique": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                    index_spec_as_bson                                                    | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                            | t
+          5600 |     5601 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "rumConstraint1", "unique" : true } | t
+(2 rows)
+
+-- insert a value that doesn't collide with the unique index.
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"2", "a": [ { "b": 2 }, { "b" : 3 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert a value that has duplicate values that do not collide with other values.
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"3", "a": [ { "b": 4 }, { "b" : 4 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert a value that has duplicate values that collide wtih other values.
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"4", "a": [ { "b": 5 }, { "b" : 3 }]}', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"5", "a": { "b": [ 5, 3 ] } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"6", "a": { "b": 3 } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- valid scenarios again.
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"4", "a": [ { "b": 5 }, { "b" : 6 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"5", "a": { "b": [ 7, 9 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"6", "a": { "b": 8 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"7", "a": { "b": true } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"8", "a": { "b": "someValue" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- we can use the unique index for queries
+BEGIN;
+set local documentdb.forceUseIndexIfAvailable to on;
+set local enable_seqscan TO off;
+set local documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'queryuniqueindex') WHERE document @@ '{ "a.b": { "$gt": 5 } }';
+                                                             QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using "rumConstraint1" on documents_5600_560002 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "5" } }'::documentdb_core.bson)
+(7 rows)
+
+ROLLBACK;
+-- insert a document that does not have an a.b (should succeed)
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"a": { "c": "someValue" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert another document that does not have an a.b (should fail)
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"a": { "d": "someValue" } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- insert another document that has a.b = null (Should fail)
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"a": { "b": null } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- insert a document that has constraint failure on _id
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id": "8", "a": { "b": 2055 } }', NULL);
+                                                                                                                       insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
+(1 row)
+
+-- drop the unique index.
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "queryuniqueindex", "index": ["rumConstraint1"]}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+(1 row)
+
+-- now we can violate the unique constraint
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"9", "a": { "b": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"10", "a": { "b": [ 2, 1 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create an index when the collection violates unique. Should fail.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a.b": 1 }, "name": "rumConstraint1", "unique": 1, "sparse": 1 }] }', true);
+ERROR:  could not create exclusion constraint "documents_rum_index_5602_560002"
+DETAIL:  Key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }, (5600,"{ ""_id"" : ""1"", ""a"" : { ""b"" : { ""$numberInt"" : ""1"" } } }")) conflicts with key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "9", "a" : { "b" : { "$numberInt" : "1" } } }, (5600,"{ ""_id"" : ""9"", ""a"" : { ""b"" : { ""$numberInt"" : ""1"" } } }")).
+CONTEXT:  SQL statement "ALTER TABLE documentdb_data.documents_5600 ADD CONSTRAINT documents_rum_index_5602 EXCLUDE USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='a.b') WITH OPERATOR(documentdb_api_catalog.=?=), ((shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) documentdb_api_catalog.bson_rum_exclusion_ops(path='a.b') WITH OPERATOR(documentdb_api_catalog.=)) "
+-- create a unique index with the same name ( should be fine since we dropped it )
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "c": 1 }, "name": "rumConstraint1", "unique": 1, "sparse": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                           index_spec_as_bson                                                            | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                           | t
+          5600 |     5603 | { "v" : { "$numberInt" : "2" }, "key" : { "c" : { "$numberInt" : "1" } }, "name" : "rumConstraint1", "sparse" : true, "unique" : true } | t
+(2 rows)
+
+-- since this is sparse, we can create several documents without "c" on it.
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"11", "d": "someValue" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert another document that does not have an c (should succeed)
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"12", "e" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert another document that has a.b = null (Should succeed)
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"13", "c": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- however, inserting 'c' again should fail.
+SELECT documentdb_api.insert_one('db','queryuniqueindex','{"_id":"14", "c": null }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- drop the unique index by key.
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "queryuniqueindex", "index": {"c": 1} }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
+---------------------------------------------------------------------
+          5600 |     5600 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+(1 row)
+
+-- create unique index fails for wildcard.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"f.$**": 1}, "name": "my_idx3", "unique": 1.0}]}', true);
+ERROR:  Error in specification { "key" : { "f.$**" : 1 }, "name" : "my_idx3", "unique" : 1.0 } :: caused by :: Index type 'wildcard' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"$**": 1}, "wildcardProjection": { "f.g": 0 }, "name": "my_idx3", "unique": 1.0}]}', true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "wildcardProjection" : { "f.g" : 0 }, "name" : "my_idx3", "unique" : 1.0 } :: caused by :: Index type 'wildcard' does not support the unique option
+-- test for sharded
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"1", "a": { "b": 1 }, "d": 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.shard_collection('db', 'queryuniqueindexsharded', '{ "d": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Create a unique index on the collection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindexsharded", "indexes": [ { "key" : { "a.b": 1 }, "name": "rumConstraint1", "unique": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindexsharded') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                    index_spec_as_bson                                                    | index_is_valid 
+---------------------------------------------------------------------
+          5601 |     5605 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                            | t
+          5601 |     5606 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "rumConstraint1", "unique" : true } | t
+(2 rows)
+
+-- valid scenarios:
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"2", "a": { "b": [ 2, 2] }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"3", "a": { "b": [ 3, 4 ] }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"4", "a": { "b": 5 }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"5", "a": { "c": 5 }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now violate unique in shard key "d": 1 
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"6", "a": { "b": [ 3, 6 ] }, "d": 1 }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"7", "a": { "b": null }, "d": 1 }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- now insert something in a different shard - should not violate unique
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"8", "a": { "b": [ 3, 6 ] }, "d": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"9", "a": { "b": null }, "d": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- still can be used for query.
+BEGIN;
+set local documentdb.forceUseIndexIfAvailable to on;
+set local enable_seqscan TO off;
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'queryuniqueindexsharded') WHERE document @@ '{ "a.b": { "$gt": 5 } }';
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5601_560032 documents_5601
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "5" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on "rumConstraint1"
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "5" } }'::documentdb_core.bson)
+(9 rows)
+
+ROLLBACK;
+-- create unique index with truncation
+SELECT string_agg(md5(random()::text), '_') AS longstring1 FROM generate_series(1, 100) \gset
+SELECT string_agg(md5(random()::text), '_') AS longstring2 FROM generate_series(1, 100) \gset
+SELECT string_agg(md5(random()::text), '_') AS longstring3 FROM generate_series(1, 100) \gset
+SELECT string_agg(md5(random()::text), '_') AS longstring4 FROM generate_series(1, 100) \gset
+SELECT length(:'longstring1');
+ length 
+---------------------------------------------------------------------
+   3299
+(1 row)
+
+-- create with truncation allowed and the new op-class enabled
+set documentdb.enable_large_unique_index_keys to on;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5607" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5608" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=f, tl='2691', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- succeeds
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- unique conflict
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- create with suffix post truncation - succeeds
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 3, "e": [ "%s-withsuffix", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- this should also fail
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 4, "e": "%s-withsuffix", "f": 1 }', :'longstring1')::bson);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- this will work.
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 5, "e": "%s-withsuffix", "f": 1 }', :'longstring2')::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- this will fail (suffix match of array and string).
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 6, "e": [ "%s", "%s-withsuffix" ], "f": 1 }', :'longstring3', :'longstring2')::bson);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+-- test truncated elements with numeric types of the same/different equivalent value. 
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 7, "e": { "path1": "%s", "path2": 1.0 }, "f": 1 }', :'longstring3')::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 8, "e": { "path1": "%s", "path2": { "$numberDecimal": "1.0" }}, "f": 1 }', :'longstring3')::bson);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 9, "e": { "path1": "%s", "path2": { "$numberDecimal": "1.01" }}, "f": 1 }', :'longstring3')::bson);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- test composite sparse unique indexes: Should succeed since none of the documents have this path (sparse unique ignore)
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "g": 1, "h": 1 }, "name": "rumConstraint3", "unique": 1, "sparse": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- works
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "g": 5, "h": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fails (unique cosntraint)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "g": 5, "h": 5 }');
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint3'" } ] }
+(1 row)
+
+-- works
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "g": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fails (unique constraint)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "g": 5 }');
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint3'" } ] }
+(1 row)
+
+-- works
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fails (unique constraint)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint3'" } ] }
+(1 row)
+
+-- reset test data
+set documentdb.enable_large_unique_index_keys to on;
+DELETE FROM documentdb_data.documents_5600;
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2", "rumConstraint3" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "4" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- test unique sparse composite index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "key1": 1, "key2": 1 }, "name": "constraint1", "unique": 1, "sparse": 1 }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5610" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- should succeed and generate terms for all combinations on both arrays
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3], "key2": [4, 5, 6] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should fail due to terms permutation on both arrays
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3], "key2": [4, 5, 6] }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": 4 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": 5 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": 6 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": 4 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": 5 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": 6 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": 4 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": 5 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": 6 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- now test array permutations with missing key
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3, 4, 5] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should fail with undefined permutations on missing key
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- should succeed with null permutations on missing key (sparse)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4, "key2": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should succeed due to new combinations
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 2 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 3 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 4 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key2": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key2": 2 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key2": 3 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should work because doesn't fall in unique constraint
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- reset data
+set documentdb.enable_large_unique_index_keys to on;
+DELETE FROM documentdb_data.documents_5600;
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "key1": 1, "key2": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5611" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- test array permutations with missing key
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3, 4, 5] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should fail with undefined permutations on missing key
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- should fail with null permutations on missing key (non-sparse)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": null }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": null }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": null }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4, "key2": null }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- reset data
+set documentdb.enable_large_unique_index_keys to on;
+DELETE FROM documentdb_data.documents_5600;
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1, "c": 1 }, "name": "constraint1", "unique": true, "sparse": true }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5612" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- should work
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "c": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "b": 1, "c": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- repeated documents won't matter because  they don't fall in the index (sparse)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should fail
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- reset data
+set documentdb.enable_large_unique_index_keys to on;
+DELETE FROM documentdb_data.documents_5600;
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1, "c": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5613" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- should work
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "c": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "b": 1, "c": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- repeated documents will matter because they fall in the index (non-sparse)
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- should fail
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- reset data
+set documentdb.enable_large_unique_index_keys to on;
+set documentdb.indexTermLimitOverride to 60;
+DELETE FROM documentdb_data.documents_5600;
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5614" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- insert data in a way that bson_rum_single_path_ops will match truncated and bson_rum_unique_shard_path_ops recheck won't
+set documentdb.defaultUniqueIndexKeyhashOverride to 1;
+-- set log level in order to test hash collision flow
+SET client_min_messages TO DEBUG1;
+-- works
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should succeed with hash collision and truncation
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters2", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters2" }');
+DEBUG:  Executing unique index runtime recheck.
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters3", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters3" }');
+DEBUG:  Executing unique index runtime recheck.
+DEBUG:  Executing unique index runtime recheck.
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters4", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters4" }');
+DEBUG:  Executing unique index runtime recheck.
+DEBUG:  Executing unique index runtime recheck.
+DEBUG:  Executing unique index runtime recheck.
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- reset log level
+RESET client_min_messages;
+-- should fail even with hash collision and truncation
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- reset data
+set documentdb.enable_large_unique_index_keys to on;
+set documentdb.indexTermLimitOverride to 60;
+DELETE FROM documentdb_data.documents_5600;
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- now test composite not-sparse unique index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5600
+                   Table "documentdb_data.documents_5600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5615" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
+
+-- insert data in a way that bson_rum_single_path_ops will match truncated but unique shard uuid won't match
+set documentdb.defaultUniqueIndexKeyhashOverride to 0;
+-- set log level in order to test hash collision flow
+SET client_min_messages TO DEBUG1;
+-- works -
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should succeed without recheck logs
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters2", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters2" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters3", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters3" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters4", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters4" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- reset log level
+RESET client_min_messages;
+-- should fail
+SELECT documentdb_api.insert_one('db', 'queryuniqueindex', '{ "a": "thiskeyisalittlelargerthanthemaximumallowedsizeof60characters", "b": "thiskeyisalotorinotherwordsmuchmuchlargerthanthemaximumallowedsizeof60characters" }');
+                                                                                                                           insert_one                                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'constraint1'" } ] }
+(1 row)
+
+-- test new op class (generate_unique_shard_document) for composite sparse indexes
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                                           generate_unique_shard_document                                                                            
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ "b" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": 1, "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                                  generate_unique_shard_document                                                                   
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "1" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                                                                                                                                                generate_unique_shard_document                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "6" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": 3 }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                                                                                                                                                                   generate_unique_shard_document                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ { "$numberInt" : "3" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": ["a"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                                                                                                                                                              generate_unique_shard_document                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ [ "a" ], "a" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "abobora", "key2": ["jabuticaba"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                                                  generate_unique_shard_document                                                                                   
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "3" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "abobora" ], "key2" : [ [ "jabuticaba" ], "jabuticaba" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+                                                generate_unique_shard_document                                                
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "0" }, "$numPaths" : { "$numberInt" : "0" } }
+(1 row)
+
+-- test new op class (generate_unique_shard_document) for composite not sparse indexes
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                           generate_unique_shard_document                                                                            
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ "b" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": 1, "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                            generate_unique_shard_document                                                                            
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ null ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                                                                                                                                          generate_unique_shard_document                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ null ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": 3 }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                                                                                                                                                   generate_unique_shard_document                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ { "$numberInt" : "3" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": ["a"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                                                                                                                                              generate_unique_shard_document                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ [ "a" ], "a" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "abobora", "key2": ["jabuticaba"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                                  generate_unique_shard_document                                                                                   
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "3" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "abobora" ], "key2" : [ [ "jabuticaba" ], "jabuticaba" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+                                                                   generate_unique_shard_document                                                                   
+---------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ null ], "key2" : [ null ] }
+(1 row)
+

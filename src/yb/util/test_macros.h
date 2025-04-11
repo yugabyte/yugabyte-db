@@ -411,10 +411,16 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
 #endif
 
-#if !defined(NDEBUG) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
+#if defined(NDEBUG) && !defined(THREAD_SANITIZER) && !defined(ADDRESS_SANITIZER)
+#define YB_RELEASE_ONLY_TEST(test_name) test_name
 #else
-#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
+#define YB_RELEASE_ONLY_TEST(test_name) YB_DISABLE_TEST(test_name)
+#endif
+
+#if __linux__ && defined(NDEBUG) && !defined(THREAD_SANITIZER) && !defined(ADDRESS_SANITIZER)
+#define YB_LINUX_RELEASE_ONLY_TEST(test_name) test_name
+#else
+#define YB_LINUX_RELEASE_ONLY_TEST(test_name) YB_DISABLE_TEST(test_name)
 #endif
 
 #ifdef __linux__

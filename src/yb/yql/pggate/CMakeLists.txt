@@ -83,6 +83,8 @@ ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}
                DEPS ${PGGATE_LIBS})
 
+include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
+
 add_dependencies(yb_pggate postgres_genbki)
 
 yb_use_pch(yb_pggate pggate)

@@ -28,8 +28,9 @@
 #include "utils/rangetypes.h"
 #include "utils/multirangetypes.h"
 
-/* YB includes. */
+/* YB includes */
 #include "miscadmin.h"
+
 
 /*
  * These macros generate input and output functions for a pseudo-type that

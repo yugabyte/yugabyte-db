@@ -8,6 +8,7 @@ import (
     "strings"
 
     "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/yugabyte/yb-voyager/yb-voyager/src/ybversion"
 )
 
 const LOGGER_FILE_NAME = "voyager_migration_utils"
@@ -47,19 +48,51 @@ type SchemaAnalyzeReport struct {
 }
 
 type AssessmentVisualisationMetadata struct {
-    AssessmentJsonReport AssessmentReport                      `json:"AssessmentJsonReport"`
-    MigrationComplexity string                                 `json:"MigrationComplexity"`
-    SourceSizeDetails SourceDBSizeDetails                      `json:"SourceSizeDetails"`
-    TargetSizingRecommendations TargetSizingRecommendations    `json:"TargetRecommendations"`
-    ConversionIssues []Issue                                   `json:"ConversionIssues"`
+    PayloadVersion                  string                       `json:"PayloadVersion"`
+    VoyagerVersion                  string                       `json:"VoyagerVersion"`
+    TargetDbVersion                 string                       `json:"TargetDBVersion"`
+    MigrationComplexity             string                       `json:"MigrationComplexity"`
+    MigrationComplexityExplanation  string                  `json:"MigrationComplexityExplanation"`
+    SchemaSummary                   SchemaSummary                `json:"SchemaSummary"`
+    AssessmentIssues                []VoyagerAssessmentIssueInfo `json:"AssessmentIssues"`
+    SourceSizeDetails               SourceDBSizeDetails          `json:"SourceSizeDetails"`
+    TargetRecommendations           TargetSizingRecommendations  `json:"TargetRecommendations"`
+    ConversionIssues                []Issue                      `json:"ConversionIssues"`
+
+    // Deprecated: AssessmentJsonReport is retained for backward compatibility.
+    AssessmentJsonReport AssessmentReport `json:"AssessmentJsonReport"`
 }
 
 type AssessmentReport struct {
-    SchemaSummary        SchemaSummary              `json:"SchemaSummary"`
-    Sizing               SizingAssessmentReport     `json:"Sizing"`
-    UnsupportedDataTypes []TableColumnsDataTypes    `json:"UnsupportedDataTypes"`
-    UnsupportedFeatures  []UnsupportedFeature       `json:"UnsupportedFeatures"`
-    TableIndexStats      []TableIndexStats          `json:"TableIndexStats"`
+    VoyagerVersion             string                      `json:"VoyagerVersion"`
+    MigrationComplexity        string                      `json:"MigrationComplexity"`
+    SchemaSummary              SchemaSummary               `json:"SchemaSummary"`
+    Sizing                     SizingAssessmentReport      `json:"Sizing"`
+    UnsupportedDataTypes       []TableColumnsDataTypes     `json:"UnsupportedDataTypes"`
+    UnsupportedDataTypesDesc   string                      `json:"UnsupportedDataTypesDesc"`
+    UnsupportedFeatures        []UnsupportedFeature        `json:"UnsupportedFeatures"`
+    UnsupportedFeaturesDesc    string                      `json:"UnsupportedFeaturesDesc"`
+    UnsupportedQueryConstructs []UnsupportedQueryConstruct `json:"UnsupportedQueryConstructs"`
+    MigrationCaveats           []UnsupportedFeature        `json:"MigrationCaveats"`
+    TableIndexStats            []TableIndexStats           `json:"TableIndexStats"`
+    Notes                      []string                    `json:"Notes"`
+}
+
+type VoyagerAssessmentIssueInfo struct {
+    Category               string                          `json:"Category"`
+    CategoryDescription    string                          `json:"CategoryDescription"`
+    Type                   string                          `json:"Type"`
+    Name                   string                          `json:"Name"`
+    Description            string                          `json:"Description"`
+    Impact                 string                          `json:"Impact"`
+    ObjectType             string                          `json:"ObjectType"`
+    ObjectName             string                          `json:"ObjectName"`
+    SqlStatement           string                          `json:"SqlStatement"`
+    DocsLink               string                          `json:"DocsLink"`
+    MinimumVersionsFixedIn map[string]*ybversion.YBVersion `json:"MinimumVersionsFixedIn"`
+
+    // Store Type-specific details - extensible, can refer any struct
+    // Details json.RawMessage `json:"Details,omitempty"`
 }
 
 type SourceDBSizeDetails struct {
@@ -120,6 +153,13 @@ type UnsupportedFeature struct {
     // ObjectNames []string `json:"ObjectNames"`
     Objects            []ObjectInfo `json:"Objects"`
     DocsLink           string       `json:"DocsLink,omitempty"`
+}
+
+type UnsupportedQueryConstruct struct {
+    ConstructTypeName      string
+    Query                  string
+    DocsLink               string
+    MinimumVersionsFixedIn map[string]*ybversion.YBVersion // key: series (2024.1, 2.21, etc)
 }
 
 type ObjectInfo struct {

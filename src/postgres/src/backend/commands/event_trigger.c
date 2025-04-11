@@ -48,7 +48,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 typedef struct EventTriggerQueryState
@@ -905,7 +905,7 @@ EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata)
 	 * Let's evaluate event triggers in their own memory context, so that any
 	 * leaks get cleaned up promptly.
 	 */
-	context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	context = AllocSetContextCreate(CurrentMemoryContext,
 									"event trigger context",
 									ALLOCSET_DEFAULT_SIZES);
 	oldcontext = MemoryContextSwitchTo(context);

@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -27,6 +28,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.concurrent.CancellationException;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -111,6 +114,11 @@ public class WaitForClockSync extends NodeTaskBase {
     // It ensures the last system clock offset from the NTP server is less than
     // acceptable clock skew specified in the task params.
     waitUsingChronycTracking(universe, node);
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()
+        && confGetter.getConfForScope(universe, UniverseConfKeys.clockboundCheckEnabled)) {
+      waitForClockboundSynchronized(universe, node);
+    }
 
     log.info("Completed {}", getName());
   }
@@ -261,5 +269,34 @@ public class WaitForClockSync extends NodeTaskBase {
 
     double lastOffsetValueNs = Double.parseDouble(m.group(1)) * 1_000_000_000L;
     return Math.abs((long) lastOffsetValueNs);
+  }
+
+  private void waitForClockboundSynchronized(Universe universe, NodeDetails node) {
+    Supplier<String> clockboundCheckOutput =
+        new Supplier<String>() {
+          @Override
+          public String get() {
+            try {
+              return nodeUniverseManager
+                  .runCommand(node, universe, ImmutableList.of("clockbound-check"))
+                  .processErrors("'clockbound-check' failed")
+                  .extractRunCommandOutput();
+            } catch (Exception e) {
+              return e.getMessage();
+            }
+          }
+        };
+    Predicate<String> clockboundOutputTest =
+        new Predicate<String>() {
+          @Override
+          public boolean test(String clockboundOutput) {
+            return clockboundOutput.contains("Synchronized");
+          }
+        };
+    RetryTaskUntilCondition<String> clockboundSyncWithRetry =
+        new RetryTaskUntilCondition<>(clockboundCheckOutput, clockboundOutputTest);
+    clockboundSyncWithRetry.retryUntilCond(
+        RETRY_WAIT_TIME.getSeconds(),
+        confGetter.getConfForScope(universe, UniverseConfKeys.clockboundCheckTimeout).getSeconds());
   }
 }

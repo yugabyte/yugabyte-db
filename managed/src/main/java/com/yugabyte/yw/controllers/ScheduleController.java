@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.backuprestore.BackupScheduleToggleParams;
 import com.yugabyte.yw.forms.filters.ScheduleApiFilter;
 import com.yugabyte.yw.forms.paging.SchedulePagedApiQuery;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -49,6 +50,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -241,6 +243,22 @@ public class ScheduleController extends AuthenticatedController {
         schedule.updateCronExpression(params.cronExpression);
         Date nextScheduleTaskTime = schedule.nextExpectedTaskTime(null);
         schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
+      }
+
+      // Update retention period if provided.
+      if (params.timeBeforeDelete > 0L) {
+        schedule.updateBackupRetentionPeriod(params.timeBeforeDelete);
+        // Update expiry time of backups related to this schedule.
+        Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
+            .forEach(
+                backup -> {
+                  Date newExpiry =
+                      new DateTime(backup.getCreateTime())
+                          .plusMillis((int) params.timeBeforeDelete)
+                          .toDate();
+                  backup.setExpiry(newExpiry);
+                  backup.save();
+                });
       }
 
       // Update incremental backup schedule frequency, if provided after validation.

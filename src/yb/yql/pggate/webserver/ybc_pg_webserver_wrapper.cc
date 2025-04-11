@@ -39,9 +39,10 @@
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 using std::string;
+DECLARE_uint32(ysql_conn_mgr_max_client_connections);
+DECLARE_string(metric_node_name);
 
 namespace yb::pggate {
-DECLARE_string(metric_node_name);
 
 static YbcPgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
@@ -213,6 +214,15 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
           "gauge", "Timestamp of last update to YSQL Connection Manager metrics"),
       "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
+  // Publish the maximum number of clients which can connect to connection manager
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_max_client_connections",
+          FLAGS_ysql_conn_mgr_max_client_connections, AggregationFunction::kSum, kServerLevel,
+          METRIC_TYPE_SERVER, "gauge", "Maximum number of clients that can connect to YSQL "
+          "Connection Manager"),
+      "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
     ysql_conn_mgr_metrics.push_back(
@@ -266,7 +276,8 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
 
   JsonWriter writer(output, json_mode);
   writer.StartArray();
@@ -305,7 +316,8 @@ static void PgStatStatementsHandler(
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -327,7 +339,8 @@ static void PgStatStatementsResetHandler(
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -364,7 +377,8 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   JsonWriter writer(output, json_mode);
   YbcRpczEntry *entry = *rpczResultPointer;
 
@@ -438,7 +452,8 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
+                                                        : JsonWriter::PRETTY_ESCAPE_STR;
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;

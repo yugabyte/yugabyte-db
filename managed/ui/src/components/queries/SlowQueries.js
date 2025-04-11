@@ -5,6 +5,8 @@ import { useSelector } from 'react-redux';
 import { Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { toast } from 'react-toastify';
+import { Box, Typography, useTheme } from '@material-ui/core';
+
 import { useSlowQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { resetSlowQueries } from '../../actions/universe';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
@@ -13,7 +15,16 @@ import { YBPanelItem } from '../panels';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { YBCheckBox, YBButtonLink, YBToggle } from '../common/forms/fields';
 import { QuerySearchInput } from './QuerySearchInput';
-import { QueryType } from './helpers/constants';
+import {
+  PG_15_VERSION_THRESHOLD_PREVIEW,
+  PG_15_VERSION_THRESHOLD_STABLE,
+  QueryType
+} from './helpers/constants';
+import { formatDatetime } from '../../redesign/helpers/DateUtils';
+import {
+  compareYBSoftwareVersionsWithReleaseTrack,
+  getPrimaryCluster
+} from '../../utils/universeUtilsTyped';
 
 const dropdownColKeys = {
   Query: {
@@ -86,6 +97,7 @@ const SlowQueriesComponent = () => {
   const [selectedRow, setSelectedRow] = useState([]);
   const [panelState, setPanelState] = useState(PANEL_STATE.INITIAL);
   const [searchTokens, setSearchTokens] = useState([]);
+  const theme = useTheme();
   let initialColumns = initialQueryColumns;
   try {
     const cachedColumns = localStorage.getItem('__yb_slow_query_columns__');
@@ -100,7 +112,13 @@ const SlowQueriesComponent = () => {
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
   const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
-  const { ysqlQueries, loading, errors, getSlowQueries } = useSlowQueriesApi({
+  const {
+    ysqlQueries,
+    lastStatsResetTimestamp,
+    loading,
+    errors,
+    getSlowQueries
+  } = useSlowQueriesApi({
     universeUUID,
     enabled: queryMonitoring
   });
@@ -241,6 +259,15 @@ const SlowQueriesComponent = () => {
     })
   ];
 
+  const ybSoftwareVersion = getPrimaryCluster(currentUniverse?.data?.universeDetails?.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const isPg15Supported =
+    compareYBSoftwareVersionsWithReleaseTrack({
+      version: ybSoftwareVersion,
+      stableVersion: PG_15_VERSION_THRESHOLD_STABLE,
+      previewVersion: PG_15_VERSION_THRESHOLD_PREVIEW,
+      options: { suppressFormatError: true }
+    }) > 0;
   return (
     <div className="slow-queries">
       <YBPanelItem
@@ -350,29 +377,36 @@ const SlowQueriesComponent = () => {
         body={
           <div className="slow-queries__table">
             {queryMonitoring ? (
-              <BootstrapTable
-                data={displayedQueries}
-                pagination
-                search
-                searchPlaceholder="Filter by query text"
-                multiColumnSearch
-                selectRow={{
-                  mode: 'checkbox',
-                  clickToSelect: true,
-                  onSelect: handleRowSelect,
-                  selected: selectedRow
-                }}
-                options={{
-                  clearSearch: true,
-                  toolBar: renderTableToolbar,
-                  searchPanel: renderCustomSearchPanel,
-                  onSortChange: (sortName) => {
-                    handleSortChange(sortName);
-                  }
-                }}
-              >
-                {tableColHeaders}
-              </BootstrapTable>
+              <Box>
+                <BootstrapTable
+                  data={displayedQueries}
+                  pagination
+                  search
+                  searchPlaceholder="Filter by query text"
+                  multiColumnSearch
+                  selectRow={{
+                    mode: 'checkbox',
+                    clickToSelect: true,
+                    onSelect: handleRowSelect,
+                    selected: selectedRow
+                  }}
+                  options={{
+                    clearSearch: true,
+                    toolBar: renderTableToolbar,
+                    searchPanel: renderCustomSearchPanel,
+                    onSortChange: (sortName) => {
+                      handleSortChange(sortName);
+                    }
+                  }}
+                >
+                  {tableColHeaders}
+                </BootstrapTable>
+                {isPg15Supported && (
+                  <Typography variant="body2" component="div">{`Last Stats Reset: ${formatDatetime(
+                    lastStatsResetTimestamp
+                  )}`}</Typography>
+                )}
+              </Box>
             ) : (
               <>Enable query monitoring to see slow queries.</>
             )}
@@ -383,6 +417,7 @@ const SlowQueriesComponent = () => {
         onHide={() => setSelectedRow([])}
         queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
         queryType={QueryType.SLOW}
+        isPg15Supported={isPg15Supported}
         visible={selectedRow.length}
       />
     </div>

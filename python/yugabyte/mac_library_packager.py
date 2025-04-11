@@ -103,7 +103,13 @@ class MacLibraryPackager:
             get_thirdparty_dir(), 'installed', '*', 'lib')
         extra_postgres_libs = [
             find_library_by_glob(os.path.join(extra_postgres_libs_dir_glob, lib_name))
-            for lib_name in ['libedit.dylib', 'libldap-2.4.2.dylib', 'libldap_r-2.4.2.dylib']]
+            for lib_name in [
+                'libedit.dylib',
+                'libldap-2.4.2.dylib',
+                'libldap_r-2.4.2.dylib',
+                'liblz4.1.dylib'
+            ]
+        ]
 
         extra_postgres_libs.append(os.path.join(src, 'lib', 'libysql_bench_metrics_handler.dylib'))
 

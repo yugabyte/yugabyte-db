@@ -114,16 +114,16 @@ You can now read and write data through the table `test_ref`.
      ```
 
      ```output
-     8.0	498169906
-     7.0	508260550
-     18.0	501050266
-     1.0	501584522
-     4.0	492761124
-     11.0	507580062
-     14.0	518283840
-     3.0	486508876
-     19.0	497964478
-     2.0	505807396
+     8.0  498169906
+     7.0  508260550
+     18.0 501050266
+     1.0  501584522
+     4.0  492761124
+     11.0 507580062
+     14.0 518283840
+     3.0  486508876
+     19.0 497964478
+     2.0  505807396
      ```
 
      ```sql
@@ -198,6 +198,6 @@ To verify that the Spark job is created,
 
 1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned when you started the [`spark-sql`](#start-python-spark-shell-with-yugabytedb-driver) shell.
 
-1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
+1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following illustration:
 
    ![Parallelism](/images/develop/ecosystem-integrations/parallelism.png)

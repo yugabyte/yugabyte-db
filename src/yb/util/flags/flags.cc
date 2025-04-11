@@ -642,7 +642,7 @@ Status LoadFlagsAllowlist() {
 
 }  // anonymous namespace
 
-void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
+void RegisterGlobalFlagsCallbacksOnce() {
   static GoogleOnceType once_register_vmodule_callback = GOOGLE_ONCE_INIT;
   // We cannot use DEFINE_validator and REGISTER_CALLBACK for vmodule since it is not DEFINED in any
   // yb file, and we cannot guarantee the static initialization order. Instead we register them
@@ -653,7 +653,10 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     flags_callback_internal::RegisterGlobalFlagUpdateCallback(
         &FLAGS_vmodule, "ValidateAndUpdateVmodule", &UpdateVmodule);
   });
+}
 
+void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
+  RegisterGlobalFlagsCallbacksOnce();
   CHECK_OK(LoadFlagsAllowlist());
 
   {
@@ -694,7 +697,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     DumpAutoFlagsJSONAndExit();
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
-    JsonWriter w(&s, JsonWriter::PRETTY);
+    JsonWriter w(&s, JsonWriter::PRETTY_ESCAPE_STR);
     WriteRegistryAsJson(&w);
     std::cout << s.str() << std::endl;
     exit(0);

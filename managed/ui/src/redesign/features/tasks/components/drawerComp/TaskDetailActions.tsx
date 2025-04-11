@@ -21,6 +21,7 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../act
 import { abortTask, retryTasks } from './api';
 import { doesTaskSupportsDiffData } from '../../TaskUtils';
 import { TaskDrawerCompProps } from './dtos';
+import { TaskStates } from '../../dtos';
 
 const useStyles = makeStyles(() => ({
   root: {
@@ -103,7 +104,7 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
           {t('retry')}
         </YBButton>
       )}
-      {currentTask?.abortable && (
+      {currentTask?.abortable && currentTask?.status !== TaskStates.ABORT && (
         <YBButton
           variant="secondary"
           onClick={() => {

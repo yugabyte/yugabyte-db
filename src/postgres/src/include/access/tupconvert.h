@@ -20,8 +20,9 @@
 #include "executor/tuptable.h"
 #include "nodes/bitmapset.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "utils/rel.h"
+
 
 typedef struct TupleConversionMap
 {

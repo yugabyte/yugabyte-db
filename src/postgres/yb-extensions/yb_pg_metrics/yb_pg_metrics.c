@@ -25,14 +25,15 @@
 #include <unistd.h>
 
 #include "access/htup_details.h"
-#include "executor/instrument.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "common/ip.h"
 #include "datatype/timestamp.h"
+#include "executor/instrument.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
@@ -47,8 +48,6 @@
 #include "utils/datetime.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
-
-#include "pg_yb_utils.h"
 
 #define YSQL_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
@@ -69,6 +68,8 @@ typedef enum YbStatementType
 	SingleShardTransaction,
 	Transaction,
 	AggregatePushdown,
+	CatCacheRefresh,
+	CatCacheDeltaRefresh,
 	CatCacheMisses,
 	CatCacheIdMisses_Start,
 	CatCacheIdMisses_0 = CatCacheIdMisses_Start,
@@ -250,6 +251,8 @@ static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus *backendStatusArray = NULL;
 extern int	MaxConnections;
 
+static long last_catcache_refresh_val = 0;
+static long last_catcache_delta_refresh_val = 0;
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
 static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
@@ -357,6 +360,10 @@ set_metric_names(void)
 	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
 	strcpy(ybpgm_table[AggregatePushdown].name,
 		   YSQL_METRIC_PREFIX "AggregatePushdowns");
+	strcpy(ybpgm_table[CatCacheRefresh].name,
+		   YSQL_METRIC_PREFIX "CatCacheRefresh");
+	strcpy(ybpgm_table[CatCacheDeltaRefresh].name,
+		   YSQL_METRIC_PREFIX "CatCacheDeltaRefresh");
 	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
 	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
 	{
@@ -441,6 +448,15 @@ set_metric_names(void)
 		   "Number of aggregate pushdowns");
 	strcpy(ybpgm_table[AggregatePushdown].sum_help,
 		   "Total time spent executing aggregate pushdowns");
+	strcpy(ybpgm_table[CatCacheRefresh].count_help,
+		   "Number of full catalog cache refreshes");
+	strcpy(ybpgm_table[CatCacheRefresh].sum_help,
+		   "Not applicable");
+	strcpy(ybpgm_table[CatCacheDeltaRefresh].count_help,
+		   "Number of incremental catalog cache refreshes");
+	strcpy(ybpgm_table[CatCacheDeltaRefresh].sum_help,
+		   "Not applicable");
+
 
 	strcpy(ybpgm_table[CatCacheMisses].count_help,
 		   "Total number of catalog cache misses");
@@ -1032,11 +1048,23 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 			castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
 			ybpgm_Store(AggregatePushdown, time, rows_count);
 
+		long		current_count = YbGetCatCacheRefreshes();
+		long		total_delta = current_count - last_catcache_refresh_val;
+		last_catcache_refresh_val = current_count;
+		/* Set the time parameter to 0 as we don't have metrics for that. */
+		ybpgm_StoreCount(CatCacheRefresh, 0, total_delta);
+
+		current_count = YbGetCatCacheDeltaRefreshes();
+		total_delta = current_count - last_catcache_delta_refresh_val;
+		last_catcache_delta_refresh_val = current_count;
+		/* Set the time parameter to 0 as we don't have metrics for that. */
+		ybpgm_StoreCount(CatCacheDeltaRefresh, 0, total_delta);
+
 		long		current_cache_misses = YbGetCatCacheMisses();
 		long	   *current_cache_id_misses = YbGetCatCacheIdMisses();
 		long	   *current_cache_table_misses = YbGetCatCacheTableMisses();
 
-		long		total_delta = current_cache_misses - last_cache_misses_val;
+		total_delta = current_cache_misses - last_cache_misses_val;
 
 		last_cache_misses_val = current_cache_misses;
 

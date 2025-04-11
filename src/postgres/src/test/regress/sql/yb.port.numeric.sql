@@ -936,7 +936,9 @@ SELECT to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data;
 SELECT to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data;
 SELECT to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data;
 SELECT to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
-SELECT to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
+-- YB: TODO: Disabled the test below as it relies on the current locale which is
+--  configured in pg_regress using ALTER which we do not support yet.
+-- SELECT to_char(val, 'L9999999999999999.099999999999999')	FROM num_data; -- YB
 SELECT to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
 SELECT to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
 SELECT to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;

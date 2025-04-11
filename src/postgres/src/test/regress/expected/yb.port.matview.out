@@ -587,10 +587,10 @@ CREATE MATERIALIZED VIEW matview_schema.mv_withdata1 (a) AS
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
   CREATE MATERIALIZED VIEW matview_schema.mv_withdata2 (a) AS
   SELECT generate_series(1, 10) WITH DATA;
-              QUERY PLAN              
---------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  ProjectSet (actual rows=10 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
 (2 rows)
 
 REFRESH MATERIALIZED VIEW matview_schema.mv_withdata2;
@@ -599,10 +599,10 @@ CREATE MATERIALIZED VIEW matview_schema.mv_nodata1 (a) AS
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
   CREATE MATERIALIZED VIEW matview_schema.mv_nodata2 (a) AS
   SELECT generate_series(1, 10) WITH NO DATA;
-          QUERY PLAN           
--------------------------------
+               QUERY PLAN               
+----------------------------------------
  ProjectSet (never executed)
-   ->  Result (never executed)
+   ->  Result *RESULT* (never executed)
 (2 rows)
 
 REFRESH MATERIALIZED VIEW matview_schema.mv_nodata2;

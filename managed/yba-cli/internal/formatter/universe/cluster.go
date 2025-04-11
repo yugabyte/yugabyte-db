@@ -38,7 +38,7 @@ const (
 	tserverGFlagsHeader  = "TServer GFlags"
 	specificGFlagsHeader = "Specific GFlags (in json)"
 	instanceTypeHeader   = "Instance Type"
-	volumeSizeHeader     = "Volume Size"
+	volumeSizeHeader     = "Volume Size in GB"
 	numVolumesHeader     = "Number of Volumes"
 	diskIopsHeader       = "Disk IOPS"
 	throughputHeader     = "Throughput"
@@ -249,7 +249,7 @@ func (c *ClusterContext) startSubsection(format string) (*template.Template, err
 }
 
 func (c *ClusterContext) subSection(name string) {
-	c.Output.Write([]byte("\n\n"))
+	c.Output.Write([]byte("\n"))
 	c.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	c.Output.Write([]byte("\n"))
 }
@@ -362,7 +362,7 @@ func (c *ClusterContext) SpecificGFlags() string {
 	userIntent := c.c.GetUserIntent()
 	jsonBytes, err := json.MarshalIndent(userIntent.GetSpecificGFlags(), "", "  ")
 	if err != nil {
-		fmt.Println("Error converting JSON to string:", err)
+		logrus.Error("Error converting JSON to string:", err)
 		return ""
 	}
 	return string(jsonBytes)

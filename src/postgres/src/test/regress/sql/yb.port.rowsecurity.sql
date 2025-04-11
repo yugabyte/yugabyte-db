@@ -244,7 +244,69 @@ COPY t1 FROM stdin WITH ;
 \.
 
 CREATE TABLE t2 (c float) INHERITS (t1);
--- YB: port further queries when above works
+GRANT ALL ON t2 TO public;
+
+COPY t2 FROM stdin;
+201	1	abc	1.1
+202	2	bcd	2.2
+203	3	cde	3.3
+204	4	def	4.4
+\.
+
+CREATE TABLE t3 (id int not null primary key, c text, b text, a int);
+ALTER TABLE t3 INHERIT t1;
+GRANT ALL ON t3 TO public;
+
+COPY t3(id, a,b,c) FROM stdin;
+301	1	xxx	X
+302	2	yyy	Y
+303	3	zzz	Z
+\.
+
+CREATE POLICY p1 ON t1 FOR ALL TO PUBLIC USING (a % 2 = 0); -- be even number
+CREATE POLICY p2 ON t2 FOR ALL TO PUBLIC USING (a % 2 = 1); -- be odd number
+
+ALTER TABLE t1 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE t2 ENABLE ROW LEVEL SECURITY;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+
+SELECT * FROM t1;
+EXPLAIN (COSTS OFF) SELECT * FROM t1;
+
+SELECT * FROM t1 WHERE f_leak(b);
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+
+-- reference to system column
+SELECT tableoid::regclass, * FROM t1;
+EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
+
+-- reference to whole-row reference
+SELECT *, t1 FROM t1;
+EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
+
+-- for share/update lock
+SELECT * FROM t1 FOR SHARE;
+EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
+
+SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
+
+-- union all query
+SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
+EXPLAIN (COSTS OFF) SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
+
+-- superuser is allowed to bypass RLS checks
+RESET SESSION AUTHORIZATION;
+SET row_security TO OFF;
+SELECT * FROM t1 WHERE f_leak(b);
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+
+-- non-superuser with bypass privilege can bypass RLS policy when disabled
+SET SESSION AUTHORIZATION regress_rls_exempt_user;
+SET row_security TO OFF;
+SELECT * FROM t1 WHERE f_leak(b);
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
 
 --
 -- Partitioned Tables
@@ -515,7 +577,96 @@ SET SESSION AUTHORIZATION regress_rls_alice;
 ALTER POLICY p2 ON s2 USING (x in (select a from s1 where b like '%d2%'));
 SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM s1 WHERE f_leak(b);	-- fail (infinite recursion via view)
--- YB: port further queries when above works (table t2 and t3 inherit from t1)
+
+-- prepared statement with regress_rls_alice privilege
+PREPARE p1(int) AS SELECT * FROM t1 WHERE a <= $1;
+EXECUTE p1(2);
+EXPLAIN (COSTS OFF) EXECUTE p1(2);
+
+-- superuser is allowed to bypass RLS checks
+RESET SESSION AUTHORIZATION;
+SET row_security TO OFF;
+SELECT * FROM t1 WHERE f_leak(b);
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+
+-- plan cache should be invalidated
+EXECUTE p1(2);
+EXPLAIN (COSTS OFF) EXECUTE p1(2);
+
+PREPARE p2(int) AS SELECT * FROM t1 WHERE a = $1;
+EXECUTE p2(2);
+EXPLAIN (COSTS OFF) EXECUTE p2(2);
+
+-- also, case when privilege switch from superuser
+SET SESSION AUTHORIZATION regress_rls_bob;
+SET row_security TO ON;
+EXECUTE p2(2);
+EXPLAIN (COSTS OFF) EXECUTE p2(2);
+
+--
+-- UPDATE / DELETE and Row-level security
+--
+SET SESSION AUTHORIZATION regress_rls_bob;
+EXPLAIN (COSTS OFF) UPDATE t1 SET b = b || b WHERE f_leak(b);
+UPDATE t1 SET b = b || b WHERE f_leak(b);
+
+EXPLAIN (COSTS OFF) UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
+UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
+
+-- returning clause with system column
+UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+UPDATE t1 SET b = b WHERE f_leak(b) RETURNING *;
+UPDATE t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+
+-- updates with from clause
+EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
+WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
+
+UPDATE t2 SET b=t2.b FROM t3
+WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
+
+EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+
+UPDATE t1 SET b=t1.b FROM t2
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+
+EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+
+UPDATE t2 SET b=t2.b FROM t1
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+
+-- updates with from clause self join
+EXPLAIN (COSTS OFF) UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
+WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
+AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
+
+UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
+WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
+AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
+
+EXPLAIN (COSTS OFF) UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
+WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
+AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
+
+UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
+WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
+AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
+
+RESET SESSION AUTHORIZATION;
+SET row_security TO OFF;
+SELECT * FROM t1 ORDER BY a,b;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+SET row_security TO ON;
+EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
+EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
+
+/* YB: these queries fail in YB and are tracked by #26577
+DELETE FROM only t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+DELETE FROM t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+*/ -- YB
 
 --
 -- S.b. view on top of Row-level security
@@ -1013,7 +1164,9 @@ DROP TABLE test_qual_pushdown;
 --
 RESET SESSION AUTHORIZATION;
 
+\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP TABLE t1 CASCADE;
+\set VERBOSITY default \\ -- YB
 
 CREATE TABLE t1 (a integer);
 

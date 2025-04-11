@@ -40,7 +40,7 @@
 #include "utils/regproc.h"
 #include "utils/resowner.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /* Private data for writing out data */

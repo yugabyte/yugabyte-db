@@ -37,6 +37,7 @@
 
 #include "bootstrap/bootstrap.h"
 #include "common/username.h"
+#include "miscadmin.h"
 #include "port/atomics.h"
 #include "postmaster/postmaster.h"
 #include "storage/spin.h"
@@ -46,8 +47,10 @@
 #include "utils/pg_locale.h"
 #include "utils/ps_status.h"
 
+/* YB includes */
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+
 
 const char *progname;
 
@@ -101,6 +104,7 @@ PostgresServerProcessMain(int argc, char *argv[])
 	 * localization of messages may not work right away, and messages won't go
 	 * anywhere but stderr until GUC settings get loaded.
 	 */
+	MyProcPid = getpid();
 	MemoryContextInit();
 
 	/*

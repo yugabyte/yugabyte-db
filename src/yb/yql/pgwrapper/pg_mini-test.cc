@@ -180,6 +180,8 @@ class PgMiniTest : public PgMiniTestBase {
 
   void TestBigInsert(bool restart);
 
+  void TestAnalyze(int row_width);
+
   void CreateTableAndInitialize(std::string table_name, int num_tablets);
 
   void DestroyTable(std::string table_name);
@@ -2277,6 +2279,70 @@ TEST_F(PgMiniTest, ReadHugeRow) {
   const auto res = conn.Fetch("SELECT * FROM test LIMIT 1");
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
+}
+
+// Check that fetch of data amount exceeding the message size automatically paginates and succeeds
+TEST_F(PgMiniTest, ReadHugeRows) {
+  // kNumRows should be less than default yb_fetch_row_limit, but not too low, so system can work
+  constexpr size_t kNumRows = 1000;
+  constexpr size_t kColumnSize = 100000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kColumnSize * kNumRows;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) =
+      kColumnSize * kNumRows - 1_KB - 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  // One tablet to make sure that the node has enough data to exceed the message size
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test(pk INT PRIMARY KEY, i INT, t TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE INDEX on test(i ASC)"));
+  for (size_t i = 0; i < kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES($0, $0 * 2, repeat('0', $1))", i, kColumnSize));
+  }
+
+  // SeqScan, direct fetch from the main table
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  // IndexScan, fetch from the main table by ybctids
+  ASSERT_OK(conn.Fetch("SELECT * FROM test ORDER BY i"));
+}
+
+// Test that ANALYZE on tables with different row width does not exceed the RPC size limit
+// The FLAGS_rpc_max_message_size is set to be lower than total amount data to fetch by ANALYZE,
+// so multiple messages are needed, and at least one has size as close to the limit as possible.
+void PgMiniTest::TestAnalyze(int row_width) {
+  // kNumRows is equal to the sample size, so ANALYZE fetches entire table.
+  constexpr uint64_t kNumRows = 30000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) =
+      std::min(FLAGS_rpc_max_message_size, row_width * kNumRows);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) =
+      FLAGS_rpc_max_message_size - 1_KB - 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  // One tablet to make sure that the node has enough data to exceed the message size
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test(pk INT PRIMARY KEY, i INT, t TEXT) SPLIT INTO 1 TABLETS"));
+  LOG(INFO) << "Test table is created";
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, i * 2, repeat('0', $0) FROM generate_series(1, $1) i",
+      row_width, kNumRows));
+  LOG(INFO) << "Test table is populated";
+  ASSERT_OK(conn.Execute("ANALYZE test"));
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AnalyzeLargeRows)) {
+  PgMiniTest::TestAnalyze(/* row_width = */ 10000);
+}
+
+TEST_F(PgMiniTest, AnalyzeMediumRows) {
+  PgMiniTest::TestAnalyze(/* row_width = */ 500);
+}
+
+TEST_F(PgMiniTest, AnalyzeSmallRows) {
+  // The row_width=25 makes the minimal rpc_max_message_size allowing to send
+  // fetch request with 30,000 ybctids in it
+  PgMiniTest::TestAnalyze(/* row_width = */ 25);
 }
 
 TEST_F_EX(

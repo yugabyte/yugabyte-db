@@ -98,14 +98,7 @@ export const getTabContent = (
     //Hide empty panels for master pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-master-') != null) {
-      const skipList = [
-        'Tablet Server',
-        'YSQL Ops',
-        'YCQL Ops',
-        'YEDIS Ops',
-        'YEDIS Advanced',
-        'Resource'
-      ];
+      const skipList = ['Tablet Server', 'YSQL Ops', 'YCQL Ops', 'Resource'];
       if (skipList.includes(title)) {
         return null;
       }

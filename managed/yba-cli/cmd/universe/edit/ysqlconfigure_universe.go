@@ -24,7 +24,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 	Aliases: []string{"ysql-configure", "configure-ysql"},
 	Short:   "Edit YSQL settings for a YugabyteDB Anywhere Universe",
 	Long:    "Edit YSQL settings for a YugabyteDB Anywhere Universe",
-	Example: `yba universe edit ysql --name <universe-name>`,
+	Example: `yba universe edit ysql --name <universe-name> --ysql-password <ysql-password>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")

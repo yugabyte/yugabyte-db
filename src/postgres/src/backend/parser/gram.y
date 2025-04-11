@@ -65,9 +65,11 @@
 #include "utils/numeric.h"
 #include "utils/xml.h"
 
+/* YB includes */
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
+
 
 /*
  * Location tracking support --- simpler than bison's default, since we only
@@ -1038,6 +1040,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTableStmt
 			| AlterTypeStmt
+			| AnalyzeStmt
 			| YbBackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
@@ -1120,7 +1123,6 @@ stmt:
 				parser_ybc_beta_feature(@1, "alter text search configuration", false);
 			  }
 			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
@@ -2908,7 +2910,11 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_AddInherit;
@@ -2918,7 +2924,11 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropInherit;
@@ -4506,7 +4516,15 @@ ConstraintElem:
 				}
 		;
 
-opt_no_inherit:	NO INHERIT { parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129); $$ = true; }
+opt_no_inherit:	NO INHERIT
+				{
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
+					$$ = true;
+				}
 			| /* EMPTY */							{  $$ = false; }
 		;
 
@@ -4688,7 +4706,11 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
@@ -5184,6 +5206,10 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("increment", (Node *) $3, @1);
 				}
+			| LOGGED
+				{
+					$$ = makeDefElem("logged", NULL, @1);
+				}
 			| MAXVALUE NumericOnly
 				{
 					$$ = makeDefElem("maxvalue", (Node *) $2, @1);
@@ -5206,7 +5232,6 @@ SeqOptElem: AS SimpleTypename
 				}
 			| SEQUENCE NAME_P any_name
 				{
-					/* not documented, only used by pg_dump */
 					$$ = makeDefElem("sequence_name", (Node *) $3, @1);
 				}
 			| START opt_with NumericOnly
@@ -5220,6 +5245,10 @@ SeqOptElem: AS SimpleTypename
 			| RESTART opt_with NumericOnly
 				{
 					$$ = makeDefElem("restart", (Node *) $3, @1);
+				}
+			| UNLOGGED
+				{
+					$$ = makeDefElem("unlogged", NULL, @1);
 				}
 		;
 
@@ -19507,7 +19536,7 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			if (!pubobj->name && !pubobj->pubtable)
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid table name at or near"),
+						errmsg("invalid table name"),
 						parser_errposition(pubobj->location));
 
 			if (pubobj->name)
@@ -19549,7 +19578,7 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			else
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid schema name at or near"),
+						errmsg("invalid schema name"),
 						parser_errposition(pubobj->location));
 		}
 

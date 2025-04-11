@@ -36,15 +36,21 @@
 #endif
 
 
-extern bool buildACLCommands(const char *name, const char *subname, const char *nspname,
+extern bool buildACLCommands(PGconn *yb_conn,
+							 const char *name, const char *subname, const char *nspname,
 							 const char *type, const char *acls, const char *baseacls,
 							 const char *owner, const char *prefix, int remoteVersion,
-							 PQExpBuffer sql);
-extern bool buildDefaultACLCommands(const char *type, const char *nspname,
+							 bool yb_dump_role_checks, PQExpBuffer sql);
+extern bool buildDefaultACLCommands(PGconn *yb_conn,
+									const char *type, const char *nspname,
 									const char *acls, const char *acldefault,
-									const char *owner,
-									int remoteVersion,
-									PQExpBuffer sql);
+									const char *owner, int remoteVersion,
+									bool yb_dump_role_checks, PQExpBuffer sql);
+
+extern void YBWwrapInRoleChecks(PGconn *conn,
+								PQExpBuffer sql, const char *op_name,
+								const char *role_name1, const char *role_name2,
+								const char *role_name3, PQExpBuffer result);
 
 extern void quoteAclUserName(PQExpBuffer output, const char *input);
 

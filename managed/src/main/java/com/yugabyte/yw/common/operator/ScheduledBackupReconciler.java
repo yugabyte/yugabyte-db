@@ -10,7 +10,6 @@ import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue.ResourceAction;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
@@ -21,20 +20,15 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
-import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.dsl.MixedOperation;
-import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
-import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.BackupSchedule;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -42,21 +36,12 @@ import org.apache.commons.collections4.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
-public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule>
-    implements Runnable {
+public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule> {
 
-  private final SharedIndexInformer<BackupSchedule> scheduleInformer;
   private final SharedIndexInformer<StorageConfig> scInformer;
-  private final MixedOperation<
-          BackupSchedule, KubernetesResourceList<BackupSchedule>, Resource<BackupSchedule>>
-      resourceClient;
-  private final Lister<BackupSchedule> scheduleLister;
   private final BackupHelper backupHelper;
   private final ScheduleTaskHelper scheduleTaskHelper;
   private final ValidatingFormFactory formFactory;
-  private final String namespace;
-  private final OperatorUtils operatorUtils;
-  private final OperatorWorkQueue workqueue;
   private final Map<String, UUID> scheduleTaskMap;
 
   public ScheduledBackupReconciler(
@@ -67,18 +52,11 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
       KubernetesClient client,
       YBInformerFactory informerFactory,
       ScheduleTaskHelper scheduleTaskHelper) {
-    super(client, informerFactory);
-    this.scheduleInformer = informerFactory.getSharedIndexInformer(BackupSchedule.class, client);
+    super(client, informerFactory, BackupSchedule.class, operatorUtils, namespace);
     this.scInformer = informerFactory.getSharedIndexInformer(StorageConfig.class, client);
-    this.resourceClient = client.resources(BackupSchedule.class);
     this.backupHelper = backupHelper;
     this.scheduleTaskHelper = scheduleTaskHelper;
     this.formFactory = formFactory;
-    this.namespace = namespace;
-    this.operatorUtils = operatorUtils;
-    this.workqueue = new OperatorWorkQueue("BackupSchedule");
-    this.scheduleInformer.addEventHandler(this);
-    this.scheduleLister = new Lister<>(this.scheduleInformer.getIndexer());
     this.scheduleTaskMap = new HashMap<>();
   }
 
@@ -87,142 +65,9 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     return this.scheduleTaskMap.getOrDefault(key, null);
   }
 
-  @Override
-  public void run() {
-    log.info("Starting BackupSchedule reconciler thread");
-    while (!Thread.currentThread().isInterrupted()) {
-      if (scheduleInformer.hasSynced()) {
-        break;
-      }
-    }
-    while (true) {
-      try {
-        log.info("Trying to fetch BackupSchedule actions from workqueue...");
-        if (workqueue.isEmpty()) {
-          log.debug("Work Queue is empty");
-        }
-        Pair<String, OperatorWorkQueue.ResourceAction> pair = workqueue.pop();
-        String key = pair.getFirst();
-        OperatorWorkQueue.ResourceAction action = pair.getSecond();
-        Objects.requireNonNull(key, "The workqueue item key can't be null.");
-        log.debug("Found work item: {} {}", key, action);
-        if ((!key.contains("/"))) {
-          log.warn("Invalid resource key: {}", key);
-          continue;
-        }
-
-        // Get the BackupSchedule resource's name
-        // from workqueue key which is in format namespace/name/uid.
-        // First get key namespace/name format
-        String listerKey = OperatorWorkQueue.getListerKeyFromWorkQueueKey(key);
-        BackupSchedule backupSchedule = scheduleLister.get(listerKey);
-        log.info("Processing BackupSchedule name: {}, Object: {}", listerKey, backupSchedule);
-
-        if (backupSchedule == null) {
-          if (action == OperatorWorkQueue.ResourceAction.DELETE) {
-            log.info(
-                "Tried to delete BackupSchedule {} but it's no longer in Lister",
-                backupSchedule.getMetadata().getName());
-          }
-          // Clear any state of the non-existing backup schedule from In-memory maps
-          workqueue.clearState(key);
-          continue;
-        }
-        if (backupSchedule
-            .getMetadata()
-            .getUid()
-            .equals(OperatorWorkQueue.getResourceUidFromWorkQueueKey(key))) {
-          reconcile(backupSchedule, action);
-        } else {
-          workqueue.clearState(key);
-          log.debug(
-              "Lister referencing older BackupSchedule with same name {}, ignoring", listerKey);
-          continue;
-        }
-
-      } catch (Exception e) {
-        log.error("Got Exception", e);
-        try {
-          Thread.sleep(reconcileExceptionBackoffMS);
-          log.info("Continue BackupSchedule reconcile loop after failure backoff");
-        } catch (InterruptedException e1) {
-          log.info("caught interrupt, stopping reconciler", e);
-          break;
-        }
-      }
-    }
-  }
-
-  @Override
-  public void onAdd(BackupSchedule backupSchedule) {
-    enqueue(backupSchedule, OperatorWorkQueue.ResourceAction.CREATE);
-  }
-
-  @Override
-  public void onUpdate(BackupSchedule backupScheduleOld, BackupSchedule backupScheduleNew) {
-    if (backupScheduleNew.getMetadata().getDeletionTimestamp() != null) {
-      enqueue(backupScheduleNew, OperatorWorkQueue.ResourceAction.DELETE);
-      return;
-    }
-    // Treat this as no-op action enqueue
-    enqueue(backupScheduleNew, OperatorWorkQueue.ResourceAction.NO_OP);
-  }
-
-  @Override
-  public void onDelete(BackupSchedule backupSchedule, boolean b) {
-    enqueue(backupSchedule, OperatorWorkQueue.ResourceAction.DELETE);
-  }
-
-  private void enqueue(BackupSchedule backupSchedule, OperatorWorkQueue.ResourceAction action) {
-    String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
-    String listerName = OperatorWorkQueue.getListerKeyFromWorkQueueKey(mapKey);
-    log.debug("Enqueue backupSchedule {} with action {}", listerName, action.toString());
-    if (action.equals(OperatorWorkQueue.ResourceAction.NO_OP)) {
-      workqueue.requeue(mapKey, action, false);
-    } else {
-      workqueue.add(new Pair<String, OperatorWorkQueue.ResourceAction>(mapKey, action));
-      if (action.needsNoOpAction()) {
-        workqueue.add(
-            new Pair<String, OperatorWorkQueue.ResourceAction>(
-                mapKey, OperatorWorkQueue.ResourceAction.NO_OP));
-      }
-    }
-  }
-
-  /**
-   * Tries to achieve the desired state for backupSchedule.
-   *
-   * @param backupSchedule specified backupSchedule
-   */
-  protected void reconcile(BackupSchedule backupSchedule, OperatorWorkQueue.ResourceAction action) {
-    String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
-    String resourceName = backupSchedule.getMetadata().getName();
-    String resourceNamespace = backupSchedule.getMetadata().getNamespace();
-    log.info(
-        "Reconcile for BackupSchedule metadata: Name = {}, Namespace = {}",
-        resourceName,
-        resourceNamespace);
-
-    try {
-      Customer cust = operatorUtils.getOperatorCustomer();
-      // checking to see if the backup schedule was deleted.
-      if (action == OperatorWorkQueue.ResourceAction.DELETE
-          || backupSchedule.getMetadata().getDeletionTimestamp() != null) {
-        handleBackupScheduleDeletion(backupSchedule, cust, action);
-      } else if (action == OperatorWorkQueue.ResourceAction.CREATE) {
-        createActionReconcile(backupSchedule, cust);
-      } else if (action == OperatorWorkQueue.ResourceAction.UPDATE) {
-        updateActionReconcile(backupSchedule, cust);
-      } else if (action == OperatorWorkQueue.ResourceAction.NO_OP) {
-        noOpActionReconcile(backupSchedule, cust);
-      }
-    } catch (Exception e) {
-      log.error("Got Exception in Operator Action", e);
-    }
-  }
-
   // Delete the backup Schedule
-  private void handleBackupScheduleDeletion(
+  @Override
+  protected void handleResourceDeletion(
       BackupSchedule backupSchedule, Customer cust, OperatorWorkQueue.ResourceAction action)
       throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
@@ -272,7 +117,7 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
       }
     }
     if (requeueNoOp) {
-      enqueue(backupSchedule, ResourceAction.NO_OP);
+      workqueue.requeue(mapKey, OperatorWorkQueue.ResourceAction.NO_OP, false /* incrementRetry */);
     }
   }
 
@@ -281,7 +126,8 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
   // Case 2: Schedule is present but in error state: Update with latest params
   // Case 3: Schedule is present and Active and requires edit: Update
   //  with latest params
-  private void createActionReconcile(BackupSchedule backupSchedule, Customer cust)
+  @Override
+  protected void createActionReconcile(BackupSchedule backupSchedule, Customer cust)
       throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
     String ybaScheduleName = OperatorUtils.getYbaResourceName(backupSchedule.getMetadata());
@@ -324,7 +170,8 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
   // Handles 2 cases
   // Case 1: Schedule is in error state: Creates edit task with latest params
   // Case 2: Schedule is Active and requires edit: Create edit task with latest params
-  private void updateActionReconcile(BackupSchedule backupSchedule, Customer cust)
+  @Override
+  protected void updateActionReconcile(BackupSchedule backupSchedule, Customer cust)
       throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
     String ybaScheduleName = OperatorUtils.getYbaResourceName(backupSchedule.getMetadata());
@@ -361,7 +208,9 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
   // Case 4: No current task and Schedule not present: Requeue CREATE
   // Case 5: No current task and Schedule requires edit: Requeue UPDATE
   // Case 6: No current task and Schedule in error state: Requeue CREATE
-  private void noOpActionReconcile(BackupSchedule backupSchedule, Customer cust) throws Exception {
+  @Override
+  protected void noOpActionReconcile(BackupSchedule backupSchedule, Customer cust)
+      throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
     String ybaScheduleName = OperatorUtils.getYbaResourceName(backupSchedule.getMetadata());
     String resourceName = backupSchedule.getMetadata().getName();

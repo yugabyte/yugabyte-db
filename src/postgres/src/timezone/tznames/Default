@@ -551,12 +551,10 @@ EETDST  10800 D  # East-Egypt Summertime
 FET     10800    # Further-eastern European Time (obsolete)
                  #     (Europe/Kaliningrad)
                  #     (Europe/Minsk)
-MEST     7200 D  # Middle Europe Summer Time
-                 #     (MET)
+MEST     7200 D  # Middle Europe Summer Time (obsolete)
 MESZ     7200 D  # Mitteleuropaeische Sommerzeit (German)
                  #     (attested in IANA comments though not their code)
-MET      3600    # Middle Europe Time
-                 #     (MET)
+MET      3600    # Middle Europe Time (obsolete)
 METDST   7200 D  # Middle Europe Summer Time (not in IANA database)
 MEZ      3600    # Mitteleuropaeische Zeit (German)
                  #     (attested in IANA comments though not their code)
@@ -618,7 +616,6 @@ NZST    43200    # New Zealand Standard Time
                  #     (Antarctica/McMurdo)
                  #     (Pacific/Auckland)
 PGT     36000    # Papua New Guinea Time (obsolete)
-PHOT    Pacific/Enderbury  # Phoenix Islands Time (Kiribati) (obsolete)
 PONT    39600    # Ponape Time (Micronesia) (obsolete)
 PWT     32400    # Palau Time (obsolete)
 TAHT   -36000    # Tahiti Time (obsolete)

@@ -749,9 +749,11 @@ public class PlatformReplicationManager {
 
     // Where to input a previously taken platform backup from.
     private final File input;
+    private final boolean k8sRestoreYbaDbOnRestart;
 
-    public RestorePlatformBackupParams(File input) {
+    public RestorePlatformBackupParams(File input, boolean k8sRestoreYbaDbOnRestart) {
       this.input = input;
+      this.k8sRestoreYbaDbOnRestart = k8sRestoreYbaDbOnRestart;
     }
 
     @Override
@@ -768,7 +770,8 @@ public class PlatformReplicationManager {
         commandArgs.addAll(getYbaInstallerArgs());
         commandArgs.add("--destination");
         commandArgs.add(replicationHelper.getBaseInstall());
-      } else if (confGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete)) {
+      } else if (k8sRestoreYbaDbOnRestart
+          && confGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete)) {
         commandArgs.add("--skip_dump_file_delete");
       }
 
@@ -800,9 +803,11 @@ public class PlatformReplicationManager {
    * @param input is the path to the backup to be restored
    * @return the output/results of running the script
    */
-  public boolean restoreBackup(File input) {
+  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
     log.info("Restoring platform backup...");
-    ShellResponse response = replicationHelper.runCommand(new RestorePlatformBackupParams(input));
+    ShellResponse response =
+        replicationHelper.runCommand(
+            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart));
     if (response.code != 0) {
       log.error("Restore failed: {}", response.message);
     } else {

@@ -163,6 +163,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
 
+  int32_t receiving_full_report_seq_no() const;
+  void set_receiving_full_report_seq_no(int32_t value);
+
   bool has_faulty_drive() const;
 
   bool registered_through_heartbeat() const;
@@ -342,12 +345,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
-  std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>> MaybeUpdateLiveness(
-      MonoTime time) EXCLUDES(mutex_);
-
-  std::pair<YsqlLeaseUpdate, std::optional<TSDescriptor::WriteLock>> RefreshYsqlLease();
-
-  bool HasLiveYsqlOperationLease() const;
+  std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
   mutable rw_spinlock mutex_;
@@ -414,8 +412,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
 
-  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
-
   // The physical and hybrid times on the tserver represented by this object at the time it sent the
   // last heartbeat received by this master.
   MicrosTime physical_time_ GUARDED_BY(mutex_);
@@ -433,7 +429,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   int32_t latest_report_seqno_ GUARDED_BY(mutex_);
 
   // Set to true once this instance has reported all of its tablets.
-  bool has_tablet_report_ GUARDED_BY(mutex_);
+  bool has_tablet_report_ GUARDED_BY(mutex_) = false;
+
+  int32_t receiving_full_report_seq_no_ GUARDED_BY(mutex_) = 0;
 
   // Tablet server has at least one faulty drive.
   bool has_faulty_drive_ GUARDED_BY(mutex_);

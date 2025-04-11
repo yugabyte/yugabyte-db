@@ -10,20 +10,31 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.MockUpgrade;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -37,6 +48,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -44,6 +56,8 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -120,8 +134,6 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .forUniverse(defaultUniverse)
         .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
-    updateDefaultUniverseTo5Nodes(true);
-
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setAutoFlagConfigVersion(1);
@@ -129,6 +141,17 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
     TestHelper.updateUniverseVersion(defaultUniverse, "2.21.0.0-b2");
+  }
+
+  private void updatePrevYbSoftwareConfig(String initialVersion, String targetVersion) {
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    PrevYBSoftwareConfig prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+    prevYBSoftwareConfig.setSoftwareVersion(initialVersion);
+    prevYBSoftwareConfig.setTargetUpgradeSoftwareVersion(targetVersion);
+    details.prevYBSoftwareConfig = prevYBSoftwareConfig;
+    details.isSoftwareRollbackAllowed = true;
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
   }
 
   private TaskInfo submitTask(RollbackUpgradeParams requestParams) {
@@ -283,6 +306,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testRollbackRetries() {
+    updatePrevYbSoftwareConfig("2.21.0.0-b1", "2.21.0.0-b2");
     RuntimeConfigEntry.upsert(
         defaultUniverse, UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
@@ -298,6 +322,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         TaskType.RollbackUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
@@ -306,6 +331,8 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testRollbackUpgradeInRollingManner() {
+    updateDefaultUniverseTo5Nodes(true);
+    updatePrevYbSoftwareConfig("2.21.0.0-b1", "2.21.0.0-b2");
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -349,6 +376,8 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testRollbackUpgradeInNonRollingManner() {
+    updateDefaultUniverseTo5Nodes(true);
+    updatePrevYbSoftwareConfig("2.21.0.0-b1", "2.21.0.0-b2");
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -390,6 +419,8 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testRollbackPartialUpgrade() {
+    updateDefaultUniverseTo5Nodes(true);
+    updatePrevYbSoftwareConfig("2.21.0.0-b1", "2.21.0.0-b2");
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -424,5 +455,101 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
     assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
+  }
+
+  @Test
+  public void testRollbackYsqlMajorVersionSoftwareUpgrade() throws Exception {
+
+    String baseVersion = "2024.2.2.0-b1";
+    String targetVersion = "2025.1.0.0-b1";
+
+    InstanceType.upsert(
+        defaultProvider.getUuid(),
+        "m3.medium",
+        0,
+        Double.valueOf(0),
+        InstanceTypeDetails.createGCPDefault());
+    updatePrevYbSoftwareConfig(baseVersion, targetVersion);
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList()))
+        .thenReturn(ShellResponse.create(0, StringUtils.EMPTY));
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(any()))
+        .thenReturn(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK);
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L, null, null, YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING));
+    mockDBServerVersion(
+        targetVersion,
+        baseVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(false))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.RollbackAutoFlags)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(false)
+                .processTServersFirst(true)
+                .targetSoftwareVersion(baseVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addTasks(TaskType.RollbackYsqlMajorVersionCatalogUpgrade)
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(false)
+                .processTServersFirst(false)
+                .targetSoftwareVersion(baseVersion)
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.CleanUpPGUpgradeDataDir)
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
+    assertEquals(
+        baseVersion,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  private MockUpgrade initMockUpgrade() {
+    return initMockUpgrade(RollbackUpgrade.class);
   }
 }

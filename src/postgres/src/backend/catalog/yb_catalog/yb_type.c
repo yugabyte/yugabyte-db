@@ -69,6 +69,7 @@
 #include "catalog/yb_type.h"
 #include "mb/pg_wchar.h"
 #include "parser/parse_type.h"
+#include "pg_yb_utils.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/cash.h"
@@ -80,10 +81,7 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
-
 #include "yb/yql/pggate/ybc_pggate.h"
-
-#include "pg_yb_utils.h"
 
 static const YbcPgTypeEntity YBCFixedLenByValTypeEntity;
 static const YbcPgTypeEntity YBCNullTermByRefTypeEntity;

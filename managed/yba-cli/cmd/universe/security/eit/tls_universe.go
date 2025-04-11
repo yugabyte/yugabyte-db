@@ -129,13 +129,19 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		var primaryUserIntent ybaclient.UserIntent
-		for _, r := range clusters {
-			if strings.Compare(r.GetClusterType(), util.PrimaryClusterType) == 0 {
-				primaryUserIntent = r.GetUserIntent()
-				break
-			}
+		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
+		if primaryCluster == (ybaclient.Cluster{}) {
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf(
+						"No primary cluster found in universe %s (%s)\n",
+						universeName,
+						universeUUID,
+					),
+					formatter.RedColor,
+				))
 		}
+		primaryUserIntent := primaryCluster.GetUserIntent()
 
 		upgradeOption := "Non-Rolling"
 		requestBody := ybaclient.TlsToggleParams{

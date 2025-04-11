@@ -717,15 +717,14 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         << tablet_queues_.size();
     YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
   } else {
-    int64_t vwal_lag_in_ms = 0;
+    MonoDelta vwal_lag;
     // VWAL lag is only calculated when the response contains a commit record. If there are
     // multiple commit records in the same resposne, lag will be calculated for the last shipped
     // commit.
     if (metadata.commit_records > 0) {
       auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
-      vwal_lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
-                           last_shipped_commit.commit_record_unique_id->GetCommitTime()))) /
-                       1000;
+      vwal_lag = current_clock_time_ht.PhysicalDiff(
+          HybridTime::FromPB(last_shipped_commit.commit_record_unique_id->GetCommitTime()));
     }
 
     int64_t unacked_txn = 0;
@@ -751,7 +750,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         << ", delete_records: " << metadata.delete_records
         << ", ddl_records: " << metadata.ddl_records
         << ", contains_publication_refresh_record: " << metadata.contains_publication_refresh_record
-        << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
+        << ", VWAL lag: " << vwal_lag.ToPrettyString()
         << ", Number of unacked txns in VWAL: " << unacked_txn;
 
     YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
@@ -1072,7 +1071,7 @@ Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
   auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
   if (last_restart_lsn_read_time_.is_valid() &&
       current_time.PhysicalDiff(last_restart_lsn_read_time_) <
-          static_cast<int64>(GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_interval_secs))) {
+          MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_interval_secs))) {
     return Status::OK();
   }
 
@@ -1198,6 +1197,10 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   last_received_confirmed_flush_lsn_ = confirmed_flush_lsn;
 
   return record_metadata.commit_lsn;
+}
+
+xrepl::StreamId CDCSDKVirtualWAL::GetStreamId() {
+  return stream_id_;
 }
 
 Status CDCSDKVirtualWAL::TruncateMetaMap(const uint64_t restart_lsn) {
@@ -1554,6 +1557,14 @@ Status CDCSDKVirtualWAL::ValidateTablesToBeAddedPresentInStream(
       timeout, "Timed out waiting for table to get added to the stream"));
 
   return Status::OK();
+}
+
+std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
+  std::vector<TabletId> tablet_ids;
+  for (auto& entry : tablet_queues_) {
+    tablet_ids.push_back(entry.first);
+  }
+  return tablet_ids;
 }
 
 }  // namespace cdc

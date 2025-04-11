@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
@@ -91,6 +92,8 @@ DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
+DEFINE_test_flag(bool, tserver_disable_catalog_refresh_on_heartbeat, false,
+    "When set, disable trigger of catalog cache refresh from tserver-master heartbeat path.");
 
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
@@ -162,8 +165,8 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   master::TSHeartbeatResponsePB last_hb_response_;
 
   // Full reports can take multiple heartbeats.
-  // Flag to indicate if next heartbeat is part of a full report.
-  bool sending_full_report_ = false;
+  // This field has value of the sequence number of the first heartbeat in this scenario.
+  std::optional<int32> full_report_seq_no_;
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
@@ -175,7 +178,7 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
 Heartbeater::Heartbeater(
     const TabletServerOptions& opts, TabletServer* server,
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
-  : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
+    : impl_(std::make_unique<Impl>(opts, *server, std::move(data_providers))) {
 }
 
 Heartbeater::~Heartbeater() {
@@ -210,7 +213,7 @@ Heartbeater::Impl::Impl(
   auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
   CHECK(!master_addresses->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
-                      << yb::ToString(master_addresses);
+                      << AsString(master_addresses);
 }
 
 Status Heartbeater::Impl::Start() {
@@ -281,7 +284,7 @@ Status HeartbeatPoller::Poll() {
 }
 
 MonoDelta HeartbeatPoller::IntervalToNextPoll(int32_t consecutive_failures) {
-  if (sending_full_report_ || last_hb_response_.needs_reregister() ||
+  if (full_report_seq_no_ || last_hb_response_.needs_reregister() ||
       last_hb_response_.needs_full_tablet_report()) {
     return GetMinimumHeartbeatMillis(consecutive_failures);
   }
@@ -320,18 +323,21 @@ Status HeartbeatPoller::TryHeartbeat() {
                           "Unable to set up registration");
   }
 
+  auto& tablet_report = *req.mutable_tablet_report();
   if (last_hb_response_.needs_full_tablet_report()) {
     LOG_WITH_PREFIX(INFO) << "Sending a full tablet report to master...";
-    server_.tablet_manager()->StartFullTabletReport(req.mutable_tablet_report());
-    sending_full_report_ = true;
+    server_.tablet_manager()->StartFullTabletReport(&tablet_report);
+    full_report_seq_no_ = tablet_report.sequence_number();
+    tablet_report.set_full_report_seq_no(*full_report_seq_no_);
   } else {
-    if (sending_full_report_) {
+    server_.tablet_manager()->GenerateTabletReport(
+        &tablet_report, !full_report_seq_no_ /* include_bootstrap */);
+    if (full_report_seq_no_) {
       LOG_WITH_PREFIX(INFO) << "Continuing full tablet report to master...";
+      tablet_report.set_full_report_seq_no(*full_report_seq_no_);
     } else {
       VLOG_WITH_PREFIX(2) << "Sending an incremental tablet report to master...";
     }
-    server_.tablet_manager()->GenerateTabletReport(
-        req.mutable_tablet_report(), !sending_full_report_ /* include_bootstrap */);
   }
 
   auto universe_uuid = VERIFY_RESULT(
@@ -340,7 +346,7 @@ Status HeartbeatPoller::TryHeartbeat() {
     req.set_universe_uuid(universe_uuid);
   }
 
-  req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
+  tablet_report.set_is_incremental(!full_report_seq_no_);
   req.set_num_live_tablets(server_.tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_.tablet_manager()->GetLeaderCount());
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -480,12 +486,15 @@ Status HeartbeatPoller::TryHeartbeat() {
       req.tablet_report().sequence_number(), last_hb_response_.tablet_report(), all_processed);
 
   // Trigger another heartbeat ASAP if we didn't process all tablets on this request.
-  sending_full_report_ = sending_full_report_ && !all_processed;
+  if (all_processed) {
+    full_report_seq_no_.reset();
+  }
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   // We only check --enable_ysql when --ysql_enable_db_catalog_version_mode=true
   // to keep the logic backward compatible.
-  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql &&
+      PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
     // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
     // mode, we do not use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
@@ -497,7 +506,7 @@ Status HeartbeatPoller::TryHeartbeat() {
                           << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
       server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
-      if (FLAGS_TEST_yb_enable_invalidation_messages) {
+      if (FLAGS_ysql_yb_enable_invalidation_messages) {
         if (last_hb_response_.has_db_catalog_inval_messages_data()) {
           server_.SetYsqlDBCatalogInvalMessages(
               last_hb_response_.db_catalog_inval_messages_data());
@@ -541,7 +550,8 @@ Status HeartbeatPoller::TryHeartbeat() {
         server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                        last_hb_response_.ysql_catalog_version());
       }
-    } else if (last_hb_response_.has_db_catalog_version_data()) {
+    } else if (last_hb_response_.has_db_catalog_version_data() &&
+               PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
       // --ysql_enable_db_catalog_version_mode is still false on this tserver but master
       // already has --ysql_enable_db_catalog_version_mode=true. This can happen during
       // rolling upgrade from an old release where this gflag defaults to false to a new

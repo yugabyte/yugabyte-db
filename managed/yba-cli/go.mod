@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.16.0
 	github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816
-	github.com/yugabyte/platform-go-client v0.0.0-20250306063322-0271b9d11ccc
+	github.com/yugabyte/platform-go-client v0.0.0-20250324034832-5970b8d3a5e0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/term v0.28.0
 	gopkg.in/yaml.v2 v2.4.0

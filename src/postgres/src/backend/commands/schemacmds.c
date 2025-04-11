@@ -52,7 +52,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
@@ -212,7 +212,8 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * we cannot, in general, run parse analysis on one statement until we
 	 * have actually executed the prior ones.
 	 */
-	parsetree_list = transformCreateSchemaStmt(stmt);
+	parsetree_list = transformCreateSchemaStmtElements(stmt->schemaElts,
+													   schemaName);
 
 	/*
 	 * Execute each command contained in the CREATE SCHEMA.  Since the grammar

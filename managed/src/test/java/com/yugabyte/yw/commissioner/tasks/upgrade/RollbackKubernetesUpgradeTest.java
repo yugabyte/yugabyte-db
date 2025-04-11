@@ -73,6 +73,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         TaskType.RollbackKubernetesUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(

@@ -78,6 +78,8 @@ class SharedMemoryBackingAllocator {
   Status InitChild(
       ReservedAddressSegment& address_segment, std::string_view prefix);
 
+  Status CleanupPrepareState();
+
   Result<void*> Allocate(size_t size);
   void Deallocate(void* p, size_t size);
 

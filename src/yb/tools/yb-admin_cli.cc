@@ -38,20 +38,24 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/common/xcluster_util.h"
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tools/yb-admin_util.h"
+
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -260,13 +264,13 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           case master::SysRowEntryType::UDTYPE: {
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysUDTypeEntryPB>(entry.data()));
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           case master::SysRowEntryType::TABLE: {
@@ -277,7 +281,7 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             meta.clear_index_info();
             meta.clear_indexes();
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           default:
@@ -288,8 +292,8 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
           entry.set_data("DATA");
           std::cout << kColumnSep
                     << StringReplace(
-                           JsonWriter::ToJson(entry, JsonWriter::COMPACT), "\"DATA\"", decoded_data,
-                           false)
+                           JsonWriter::ToJson(entry, JsonWriter::COMPACT_ESCAPE_STR), "\"DATA\"",
+                           decoded_data, false)
                     << std::endl;
         }
       }

@@ -17,10 +17,13 @@
 #ifndef MEMUTILS_H
 #define MEMUTILS_H
 
-#include "c.h"
+#include "c.h"	/* YB include */
+
 #include "nodes/memnodes.h"
 
+/* YB includes */
 #include "yb/yql/pggate/util/ybc_util.h"
+
 
 /*
  * MaxAllocSize, MaxAllocHugeSize

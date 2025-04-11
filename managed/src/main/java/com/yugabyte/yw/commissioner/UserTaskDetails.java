@@ -22,7 +22,7 @@ public class UserTaskDetails {
     // purposes, not stored in DB.
     Preparation,
 
-    // Perform preflight checks to determine if the node is ready to be configured or provisioned.
+    // Perform preflight checks to determine if the task target is healthy.
     PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
@@ -293,7 +293,13 @@ public class UserTaskDetails {
     PITRRestore,
 
     // Pause replication
-    PauseReplication
+    PauseReplication,
+
+    // Persist use clockbound
+    PersistUseClockbound,
+
+    // Support bundle component download
+    SupportBundleComponentDownload
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -313,9 +319,7 @@ public class UserTaskDetails {
         break;
       case PreflightChecks:
         title = "Preflight Checks";
-        description =
-            "Perform preflight checks to determine if node is ready"
-                + " to be provisioned/configured.";
+        description = "Perform preflight checks to determine if the task target is healthy.";
         break;
       case Provisioning:
         title = "Provisioning";
@@ -684,6 +688,13 @@ public class UserTaskDetails {
       case PauseReplication:
         title = "Pause Replication";
         description = "Pause replication from source to target universe";
+      case SupportBundleComponentDownload:
+        title = "Downloading support bundle content";
+        description = "Downloading support bundle content from DB nodes";
+        break;
+      case PersistUseClockbound:
+        title = "Persist useClockbound";
+        description = "Persist useClockbound true/false in userIntent";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

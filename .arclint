@@ -49,7 +49,8 @@
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
      "(^yb_release_manifest.json$)",
-     "(^managed/client/java/.*/pom.xml)"
+     "(^managed/client/java/.*/pom.xml)",
+     "(^yugabyted-ui/ui/package-lock.json)"
   ],
   "linters": {
     "go-files": {
@@ -76,6 +77,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "([.]csv$)",
         "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
@@ -150,7 +152,6 @@
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
-        "(^src/postgres/third-party-extensions/)",
         "(^src/yb/)"
       ],
       "include": [
@@ -192,6 +193,7 @@
     "unique_sort": {
       "type": "script-and-regex",
       "include": [
+        "(^src/lint/upstream_repositories.csv$)",
         "(^src/postgres/src/.+/yb[^/]*typedefs.list$)"
       ],
       "script-and-regex.script": "src/lint/unique_sort.sh",

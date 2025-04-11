@@ -411,13 +411,10 @@ message SysObjectLockEntryPB {
     // object_id -> Locks taken
     map<uint64, LockTypesPB> objects = 1;
   }
-  message DBObjectsMapPB {
-    // db_id -> map of objects/locks-taken
-    map<uint64, ObjectLocksMapPB> dbs = 1;
-  }
   message SubtxnDBMapPB {
-    // subtxn -> DB ...
-    map<uint32, DBObjectsMapPB> subtxns = 1;
+    optional uint64 db_id = 1;
+    // subtxn -> object locks ...
+    map<uint32, ObjectLocksMapPB> subtxns = 2;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...
@@ -429,6 +426,17 @@ message SysObjectLockEntryPB {
 
   // lease_epoch -> Transaction ...
   map<uint64, TransactionSubtxnMapPB> lease_epochs = 1;
+
+  message LeaseInfoPB {
+    // Whether the lease is currently live.
+    optional bool live_lease = 1;
+
+    optional uint64 lease_epoch = 2;
+
+    // The instance_seqno of the tserver process to which this lease was granted.
+    optional int64 instance_seqno = 3;
+  }
+  optional LeaseInfoPB lease_info = 2;
 }
 
 message SysXClusterConfigEntryPB {
@@ -616,6 +624,8 @@ message SysCDCStreamEntryPB {
 
   optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
       13 [default = ReplicationSlotLsnType_UNSPECIFIED];
+  optional ReplicationSlotOrderingMode cdcsdk_ysql_replication_slot_ordering_mode =
+      14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 
@@ -1008,10 +1018,6 @@ message SysTabletServerEntryPB {
   // registered in memory before persistence was enabled to re-register and have their entry
   // persisted.
   optional bool persisted = 6;
-
-  optional bool live_client_operation_lease = 7;
-
-  optional uint64 lease_epoch = 8;
 
   optional VersionInfoPB version_info = 9;
 }

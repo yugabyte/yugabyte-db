@@ -9,8 +9,10 @@
 #include "fmgr.h"
 #include "halfutils.h"
 #include "halfvec.h"
-/* #include "hnsw.h" */			/* YB: Unused in YB. */
-/* #include "ivfflat.h" */		/* YB: Unused in YB. */
+#if 0	/* YB: unused */
+#include "hnsw.h"
+#include "ivfflat.h"
+#endif	/* YB: unused */
 #include "lib/stringinfo.h"
 #include "libpq/pqformat.h"
 #include "port.h"				/* for strtof() */

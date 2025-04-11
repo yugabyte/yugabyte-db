@@ -33,7 +33,8 @@ class InstallNodeAgent(BaseYnpModule):
                 "skipProvisioning": True,
                 "cloudInfo": {
                     "onprem": {
-                        "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte")
+                        "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte"),
+                        "useClockbound": context.get("configure_clockbound", "false")
                     }
                 }
             },

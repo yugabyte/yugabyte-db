@@ -77,7 +77,9 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 
+/* YB includes */
 #include "common/pg_yb_common.h"
+
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
 extern const char *select_default_timezone(const char *share_path);
@@ -2396,15 +2398,12 @@ setlocales(void)
 	char	   *canonname;
 
 	/*
-	 * Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale
-	 * in YB mode.
+	 * Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in
+	 * YB mode.
+	 * This is because as of 06/15/2019 we don't support collation-aware string
+	 * comparisons, but we still want to support storing UTF-8 strings.
+	 * This should be kept in line with TabletServerMain.
 	 */
-
-	/*
-	 * This is because as of 06/15/2019 we don't support collation-aware
-	 * string comparisons,
-	 */
-	/* but we still want to support storing UTF-8 strings. */
 	if (!locale &&
 		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
 	{

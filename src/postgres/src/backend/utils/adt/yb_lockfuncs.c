@@ -22,18 +22,24 @@
 */
 
 #include "postgres.h"
-#include "pg_yb_utils.h"
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "executor/ybFunction.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 
 /* Number of columns in yb_lock_status output */
 #define YB_NUM_LOCK_STATUS_COLUMNS 21
+
+/* Advisory locks key info columns */
+#define YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS 3
+#define YB_CLASSID_COLUMN_IDX 22
+#define YB_OBJID_COLUMN_IDX 23
+#define YB_OBJSUBID_COLUMN_IDX 24
 
 /*
  * yb_lock_status - produce a view with one row per held or awaited lock
@@ -79,7 +85,19 @@ yb_lock_status(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match function's declaration in pg_proc.h */
-		tupdesc = CreateTemplateTupleDesc(YB_NUM_LOCK_STATUS_COLUMNS);
+		if (yb_pg_locks_integrate_advisory_locks)
+		{
+			tupdesc = CreateTemplateTupleDesc(YB_NUM_LOCK_STATUS_COLUMNS +
+					YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS);
+			TupleDescInitEntry(tupdesc, (AttrNumber) YB_CLASSID_COLUMN_IDX, "classid",
+							   OIDOID, -1, 0);
+			TupleDescInitEntry(tupdesc, (AttrNumber) YB_OBJID_COLUMN_IDX, "objid",
+							   OIDOID, -1, 0);
+			TupleDescInitEntry(tupdesc, (AttrNumber) YB_OBJSUBID_COLUMN_IDX, "objsubid",
+							   INT2OID, -1, 0);
+		}
+		else
+			tupdesc = CreateTemplateTupleDesc(YB_NUM_LOCK_STATUS_COLUMNS);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "locktype",
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "database",
@@ -144,8 +162,15 @@ yb_lock_status(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	yb_funcctx = funcctx->user_fctx;
 
-	Datum		values[YB_NUM_LOCK_STATUS_COLUMNS];
-	bool		nulls[YB_NUM_LOCK_STATUS_COLUMNS];
+	/*
+	 * The values and nulls arrays are sized to accommodate the maximum possible number of columns.
+	 * When yb_pg_locks_integrate_advisory_locks is false, only the required subset of columns is used,
+	 * leaving the extra space untouched and safe to remain uninitialized.
+	 */
+	Datum		values[YB_NUM_LOCK_STATUS_COLUMNS +
+			YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS];
+	bool		nulls[YB_NUM_LOCK_STATUS_COLUMNS +
+			YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS];
 
 	while (YbSRFGetNext(yb_funcctx, (uint64_t *) values, nulls))
 	{

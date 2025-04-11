@@ -2342,6 +2342,14 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  /** @see {@link AsyncYBClient#getXClusterOutboundReplicationGroups(String)} */
+  public GetXClusterOutboundReplicationGroupsResponse getXClusterOutboundReplicationGroups(
+    @Nullable String namespaceId) throws Exception {
+    Deferred<GetXClusterOutboundReplicationGroupsResponse> d =
+        asyncClient.getXClusterOutboundReplicationGroups(namespaceId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public BootstrapUniverseResponse bootstrapUniverse(
       final HostAndPort hostAndPort, List<String> tableIds) throws Exception {
     Deferred<BootstrapUniverseResponse> d = asyncClient.bootstrapUniverse(hostAndPort, tableIds);

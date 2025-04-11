@@ -2028,24 +2028,28 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
     const NO_THREAD_SAFETY_ANALYSIS {
   RaftGroupReplicaSuperBlockPB superblock;
   ToSuperBlock(&superblock);
+
+  superblock.set_raft_group_id(raft_group_id);
+  superblock.set_wal_dir(GetSubRaftGroupWalDir(raft_group_id));
+  superblock.set_tablet_data_state(TABLET_DATA_INIT_STARTED);
+  superblock.clear_split_op_id();
+
+  auto& kv_store = *superblock.mutable_kv_store();
+  kv_store.set_kv_store_id(KvStoreId(raft_group_id).ToString());
+  kv_store.set_lower_bound_key(lower_bound_key);
+  kv_store.set_upper_bound_key(upper_bound_key);
+  kv_store.set_rocksdb_dir(GetSubRaftGroupDataDir(raft_group_id));
+  kv_store.set_parent_data_compacted(false);
+  kv_store.set_last_full_compaction_time(kNoLastFullCompactionTime);
+  kv_store.clear_post_split_compaction_file_number_upper_bound();
+
+  partition.ToPB(superblock.mutable_partition());
+
   fs_manager_->SetTabletPathByDataPath(raft_group_id,
-                                         DirName(DirName(DirName(kv_store_.rocksdb_dir))));
-  RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
+                                       DirName(DirName(DirName(kv_store_.rocksdb_dir))));
+  RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
-  metadata->raft_group_id_ = raft_group_id;
-  metadata->log_prefix_ = consensus::MakeTabletLogPrefix(raft_group_id, fs_manager_->uuid());
-  metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
-  metadata->kv_store_.kv_store_id = KvStoreId(raft_group_id);
-  metadata->kv_store_.lower_bound_key = lower_bound_key;
-  metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
-  metadata->kv_store_.parent_data_compacted = false;
-  metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
-  metadata->kv_store_.post_split_compaction_file_number_upper_bound.reset();
-  *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
-  metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
-  metadata->split_op_id_ = OpId();
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }
@@ -2447,6 +2451,17 @@ std::string RaftGroupMetadata::snapshots_dir() const {
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
   return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
+}
+
+Result<docdb::EncodedPartitionBounds> RaftGroupMetadata::MakeEncodedPartitionBounds() const {
+  const auto partition_schema = RaftGroupMetadata::partition_schema();
+  const auto partition = RaftGroupMetadata::partition();
+  return docdb::EncodedPartitionBounds{
+      .start_key = KeyBuffer(VERIFY_RESULT(
+          partition_schema->GetEncodedPartitionKey(partition->partition_key_start()))),
+      .end_key = KeyBuffer(
+          VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_end()))),
+  };
 }
 
 } // namespace yb::tablet

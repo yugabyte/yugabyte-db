@@ -56,29 +56,38 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
   public void run() {
     Universe universe = getUniverse();
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
-    String pgPassFilePath =
-        Util.getNodeHomeDir(universe.getUniverseUUID(), universe.getMasterLeaderNode())
-            + "/.pgpass";
+    String pgPassFileDir =
+        (universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(CloudType.kubernetes)
+            ? Util.getDataDirectoryPath(universe, masterLeaderNode, config) + "/yw-data"
+            : Util.getNodeHomeDir(universe.getUniverseUUID(), universe.getMasterLeaderNode()));
+    String pgPassFilePath = pgPassFileDir + "/.pgpass";
     if (taskParams().action == Action.CREATE_USER) {
-      dropUser(universe, masterLeaderNode, pgPassFilePath);
+      dropUser(universe, masterLeaderNode);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
-      createUser(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
+      createUser(universe, masterLeaderNode, taskParams().password);
     } else if (taskParams().action == Action.DELETE_USER) {
-      dropUser(universe, masterLeaderNode, pgPassFilePath);
+      dropUser(universe, masterLeaderNode);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
     } else if (taskParams().action == Action.CREATE_USER_AND_PG_PASS_FILE) {
-      dropUser(universe, masterLeaderNode, pgPassFilePath);
+      dropUser(universe, masterLeaderNode);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
-      createUser(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
-      createPGPassFile(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
+      createUser(universe, masterLeaderNode, taskParams().password);
+      createPGPassFile(
+          universe, masterLeaderNode, pgPassFileDir, pgPassFilePath, taskParams().password);
     } else if (taskParams().action == Action.DELETE_PG_PASS_FILE) {
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
     } else if (taskParams().action == Action.CREATE_PG_PASS_FILE) {
-      createPGPassFile(universe, masterLeaderNode, pgPassFilePath, taskParams().password);
+      createPGPassFile(
+          universe, masterLeaderNode, pgPassFileDir, pgPassFilePath, taskParams().password);
     }
   }
 
-  private void dropUser(Universe universe, NodeDetails node, String pgPassFilePath) {
+  private void dropUser(Universe universe, NodeDetails node) {
     ysqlQueryExecutor.runUserDbCommands(
         "DROP USER IF EXISTS " + UPGRADE_SUPERUSER, "template1", universe);
   }
@@ -87,8 +96,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     nodeUniverseManager.runCommand(node, universe, ImmutableList.of("rm", "-f", pgPassFilePath));
   }
 
-  private void createUser(
-      Universe universe, NodeDetails node, String pgPassFilePath, String password) {
+  private void createUser(Universe universe, NodeDetails node, String password) {
     String query =
         String.format(
             """
@@ -102,7 +110,11 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
   }
 
   private void createPGPassFile(
-      Universe universe, NodeDetails node, String pgPassFilePath, String password) {
+      Universe universe,
+      NodeDetails node,
+      String pgPassFileDir,
+      String pgPassFilePath,
+      String password) {
     String pgPassFileContent = "*:*:*:" + UPGRADE_SUPERUSER + ":" + password;
     if (universe
         .getUniverseDetails()
@@ -111,7 +123,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
         .providerType
         .equals(CloudType.kubernetes)) {
       String command =
-          "rm -rf "
+          "rm -f "
               + pgPassFilePath
               + "; echo "
               + pgPassFileContent
@@ -120,43 +132,52 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
               + "; chmod 600 "
               + pgPassFilePath;
       String redactedCommand =
-          "rm -rf "
+          "rm -f "
               + pgPassFilePath
               + "; echo *:*:*:REDACTED_USERNAME:REDACTED_PASSWORD >> "
               + pgPassFilePath
               + "; chmod 600 "
               + pgPassFilePath;
       command = command.replace("$", "\\$");
-      nodeUniverseManager.runCommand(
-          node,
-          universe,
-          ImmutableList.of("/bin/bash", "-c", command),
-          ShellProcessContext.builder()
-              .logCmdOutput(false)
-              .redactedVals(ImmutableMap.of(command, redactedCommand))
-              .build());
+      nodeUniverseManager
+          .runCommand(
+              node,
+              universe,
+              ImmutableList.of("/bin/bash", "-c", command),
+              ShellProcessContext.builder()
+                  .logCmdOutput(false)
+                  .redactedVals(ImmutableMap.of(command, redactedCommand))
+                  .build())
+          .processErrors();
     } else {
-      nodeUniverseManager.runCommand(
-          node,
-          universe,
-          ImmutableList.of(
-              "rm",
-              "-rf",
-              pgPassFilePath,
-              ";",
-              "echo",
-              pgPassFileContent,
-              ">>",
-              pgPassFilePath,
-              ";",
-              "chmod",
-              "600",
-              pgPassFilePath),
-          ShellProcessContext.builder()
-              .logCmdOutput(false)
-              .redactedVals(
-                  ImmutableMap.of(pgPassFileContent, "*:*:*:REDACTED_USERNAME:REDACTED_PASSWORD"))
-              .build());
+      nodeUniverseManager
+          .runCommand(
+              node,
+              universe,
+              ImmutableList.of(
+                  "rm",
+                  "-f",
+                  pgPassFilePath,
+                  ";",
+                  "mkdir",
+                  "-p",
+                  pgPassFileDir,
+                  ";",
+                  "echo",
+                  pgPassFileContent,
+                  ">>",
+                  pgPassFilePath,
+                  ";",
+                  "chmod",
+                  "600",
+                  pgPassFilePath),
+              ShellProcessContext.builder()
+                  .logCmdOutput(false)
+                  .redactedVals(
+                      ImmutableMap.of(
+                          pgPassFileContent, "*:*:*:REDACTED_USERNAME:REDACTED_PASSWORD"))
+                  .build())
+          .processErrors();
     }
   }
 }

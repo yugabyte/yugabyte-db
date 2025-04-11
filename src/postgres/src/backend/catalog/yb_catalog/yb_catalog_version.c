@@ -9,7 +9,6 @@
  */
 
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include <inttypes.h>
 
@@ -28,17 +27,17 @@
 #include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
+#include "pg_yb_utils.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
 
@@ -256,7 +255,16 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
 			PopActiveSnapshot();
-		new_version = DatumGetUInt64(retval);
+		if (fcinfo->isnull)
+		{
+			elog(WARNING, "function %u returned NULL", functionId);
+			new_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+		}
+		else
+		{
+			new_version = DatumGetUInt64(retval);
+			Assert(new_version != YB_CATCACHE_VERSION_UNINITIALIZED);
+		}
 		MaybeLogNewSQLIncrementCatalogVersion(true /* success */ ,
 											  db_oid,
 											  is_breaking_change,
@@ -366,18 +374,15 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
-	if (*YBCGetGFlags()->TEST_yb_enable_invalidation_messages &&
-		YBIsDBCatalogVersionMode())
+	if (YbIsInvalidationMessageEnabled())
 	{
 		Oid func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
 									 : YbGetNewIncrementCatalogVersionFunctionOid();
 		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
 		{
-			YbResetNewCatalogVersion();
 			bool is_null = false;
 			Datum messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
-			int expiration_secs =
-				*YBCGetGFlags()->TEST_yb_invalidation_message_expiration_secs;
+			int expiration_secs = yb_invalidation_message_expiration_secs;
 			if (is_global_ddl)
 			{
 				/*
@@ -579,6 +584,7 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 										  const SharedInvalidationMessage *invalMessages,
 										  int nmsgs)
 {
+	YbResetNewCatalogVersion();
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
 

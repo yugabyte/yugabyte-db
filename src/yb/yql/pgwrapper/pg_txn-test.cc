@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,37 +13,45 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/rocksdb/db.h"
 
-#include "yb/common/pgsql_error.h"
-
-#include "yb/server/skewed_clock.h"
+#include "yb/tablet/tablet.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/yb_pg_errcodes.h"
+
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using std::string;
 
 using namespace std::literals;
 
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(yb_enable_read_committed_isolation);
-DECLARE_bool(enable_wait_queues);
-DECLARE_string(time_source);
-DECLARE_int32(replication_factor);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_int32(replication_factor);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
+DECLARE_int32(rocksdb_universal_compaction_size_ratio);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int64(db_filter_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_string(time_source);
+DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 
 namespace yb::pgwrapper {
 
 class PgTxnTest : public PgMiniTestBase {
-
  protected:
   void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
     auto value_from_deprecated_guc = ASSERT_RESULT(
@@ -419,514 +427,6 @@ TEST_F_EX(PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
   EXPECT_OK(setup_conn.CommitTransaction());
 }
 
-// Helper class to test the semantics of yb_read_after_commit_visibility option.
-//
-// Additional infrastructure was required for the test.
-//
-// The test requires us to simulate two connections to separate postmaster
-//   processes on different tservers. Usually, we could get away with
-//   ExternalMiniCluster if we required two different postmaster processes.
-// However, the test also requires that we register skewed clocks and jump
-//   the clocks as necessary.
-//
-// Here, we take the easier approach of using a MiniCluster (that supports
-// skewed clocks out of the box) and then simulate multiple postmaster
-// processes by explicitly spawning PgSupervisor processes for each tserver.
-//
-// Typical setup:
-// 1. MiniCluster with 2 tservers.
-// 2. One server hosts a test table with single tablet and RF 1.
-// 3. The other server, proxy, is blacklisted to control hybrid propagation.
-//    This is the node that the external client connects to, for the read
-//    query and "expects" to the see the recent commit.
-// 4. Ensure that the proxy is also not on the master node.
-// 5. Pre-populate the catalog cache so there are no surprise communications
-//    between the servers.
-// 6. Register skewed clocks. We only jump the clock on the node that hosts
-//    the data.
-//
-// Additional considerations/caveats:
-// - Register a thread prefix for each supervisor.
-//   Otherwise, the callback registration fails with name conflicts.
-// - Do NOT use PgPickTabletServer. It does not work. Moreover, it is
-//   insufficient for our usecase even if it did work as intended.
-class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
- public:
-  void SetUp() override {
-    server::SkewedClock::Register();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
-    PgMiniTestBase::SetUp();
-    SpawnSupervisors();
-  }
-
-  void DoTearDown() override {
-    // Exit supervisors cleanly ...
-    // Risk of false positive segfaults otherwise ...
-    for (auto&& supervisor : pg_supervisors_) {
-      if (supervisor) {
-        supervisor->Stop();
-      }
-    }
-    PgMiniTestBase::DoTearDown();
-  }
-
-  size_t NumTabletServers() override {
-    // One server for a proxy and the other server to host the data.
-    return 2;
-  }
-
-  void BeforePgProcessStart() override {
-    // Identify the tserver index that hosts the MiniCluster postmaster
-    // process so that we do NOT spawn a PgSupervisor for that tserver.
-    auto connParams = MakeConnSettings();
-    auto ntservers = static_cast<int>(cluster_->num_tablet_servers());
-    for (int idx = 0; idx < ntservers; idx++) {
-      auto server = cluster_->mini_tablet_server(idx);
-      if (server->bound_rpc_addr().address().to_string() == connParams.host) {
-        conn_idx_ = idx;
-        break;
-      }
-    }
-  }
-
-  Result<PGConn> ConnectToIdx(int idx) const {
-    // postmaster hosted by PgMiniTestBase itself.
-    if (idx == conn_idx_) {
-      return Connect();
-    }
-
-    // We own the postmaster process for this tserver idx.
-    // Use the appropriate postmaster process to setup a pg connection.
-    auto connParams = PGConnSettings {
-      .host = pg_host_ports_[idx].host(),
-      .port = pg_host_ports_[idx].port()
-    };
-
-    auto result = VERIFY_RESULT(PGConnBuilder(connParams).Connect());
-    RETURN_NOT_OK(SetupConnection(&result));
-    return result;
-  }
-
-  // Called for the first connection.
-  // Use ConnectToIdx() directly for subsequent connections.
-  Result<PGConn> ConnectToProxy() {
-    // Avoid proxy on the node that hosts the master because
-    //   tservers and masters regularly exchange heartbeats with each other.
-    //   This means there is constant hybrid time propagation between
-    //   the master and the tservers.
-    //   We wish to avoid hyrbid time from propagating to the proxy node.
-    if (static_cast<int>(cluster_->LeaderMasterIdx()) == proxy_idx_) {
-      return STATUS(IllegalState, "Proxy cannot be on the master node ...");
-    }
-
-    // Add proxy to the blacklist to limit hybrid time prop.
-    auto res = cluster_->AddTServerToBlacklist(proxy_idx_);
-    if (!res.ok()) {
-      return res;
-    }
-
-    // Now, we are ready to connect to the proxy.
-    return ConnectToIdx(proxy_idx_);
-  }
-
-  Result<PGConn> ConnectToDataHost() {
-    return ConnectToIdx(host_idx_);
-  }
-
-  // Jump the clocks of the nodes hosting the data.
-  std::vector<server::SkewedClockDeltaChanger> JumpClockDataNodes(
-      std::chrono::milliseconds skew) {
-    std::vector<server::SkewedClockDeltaChanger> changers;
-    auto ntservers = static_cast<int>(cluster_->num_tablet_servers());
-    for (int idx = 0; idx < ntservers; idx++) {
-      if (idx == proxy_idx_) {
-        continue;
-      }
-      changers.push_back(JumpClock(cluster_->mini_tablet_server(idx), skew));
-    }
-    return changers;
-  }
-
- protected:
-  // Setup to create the postmaster process corresponding to the tserver idx.
-  Status CreateSupervisor(int idx) {
-    auto pg_ts = cluster_->mini_tablet_server(idx);
-    auto port = cluster_->AllocateFreePort();
-    PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
-        AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-        pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
-
-    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-    pg_process_conf.force_disable_log_file = true;
-    pg_host_ports_[idx] = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-
-    pg_supervisors_[idx] = std::make_unique<PgSupervisor>(pg_process_conf, pg_ts->server());
-
-    return Status::OK();
-  }
-
-  void SpawnSupervisors() {
-    auto ntservers = static_cast<int>(cluster_->num_tablet_servers());
-
-    // Allocate space for the host ports and supervisors.
-    pg_host_ports_.resize(ntservers);
-    pg_supervisors_.resize(ntservers);
-
-    // Create and start the PgSupervisors.
-    for (int idx = 0; idx < ntservers; idx++) {
-      if (idx == conn_idx_) {
-        // Postmaster already started for this tserver.
-        continue;
-      }
-      // Prefix registered to avoid name clash among callback
-      // registrations.
-      TEST_SetThreadPrefixScoped prefix_se(std::to_string(idx));
-      ASSERT_OK(CreateSupervisor(idx));
-      ASSERT_OK(pg_supervisors_[idx]->Start());
-    }
-  }
-
-  int conn_idx_ = 0;
-  int proxy_idx_ = 1;
-  int host_idx_ = 0;
-  std::vector<HostPort> pg_host_ports_;
-  std::vector<std::unique_ptr<PgSupervisor>> pg_supervisors_;
-};
-
-// Ensures that clock skew does not affect read-after-commit guarantees on same
-// session with relaxed yb_read_after_commit_visibility option.
-//
-// Test Setup:
-// 1. Cluster with RF 1, skewed clocks, 2 tservers.
-// 2. Add a pg process on tserver that does not have one.
-//    This is done since MiniCluster only creates one postmaster process
-//    on some random tserver.
-//    We wish to use the minicluster and not external minicluster since
-//    there is better test infrastructure to manipulate clock skew.
-//    This approach is the less painful one at the moment.
-// 3. Add a tablet server to the blacklist
-//    so we can ensure hybrid time propagation doesn't occur between
-//    the data host node and the proxy
-// 4. Connect to the proxy tserver that does not host the data.
-//    We simulate this by blacklisting the target tserver.
-// 5. Create a table with a single tablet and a single row.
-// 6. Populate the catalog cache on the pg backend so that
-//    catalog cache misses does not interfere with hybrid time propagation.
-// 7. Jump the clock of the tserver hosting the table to the future.
-// 8. Insert a row using the proxy conn and a fast path txn.
-//    Commit ts for the insert is picked on the server whose clock is ahead.
-//    The hybrid time is propagated to the proxy conn since the request
-//    originated from the proxy conn.
-// 9. Read the table from the proxy connection.
-//    The read has a timestamp that is ahead of the physical clock accounting
-//    for the timestamp of the insert DML due hybrid time propagation.
-//    Hence, the read does not miss recent updates of the same connection.
-//    This property also applies when dealing with different pg connections
-//    but they all go through the same tserver proxy.
-TEST_F(PgReadAfterCommitVisibilityTest, SameSessionRecency) {
-  // Connect to local proxy.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-
-  // Create table test.
-  ASSERT_OK(proxyConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit time
-  // on the data node.
-  // This hybrid time is propagated to the local proxy.
-  ASSERT_OK(proxyConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a select using the the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Observe the recent insert despite the clock skew.
-  ASSERT_EQ(rows.size(), 1);
-}
-
-// Similar to SameSessionRecency except we have
-// two connections instead of one to the same node.
-//
-// This property is necessary to maintain same session guarantees even in the
-// presence of server-side connection pooling.
-TEST_F(PgReadAfterCommitVisibilityTest, SamePgNodeRecency) {
-  // Connect to local proxy.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  // Not calling ConnectToProxy() again since we already added
-  // the proxy to the blacklist.
-  auto proxyConn2 = ASSERT_RESULT(ConnectToIdx(proxy_idx_));
-
-  // Create table test.
-  ASSERT_OK(proxyConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(proxyConn2.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  // This ts is propagated to the local proxy.
-  ASSERT_OK(proxyConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a select using the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn2.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn2.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Observe the recent insert despite the clock skew.
-  ASSERT_EQ(rows.size(), 1);
-}
-
-// Demonstrate that read from a connection to a different node
-// (than the one which had the Pg connection to write data) may miss the
-// commit when using the relaxed yb_read_after_commit_visibility option.
-//
-// Test Setup:
-// 1. Cluster with RF 1, skewed clocks, 2 tservers.
-// 2. Add a pg process on tserver that does not have one.
-//    This is done since MiniCluster only creates one postmaster process
-//    on some random tserver.
-//    We wish to use the minicluster and not external minicluster since
-//    there is better test infrastructure to manipulate clock skew.
-//    This approach is the less painful one at the moment.
-// 3. Add a tablet server to the blacklist.
-// 4. Connect to both servers for Pg connection, data host and proxy.
-// 5. Create a table with a single tablet and a single row.
-// 6. Populate the catalog cache on both pg processes so that
-//    catalog cache misses does not interfere with hybrid time propagation.
-// 7. Jump the clock of the tserver hosting the table to the future.
-// 8. Insert a row using the host conn and a fast path txn.
-//    Commit ts for the insert is picked on the server whose clock is ahead.
-//    The hybrid time is not propagated to the proxy conn since
-//    there is no reason to touch proxy conn.
-// 9. Read the table from the proxy connection.
-//    The read can miss the recent commit since there is no hybrid time
-//    propagation from the host conn before the read time is picked.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeStaleRead) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit time
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a select using the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Miss the recent insert due to clock skew.
-  ASSERT_EQ(rows.size(), 0);
-}
-
-// Same test as SessionOnDifferentNodeStaleRead
-// except we verify that the staleness is bounded
-// by waiting out the clock skew.
-TEST_F(PgReadAfterCommitVisibilityTest,
-      SessionOnDifferentNodeBoundedStaleness) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto skew = 100ms;
-  auto changers = JumpClockDataNodes(skew);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Sleep for a while to verify that the staleness is bounded.
-  // We sleep for the same duration that we jump the clock, i.e. 100ms.
-  SleepFor(skew);
-
-  // Perform a select using the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // We do not miss the prior insert since the clock skew has passed.
-  ASSERT_EQ(rows.size(), 1);
-}
-
-// Duplicate insert check.
-//
-// Inserts should not miss other recent inserts to
-// avoid missing duplicate key violations. This is guaranteed because
-// we don't apply "relaxed" to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest,
-      SessionOnDifferentNodeDuplicateInsertCheck) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform an insert using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the duplicate key!
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("INSERT INTO test VALUES (1)");
-  ASSERT_FALSE(res.ok());
-
-  auto pg_err_ptr = res.ErrorData(PgsqlError::kCategory);
-  ASSERT_NE(pg_err_ptr, nullptr);
-  YBPgErrorCode error_code = PgsqlErrorTag::Decode(pg_err_ptr);
-  ASSERT_EQ(error_code, YBPgErrorCode::YB_PG_UNIQUE_VIOLATION);
-}
-
-// Updates should not miss recent DMLs either. This is guaranteed
-// because we don't apply "relaxed" to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeUpdateKeyCheck) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform an update using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the key with value 1
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("UPDATE test SET key = 2 WHERE key = 1");
-
-  // Ensure that the update happened.
-  auto row = ASSERT_RESULT(hostConn.FetchRow<int32_t>("SELECT key FROM test"));
-  ASSERT_EQ(row, 2);
-}
-
-// Same for DELETEs. They should not miss recent DMLs.
-// Otherwise, DELETE FROM table would not delete all the rows.
-// This is guaranteed because we don't apply "relaxed" to non-read
-// transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeDeleteKeyCheck) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a delete using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the key with value 1
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("DELETE FROM test WHERE key = 1");
-
-  // Ensure that the update happened.
-  auto rows = ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT key FROM test"));
-  ASSERT_EQ(rows.size(), 0);
-}
-
-// We also consider the case where the query looks like
-// a SELECT but there is an insert hiding underneath.
-// We are guaranteed read-after-commit-visibility in this case
-// since "relaxed" is not applied to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeDmlHidden) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform an insert using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the duplicate key!
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("WITH new_test AS ("
-    "INSERT INTO test (key) VALUES (1) RETURNING key"
-    ") SELECT key FROM new_test");
-  ASSERT_FALSE(res.ok());
-
-  auto pg_err_ptr = res.ErrorData(PgsqlError::kCategory);
-  ASSERT_NE(pg_err_ptr, nullptr);
-  YBPgErrorCode error_code = PgsqlErrorTag::Decode(pg_err_ptr);
-  ASSERT_EQ(error_code, YBPgErrorCode::YB_PG_UNIQUE_VIOLATION);
-}
-
 class PgReadCommittedTxnTest : public PgTxnRF1Test {
  public:
   void SetUp() override {
@@ -1080,6 +580,108 @@ TEST_F(PgTxnTest, MultiInsertUpdate) {
     ASSERT_EQ(i, key);
     ASSERT_EQ(i, value);
   }
+}
+
+TEST_F(PgTxnTest, CleanupIntentsDuringShutdown) {
+  constexpr int kNumRows = 256;
+  constexpr int64_t kExpectedSum = (kNumRows + 1) * kNumRows / 2;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test SELECT generate_series(1, $0), 0", kNumRows));
+
+  auto tablets = ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test"));
+  for (const auto& tablet : tablets) {
+    tablet->TEST_SleepBeforeApplyIntents(1s * kTimeMultiplier);
+    tablet->TEST_SleepBeforeDeleteIntentsFile(1s * kTimeMultiplier);
+  }
+
+  ASSERT_OK(conn.CommitTransaction());
+  auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
+  ASSERT_EQ(sum, kExpectedSum);
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
+  ASSERT_EQ(sum, kExpectedSum);
+}
+
+TEST_F(PgTxnTest, FlushLargeTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 14;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 128_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_size_ratio) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_always_include_size_threshold) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_min_merge_width) = 2;
+
+  constexpr auto kTxnRows = 15;
+  constexpr auto kValueLen = 16_KB;
+  constexpr auto kExtraRows = 1;
+  constexpr auto kExtraValueLen = 16_KB;
+
+  auto random_string_expr = Format(
+      "array_to_string(ARRAY("
+          "SELECT chr((97 + round(random() * 25))::INT) FROM generate_series(1, $0)), '')",
+      kValueLen);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT generate_series(1, $0), $1", kTxnRows, random_string_expr));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // At this point we should have single SST file with primary_schema_version 0
+  // (before fix for GHI #25106 primary_schema_version was empty).
+
+  // This flush is not necessary to reproduce the bug, but there is some logic to check
+  // that test itself is not broken and verifies desired behaviour.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+
+  auto tablets = ASSERT_RESULT(ListTabletsForTableName(
+      cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablets.size(), 1);
+  auto leader = tablets[0];
+  std::set<uint64_t> name_ids;
+  auto two_files_waiter = [leader, &name_ids]() -> Result<bool> {
+    auto files = leader->doc_db().regular->GetLiveFilesMetaData();
+    LOG(INFO) << leader->LogPrefix() << "Files: " << AsString(files);
+    if (files.size() != 2) {
+      return false;
+    }
+    name_ids.clear();
+    for (const auto& file : files) {
+      name_ids.insert(file.name_id);
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor(two_files_waiter, 10s, "Wait for second SST file to flush"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 TEXT"));
+
+  for (int i = kTxnRows; i++ <= kTxnRows + kExtraRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES($0, '$1', '$1')", i, RandomHumanReadableString(kExtraValueLen)));
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  }
+
+  auto old_name_ids = name_ids;
+  // This logic ensures the tserver's behavior remains unchanged and validates that the test
+  // still confirms the expected functionality.
+  ASSERT_OK(WaitFor(two_files_waiter, 10s, "Wait for compaction"));
+  // Check that the first file (before fix w/o primary_schema_version) still there.
+  ASSERT_EQ(*old_name_ids.begin(), *name_ids.begin());
+  // Check that other files were compacted.
+  // Since we have 0 retention, this file will contain only rows with most recent schema version.
+  ASSERT_NE(*(++old_name_ids.begin()), *(++name_ids.begin()));
+
+  auto res = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(LENGTH(value)) FROM test"));
+  ASSERT_EQ(res, kValueLen * kTxnRows + kExtraValueLen * kExtraRows);
 }
 
 } // namespace yb::pgwrapper

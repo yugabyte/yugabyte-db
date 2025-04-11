@@ -25,8 +25,6 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
@@ -34,9 +32,12 @@
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
 
-#include "pg_yb_utils.h"
-#include "executor/ybModifyTable.h"
+/* YB includes */
 #include "bootstrap/yb_bootstrap.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -54,7 +55,7 @@ static MemoryContext per_line_ctx = NULL;
 static void
 do_start(void)
 {
-	Assert(GetCurrentMemoryContext() == CurTransactionContext);
+	Assert(CurrentMemoryContext == CurTransactionContext);
 	/* First time through, create the per-line working context */
 	if (per_line_ctx == NULL)
 		per_line_ctx = AllocSetContextCreate(CurTransactionContext,

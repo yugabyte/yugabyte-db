@@ -23,10 +23,11 @@
 #pragma once
 
 #include "postgres.h"
+
 #include "access/relation.h"
+#include "commands/explain.h"
 #include "nodes/plannodes.h"
 #include "utils/rel.h"
-#include "commands/explain.h"
 
 bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 
@@ -41,7 +42,7 @@ extern void yb_extract_pushdown_clauses(List *restrictinfo_list,
 							IndexOptInfo *indexinfo, bool bitmapindex,
 							List **local_quals, List **rel_remote_quals,
 							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs);
+							List **idx_colrefs, Oid relid);
 
 /* YbSkippableEntities helper functions */
 extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);

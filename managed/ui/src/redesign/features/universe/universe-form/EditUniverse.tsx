@@ -24,8 +24,7 @@ import {
   getPrimaryCluster,
   getPrimaryFormData,
   transformTagsArrayToObject,
-  transitToUniverse,
-  transitToUniverseOverview
+  transitToUniverse
 } from './utils/helpers';
 import {
   Cluster,
@@ -55,6 +54,7 @@ import {
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
 import { providerQueryKey, api as helperApi } from '../../../helpers/api';
+import { TaskDetailDrawer } from '../../tasks';
 
 interface EditUniverseProps {
   uuid: string;
@@ -135,9 +135,11 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
           });
         if (isNewTaskUIEnabled) {
           dispatch(showTaskInDrawer(taskUUID));
+        } else {
+          transitToUniverse(uuid);
         }
       }
-      response && transitToUniverseOverview(uuid);
+      response && !runOnlyPrechecks && transitToUniverse(uuid);
     } catch (error) {
       toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
       console.error(error);
@@ -235,6 +237,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         universeUUID={uuid}
         isViewMode={isViewMode}
       />
+      <TaskDetailDrawer />
       {universePayload && (
         <>
           {showRNModal && (

@@ -8,13 +8,13 @@ select * from
   (3 not in (select * from (values (1), (2)) ss1)),
   (false)
 ) ss;
-               QUERY PLAN               
-----------------------------------------
- Values Scan on "*VALUES*"
-   Output: "*VALUES*".column1
+              QUERY PLAN              
+--------------------------------------
+ Values Scan on "*VALUES*_1"
+   Output: "*VALUES*_1".column1
    SubPlan 1
-     ->  Values Scan on "*VALUES*_1"
-           Output: "*VALUES*_1".column1
+     ->  Values Scan on "*VALUES*"
+           Output: "*VALUES*".column1
 (5 rows)
 
 select * from

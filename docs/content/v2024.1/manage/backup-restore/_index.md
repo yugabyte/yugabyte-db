@@ -37,18 +37,18 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Export and import"
     body="Export and import data using SQL or CQL scripts."
     href="export-import-data/"
-    icon="fa-light fa-file-import">}}
+    icon="fa-thin fa-file-import">}}
 
   {{<index/item
     title="Distributed snapshots"
     body="Back up and restore data using distributed snapshots."
     href="snapshot-ysql/"
-    icon="fa-light fa-camera">}}
+    icon="fa-thin fa-camera">}}
 
   {{<index/item
     title="Point-in-time recovery"
     body="Restore data to a particular point in time."
     href="point-in-time-recovery/"
-    icon="fa-light fa-timeline-arrow">}}
+    icon="fa-thin fa-timeline-arrow">}}
 
 {{</index/block>}}

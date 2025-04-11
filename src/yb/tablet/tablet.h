@@ -77,6 +77,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -87,7 +88,6 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 namespace yb {
 
 class FsManager;
-class MemTracker;
 class MetricEntity;
 
 namespace server {
@@ -120,6 +120,11 @@ using AddTableListener = std::function<Status(const TableInfo&)>;
 
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
+
+struct AdminCompactionOptions {
+  std::function<void()> compaction_completion_callback;
+  TableIdsPtr vector_index_ids;
+};
 
 struct TabletScopedRWOperationPauses {
   ScopedRWOperationPause blocking_rocksdb_shutdown_start;
@@ -812,11 +817,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded();
-  // Triggers an admin full compaction on this tablet with a callback to execute once the compaction
-  // completes.
-  Status TriggerAdminFullCompactionWithCallbackIfNeeded(
-      std::function<void()> on_compaction_completion);
+  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
 
   bool HasActiveFullCompaction();
 
@@ -983,6 +984,10 @@ class Tablet : public AbstractTablet,
     TEST_sleep_before_apply_intents_ = value;
   }
 
+  void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
+    TEST_sleep_before_delete_intents_file_ = value;
+  }
+
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
   // updates both regular db and intents db rate limiter speed.
   void RefreshCompactFlushRateLimitBytesPerSec();
@@ -1043,6 +1048,7 @@ class Tablet : public AbstractTablet,
       size_t row_count) const;
 
   void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+  void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
@@ -1065,9 +1071,6 @@ class Tablet : public AbstractTablet,
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
-
-  Status TriggerAdminFullCompactionIfNeededHelper(
-      std::function<void()> on_compaction_completion = []() {});
 
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
@@ -1141,6 +1144,8 @@ class Tablet : public AbstractTablet,
 
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
+
+  docdb::EncodedPartitionBounds encoded_partition_bounds_;
 
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;
@@ -1315,6 +1320,7 @@ class Tablet : public AbstractTablet,
   MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
   MonoDelta TEST_sleep_before_apply_intents_;
+  MonoDelta TEST_sleep_before_delete_intents_file_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

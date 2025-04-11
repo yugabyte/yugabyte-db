@@ -268,8 +268,28 @@ TEST_P(BasicUpgradeTest, TestUpgrade) { ASSERT_OK(TestUpgrade()); }
 TEST_P(BasicUpgradeTest, TestRollback) { ASSERT_OK(TestRollback()); }
 
 INSTANTIATE_TEST_SUITE_P(
-    UpgradeFrom_2024_2_2_0, BasicUpgradeTest, ::testing::Values(kBuild_2024_2_2_0));
+    UpgradeFrom_2024_2_3_0, BasicUpgradeTest, ::testing::Values(kBuild_2024_2_3_0));
 INSTANTIATE_TEST_SUITE_P(
     UpgradeFrom_2_25_0_0, BasicUpgradeTest, ::testing::Values(kBuild_2_25_0_0));
 
+class PartitionedTableUpgradeTest : public UpgradeTestBase {
+ public:
+  PartitionedTableUpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+  virtual ~PartitionedTableUpgradeTest() override = default;
+};
+
+// Upgrade should work for a cluster with partitioned tables.
+// (See GH #26317).
+TEST_F(PartitionedTableUpgradeTest, SimplePartitionedTable) {
+  ASSERT_OK(StartClusterInOldVersion());
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (t int) PARTITION BY RANGE (t)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table_1 PARTITION OF test_table FOR VALUES FROM (1) TO (2)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table_2 PARTITION OF test_table FOR VALUES FROM (2) TO (3)"));
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+  conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1), (2)"));
+}
 }  // namespace yb

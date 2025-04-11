@@ -251,6 +251,8 @@ class HybridScanChoices : public ScanChoices {
   void SeekToCurrentTarget(IntentAwareIteratorIf* db_iter);
 
   bool CurrentTargetMatchesKey(Slice curr);
+  // Also updates the checkpoint to latest seen ht from iter.
+  bool CurrentTargetMatchesKey(Slice curr, IntentAwareIteratorIf* iter);
 
   // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
   // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key column.
@@ -344,6 +346,8 @@ class HybridScanChoices : public ScanChoices {
   size_t prefix_length_ = 0;
 
   size_t schema_num_keys_;
+
+  EncodedDocHybridTime last_seen_ht_checkpoint_{DocHybridTime::kMin};
 };
 
 }  // namespace docdb

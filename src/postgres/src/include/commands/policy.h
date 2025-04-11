@@ -18,6 +18,8 @@
 #include "catalog/objectaddress.h"
 #include "nodes/parsenodes.h"
 #include "utils/relcache.h"
+
+/* YB includes */
 #include "utils/yb_tuplecache.h"
 
 extern void RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cache);

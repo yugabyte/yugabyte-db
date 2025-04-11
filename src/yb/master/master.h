@@ -107,6 +107,8 @@ class Master : public tserver::DbServerBase {
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
+  MasterTabletServer* tablet_server() const { return master_tablet_server_.get(); }
+
   CatalogManagerIf* catalog_manager() const;
 
   CatalogManager* catalog_manager_impl() const { return CHECK_NOTNULL(catalog_manager_.get()); }
@@ -217,6 +219,10 @@ class Master : public tserver::DbServerBase {
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
+
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const;
 
   Status ReloadKeysAndCertificates() override;
 

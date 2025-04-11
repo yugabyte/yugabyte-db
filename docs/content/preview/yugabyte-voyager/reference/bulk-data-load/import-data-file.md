@@ -23,13 +23,13 @@ Usage: yb-voyager import data file [ <arguments> ... ]
 
 The valid *arguments* for import data file are described in the following table:
 
-| Argument | Description/valid options |
+| <div style="width:150px">Argument</div> | Description/valid options |
 | :--- | :---- |
 | --batch-size | Size of batches in the number of rows generated for ingestion during import data. <br> Default: 20000 rows |
 | --data-dir | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location such as an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../../migrate/bulk-data-load/).|
 | --delimiter | Character used as a delimiter to separate column values in rows of the datafile(s). <br> Default: comma `','` for CSV file format and tab `'\t'` for TEXT file format.<br>Example: `yb-voyager import data file .... --delimiter ','` |
 | --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1|
-| &#8209;&#8209;enable&#8209;adaptive&#8209;parallelism | Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --enable-adaptive-parallelism | Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --adaptive-parallelism-max | Number of maximum parallel jobs to use while importing data when adaptive parallelism is enabled. By default, voyager tries to determine the total number of cores `N` and use `N/2` as the maximum parallel jobs. |
 | --enable-upsert | Enable UPSERT mode on target tables while importing data.<br> Note: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, setting this flag to true may lead to corruption of the indexes. <br>Default: false<br> Usage for disabling the mode: `yb-voyager import data status ... --enable-upsert false` |
 | --escape-char | Escape character <br> Default: double quotes `'"'`<br>Example: `yb-voyager import data file ... --escape-char '"'` |
@@ -42,10 +42,10 @@ The valid *arguments* for import data file are described in the following table:
 | -h, --help | Command line help. |
 | --parallel-jobs | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. <br> Default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.|
 | --quote-char | Character used to quote the values. <br> Default: double quotes `'"'`<br>Example: `yb-voyager import data file ... --quote-char '"'` |
-| --send&#8209;diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --target-db-name | Target database name. |
-| --target&#8209;db&#8209;password | Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
+| --target-db-password | Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | --target-db-port | Port number of the target database machine. <br> Default: 5433 |
 | --target-db-schema | Schema name of the target database. MySQL and Oracle migrations only. |
 | --target-db-user | Username of the target database. |

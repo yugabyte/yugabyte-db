@@ -57,7 +57,7 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
       Lists.partition(nodeDetailsList, parallelism)
           .forEach(
               list -> {
-                createInstallNodeAgentTasks(list, true)
+                createInstallNodeAgentTasks(universe, list, true)
                     .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
                 createWaitForNodeAgentTasks(list)
                     .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);

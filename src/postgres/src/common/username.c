@@ -19,10 +19,12 @@
 #endif
 
 #include <pwd.h>
-#include <ctype.h>
 #include <unistd.h>
 
 #include "common/username.h"
+
+/* YB includes */
+#include <ctype.h>
 
 static char user_id[MAXPGPATH] = "";
 

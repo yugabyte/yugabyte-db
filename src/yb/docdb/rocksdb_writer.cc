@@ -19,20 +19,20 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_ql_filefilter.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value_type.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/walltime.h"
 
@@ -551,7 +551,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
     }
 
     if (VERIFY_RESULT(context_.Entry(key_slice, reverse_index_value, metadata, handler))) {
-      return Status::OK();
+      return context_.Complete(handler, /* transaction_finished= */ false);
     }
 
     // The first lock specified by key_to_apply_ was found and processed.
@@ -562,7 +562,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   }
   RETURN_NOT_OK(reverse_index_iter_.status());
 
-  return context_.Complete(handler);
+  return context_.Complete(handler, /* transaction_finished= */ true);
 }
 
 ApplyIntentsContext::ApplyIntentsContext(
@@ -575,12 +575,13 @@ ApplyIntentsContext::ApplyIntentsContext(
     HybridTime file_filter_ht,
     const OpId& apply_op_id,
     const KeyBounds* key_bounds,
-    SchemaPackingProvider* schema_packing_provider,
+    SchemaPackingProvider& schema_packing_provider,
+    ConsensusFrontiers& frontiers,
     rocksdb::DB* intents_db,
-    const VectorIndexesPtr& vector_indexes,
+    const DocVectorIndexesPtr& vector_indexes,
     const docdb::StorageSet& apply_to_storages)
     : IntentsWriterContext(transaction_id),
-      FrontierSchemaVersionUpdater(schema_packing_provider),
+      FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       tablet_id_(tablet_id),
       apply_state_(apply_state),
       // In case we have passed in a non-null apply_state, its aborted set will have been loaded
@@ -734,6 +735,10 @@ Result<bool> ApplyIntentsContext::Entry(
 
 Status ApplyIntentsContext::ProcessVectorIndexes(
     rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
+  if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+    return Status::OK();
+  }
+
   auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
   if (sizes.doc_key_size < key.size()) {
     auto entry_type = static_cast<KeyEntryType>(key[sizes.doc_key_size]);
@@ -748,13 +753,13 @@ Status ApplyIntentsContext::ProcessVectorIndexes(
         if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
             commit_ht_ > vector_index.hybrid_time()) {
           if (ApplyToVectorIndex(i)) {
-            vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+            vector_index_batches_[i].push_back(DocVectorIndexInsertEntry {
               .value = ValueBuffer(value.WithoutPrefix(1)),
             });
           }
           if (need_reverse_entry) {
             auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
-            AddVectorIndexReverseEntry(
+            DocVectorIndex::ApplyReverseEntry(
                 handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
             need_reverse_entry = false;
           }
@@ -765,9 +770,6 @@ Status ApplyIntentsContext::ProcessVectorIndexes(
           << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
     }
   } else {
-    if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
-      return Status::OK();
-    }
     auto packed_row_version = dockv::GetPackedRowVersion(value);
     RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
                    "Full row with non packed value: $0 -> $1",
@@ -796,9 +798,9 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
   if (schema_packing_version_ != schema_version ||
       schema_packing_table_prefix_.AsSlice() != table_key_prefix) {
     auto packing = VERIFY_RESULT(prefix_size
-        ? schema_packing_provider()->ColocationPacking(
+        ? schema_packing_provider_.ColocationPacking(
               BigEndian::Load32(key.data() + 1), schema_version, HybridTime::kMax)
-        : schema_packing_provider()->CotablePacking(
+        : schema_packing_provider_.CotablePacking(
               Uuid::Nil(), schema_version, HybridTime::kMax));
     schema_packing_ = packing.schema_packing;
     schema_packing_version_ = schema_version;
@@ -822,7 +824,7 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
 
     auto ybctid = key.WithoutPrefix(table_key_prefix.size());
     if (ApplyToVectorIndex(i)) {
-      vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+      vector_index_batches_[i].push_back(DocVectorIndexInsertEntry {
         .value = ValueBuffer(column_value->WithoutPrefix(1)),
       });
     }
@@ -832,7 +834,7 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
       columns_added_to_vector_index.resize(
           std::max(columns_added_to_vector_index.size(), column_index + 1));
       if (!columns_added_to_vector_index.test_set(column_index)) {
-        AddVectorIndexReverseEntry(
+        DocVectorIndex::ApplyReverseEntry(
             handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_));
       }
     }
@@ -840,17 +842,20 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
   return Status::OK();
 }
 
-Status ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler& handler) {
-  if (apply_state_) {
-    char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
-    std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
-    PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
+Status ApplyIntentsContext::Complete(
+    rocksdb::DirectWriteHandler& handler, bool transaction_finished) {
+  if (transaction_finished) {
+    if (apply_state_) {
+      char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
+      std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
+      PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
+    }
   }
   if (vector_indexes_) {
     DocHybridTime write_time { commit_ht_, write_id_ };
     for (size_t i = 0; i != vector_index_batches_.size(); ++i) {
       if (!vector_index_batches_[i].empty()) {
-        RETURN_NOT_OK((*vector_indexes_)[i]->Insert(vector_index_batches_[i], frontiers()));
+        RETURN_NOT_OK((*vector_indexes_)[i]->Insert(vector_index_batches_[i], frontiers_));
       }
     }
   }
@@ -869,17 +874,13 @@ Status ApplyIntentsContext::DeleteVectorIds(
   Slice value(&tombstone, 1);
   while (ids.size() != 0) {
     auto id = ids.Prefix(vector_index::VectorId::StaticSize());
-    handler.Put(
-        dockv::VectorIndexReverseEntryKeyParts(id, encoded_write_time), {&value, 1});
+    handler.Put(dockv::DocVectorKeyAsParts(id, encoded_write_time), {&value, 1});
     ids.RemovePrefix(vector_index::VectorId::StaticSize());
   }
   return Status::OK();
 }
 
 Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value) {
-  if (!frontiers_) {
-    return Status::OK();
-  }
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value));
   if (!IsPackedRow(dockv::DecodeValueEntryType(value))) {
     return Status::OK();
@@ -892,7 +893,7 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
   if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
     schema_version_colocation_id_ = 0;
     if (cotable_id != schema_version_table_) {
-      Status s = schema_packing_provider_->CheckCotablePacking(
+      Status s = schema_packing_provider_.CheckCotablePacking(
           cotable_id, schema_version, HybridTime::kMax);
       if (PREDICT_FALSE(!s.ok())) {
         LOG_WITH_FUNC(DFATAL)
@@ -907,7 +908,7 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     ColocationId colocation_id = 0;
     if (VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id))) {
       if (colocation_id != schema_version_colocation_id_) {
-        Status s = schema_packing_provider_->CheckColocationPacking(
+        Status s = schema_packing_provider_.CheckColocationPacking(
             colocation_id, schema_version, HybridTime::kMax);
         if (PREDICT_FALSE(!s.ok())) {
           LOG_WITH_FUNC(DFATAL)
@@ -916,7 +917,7 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
                       colocation_id, schema_version, s);
         }
         FlushSchemaVersion();
-        auto packing = schema_packing_provider_->ColocationPacking(
+        auto packing = schema_packing_provider_.ColocationPacking(
             colocation_id, kLatestSchemaVersion, HybridTime::kMax);
         if (packing.ok()) {
           cotable_id = packing->cotable_id;
@@ -943,9 +944,9 @@ void FrontierSchemaVersionUpdater::FlushSchemaVersion() {
   if (min_schema_version_ > max_schema_version_) {
     return;
   }
-  frontiers_->Smallest().UpdateSchemaVersion(
+  frontiers_.Smallest().UpdateSchemaVersion(
       schema_version_table_, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
-  frontiers_->Largest().UpdateSchemaVersion(
+  frontiers_.Largest().UpdateSchemaVersion(
       schema_version_table_, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
   min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
@@ -974,7 +975,8 @@ Result<bool> RemoveIntentsContext::Entry(
   return false;
 }
 
-Status RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler& handler) {
+Status RemoveIntentsContext::Complete(
+    rocksdb::DirectWriteHandler& handler, bool transaction_finished) {
   return Status::OK();
 }
 
@@ -989,8 +991,8 @@ Status RemoveIntentsContext::DeleteVectorIds(
 NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-    SchemaPackingProvider* schema_packing_provider)
-    : FrontierSchemaVersionUpdater(schema_packing_provider),
+    SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers)
+    : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
       batch_hybrid_time_(batch_hybrid_time),

@@ -155,6 +155,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetConsistentChangesRequestPB* req, GetConsistentChangesResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void GetLagMetrics(
+      const GetLagMetricsRequestPB* req, GetLagMetricsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void DestroyVirtualWALForCDC(
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
@@ -563,6 +567,8 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<StreamIdHybridTimeMap> GetStreamIdToRestartTimeMap(
       const CDCStateTableRange& table_range, Status* iteration_status);
 
+  Status PersistActivePidInSlotEntry(const xrepl::StreamId& stream_id, uint64_t active_pid);
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;
@@ -624,6 +630,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // Map of session_id (uint64) to VirtualWAL instance.
   std::unordered_map<uint64_t, std::shared_ptr<CDCSDKVirtualWAL>> session_virtual_wal_
       GUARDED_BY(mutex_);
+
+  // Map of streamId to session_id (uint64) for which VirtualWAL instance was created.
+  std::unordered_map<xrepl::StreamId, uint64_t> stream_to_session_;
 
   mutable rw_spinlock xcluster_replication_maps_mutex_;
 

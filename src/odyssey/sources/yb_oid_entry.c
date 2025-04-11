@@ -33,172 +33,12 @@
 /* TODO(janand): GH#21436 Use hash map instead of list */
 #define YB_INVALID_OID_IN_PKT 0
 
-yb_oid_entry_t* database_entry_list = NULL;
-yb_oid_entry_t* user_entry_list = NULL;
-od_atomic_u64_t database_count = 0;
-od_atomic_u64_t user_count = 0;
-
-pthread_rwlock_t database_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-pthread_rwlock_t user_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-
 static inline void set_oid_obj_name(yb_oid_entry_t *entry, const char *name)
 {
 	assert(entry != NULL);
 
 	strcpy((char *)entry->name, name);
 	entry->name_len = strlen(name);
-}
-
-static inline int add_oid_obj_entry(int obj_type, int oid, const char *name,
-			       od_instance_t *instance)
-{
-	od_atomic_u64_t *oid_obj_count;
-	uint64_t max_oid_obj_count;
-	yb_oid_entry_t *oid_obj_entry_list;
-	pthread_rwlock_t *lock;
-
-	if (obj_type == YB_DATABASE) {
-		oid_obj_count = &database_count;
-		max_oid_obj_count = instance->config.yb_max_pools;
-		oid_obj_entry_list = database_entry_list;
-		lock = &database_rwlock;
-	} else {
-		oid_obj_count = &user_count;
-		max_oid_obj_count = instance->config.yb_max_pools;
-		oid_obj_entry_list = user_entry_list;
-		lock = &user_rwlock;
-	}
-
-	pthread_rwlock_wrlock(lock);
-
-	/* TODO(janand): GH#21437 Add tests for too many db pools */
-	if (*oid_obj_count >= max_oid_obj_count) {
-		pthread_rwlock_unlock(lock);
-		return -1;
-	}
-
-	for (int i = 0; i < (int) *oid_obj_count; ++i) {
-		if (oid_obj_entry_list[i].oid == oid) {
-            pthread_rwlock_unlock(lock);
-			assert(oid_obj_entry_list[i].oid != oid);
-        }
-	}
-
-	const int newOidObjEntryIdx = od_atomic_u32_inc(oid_obj_count);
-	set_oid_obj_name(oid_obj_entry_list + newOidObjEntryIdx, name);
-	oid_obj_entry_list[newOidObjEntryIdx].oid = oid;
-	oid_obj_entry_list[newOidObjEntryIdx].status = YB_OID_ACTIVE;
-	pthread_rwlock_unlock(lock);
-	if (obj_type == YB_DATABASE)
-		od_debug(
-			&instance->logger, "yb db oid", NULL, NULL,
-			"Added the entry for database %s with oid %d in the global database_entry_list",
-			(char *)oid_obj_entry_list[newOidObjEntryIdx].name,
-			oid_obj_entry_list[newOidObjEntryIdx].oid);
-	else if (obj_type == YB_USER)
-		od_debug(
-			&instance->logger, "yb user oid", NULL, NULL,
-			"Added the entry for user %s with oid %d in the global user_entry_list",
-			(char *)oid_obj_entry_list[newOidObjEntryIdx].name,
-			oid_obj_entry_list[newOidObjEntryIdx].oid);
-	return 0;
-}
-
-static inline int yb_add_or_update_oid_obj_entry(const int obj_type,
-						const int yb_obj_oid,
-					    const char *obj_name,
-					    od_instance_t *instance)
-{
-	uint64_t oid_obj_count;
-	yb_oid_entry_t *oid_obj_entry_list;
-	pthread_rwlock_t *lock;
-
-	if (obj_type == YB_DATABASE) {
-		lock = &database_rwlock;
-		pthread_rwlock_wrlock(lock);
-		oid_obj_count = database_count;
-		oid_obj_entry_list = database_entry_list;
-	} else if (obj_type == YB_USER) {
-		lock = &user_rwlock;
-		pthread_rwlock_wrlock(lock);
-		oid_obj_count = user_count;
-		oid_obj_entry_list = user_entry_list;
-	}
-
-	/* Update the entry if found, and set it to active */
-	for (uint64_t i = 0; i < oid_obj_count; ++i) {
-		if (oid_obj_entry_list[i].oid == yb_obj_oid) {
-			set_oid_obj_name(oid_obj_entry_list + i, obj_name);
-			oid_obj_entry_list[i].status = YB_OID_ACTIVE;
-			pthread_rwlock_unlock(lock);
-			return 0;
-		}
-	}
-
-	pthread_rwlock_unlock(lock);
-
-	if (add_oid_obj_entry(obj_type, yb_obj_oid, obj_name, instance) < 0)
-		return -1;
-
-	return 0;
-}
-
-yb_oid_entry_t *yb_get_oid_obj_entry(const int obj_type, const int yb_obj_oid)
-{
-	assert(yb_obj_oid >= 0);
-
-	yb_oid_entry_t *oid_obj_entry_list;
-	od_atomic_u64_t oid_obj_count;
-	pthread_rwlock_t *lock;
-
-	if (obj_type == YB_DATABASE) {
-		lock = &database_rwlock;
-		pthread_rwlock_rdlock(lock);
-		oid_obj_entry_list = database_entry_list;
-		oid_obj_count = database_count;
-	} else if (obj_type == YB_USER) {
-		lock = &user_rwlock;
-		pthread_rwlock_rdlock(lock);
-		oid_obj_entry_list = user_entry_list;
-		oid_obj_count = user_count;
-	}
-
-	/* control connection user/db are stored at start of the list */
-	if (yb_obj_oid == YB_CTRL_CONN_OID) {
-		pthread_rwlock_unlock(lock);
-		return oid_obj_entry_list;
-	}
-
-	for (uint64_t i = 1; i < oid_obj_count; ++i) {
-		if (oid_obj_entry_list[i].oid == yb_obj_oid) {
-			pthread_rwlock_unlock(lock);
-			return oid_obj_entry_list + i;
-		}
-	}
-			
-
-	pthread_rwlock_unlock(lock);
-	return NULL;
-}
-
-int yb_oid_list_init(od_instance_t *instance)
-{
-	database_entry_list = (yb_oid_entry_t *)malloc(
-		instance->config.yb_max_pools * sizeof(yb_oid_entry_t));
-	if (!database_entry_list)
-		return -1;
-
-	user_entry_list = (yb_oid_entry_t *)malloc(
-		instance->config.yb_max_pools * sizeof(yb_oid_entry_t));
-	if (!user_entry_list) {
-		free(database_entry_list);
-		return -1;
-	}
-
-	/* Add entry for the control connection */
-	add_oid_obj_entry(YB_DATABASE, YB_CTRL_CONN_OID, "yugabyte", instance);
-	add_oid_obj_entry(YB_USER, YB_CTRL_CONN_OID, "yugabyte", instance);
-	return 0;
 }
 
 static inline char *parse_single_col_data_row_pkt(machine_msg_t *msg)
@@ -379,6 +219,11 @@ failed_to_acquire_control_connection:
 	return NOT_OK_RESPONSE;
 }
 
+/*
+ * Currently below code never executes. And it's dependent upon yb_oid_entry_t which is no longer
+ * been used (DB-15614). Make sure to update the below code before using it according to current
+ * implementation of handling OIDs.
+*/
 int yb_resolve_oid_status(const int obj_type, od_global_t *global, yb_oid_entry_t *entry,
 			 od_server_t *server)
 {
@@ -389,28 +234,10 @@ int yb_resolve_oid_status(const int obj_type, od_global_t *global, yb_oid_entry_
 	}
 }
 
-/* different return status depending upon which of db or user entry is invalid */
+/* Return the status of the route whether it's valid or not */
 int yb_is_route_invalid(void *route)
 {
-	pthread_rwlock_t *lock;
-
-	lock = &database_rwlock;
-	pthread_rwlock_rdlock(lock);
-	if (((od_route_t *)route)->yb_database_entry->status == YB_OID_DROPPED) {
-		pthread_rwlock_unlock(lock);
-		return ROUTE_INVALID_DB_OID;
-	}
-	pthread_rwlock_unlock(lock);
-
-	lock = &user_rwlock;
-	pthread_rwlock_rdlock(lock);
-	if (((od_route_t *)route)->yb_user_entry->status == YB_OID_DROPPED) {
-		pthread_rwlock_unlock(lock);
-		return ROUTE_INVALID_ROLE_OID;
-	}
-	pthread_rwlock_unlock(lock);
-
-	return 0;
+	return ((od_route_t *)route)->status == YB_ROUTE_INACTIVE ? YB_ROUTE_INVALID : 0;
 }
 
 int read_oid_pkt(od_client_t *client, machine_msg_t *msg,
@@ -444,36 +271,35 @@ int yb_handle_oid_pkt_server(od_instance_t *instance, od_server_t *server,
 {
 	char oid_type;
 	uint32_t oid_val;
-	yb_oid_entry_t *oid_obj_entry_list;
-	int oid_obj_type;
+	int route_oid;
+	int db_oid = -1;
+	int user_oid = -1;
 
 	int rc = read_oid_pkt(server, msg, instance, &oid_type, &oid_val);
 	if (rc == -1)
 		return -1;
 
 	if (oid_type == 'd') {
-		oid_obj_entry_list = ((od_route_t *)server->route)->yb_database_entry;
-		oid_obj_type = YB_DATABASE;
+		route_oid = ((od_route_t *)server->route)->id.yb_db_oid;
+		db_oid = route_oid;
 	} else if (oid_type == 'u') {
-		oid_obj_entry_list = ((od_route_t *)server->route)->yb_user_entry;
-		oid_obj_type = YB_USER;
+		route_oid = ((od_route_t *)server->route)->id.yb_user_oid;
+		user_oid = route_oid;
 	}
-
-	assert(oid_obj_entry_list != NULL);
 
 	/* database/user dropped just before sending oid packet */
 	if (oid_val == YB_INVALID_OID_IN_PKT) {
-		oid_obj_entry_list->status = YB_OID_DROPPED;
+		yb_mark_routes_inactive(server->global->router, db_oid, user_oid);
 		return -1;
 	}
 
 	/* control connection */
-	if (!oid_obj_entry_list->oid)
+	if (!route_oid)
 		return 0;
 
-	if (oid_obj_entry_list->oid != (int)oid_val) {
+	if (route_oid != (int)oid_val) {
 		/* db/user has been recreated, mark original db/user as dropped */
-		oid_obj_entry_list->status = YB_OID_DROPPED;
+		yb_mark_routes_inactive(server->global->router, db_oid, user_oid);
 		return -1;
 	}
 
@@ -495,12 +321,8 @@ int yb_handle_oid_pkt_client(od_instance_t *instance, od_client_t *client,
 
 	if (oid_type == 'd') {
 		client->yb_db_oid = oid_val;
-		return yb_add_or_update_oid_obj_entry(
-			YB_DATABASE, oid_val, client->startup.database.value, instance);
 	} else if (oid_type == 'u') {
 		client->yb_user_oid = oid_val;
-		return yb_add_or_update_oid_obj_entry(
-			YB_USER, oid_val, client->startup.user.value, instance);
 	}
 
 	return 0;

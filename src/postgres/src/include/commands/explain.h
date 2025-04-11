@@ -16,6 +16,8 @@
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
 #include "parser/parse_node.h"
+
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 typedef enum ExplainFormat
@@ -77,6 +79,9 @@ typedef struct ExplainState
 
 	YbExplainExecStats yb_stats;	/* hold YB-specific exec stats */
 	bool		yb_debug;		/* print debug information */
+	bool		ybShowHints;	/* generate and display hints that will
+								   produce the same plan as one Explained */
+	bool		ybShowUniqueIds; /* show unique Path/Plan ids */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

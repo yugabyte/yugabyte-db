@@ -300,6 +300,7 @@ class MasterPathHandlers {
   void HandleGetMetaCacheJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleStatefulServices(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleStatefulServicesJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleObjectLocksPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   Status CalculateTabletMap(TabletCountMap* tablet_map);

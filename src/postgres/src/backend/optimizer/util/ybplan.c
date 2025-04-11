@@ -19,31 +19,27 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
-
-
 #include "postgres.h"
 
-#include "optimizer/ybplan.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/print.h"
+#include "optimizer/ybplan.h"
+#include "pg_yb_utils.h"
 #include "utils/datum.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/lsyscache.h"
-
-/* YB includes. */
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "catalog/catalog.h"
-#include "catalog/pg_am_d.h"
-#include "catalog/yb_catalog_version.h"
-#include "pg_yb_utils.h"
 
 /*
  * A mapping between columns and their position/index on the col_info_list.
@@ -307,13 +303,14 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
  *	  point to valid lists. The output parameters idx_remote_quals and
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
+ *    - relid is the OID of the relation being scanned.
  */
 void
 yb_extract_pushdown_clauses(List *restrictinfo_list,
 							IndexOptInfo *indexinfo, bool bitmapindex,
 							List **local_quals, List **rel_remote_quals,
 							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs)
+							List **idx_colrefs, Oid relid)
 {
 	ListCell   *lc;
 
@@ -326,7 +323,7 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		if (ri->pseudoconstant)
 			continue;
 
-		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs);
+		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
 		/*
 		 * If clause was found pushable before, that shouldn't change.
 		 * Opposite is possible, join condition may be moved to inner and have

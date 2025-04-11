@@ -152,6 +152,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
       "the tests with connection manager";
 
+  protected static final String DUMMY_LABEL_NOT_LOADED_ON_ALL_BACKENDS =
+      "Skipping this test with Ysql Connection Manager as security labels of \'dummy\' provider " +
+      "are not loaded on all backends, except for where create extension has been executed. " +
+      "Therefore in random mode of conn mgr, while loading security labels on different " +
+      "backend it throws error. Skipping this test untill bug is fixed tracked by GH: #26650";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +
@@ -742,8 +748,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // getBackendPID(), a JDBC api, caches the pid of the backend process at
       // the time of creating a connection. With connection manager it do not
       // return a valid pid as no dedicated backend process is attached to
-      // connection. Therefore execute sql query to find out.
-      assertTrue(warmupMode == ConnectionManagerWarmupMode.NONE);
+      // connection. Therefore execute sql query to find one of the pid out of
+      // pool of physical connections (backend processes). It can return a pid
+      // of any one of the backend process out of the pool depends which physical
+      // connection is free to attach to logical connection to excute 'SELECT
+      // pg_backend_pid()'.
       try (Statement stmt = connection.createStatement()) {
         ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
         assertTrue(rs.next());
@@ -1106,6 +1115,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       throws SQLException, TimeoutException, InterruptedException {
     // Maintain our map saying how many statements are being run by each backend pid.
     // Later we can determine (possibly) stuck backends based on this.
+    // With connection manager, getPgBackendPid can return the PID of any
+    // backend process out of pool of physical connections it is maintaining.
+    // Therefore use it carefully depending on the context.
     final int backendPid = getPgBackendPid(statement.getConnection());
 
     AtomicReference<SQLException> sqlExceptionWrapper = new AtomicReference<>();
@@ -1548,7 +1560,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected List<Row> getRowList(ResultSet rs) throws SQLException {
+  static protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       rows.add(Row.fromResultSet(rs));
@@ -1556,7 +1568,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
+  static protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
     // Sort all rows and return.
     List<Row> rows = getRowList(rs);
     Collections.sort(rows);

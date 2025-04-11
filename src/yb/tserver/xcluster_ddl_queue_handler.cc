@@ -13,6 +13,8 @@
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
+#include <regex>
+
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/stringbuffer.h>
@@ -87,6 +89,7 @@ const char* kDDLJsonRelFileOid = "relfile_oid";
 const char* kDDLJsonColocationId = "colocation_id";
 const char* kDDLJsonIsIndex = "is_index";
 const char* kDDLJsonEnumLabelInfo = "enum_label_info";
+const char* kDDLJsonTypeInfo = "type_info";
 const char* kDDLJsonSequenceInfo = "sequence_info";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
@@ -324,6 +327,10 @@ Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQue
     writer.Key(kDDLJsonEnumLabelInfo);
     doc[kDDLJsonEnumLabelInfo].Accept(writer);
   }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonTypeInfo, IsArray)) {
+    writer.Key(kDDLJsonTypeInfo);
+    doc[kDDLJsonTypeInfo].Accept(writer);
+  }
   if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonSequenceInfo, IsArray)) {
     writer.Key(kDDLJsonSequenceInfo);
     doc[kDDLJsonSequenceInfo].Accept(writer);
@@ -389,7 +396,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   // Pass information needed to assign OIDs that need to be preserved across the universes.
   setup_query << Format(
       "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
-      query_info.json_for_oid_assignment);
+      std::regex_replace(query_info.json_for_oid_assignment, std::regex("'"), "''"));
 
   setup_query << "SET yb_skip_data_insert_for_table_rewrite=true;";
 

@@ -33,12 +33,12 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 namespace yb {
 
-class AggregateStats;
 template<class T>
 class AtomicGauge;
 class Counter;

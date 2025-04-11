@@ -25,7 +25,7 @@
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
-/* YB includes. */
+/* YB includes */
 #include "access/transam.h" /* For FirstNormalObjectId */
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"

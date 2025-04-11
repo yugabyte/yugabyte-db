@@ -63,6 +63,11 @@ extern bool yb_pushdown_is_not_null;
 extern bool yb_enable_pg_locks;
 
 /*
+ * GUC that toggles whether pg_locks correctly formats and integrates advisory locks info.
+ */
+extern bool yb_pg_locks_integrate_advisory_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;
@@ -91,6 +96,14 @@ extern bool yb_binary_restore;
  * effect.
  */
 extern bool yb_ignore_pg_class_oids;
+
+/*
+ * Guc variable to ignore requests to set relfilenode ids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_relfilenode will have no
+ * effect.
+ */
+extern bool yb_ignore_relfilenode_ids;
 
 /*
  * Set to true only for runs with EXPLAIN ANALYZE
@@ -133,6 +146,11 @@ extern bool yb_enable_replica_identity;
  * Guc variable that allows lsn types to be specified while creating replication slot
  */
 extern bool yb_allow_replication_slot_lsn_types;
+
+/*
+ * Guc variable that allows ordering mode to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_ordering_modes;
 
 /*
  * GUC variable that specifies default replica identity for tables at the time of creation.
@@ -239,6 +257,8 @@ extern int yb_read_after_commit_visibility;
 
 extern bool yb_allow_block_based_sampling_algorithm;
 
+extern bool yb_allow_separate_requests_for_sampling_stages;
+
 extern bool yb_refresh_matview_in_place;
 
 extern bool yb_disable_auto_analyze;
@@ -246,6 +266,10 @@ extern bool yb_disable_auto_analyze;
 extern int yb_major_version_upgrade_compatibility;
 
 extern bool yb_upgrade_to_pg15_completed;
+
+extern bool yb_extension_upgrade;
+
+extern bool yb_mixed_mode_expression_pushdown;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

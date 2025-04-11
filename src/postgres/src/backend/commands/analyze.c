@@ -27,7 +27,6 @@
 #include "access/tupconvert.h"
 #include "access/visibilitymap.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -68,6 +67,9 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+
+/* YB includes */
+#include "access/yb_scan.h"
 
 
 /* Per-index data for ANALYZE */
@@ -344,7 +346,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	 * Set up a working context so that we can easily free whatever junk gets
 	 * created.
 	 */
-	anl_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	anl_context = AllocSetContextCreate(CurrentMemoryContext,
 										"Analyze",
 										ALLOCSET_DEFAULT_SIZES);
 	caller_context = MemoryContextSwitchTo(anl_context);
@@ -646,7 +648,11 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 
 		visibilitymap_count(onerel, &relallvisible, NULL);
 
-		/* Update pg_class for table relation */
+		/*
+		 * Update pg_class for table relation.  CCI first, in case acquirefunc
+		 * updated pg_class.
+		 */
+		CommandCounterIncrement();
 		vac_update_relstats(onerel,
 							relpages,
 							totalrows,
@@ -681,6 +687,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		 * Partitioned tables don't have storage, so we don't set any fields
 		 * in their pg_class entries except for reltuples and relhasindex.
 		 */
+		CommandCounterIncrement();
 		vac_update_relstats(onerel, -1, totalrows,
 							0, hasindex, InvalidTransactionId,
 							InvalidMultiXactId,
@@ -1400,6 +1407,10 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 	ListCell   *lc;
 	bool		has_child;
 
+	/* Initialize output parameters to zero now, in case we exit early */
+	*totalrows = 0;
+	*totaldeadrows = 0;
+
 	/*
 	 * Find all members of inheritance set.  We only need AccessShareLock on
 	 * the children.
@@ -1457,8 +1468,26 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 		}
 
 		/* Check table type (MATVIEW can't happen, but might as well allow) */
-		if (childrel->rd_rel->relkind == RELKIND_RELATION ||
-			childrel->rd_rel->relkind == RELKIND_MATVIEW)
+		if (IsYBRelation(childrel))
+		{
+			/* Use the YB row acquisition function */
+			acquirefunc = yb_acquire_sample_rows;
+
+			/*
+			 * Unlike analyze_rel, we can't simply set relpages to 0 here
+			 * because it is used for dividing targrows according to the
+			 * partition sizes.  If we do that, no samples will be collected
+			 * for the partitions, resulting in no statistics being gathered at
+			 * the parent level.  Use reltuples instead until we add a
+			 * RelationGetNumberOfBlocks alternative DocDB API.  The actual
+			 * value of relpages for the parent is always set to -1 by
+			 * `do_analyze_rel`.
+			 */
+			relpages = (childrel->rd_rel->reltuples < 0?
+						YBC_DEFAULT_NUM_ROWS: childrel->rd_rel->reltuples);
+		}
+		else if (childrel->rd_rel->relkind == RELKIND_RELATION ||
+				 childrel->rd_rel->relkind == RELKIND_MATVIEW)
 		{
 			/* Regular table, so use the regular row acquisition function */
 			acquirefunc = acquire_sample_rows;
@@ -1533,16 +1562,31 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 	pgstat_progress_update_param(PROGRESS_ANALYZE_CHILD_TABLES_TOTAL,
 								 nrels);
 	numrows = 0;
-	*totalrows = 0;
-	*totaldeadrows = 0;
 	for (i = 0; i < nrels; i++)
 	{
 		Relation	childrel = rels[i];
 		AcquireSampleRowsFunc acquirefunc = acquirefuncs[i];
 		double		childblocks = relblocks[i];
 
-		pgstat_progress_update_param(PROGRESS_ANALYZE_CURRENT_CHILD_TABLE_RELID,
-									 RelationGetRelid(childrel));
+		/*
+		 * Report progress.  The sampling function will normally report blocks
+		 * done/total, but we need to reset them to 0 here, so that they don't
+		 * show an old value until that.
+		 */
+		{
+			const int	progress_index[] = {
+				PROGRESS_ANALYZE_CURRENT_CHILD_TABLE_RELID,
+				PROGRESS_ANALYZE_BLOCKS_DONE,
+				PROGRESS_ANALYZE_BLOCKS_TOTAL
+			};
+			const int64 progress_vals[] = {
+				RelationGetRelid(childrel),
+				0,
+				0,
+			};
+
+			pgstat_progress_update_multi_param(3, progress_index, progress_vals);
+		}
 
 		if (childblocks > 0)
 		{
@@ -2444,7 +2488,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 	track = (ScalarMCVItem *) palloc(num_mcv * sizeof(ScalarMCVItem));
 
 	memset(&ssup, 0, sizeof(ssup));
-	ssup.ssup_cxt = GetCurrentMemoryContext();
+	ssup.ssup_cxt = CurrentMemoryContext;
 	ssup.ssup_collation = stats->attrcollid;
 	ssup.ssup_nulls_first = false;
 

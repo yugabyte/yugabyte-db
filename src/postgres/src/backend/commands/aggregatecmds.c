@@ -29,7 +29,6 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
-#include "commands/extension.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
@@ -38,8 +37,10 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
+#include "commands/extension.h"
 #include "pg_yb_utils.h"
+
 
 static char extractModify(DefElem *defel);
 

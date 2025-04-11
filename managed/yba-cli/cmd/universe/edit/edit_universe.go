@@ -6,14 +6,16 @@ package edit
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/edit/cluster"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // EditUniverseCmd represents the universe command
 var EditUniverseCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "Edit a YugabyteDB Anywhere universe",
-	Long:  "Edit a universe in YugabyteDB Anywhere",
+	Use:     "edit",
+	Short:   "Edit a YugabyteDB Anywhere universe",
+	GroupID: "action",
+	Long:    "Edit a universe in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -25,6 +27,8 @@ func init() {
 
 	util.PreviewCommand(EditUniverseCmd, []*cobra.Command{
 		editYSQLUniverseCmd,
+		editYCQLUniverseCmd,
+		cluster.EditClusterCmd,
 	})
 
 	EditUniverseCmd.PersistentFlags().StringP("name", "n", "",

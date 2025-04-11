@@ -21,9 +21,14 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 
+#include "yb/util/concurrent_value.h"
+
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
 
 namespace yb {
+
+class JsonWriter;
+
 namespace tserver {
 
 class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWrapperContext {
@@ -55,7 +60,7 @@ class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWra
 
   int SharedMemoryNegotiationFd() override;
 
-  TServerSharedData& shared_object() const override;
+  ConcurrentPointerReference<TServerSharedData> shared_object() const;
 
   Status Init() override;
 

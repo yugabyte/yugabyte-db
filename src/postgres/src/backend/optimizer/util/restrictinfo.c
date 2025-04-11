@@ -20,9 +20,10 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/restrictinfo.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+
 
 static RestrictInfo *make_restrictinfo_internal(PlannerInfo *root,
 												Expr *clause,
@@ -593,6 +594,35 @@ extract_actual_join_clauses(List *restrictinfo_list,
 			*joinquals = lappend(*joinquals, rinfo->clause);
 		}
 	}
+}
+
+/*
+ * has_pseudoconstant_clauses
+ *
+ * Returns true if 'restrictinfo_list' includes pseudoconstant clauses.
+ *
+ * This is used when we determine whether to allow extensions to consider
+ * pushing down joins in add_paths_to_joinrel().
+ */
+bool
+has_pseudoconstant_clauses(PlannerInfo *root,
+						   List *restrictinfo_list)
+{
+	ListCell   *l;
+
+	/* No need to look if we know there are no pseudoconstants */
+	if (!root->hasPseudoConstantQuals)
+		return false;
+
+	/* See if there are pseudoconstants in the RestrictInfo list */
+	foreach(l, restrictinfo_list)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+
+		if (rinfo->pseudoconstant)
+			return true;
+	}
+	return false;
 }
 
 

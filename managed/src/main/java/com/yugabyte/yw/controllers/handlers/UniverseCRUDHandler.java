@@ -223,7 +223,9 @@ public class UniverseCRUDHandler {
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
             || areCommunicationPortsChanged(taskParams, universe)
-            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
+            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
+            || !Objects.equals(
+                currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -654,6 +656,9 @@ public class UniverseCRUDHandler {
         if (installNodeExporter) {
           taskParams.nodeExporterUser = nodeExporterUser;
         }
+      } else {
+        // Setting dedicatedNodes to true for k8s universes.
+        c.userIntent.dedicatedNodes = true;
       }
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
@@ -1637,6 +1642,11 @@ public class UniverseCRUDHandler {
   public static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
     checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
     checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
+    checkEquals(
+        c -> c.userIntent.enableConnectionPooling,
+        primaryCluster,
+        cluster,
+        "Connection Pooling setting");
     checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
     checkEquals(c -> c.userIntent.enableYCQLAuth, primaryCluster, cluster, "Ycql auth setting");
     checkEquals(c -> c.userIntent.enableYEDIS, primaryCluster, cluster, "Yedis setting");
@@ -2369,6 +2379,19 @@ public class UniverseCRUDHandler {
       }
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
+      if (!Objects.equals(newIntent.imageBundleUUID, curIntent.imageBundleUUID)) {
+        Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+        ImageBundle newBundle =
+            ImageBundle.getOrBadRequest(provider.getUuid(), newIntent.imageBundleUUID);
+        if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot change arch from "
+                  + universe.getUniverseDetails().arch
+                  + " to "
+                  + newBundle.getDetails().getArch());
+        }
+      }
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
       for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded

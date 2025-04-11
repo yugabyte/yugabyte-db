@@ -86,6 +86,9 @@ INSERT INTO items (embedding) VALUES
 -- Wrong dimensionality, shouldn't work.
 SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 
+-- IndexOnlyScan on the ybhnsw index should not work.
+/*+IndexOnlyScan(items items_embedding_idx)*/ EXPLAIN (COSTS OFF) SELECT count(*) FROM items;
+
 DROP INDEX items_embedding_idx;
 
 -- Dummy implementation, should only provide Exact ANN within a tablet.
@@ -94,3 +97,25 @@ EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1
 SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
 
 DROP TABLE items;
+
+-- Make sure we can't create an index with unspecified dimensions.
+CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
+DROP TABLE items;
+
+CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
+DROP TABLE items;
+
+CREATE TABLE vec1 (embedding vector(3));
+CREATE INDEX vec1_idx ON vec1 USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO vec1 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 5);
+CREATE TABLE vec2 (embedding vector(3));
+INSERT INTO vec2 SELECT '[1, 1, 1]'::vector(3) FROM generate_series(1, 2);
+EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
+SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 1) LIMIT 3;
+EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
+DROP TABLE vec2;
+DROP TABLE vec1;

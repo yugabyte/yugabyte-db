@@ -12,9 +12,6 @@ import {
   PATCH_TASKS_FOR_CUSTOMER,
   SHOW_TASK_IN_DRAWER,
   HIDE_TASK_IN_DRAWER,
-  SHOW_TASK_BANNER,
-  HIDE_TASK_BANNER,
-  HIDE_ALL_TASK_BANNERS
 } from '../actions/tasks';
 import moment from 'moment';
 import { get, mapValues, set } from 'lodash';
@@ -48,6 +45,23 @@ export default function (state = INITIAL_STATE, action) {
       const taskData = action.payload.data;
       const taskListResultArray = [];
       const taskMap = {};
+
+      // We use two stores: Redux and React Query.
+      // TaskListTable uses React Query, while the legacy system uses Redux.
+      // To keep both in sync, we update the Redux state in TaskListTable via PATCH_TASKS_FOR_CUSTOMER.
+      // However, we do not update React Query from Redux.
+      // A race condition occurs because Redux issues a /tasks request, which takes time to load as it gathers all tasks from all universes.
+      // React Query, on the other hand, fetches only the current universe's tasks, making it faster.
+      // If Redux initiates the /tasks request first and React Query follows but completes first, the subsequent Redux response overwrites the data.
+      // To prevent this, if the current page is /universe/tasks, we avoid updating the Redux store and let React Query handle the update.
+      const currentPath = window.location.pathname;
+      const match = currentPath.match(/universes\/([0-9a-fA-F-]+)\/tasks/);
+      if (match) {
+        const universeUUID = match[1];
+        if(taskData[universeUUID])
+          delete taskData[universeUUID];
+      }
+      
       Object.keys(taskData).forEach(function (taskIdx) {
         taskData[taskIdx].forEach(function (taskItem) {
           taskItem.targetUUID = taskIdx;
@@ -92,42 +106,6 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, showTaskInDrawer: action.payload };
     case HIDE_TASK_IN_DRAWER:
       return { ...state, showTaskInDrawer: '' };
-    case SHOW_TASK_BANNER: {
-      const bannerInfos = {
-        ...state.taskBannerInfo
-      };
-      const alreadyExists = get(bannerInfos, [
-        action.payload.universeUUID,
-        action.payload.taskUUID
-      ]);
-      if (!alreadyExists || alreadyExists.visible !== false) {
-        set(bannerInfos, [action.payload.universeUUID, action.payload.taskUUID], {
-          visible: true,
-          timestamp: Date.now(),
-          taskUUID: action.payload.taskUUID
-        });
-      }
-      return { ...state, taskBannerInfo: bannerInfos };
-    }
-    case HIDE_TASK_BANNER:
-      set(
-        state.taskBannerInfo,
-        [action.payload.universeUUID, action.payload.taskUUID, 'visible'],
-        false
-      );
-      return {
-        ...state
-      };
-    case HIDE_ALL_TASK_BANNERS:
-      state.taskBannerInfo[action.payload.universeUUID] = mapValues(
-        state.taskBannerInfo[action.payload.universeUUID],
-        (value) => {
-          return { ...value, visible: false };
-        }
-      );
-      return {
-        ...state
-      };
     default:
       return state;
   }

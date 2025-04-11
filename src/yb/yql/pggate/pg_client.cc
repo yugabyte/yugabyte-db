@@ -998,10 +998,11 @@ class PgClient::Impl : public BigDataFetcher {
         req, resp, ash::PggateRPC::kListLiveTabletServers));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::TabletServersInfo result;
-    result.reserve(resp.servers().size());
+    result.tablet_servers.reserve(resp.servers().size());
     for (const auto& server : resp.servers()) {
-      result.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
+      result.tablet_servers.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
     }
+    result.universe_uuid = resp.universe_uuid();
     return result;
   }
 
@@ -1129,6 +1130,21 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
+      uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
+    tserver::PgGetTserverCatalogMessageListsRequestPB req;
+    tserver::PgGetTserverCatalogMessageListsResponsePB resp;
+    req.set_db_oid(db_oid);
+    req.set_ysql_catalog_version(ysql_catalog_version);
+    req.set_num_catalog_versions(num_catalog_versions);
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTserverCatalogMessageLists,
+        req, resp, ash::PggateRPC::kGetTserverCatalogMessageLists));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -1200,25 +1216,18 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.snapshot_id();
   }
 
-  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
-      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
-    tserver::PgSetTxnSnapshotRequestPB req;
+  Result<PgTxnSnapshotPB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+    tserver::PgImportTxnSnapshotRequestPB req;
+    tserver::PgImportTxnSnapshotResponsePB resp;
     req.set_session_id(session_id_);
+    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
     *req.mutable_options() = std::move(options);
-
-    if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
-      ReadHybridTime::FromUint64(std::get<uint64_t>(snapshot_descriptor))
-          .ToPB(req.mutable_explicit_read_time());
-    } else {
-      req.set_snapshot_id(std::get<PgTxnSnapshotId>(snapshot_descriptor));
-    }
-
-    tserver::PgSetTxnSnapshotResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::SetTxnSnapshot, req, resp,
-        ash::PggateRPC::kSetTxnSnapshot));
+        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
+        ash::PggateRPC::kImportTxnSnapshot));
     RETURN_NOT_OK(ResponseStatus(resp));
-    return resp;
+    return std::move(resp.snapshot());
   }
 
   Status ClearExportedTxnSnapshots() {
@@ -1258,11 +1267,12 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range) {
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
+    req.set_active_pid(active_pid);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
     }
@@ -1282,6 +1292,17 @@ class PgClient::Impl : public BigDataFetcher {
     cdc::InitVirtualWALForCDCResponsePB resp;
     RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t* lag_metric) {
+    cdc::GetLagMetricsRequestPB req;
+    req.set_stream_id(stream_id);
+    cdc::GetLagMetricsResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->GetLagMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    *lag_metric = resp.lag_metric();
     return resp;
   }
 
@@ -1472,7 +1493,8 @@ class PgClient::Impl : public BigDataFetcher {
 };
 
 std::string DdlMode::ToString() const {
-  return YB_STRUCT_TO_STRING(has_docdb_schema_changes, silently_altered_db);
+  return YB_STRUCT_TO_STRING(
+      has_docdb_schema_changes, silently_altered_db, use_regular_transaction_block);
 }
 
 void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const {
@@ -1480,6 +1502,7 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
   if (silently_altered_db) {
     dest->mutable_silently_altered_db()->set_value(*silently_altered_db);
   }
+  dest->set_use_regular_transaction_block(use_regular_transaction_block);
 }
 
 PgClient::PgClient(const YbcPgAshConfig& ash_config,
@@ -1679,6 +1702,11 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
 }
 
+Result<tserver::PgGetTserverCatalogMessageListsResponsePB> PgClient::GetTserverCatalogMessageLists(
+    uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
+  return impl_->GetTserverCatalogMessageLists(db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
 Status PgClient::EnumerateActiveTransactions(
     const ActiveTransactionCallback& callback, bool for_current_session_only) const {
   return impl_->EnumerateActiveTransactions(callback, for_current_session_only);
@@ -1715,9 +1743,9 @@ Result<std::string> PgClient::ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequ
   return impl_->ExportTxnSnapshot(req);
 }
 
-Result<tserver::PgSetTxnSnapshotResponsePB> PgClient::SetTxnSnapshot(
-    PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options) {
-  return impl_->SetTxnSnapshot(snapshot_descriptor, std::move(options));
+Result<PgTxnSnapshotPB> PgClient::ImportTxnSnapshot(
+    std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options) {
+  return impl_->ImportTxnSnapshot(snapshot_id, std::move(options));
 }
 
 Status PgClient::ClearExportedTxnSnapshots() { return impl_->ClearExportedTxnSnapshots(); }
@@ -1732,8 +1760,13 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-    const YbcReplicationSlotHashRange* slot_hash_range) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range);
+    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range, active_pid);
+}
+
+Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
+    const std::string& stream_id, int64_t* lag_metric) {
+  return impl_->GetLagMetrics(stream_id, lag_metric);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(

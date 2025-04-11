@@ -39,7 +39,6 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -55,7 +54,9 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
 
@@ -108,6 +109,7 @@ DECLARE_string(use_private_ip);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 namespace yb {
 
@@ -761,17 +763,25 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       auto descs = (*leader)->ts_manager().GetAllDescriptors();
+      auto leases = (*leader)->catalog_manager_impl().object_lock_info_manager()->GetLeaseInfos();
       if (live_only || descs.size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-        size_t match_count =
-            std::ranges::count_if(descs, [&mini_cluster_tservers, &live_only](const auto& desc) {
+        size_t match_count = std::ranges::count_if(
+            descs, [&mini_cluster_tservers, &live_only, &leases](const auto& desc) {
               auto it = mini_cluster_tservers.find(desc->permanent_uuid());
-              return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
-                     desc->has_tablet_report() && (!live_only || desc->IsLive()) &&
-                     (!FLAGS_TEST_enable_ysql_operation_lease ||
-                      desc->HasLiveYsqlOperationLease());
+              bool present_and_live = it != mini_cluster_tservers.end() &&
+                                      it->second == desc->latest_seqno() &&
+                                      desc->has_tablet_report() && (!live_only || desc->IsLive());
+              if (!present_and_live || !FLAGS_TEST_enable_object_locking_for_table_locks) {
+                return present_and_live;
+              }
+              auto leases_it = leases.find(desc->permanent_uuid());
+              if (leases_it == leases.end()) {
+                return false;
+              }
+              return leases_it->second.live_lease();
             });
 
         if (match_count == count) {
@@ -980,6 +990,25 @@ std::unordered_set<string> ListActiveTabletIdsForTable(
   return tablet_ids;
 }
 
+bool PeerMatchesFilter(const tablet::TabletPeerPtr& peer, ListPeersFilter filter) {
+  switch (filter) {
+    case ListPeersFilter::kAll:
+      return true;
+    case ListPeersFilter::kLeaders: {
+      auto consensus_result = peer->GetConsensus();
+      return consensus_result &&
+             consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+    }
+    case ListPeersFilter::kNonLeaders: {
+      auto consensus_result = peer->GetConsensus();
+      return consensus_result &&
+             consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+    }
+  }
+
+  FATAL_INVALID_ENUM_VALUE(ListPeersFilter, filter);
+}
+
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter,
     IncludeTransactionStatusTablets include_transaction_status_tablets) {
@@ -991,32 +1020,9 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     return tablet && tablet->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE;
   };
 
-  switch (filter) {
-    case ListPeersFilter::kAll:
-      return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
-        return filter_transaction_status_tablets(peer);
-      });
-    case ListPeersFilter::kLeaders:
-      return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
-        if (!filter_transaction_status_tablets(peer)) {
-          return false;
-        }
-        auto consensus_result = peer->GetConsensus();
-        return consensus_result &&
-               consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-      });
-    case ListPeersFilter::kNonLeaders:
-      return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
-        if (!filter_transaction_status_tablets(peer)) {
-          return false;
-        }
-        auto consensus_result = peer->GetConsensus();
-        return consensus_result &&
-               consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
-      });
-  }
-
-  FATAL_INVALID_ENUM_VALUE(ListPeersFilter, filter);
+  return ListTabletPeers(cluster, [filter, &filter_transaction_status_tablets](const auto& peer) {
+    return filter_transaction_status_tablets(peer) && PeerMatchesFilter(peer, filter);
+  });
 }
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
@@ -1093,10 +1099,33 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
-      MiniCluster* cluster, const TableId& table_id) {
-  return ListTabletPeers(cluster, [&table_id](const tablet::TabletPeerPtr& peer) {
-    return IsForTable(*peer, table_id);
+      MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter) {
+  return ListTabletPeers(cluster, [&table_id, filter](const tablet::TabletPeerPtr& peer) {
+    return IsForTable(*peer, table_id) && PeerMatchesFilter(peer, filter);
   });
+}
+
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
+    MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter) {
+  return ListTableTabletPeers(
+      cluster, VERIFY_RESULT(FindTableId(cluster, table_name)), filter);
+}
+
+Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
+    MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter) {
+  return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter)));
+}
+
+std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers) {
+  std::vector<tablet::TabletPtr> result;
+  result.reserve(peers.size());
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      result.push_back(tablet);
+    }
+  }
+  return result;
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
@@ -1336,12 +1365,26 @@ int NumRunningFlushes(MiniCluster* cluster) {
   return flushes;
 }
 
-Result<scoped_refptr<master::TableInfo>> FindTable(
+Result<master::TableInfoPtr> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
   auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
   master::TableIdentifierPB identifier;
   table_name.SetIntoTableIdentifierPB(&identifier);
   return catalog_manager.FindTable(identifier);
+}
+
+Result<TableId> FindTableId(
+    MiniCluster* cluster, const std::string& table_name) {
+  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+  master::ListTablesRequestPB req;
+  master::ListTablesResponsePB resp;
+  RETURN_NOT_OK(catalog_manager.ListTables(&req, &resp));
+  for (const auto & table : resp.tables()) {
+    if (table.name() == table_name) {
+      return table.id();
+    }
+  }
+  return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
 }
 
 Status WaitForInitDb(MiniCluster* cluster) {

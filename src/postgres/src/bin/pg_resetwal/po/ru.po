@@ -5,21 +5,21 @@
 # Oleg Bartunov <oleg@sai.msu.su>, 2004.
 # Sergey Burladyan <eshkinkot@gmail.com>, 2009.
 # Dmitriy Olshevskiy <olshevskiy87@bk.ru>, 2014.
-# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022.
+# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024.
 msgid ""
 msgstr ""
 "Project-Id-Version: pg_resetxlog (PostgreSQL current)\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
 "POT-Creation-Date: 2022-08-27 14:52+0300\n"
-"PO-Revision-Date: 2022-09-05 13:36+0300\n"
+"PO-Revision-Date: 2024-09-05 12:19+0300\n"
 "Last-Translator: Alexander Lakhin <exclusion@gmail.com>\n"
 "Language-Team: Russian <pgsql-ru-general@postgresql.org>\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
-"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: ../../../src/common/logging.c:276
 #, c-format
@@ -170,7 +170,7 @@ msgstr "Запускать %s нужно от имени суперпользо�
 #: pg_resetwal.c:347
 #, c-format
 msgid "could not read permissions of directory \"%s\": %m"
-msgstr "не удалось считать права на каталог \"%s\": %m"
+msgstr "не удалось прочитать права на каталог \"%s\": %m"
 
 #: pg_resetwal.c:353
 #, c-format
@@ -200,8 +200,8 @@ msgid ""
 "If these values seem acceptable, use -f to force reset.\n"
 msgstr ""
 "\n"
-"Если эти значения приемлемы, выполните сброс принудительно, добавив ключ -f."
-"\n"
+"Если эти значения всё же приемлемы, выполните сброс принудительно, добавив "
+"ключ -f.\n"
 
 #: pg_resetwal.c:479
 #, c-format
@@ -601,7 +601,7 @@ msgid ""
 "\n"
 msgstr ""
 "Использование:\n"
-"  %s [ПАРАМЕТР]... КАТ_ДАННЫХ\n"
+"  %s [ПАРАМЕТР]... КАТАЛОГ-ДАННЫХ\n"
 "\n"
 
 #: pg_resetwal.c:1136
@@ -660,8 +660,8 @@ msgstr ""
 msgid ""
 "  -n, --dry-run                    no update, just show what would be done\n"
 msgstr ""
-"  -n, --dry-run                    показать, какие действия будут выполнены,"
-"\n"
+"  -n, --dry-run                    показать, какие действия будут "
+"выполнены,\n"
 "                                   но не выполнять их\n"
 
 #: pg_resetwal.c:1146

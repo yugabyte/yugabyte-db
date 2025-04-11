@@ -52,11 +52,16 @@ typedef struct MemoryContextCallback
 } MemoryContextCallback;
 
 /*
- * GetCurrentMemoryContext() is the default allocation context for palloc().
+ * CurrentMemoryContext is the default allocation context for palloc().
  * Avoid accessing it directly!  Instead, use MemoryContextSwitchTo()
  * to change the setting.
+ *
+ * YB: rename upstream PG's CurrentMemoryContext to YbCurrentMemoryContext and
+ * make CurrentMemoryContext a macro that calls YbGetCurrentMemoryContext.
+ * This lets us leave reads of CurrentMemoryContext untouched so that future
+ * upstream PG merges become easier.
  */
-extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
+extern PGDLLIMPORT MemoryContext YbCurrentMemoryContext;
 
 /*
  * This enables running query-layer code in a multi-threaded constext by using
@@ -71,14 +76,14 @@ IsMultiThreadedMode()
 	 * TODO Consider using a specific global variable or compiler flag
 	 * for this.
 	 */
-	return CurrentMemoryContext == NULL;
+	return YbCurrentMemoryContext == NULL;
 }
 
 extern MemoryContext GetThreadLocalCurrentMemoryContext();
 extern MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx);
 
 static inline MemoryContext
-GetCurrentMemoryContext()
+YbGetCurrentMemoryContext()
 {
 	if (IsMultiThreadedMode())
 	{
@@ -86,9 +91,12 @@ GetCurrentMemoryContext()
 	}
 	else
 	{
-		return CurrentMemoryContext;
+		return YbCurrentMemoryContext;
 	}
 }
+
+/* YB: see above comment on YbCurrentMemoryContext. */
+#define CurrentMemoryContext (YbGetCurrentMemoryContext())
 
 extern MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
 														   const char *name);
@@ -155,8 +163,8 @@ extern void pfree(void *pointer);
  */
 #define palloc0fast(sz) \
 	( MemSetTest(0, sz) ? \
-		MemoryContextAllocZeroAligned(GetCurrentMemoryContext(), sz) : \
-		MemoryContextAllocZero(GetCurrentMemoryContext(), sz) )
+		MemoryContextAllocZeroAligned(CurrentMemoryContext, sz) : \
+		MemoryContextAllocZero(CurrentMemoryContext, sz) )
 
 /* Higher-limit allocators. */
 extern void *MemoryContextAllocHuge(MemoryContext context, Size size);
@@ -179,9 +187,9 @@ MemoryContextSwitchTo(MemoryContext context)
 	}
 	else
 	{
-		MemoryContext old = GetCurrentMemoryContext();
+		MemoryContext old = CurrentMemoryContext;
 
-		CurrentMemoryContext = context;
+		YbCurrentMemoryContext = context;
 		return old;
 	}
 }

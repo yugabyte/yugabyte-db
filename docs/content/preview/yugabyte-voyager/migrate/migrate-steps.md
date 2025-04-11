@@ -237,7 +237,7 @@ Sequence migration consists of two steps: sequence creation and setting resume v
 Note that there are some special cases involving sequences such as the following:
 
 - In MySQL, auto-increment column is migrated to YugabyteDB as a normal column with a sequence attached to it.
-- For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
+- For PostgreSQL, only the sequences attached to or owned by the migrating tables are restored during the migration.
 
 {{< /note >}}
 
@@ -261,7 +261,7 @@ Consider the following caveats before using the feature:
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-mysql/).
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) will have no effect.
 - In MySQL RDS, writes are not allowed during the data export process.
-- For Oracle where sequences are not attached to a column, resume value generation is unsupported.
+- Sequences that are not associated with any column or attached to columns of non-integer types are not supported for resuming value generation.
 
 ### Import schema
 

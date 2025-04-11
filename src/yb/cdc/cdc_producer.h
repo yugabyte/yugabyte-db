@@ -59,7 +59,7 @@ struct XClusterGetChangesContext {
   const OpId& from_op_id;
   const std::shared_ptr<tablet::TabletPeer>& tablet_peer;
   UpdateOnSplitOpFunc update_on_split_op_func;
-  const MemTrackerPtr& mem_tracker;
+  const std::shared_ptr<MemTracker>& mem_tracker;
   const CoarseTimePoint& deadline;
   StreamMetadata* stream_metadata;
   consensus::ReplicateMsgsHolder* msgs_holder;

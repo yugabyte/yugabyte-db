@@ -2509,8 +2509,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -2571,6 +2571,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -3834,6 +3835,11 @@
           "description" : "Frequency of the schedule",
           "format" : "int64",
           "type" : "integer"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
       "type" : "object"
@@ -4331,8 +4337,7 @@
         }
       },
       "required" : [
-        "backupRequestParams",
-        "tables"
+        "backupRequestParams"
       ],
       "type" : "object"
     },
@@ -5138,8 +5143,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -5200,6 +5205,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -7684,6 +7690,11 @@
             "Editing"
           ],
           "type" : "string"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
       "type" : "object"
@@ -8081,8 +8092,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -8143,6 +8154,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -8852,8 +8864,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -8914,6 +8926,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -10241,8 +10254,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -10303,6 +10316,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -10783,6 +10797,9 @@
           },
           "type" : "object"
         },
+        "hostedZoneId" : {
+          "type" : "string"
+        },
         "ybcBinDir" : {
           "type" : "string"
         },
@@ -10793,6 +10810,7 @@
       "required" : [
         "dataHomeDir",
         "envVars",
+        "hostedZoneId",
         "ybcBinDir",
         "yugabyteBinDir"
       ],
@@ -12796,6 +12814,10 @@
     },
     "OnPremCloudInfo" : {
       "properties" : {
+        "useClockbound" : {
+          "description" : "WARNING: This is a preview API that could change.",
+          "type" : "boolean"
+        },
         "ybHomeDir" : {
           "type" : "string"
         }
@@ -14380,8 +14402,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -14442,6 +14464,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -15367,8 +15390,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -15429,6 +15452,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -16165,8 +16189,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -16227,6 +16251,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -17652,8 +17677,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -17714,6 +17739,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -18182,8 +18208,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -18244,6 +18270,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -18554,8 +18581,8 @@
               "RestartXClusterConfig",
               "RestartDrConfig",
               "SyncDrConfig",
-              "SetTablesDrConfig",
               "SetDatabasesDrConfig",
+              "SetTablesDrConfig",
               "CreateDrConfig",
               "DeleteDrConfig",
               "FailoverDrConfig",
@@ -18616,6 +18643,7 @@
               "ChangeInstanceType",
               "PersistResizeNode",
               "PersistSystemdUpgrade",
+              "PersistUseClockbound",
               "UpdateNodeDetails",
               "AddAuthorizedKey",
               "AnsibleClusterServerCtl",
@@ -19347,8 +19375,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -19409,6 +19437,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -20406,8 +20435,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -20468,6 +20497,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -21667,8 +21697,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -21729,6 +21759,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -22308,8 +22339,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -22370,6 +22401,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -23204,8 +23236,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -23266,6 +23298,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -23809,8 +23842,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -23871,6 +23904,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -24414,8 +24448,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -24476,6 +24510,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -25421,8 +25456,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -25483,6 +25518,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -26581,8 +26617,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -26643,6 +26679,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -31394,6 +31431,59 @@
         ]
       }
     },
+    "/api/v1/customers/{cUUID}/configs/{configUUID}/backup_dirs" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfYbaBackupDirsCustomerConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "configUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List all backup dirs within a customer configurations",
+        "tags" : [
+          "Customer Configuration"
+        ]
+      }
+    },
     "/api/v1/customers/{cUUID}/configs/{configUUID}/delete" : {
       "delete" : {
         "description" : "",
@@ -33430,6 +33520,14 @@
             "in" : "query",
             "name" : "request",
             "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "ListMaintenanceWindowsRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindowApiFilter"
+            }
           }
         ],
         "responses" : {
@@ -40915,7 +41013,7 @@
         ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updatePitrConfig",
         "parameters" : [
           {
@@ -41736,67 +41834,6 @@
           }
         ],
         "summary" : "Create support bundle for specific universe",
-        "tags" : [
-          "Support Bundle management"
-        ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/estimate_size" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "estimateSupportBundleSize",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uniUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "request",
-            "required" : false
-          },
-          {
-            "description" : "support bundle info",
-            "in" : "body",
-            "name" : "supportBundle",
-            "required" : true,
-            "schema" : {
-              "$ref" : "#/definitions/SupportBundleFormData"
-            }
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/SupportBundleSizeEstimateResponse"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/SupportBundleSizeEstimateResponse"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Estimate support bundle size for specific universe",
         "tags" : [
           "Support Bundle management"
         ]

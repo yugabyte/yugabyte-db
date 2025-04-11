@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -53,6 +55,15 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     mockFetchTablespaceAnswer("com/yugabyte/yw/controllers/tablespaces_shell_response.txt");
+    factory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.createTablespacesMinRetries.getKey(), "1");
+    factory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.createTablespacesRetryDelay.getKey(), "0ms");
+    factory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.createTablespacesRetryTimeout.getKey(), "0ms");
   }
 
   @Test
@@ -84,7 +95,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     verifyException(
         universe.getUniverseUUID(),
         params,
-        "Cluster may not have been initialized yet. Please try later");
+        "All 1 attempts to create tablespaces failed: Cluster may not have been initialized yet.");
   }
 
   @Test
@@ -103,7 +114,8 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     verifyException(
         universe.getUniverseUUID(),
         params,
-        "Error while executing SQL request: Error occurred. Code: -1. Output: Error");
+        "All 1 attempts to create tablespaces failed: Error while executing SQL request: Error"
+            + " occurred. Code: -1. Output: Error");
   }
 
   @Test
@@ -132,7 +144,8 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     verifyException(
         universe.getUniverseUUID(),
         params,
-        "Error while executing SQL request: Error occurred. Code: -1. Output: Error");
+        "All 1 attempts to create tablespaces failed: Error while executing SQL request: Error"
+            + " occurred. Code: -1. Output: Error");
   }
 
   private CreateTablespaceParams verifyExecution(
@@ -154,7 +167,12 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(universeUUID);
 
     CreateTableSpaces task =
-        new CreateTableSpaces(mockBaseTaskDependencies, mockNodeUniverseManager);
+        new CreateTableSpaces(mockBaseTaskDependencies, mockNodeUniverseManager) {
+          @Override
+          protected void waitFor(Duration duration) {
+            // Noop as no actual task is running.
+          }
+        };
     task.initialize(taskParams);
     RuntimeException re = assertThrows(PlatformServiceException.class, () -> task.run());
     assertEquals(errorMsg, re.getMessage());

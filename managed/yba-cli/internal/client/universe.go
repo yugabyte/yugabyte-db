@@ -33,11 +33,43 @@ func (a *AuthAPIClient) CreateAllClusters() ybaclient.UniverseClusterMutationsAp
 	return a.APIClient.UniverseClusterMutationsApi.CreateAllClusters(a.ctx, a.CustomerUUID)
 }
 
+// DeleteReadonlyCluster to remove read replica cluster
+func (a *AuthAPIClient) DeleteReadonlyCluster(
+	uUUID, clusterUUID string,
+) ybaclient.UniverseClusterMutationsApiApiDeleteReadonlyClusterRequest {
+	return a.APIClient.UniverseClusterMutationsApi.DeleteReadonlyCluster(
+		a.ctx, a.CustomerUUID, uUUID, clusterUUID)
+}
+
+// CreateReadOnlyCluster to create a read replica cluster
+func (a *AuthAPIClient) CreateReadOnlyCluster(
+	uUUID string,
+) ybaclient.UniverseClusterMutationsApiApiCreateReadOnlyClusterRequest {
+	return a.APIClient.UniverseClusterMutationsApi.CreateReadOnlyCluster(
+		a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UpgradeSoftware upgrades the universe YugabyteDB version
 func (a *AuthAPIClient) UpgradeSoftware(
 	uUUID string,
 ) ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest {
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpdatePrimaryCluster to edit primary cluster components
+func (a *AuthAPIClient) UpdatePrimaryCluster(
+	uUUID string,
+) ybaclient.UniverseClusterMutationsApiApiUpdatePrimaryClusterRequest {
+	return a.APIClient.UniverseClusterMutationsApi.UpdatePrimaryCluster(
+		a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpdateReadOnlyCluster to edit read replica cluster components
+func (a *AuthAPIClient) UpdateReadOnlyCluster(
+	uUUID string,
+) ybaclient.UniverseClusterMutationsApiApiUpdateReadOnlyClusterRequest {
+	return a.APIClient.UniverseClusterMutationsApi.UpdateReadOnlyCluster(
+		a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpgradeGFlags upgrades the universe gflags
@@ -83,11 +115,39 @@ func (a *AuthAPIClient) SetUniverseKey(
 	return a.APIClient.UniverseManagementApi.SetUniverseKey(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// PauseUniverse for pausing the universe
+func (a *AuthAPIClient) PauseUniverse(
+	uUUID string,
+) ybaclient.UniverseManagementApiApiPauseUniverseRequest {
+	return a.APIClient.UniverseManagementApi.PauseUniverse(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// ResumeUniverse for resuming the universe
+func (a *AuthAPIClient) ResumeUniverse(
+	uUUID string,
+) ybaclient.UniverseManagementApiApiResumeUniverseRequest {
+	return a.APIClient.UniverseManagementApi.ResumeUniverse(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// ResizeNode for resizing volumes of primary cluster nodes
+func (a *AuthAPIClient) ResizeNode(
+	uUUID string,
+) ybaclient.UniverseUpgradesManagementApiApiResizeNodeRequest {
+	return a.APIClient.UniverseUpgradesManagementApi.ResizeNode(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // ConfigureYSQL for YSQL configuration
 func (a *AuthAPIClient) ConfigureYSQL(
 	uUUID string,
 ) ybaclient.UniverseDatabaseManagementApiApiConfigureYSQLRequest {
 	return a.APIClient.UniverseDatabaseManagementApi.ConfigureYSQL(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// ConfigureYCQL for YCQL configuration
+func (a *AuthAPIClient) ConfigureYCQL(
+	uUUID string,
+) ybaclient.UniverseDatabaseManagementApiApiConfigureYCQLRequest {
+	return a.APIClient.UniverseDatabaseManagementApi.ConfigureYCQL(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create

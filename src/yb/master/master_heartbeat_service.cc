@@ -32,6 +32,7 @@
 #include "yb/master/master_heartbeat.service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -160,13 +161,19 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     TabletInfoPtr info;
     const ReportedTabletPB* report;
     std::map<TableId, scoped_refptr<TableInfo>> tables;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(tablet_id, info, report, tables);
+    }
   };
+
   using ReportedTablets = std::vector<ReportedTablet>;
 
-  Status ProcessTabletReport(
+  // Returns true if report was processed, or false if full report should be requested.
+  Result<bool> ProcessTabletReport(
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
-      const TabletReportPB& full_report,
+      const TabletReportPB* full_report,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* full_report_update,
       rpc::RpcContext* rpc);
@@ -331,7 +338,7 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     catalog_version->set_last_breaking_version(it.second.last_breaking_version);
   }
 
-  if (FLAGS_TEST_yb_enable_invalidation_messages) {
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
     // We only read pg_yb_invalidation_messages when there is any catalog version
     // change. This reduces the number of reading pg_yb_invalidation_messages which
     // may be bulky if there are many databases and/or large invalidation messages.
@@ -355,8 +362,15 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get YSQL invalidation messages for heartbeat response: "
-                   << ResultToStatus(messages);
+      const auto& s = messages.status();
+      auto msg = Format("Could not get YSQL invalidation messages for heartbeat response: $0", s);
+      if (s.IsNotFound()) {
+        // During upgrade, the table pg_yb_invalidation_messages is created in the finalization
+        // phase. We do not want to flood the log before that.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << msg;
+      } else {
+        LOG(WARNING) << msg;
+      }
     }
   }
 
@@ -432,14 +446,18 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     ts_desc->UpdateMetrics(req->metrics());
   }
 
-  if (req->has_tablet_report()) {
-    s = ProcessTabletReport(
-        ts_desc, req->common().ts_instance(), req->tablet_report(), l.epoch(),
-        resp->mutable_tablet_report(), &rpc);
-    if (!s.ok()) {
-      rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
-      return;
-    }
+  auto process_tablet_report_result = ProcessTabletReport(
+      ts_desc, req->common().ts_instance(),
+      req->has_tablet_report() ? &req->tablet_report() : nullptr,
+      l.epoch(),
+      resp->mutable_tablet_report(), &rpc);
+  if (!process_tablet_report_result.ok()) {
+    rpc.RespondFailure(
+        process_tablet_report_result.status().CloneAndPrepend("Failed to process tablet report"));
+    return;
+  }
+  if (!*process_tablet_report_result) {
+    resp->set_needs_full_tablet_report(true);
   }
 
   if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
@@ -474,11 +492,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       for (const auto& full_compaction_status : req->full_compaction_statuses()) {
         ProcessTabletReplicaFullCompactionStatus(ts_desc->permanent_uuid(), full_compaction_status);
       }
-    }
-
-    // Only set once. It may take multiple heartbeats to receive a full tablet report.
-    if (!ts_desc->has_tablet_report()) {
-      resp->set_needs_full_tablet_report(true);
     }
   }
 
@@ -591,13 +604,34 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
     epoch);
 }
 
-Status MasterHeartbeatServiceImpl::ProcessTabletReport(
+Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
-    const TabletReportPB& full_report,
+    const TabletReportPB* full_report_ptr,
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* full_report_update,
     rpc::RpcContext* rpc) {
+  if (!full_report_ptr) {
+    return ts_desc->has_tablet_report();
+  }
+  const auto& full_report = *full_report_ptr;
+
+  if (!ts_desc->has_tablet_report()) {
+    if (full_report.is_incremental()) {
+      LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid()
+                 << ": Received an incremental tablet report when a full one was needed";
+      return false;
+    } else if (full_report.full_report_seq_no() &&
+               full_report.full_report_seq_no() != full_report.sequence_number() &&
+               full_report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
+      LOG(WARNING)
+          << ts_desc->permanent_uuid()
+          << " sent full report continuation with unexpected sequence number: "
+          << full_report.full_report_seq_no() << " vs " << ts_desc->receiving_full_report_seq_no();
+      return false;
+    }
+  }
+
   int num_tablets = full_report.updated_tablets_size();
   TRACE_EVENT2("master", "ProcessTabletReport",
               "requestor", rpc->requestor_string(),
@@ -605,14 +639,6 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
 
   VLOG(2) << "Received tablet report from " << rpc::RequestorString(rpc) << "("
           << ts_desc->permanent_uuid() << "): " << full_report.DebugString();
-
-  if (!ts_desc->has_tablet_report() && full_report.is_incremental()) {
-    LOG(WARNING)
-        << "Invalid tablet report from " << ts_desc->permanent_uuid()
-        << ": Received an incremental tablet report when a full one was needed";
-    // We should respond with success in order to send reply that we need full report.
-    return Status::OK();
-  }
 
   // TODO: on a full tablet report, we may want to iterate over the tablets we think
   // the server should have, compare vs the ones being reported, and somehow mark
@@ -677,7 +703,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
         LOG(INFO) << "Reached Heartbeat deadline. Returning early after processing "
                   << full_report_update->tablets_size() << " tablets";
         full_report_update->set_processing_truncated(true);
-        return Status::OK();
+        break;
       }
     }
   } // Loop to process the next batch until fully iterated.
@@ -685,17 +711,25 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
   if (!full_report.is_incremental()) {
     // A full report may take multiple heartbeats.
     // The TS communicates how much is left to process for the full report beyond this specific HB.
-    bool completed_full_report = !full_report.has_remaining_tablet_count()
-                              || full_report.remaining_tablet_count() == 0;
+    bool completed_full_report =
+        full_report.remaining_tablet_count() == 0 && !full_report_update->processing_truncated();
     if (full_report.updated_tablets_size() == 0) {
       LOG(INFO) << ts_desc->permanent_uuid() << " sent full tablet report with 0 tablets.";
     } else if (!ts_desc->has_tablet_report()) {
       LOG(INFO) << ts_desc->permanent_uuid()
                 << (completed_full_report ? " finished" : " receiving") << " first full report: "
-                << full_report.updated_tablets_size() << " tablets.";
+                << reported_tablets.size() << " tablets.";
     }
-    // We have a tablet report only once we're done processing all the chunks of the initial report.
-    ts_desc->set_has_tablet_report(completed_full_report);
+    if (completed_full_report) {
+      // We have a tablet report only once we're done processing all the chunks of the initial
+      // report.
+      ts_desc->set_has_tablet_report(completed_full_report);
+    } else if (!ts_desc->receiving_full_report_seq_no()) {
+      LOG_WITH_FUNC(INFO)
+          << ts_desc->permanent_uuid() << " set full report seq no: "
+          << full_report.full_report_seq_no();
+      ts_desc->set_receiving_full_report_seq_no(full_report.full_report_seq_no());
+    }
   }
 
   // 14. Queue background processing if we had updates.
@@ -703,7 +737,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
     catalog_manager_->WakeBgTaskIfPendingUpdates();
   }
 
-  return Status::OK();
+  return true;
 }
 
 int64_t GetCommittedConsensusStateOpIdIndex(const ReportedTabletPB& report) {

@@ -1499,7 +1499,6 @@ DROP FUNCTION y_trigger();
 
 CREATE TEMP TABLE parent ( id int, val text );
 CREATE TEMP TABLE child1 ( ) INHERITS ( parent );
-/* YB
 CREATE TEMP TABLE child2 ( ) INHERITS ( parent );
 INSERT INTO parent VALUES ( 1, 'p1' );
 INSERT INTO child1 VALUES ( 11, 'c11' ),( 12, 'c12' );
@@ -1520,7 +1519,7 @@ SELECT * FROM parent;
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH wcte AS ( INSERT INTO int8_tbl VALUES ( 42, 47 ) RETURNING q2 )
 DELETE FROM a_star USING wcte WHERE aa = q2;
-*/
+
 -- error cases
 
 -- data-modifying WITH tries to use its own output

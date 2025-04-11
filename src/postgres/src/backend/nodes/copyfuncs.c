@@ -32,6 +32,7 @@
 /* YB includes */
 #include "nodes/ybbitmatrix.h"
 
+
 /*
  * Macros to simplify copying of different kinds of fields.  Use these
  * wherever possible to reduce the chance for silly typos.  Note that these
@@ -140,6 +141,11 @@ CopyPlanFields(const Plan *from, Plan *newnode)
 	COPY_NODE_FIELD(initPlan);
 	COPY_BITMAPSET_FIELD(extParam);
 	COPY_BITMAPSET_FIELD(allParam);
+	COPY_STRING_FIELD(ybHintAlias);
+	COPY_SCALAR_FIELD(ybUniqueId);
+	COPY_STRING_FIELD(ybInheritedHintAlias);
+	COPY_SCALAR_FIELD(ybIsHinted);
+	COPY_SCALAR_FIELD(ybHasHintedUid);
 }
 
 /*

@@ -45,7 +45,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
@@ -1276,7 +1276,7 @@ yb_pg_get_publications_tables(List *publications)
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(Oid);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 
 	seen_tables = hash_create("yb_pg_get_publications_tables temporary table",
 							  32,	/* start small and extend */

@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -21,10 +21,10 @@ static constexpr auto kTableName = "tbl1";
 static constexpr auto kNormalMatviewName = "mv1";
 static constexpr auto kIndexedMatViewName = "mv2";
 
-class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeMatviewTest : public YsqlMajorUpgradeTestBase {
  public:
   void SetUp() override {
-    TEST_SETUP_SUPER(Pg15UpgradeTestBase);
+    TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
 
     auto conn = ASSERT_RESULT(CreateConnToTs(std::nullopt));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int, b int)", kTableName));
@@ -38,9 +38,7 @@ class YsqlMajorUpgradeMatviewTest : public Pg15UpgradeTestBase {
   }
 
   Status CheckUpgradeCompatibilityGuc(MajorUpgradeCompatibilityType type) {
-    auto conn = VERIFY_RESULT(CreateConnToTs(std::nullopt));
-    auto version =
-        VERIFY_RESULT(conn.FetchRow<std::string>("SHOW yb_major_version_upgrade_compatibility"));
+    auto version = VERIFY_RESULT(ReadUpgradeCompatibilityGuc());
 
     auto expected_version = UpgradeCompatibilityGucValue(type);
     SCHECK_EQ(version, ToString(expected_version), IllegalState, "GUC version mismatch");

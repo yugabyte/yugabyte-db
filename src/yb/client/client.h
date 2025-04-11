@@ -34,58 +34,41 @@
 #include <stdint.h>
 
 #include <future>
-#include <memory>
 #include <string>
 #include <vector>
-#include <utility>
-#include <mutex>
 
-#include <boost/function.hpp>
-#include <boost/functional/hash/hash.hpp>
 #include <boost/range/any_range.hpp>
 
-#include <gtest/gtest_prod.h>
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/clock.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
-#include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-#include "yb/common/transaction.h"
 
-#include "yb/encryption/encryption.pb.h"
+#include "yb/encryption/encryption.fwd.h"
 
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
 
 #include "yb/master/master_client.fwd.h"
-#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_replication.fwd.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/clock.h"
 
-#include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/pg_client.fwd.h"
 
-#include "yb/util/enums.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/monotime.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/threadpool.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -94,8 +77,10 @@ template<class T> class scoped_refptr;
 namespace yb {
 
 class CloudInfoPB;
+class JsonWriter;
 class MemTracker;
 class MetricEntity;
+class ThreadPool;
 
 namespace master {
 class TabletLocationsPB;
@@ -123,62 +108,52 @@ struct NamespaceInfo {
 };
 
 struct CDCSDKStreamInfo {
-    std::string stream_id;
-    uint32_t database_oid;
-    ReplicationSlotName cdcsdk_ysql_replication_slot_name;
-    std::string cdcsdk_ysql_replication_slot_plugin_name;
-    tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
+  std::string stream_id;
+  uint32_t database_oid;
+  ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+  std::string cdcsdk_ysql_replication_slot_plugin_name;
+  tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
+  std::unordered_map<std::string, std::string> options;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_stream_id(stream_id);
+    pb->set_database_oid(database_oid);
+    if (!cdcsdk_ysql_replication_slot_name.empty()) {
+      pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+    }
+    if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
+      pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
+    }
+    if (replication_slot_lsn_type) {
+      pb->set_yb_lsn_type(replication_slot_lsn_type);
+    }
+  }
+
+  template <class PB>
+  static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
     std::unordered_map<std::string, std::string> options;
-
-    template <class PB>
-    void ToPB(PB* pb) const {
-      pb->set_stream_id(stream_id);
-      pb->set_database_oid(database_oid);
-      if (!cdcsdk_ysql_replication_slot_name.empty()) {
-        pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
-      }
-      if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
-        pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
-      }
-      if (replication_slot_lsn_type) {
-        pb->set_yb_lsn_type(replication_slot_lsn_type);
-      }
+    options.reserve(pb.options_size());
+    for (const auto& option : pb.options()) {
+      options.emplace(option.key(), option.value());
     }
 
-    template <class PB>
-    static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
-      std::unordered_map<std::string, std::string> options;
-      options.reserve(pb.options_size());
-      for (const auto& option : pb.options()) {
-        options.emplace(option.key(), option.value());
-      }
+    auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
+    auto stream_info = CDCSDKStreamInfo{
+        .stream_id = pb.stream_id(),
+        .database_oid = database_oid,
+        .cdcsdk_ysql_replication_slot_name =
+            ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+        .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
+        .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
+            pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
+        .options = std::move(options)};
 
-      auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
-      auto stream_info = CDCSDKStreamInfo{
-          .stream_id = pb.stream_id(),
-          .database_oid = database_oid,
-          .cdcsdk_ysql_replication_slot_name =
-              ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
-          .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
-          .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
-              pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
-          .options = std::move(options)};
+    return stream_info;
+  }
 
-      return stream_info;
-    }
-
-    static tserver::PGReplicationSlotLsnType GetPGReplicationSlotLsnType(
-        ReplicationSlotLsnType lsn_type) {
-      switch (lsn_type) {
-        case ReplicationSlotLsnType_SEQUENCE:
-          return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
-        case ReplicationSlotLsnType_HYBRID_TIME:
-          return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME;
-        default:
-          LOG(WARNING) << "Invalid LSN type specified: " << lsn_type << ", defaulting to SEQUENCE";
-          return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
-      }
-    }
+  static tserver::PGReplicationSlotLsnType
+      GetPGReplicationSlotLsnType(ReplicationSlotLsnType lsn_type);
 };
 
 namespace internal {
@@ -634,7 +609,8 @@ class YBClient {
       const CDCSDKDynamicTablesOption& dynamic_tables_option =
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
       uint64_t* consistent_snapshot_time_out = nullptr,
-      const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt);
+      const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
+      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -677,7 +653,8 @@ class YBClient {
       std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr,
       std::optional<std::string>* replication_slot_name = nullptr,
       std::vector<TableId>* unqualified_table_ids = nullptr,
-      std::optional<ReplicationSlotLsnType>* lsn_type = nullptr);
+      std::optional<ReplicationSlotLsnType>* lsn_type = nullptr,
+      std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,

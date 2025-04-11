@@ -13,14 +13,20 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
-#include "yb/common/xcluster_util.h"
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
+#include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_manager.h"
-#include "yb/util/is_operation_done_result.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster_rpc_tasks.h"
+
 #include "yb/rpc/messenger.h"
+
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
 

@@ -15,18 +15,18 @@
 #include "postgres.h"
 
 #include "access/parallel.h"
-#include "catalog/pg_type.h"
 #include "common/hashfn.h"
-#include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_collation.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
 #include "pg_yb_utils.h"
 
 static int	TupleHashTableMatch(struct tuplehash_hash *tb, const MinimalTuple tuple1, const MinimalTuple tuple2);
@@ -355,9 +355,8 @@ BuildTupleHashTableExt(PlanState *parent,
 	allow_jit = metacxt != tablecxt;
 
 	/* build comparator for all columns */
-	/* XXX: should we support non-minimal tuples for the inputslot? */
 	hashtable->tab_eq_func = ExecBuildGroupingEqual(inputDesc, inputDesc,
-													&TTSOpsMinimalTuple, &TTSOpsMinimalTuple,
+													NULL, &TTSOpsMinimalTuple,
 													numCols,
 													keyColIdx, eqfuncoids, collations,
 													allow_jit ? parent : NULL);
@@ -556,7 +555,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
  * copied into the table.
  *
  * Also, the caller must select an appropriate memory context for running
- * the hash functions. (dynahash.c doesn't change GetCurrentMemoryContext().)
+ * the hash functions. (dynahash.c doesn't change CurrentMemoryContext.)
  */
 static uint32
 TupleHashTableHash_internal(struct tuplehash_hash *tb,

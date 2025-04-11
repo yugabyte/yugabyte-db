@@ -85,7 +85,7 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     refetch: refetchSubTasks
   } = useQuery(['subTasks', currentTask.id!], () => getSubTaskDetails(currentTask.id!), {
     select: (data) => data.data,
-    enabled: !!currentTask,
+    enabled: !!currentTask
   });
 
   useEffect(() => {

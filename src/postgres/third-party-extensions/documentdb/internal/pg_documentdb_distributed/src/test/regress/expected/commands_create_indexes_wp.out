@@ -1,0 +1,712 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 1700000;
+SET documentdb.next_collection_id TO 17000;
+SET documentdb.next_collection_index_id TO 17000;
+-- cannot specify wildcardProjection for a non-root wildcard index
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'wp_test',
+  '{
+     "createIndexes": "fail_test",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "idx",
+         "wildcardProjection": {"a": 1}
+       }
+     ]
+   }',
+   true
+);
+ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed when 'key' is {"$**": ±1}
+-- cannot specify wildcardProjection for a non-wildcard index
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'wp_test',
+  '{
+     "createIndexes": "fail_test",
+     "indexes": [
+       {
+         "key": {"a": 1}, "name": "idx",
+         "wildcardProjection": {"a": 1}
+       }
+     ]
+   }',
+   true
+);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed in an 'wildcard' index
+CREATE FUNCTION create_index_arg_using_wp(p_wp text)
+RETURNS documentdb_core.bson
+AS $$
+BEGIN
+	RETURN format(
+    '{
+        "createIndexes": "fail_test",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx",
+                "wildcardProjection": %s
+            }
+        ]
+    }',
+    p_wp
+  )::documentdb_core.bson;
+END;
+$$ LANGUAGE plpgsql;
+-- all fields specified in wildcardProjection must be included or excluded, except _id field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": 0}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b in inclusion projection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b.c": 0}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b.c in inclusion projection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"b.c": 1, "a": 0}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "b.c" : 1, "a" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field a in inclusion projection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"x": 1, "y.t": 0}, "b.c": 0}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y.t" : 0 }, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field y.t in inclusion projection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"x": 1, "y": 1}, "b.c": 0}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y" : 1 }, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b.c in inclusion projection.
+-- wildcardProjection cannot be empty
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : {  } } :: caused by :: The 'wildcardProjection' field can't be an empty object
+-- wildcardProjection must be document
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('5'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : 5 } :: caused by :: The field 'wildcardProjection' must be a non-empty object, but got int
+-- wildcardProjection cannot contain an empty document as an inner-level specification
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": {"c": 1, "d": {}, "e": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : {  }, "e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: An empty sub-projection is not a valid value. Found empty object at path
+-- and inner-level specification must be a document or a path string
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": {"c": 1, "d": [], "e": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : [  ], "e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode
+-- show that we throw an error for invalid paths used in wildcardProjection document
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a..b": 1}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a..b" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not be empty strings.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"a..b": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a..b" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not be empty strings.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"a.b.": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a.b." : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath must not end with a '.'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath cannot be constructed with empty string.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"$aa": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "$aa" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"$a": -1, "b": {"aa": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "$a" : -1, "b" : { "aa" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not start with '$'. Consider using $getField or $setField
+-- idx_1: for _id field, we will take the last inclusion specification into the account
+-- idx_2: not specifying inclusion for _id field would result in excluding _id field by default
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_1",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"_id": 0, "a": {"x": 10.5, "y": true}, "_id": false, "b.c": 1, "_id": -0.6}
+            },
+            {
+                "key": {"$**": -1}, "name": "idx_2",
+                "wildcardProjection": {"a": {"x": 10.5, "y": true, "z.a.b": -100}, "b.c": 1, "k": {"z.a.b": -100}}
+            }
+        ]
+    }',
+    true
+);
+ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "idx_2", "wildcardProjection" : { "a" : { "x" : 10.5, "y" : true, "z.a.b" : -100 }, "b.c" : 1, "k" : { "z.a.b" : -100 } } } :: caused by :: A numeric value in a $** index key pattern must be positive.
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test_1', 'idx_1');
+ mongo_index_get_pg_def 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test_1', 'idx_2');
+ mongo_index_get_pg_def 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_1" }') ORDER BY 1;
+ERROR:  ns does not exist: wp_test.ok_test_1
+-- using $ in a field path is ok unless it's the first character
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_2",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": -1, "b": {"b.a$a.k$": 1}}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test_2', 'idx_1');
+                                                                                                       mongo_index_get_pg_def                                                                                                        
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_17002 ON documentdb_data.documents_17001 USING documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a", "b.b.a$a.k$" ]', isexclusion='false'))
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_2" }') ORDER BY 1;
+                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_2"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""b"" : { ""a$a"" : { ""k$"" : true } } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_3",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 1, "b": {"c": 1, "d.e": 1}, "_id": 0}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('wp_test', 'ok_test_3');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_3" }') ORDER BY 1;
+                                                                                                                                                                                   list_indexes_cursor_first_page                                                                                                                                                                                    
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_3"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""c"" : true, ""d"" : { ""e"" : true } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SET citus.propagate_set_commands TO 'local';
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a.b": 1}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17002_1700004 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a": 1}';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17002_1700004 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a": {"b": 1}}';
+                                                               QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17002_1700004 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+(9 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"_id": 1}';
+                                                                                                    QUERY PLAN                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17002_1700004 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+(7 rows)
+
+  -- cannot use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b.d": 1}';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17002_1700004 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b": {"d": 1}}';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17002_1700004 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "d" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+(7 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_3') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"e": 1}';
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17002_1700004 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+COMMIT;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_4",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 0, "b": {"c": 0, "d.e": 0}, "f.g.h": 0}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('wp_test', 'ok_test_4');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('wp_test', '{ "listIndexes": "ok_test_4" }') ORDER BY 1;
+                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_4"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : false, ""d"" : { ""e"" : false } }, ""f"" : { ""g"" : { ""h"" : false } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SET citus.propagate_set_commands TO 'local';
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- cannot use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a.b": 1}';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17003_1700006 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a": 1}';
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17003_1700006 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a": {"b": 1}}';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17003_1700006 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+(7 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"_id": 1}';
+                                                                                                    QUERY PLAN                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17003_1700006 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+(7 rows)
+
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b.d": 1}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b": {"d": 1}}';
+                                                               QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "d" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "d" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+(9 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"e": 1}';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"f.g": 1}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "f.g" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "f.g" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+COMMIT;
+SELECT 1 FROM documentdb_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 1}}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 2}}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 2}, "a": {"k": 2}}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b.d": 1, "a.k": 1}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.k" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(10 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a.k": 1, "b.d": 1}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.k" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(10 rows)
+
+  SELECT COUNT(*)=1 FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b.d": 1, "a.k": 1}';
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+  SELECT COUNT(*)=1 FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"a.k": 1, "b.d": 1}';
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+COMMIT;
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"b.d": {"$in": [1,2,3]}}';
+                                                                                      QUERY PLAN                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
+(9 rows)
+
+  -- cannot use idx_1 due to filter on "a.z.r" in "$or"
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}';
+                                                                                                                                              QUERY PLAN                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_17003_1700006 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) OR (document OPERATOR(documentdb_api_catalog.@=) '{ "a.z" : { "r" : { "$gte" : { "$numberInt" : "5" } } } }'::documentdb_core.bson))
+(7 rows)
+
+  -- can use idx_1 since none of the quals in "$or" are excluded
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"$or": [{"b.d": {"$eq": [1,2,3]}}, {"k": 5}]}';
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_17003_1700006 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) OR (document OPERATOR(documentdb_api_catalog.@=) '{ "k" : { "$numberInt" : "5" } }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on idx_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on idx_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "k" : { "$numberInt" : "5" } }'::documentdb_core.bson)
+(12 rows)
+
+COMMIT;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_5",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 0, "b": {"c": {"p": 0, "r": false}, "d._id": 0}, "_id": 1}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_5" }') ORDER BY 1;
+                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_5"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : { ""p"" : false, ""r"" : false }, ""d"" : { ""_id"" : false } }, ""_id"" : true } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('wp_test', 'ok_test_5');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SET citus.propagate_set_commands TO 'local';
+BEGIN;
+  set local enable_seqscan TO OFF;
+  set local documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('wp_test', 'ok_test_5') WHERE document OPERATOR(documentdb_api_catalog.@@) '{"d.e.f": 1, "_id": 0}';
+                                                                                                            QUERY PLAN                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using idx_1 on documents_17004_1700008 collection
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "d.e.f" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "_id" : { "$numberInt" : "0" } }'::documentdb_core.bson))
+               Filter: (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(8 rows)
+
+COMMIT;
+-- not the same index since this doesn't specify wildcardProjection
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_5",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_2"
+            }
+        ]
+    }',
+    true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- test path collision
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "a.b": 1}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "a.b" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a.b remaining portion b
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": 1, "a": 1}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : 1, "a" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a.b.c": 1}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a.b.c" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a.b.c
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at b.c
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c.d.e": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c.d.e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at b.c.d.e remaining portion c.d.e
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c": {"d.e": 1}}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : { "d.e" : 1 } } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at d.e remaining portion e
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b.c": 1, "a.b": {"c.d": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b.c" : 1, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d remaining portion d
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c": 1}, "a.b": {"c.d": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : 1 }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d remaining portion d
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c.d.e": 1}, "a.b": {"c.d": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c.d.e" : 1 }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c": {"d.e": 1}}, "a.b": {"c.d": 1}}'), true);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : { "d.e" : 1 } }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_1",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 1, "a": {"b": 1}}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_1', 'idx_1');
+                                                                                                 mongo_index_get_pg_def                                                                                                  
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_17011 ON documentdb_data.documents_17005 USING documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_2",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": {"b": 1}, "a": 1}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_2', 'idx_1');
+                                                                                                mongo_index_get_pg_def                                                                                                 
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_17013 ON documentdb_data.documents_17006 USING documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a" ]', isexclusion='false'))
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_3",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a.b": {"c.d": 1}, "a.b": 1}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_3', 'idx_1');
+                                                                                                 mongo_index_get_pg_def                                                                                                  
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_17015 ON documentdb_data.documents_17007 USING documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_4",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a.b": 1, "a.b": {"c.d": 1}}
+            }
+        ]
+    }',
+    true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_4', 'idx_1');
+                                                                                                   mongo_index_get_pg_def                                                                                                    
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_17017 ON documentdb_data.documents_17008 USING documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b.c.d" ]', isexclusion='false'))
+(1 row)
+

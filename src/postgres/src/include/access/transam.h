@@ -16,7 +16,7 @@
 
 #include "access/xlogdefs.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "common/pg_yb_common.h"
 
 

@@ -15,6 +15,7 @@
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/consensus/consensus.h"
@@ -122,6 +123,7 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   RETURN_NOT_OK(UpdateCdcStateTableWithCheckpoints());
 
   if (req_.check_if_bootstrap_required()) {
+    LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
 

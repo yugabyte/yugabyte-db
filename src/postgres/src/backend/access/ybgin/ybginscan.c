@@ -30,13 +30,12 @@
 #include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "utils/palloc.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
-
 #include "pg_yb_utils.h"
+#include "utils/memutils.h"
+#include "utils/palloc.h"
+#include "utils/rel.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
@@ -59,10 +58,10 @@ ybginbeginscan(Relation rel, int nkeys, int norderbys)
 	so = (GinScanOpaque) palloc(sizeof(YbginScanOpaqueData));
 	so->keys = NULL;
 	so->nkeys = 0;
-	so->tempCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->tempCtx = AllocSetContextCreate(CurrentMemoryContext,
 										"Ybgin scan temporary context",
 										ALLOCSET_DEFAULT_SIZES);
-	so->keyCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->keyCtx = AllocSetContextCreate(CurrentMemoryContext,
 									   "Ybgin scan key context",
 									   ALLOCSET_DEFAULT_SIZES);
 	initGinState(&so->ginstate, scan->indexRelation);

@@ -67,20 +67,24 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     }
   }
 
-  Status SendAddReplica(const TabletInfoPtr& tablet, const TabletServerId& ts_uuid) override {
+  Status SendAddReplica(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& reason)
+      override {
     return Status::OK();
   }
   Status SendRemoveReplica(
-      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid) override {
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& reason)
+      override {
     return Status::OK();
   }
   Status SendMoveLeader(
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-      const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) override {
+      bool should_remove_leader, const std::string& reason,
+      const TabletServerId& new_leader_ts_uuid) override {
     return Status::OK();
   }
 
-  void GetPendingTasks(const TableId& table_uuid,
+  void GetPendingTasks(const TableInfoPtr& table,
                        TabletToTabletServerMap* pending_add_replica_tasks,
                        TabletToTabletServerMap* pending_remove_replica_tasks,
                        TabletToTabletServerMap* pending_stepdown_leader_tasks) override {

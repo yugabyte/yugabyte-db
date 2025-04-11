@@ -119,7 +119,7 @@ spgbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	buildstate.spgstate.isBuild = true;
 	buildstate.indtuples = 0;
 
-	buildstate.tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate.tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
 											  "SP-GiST build temporary context",
 											  ALLOCSET_DEFAULT_SIZES);
 
@@ -214,7 +214,7 @@ spginsert(Relation index, Datum *values, bool *isnull,
 	MemoryContext oldCtx;
 	MemoryContext insertCtx;
 
-	insertCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	insertCtx = AllocSetContextCreate(CurrentMemoryContext,
 									  "SP-GiST insert temporary context",
 									  ALLOCSET_DEFAULT_SIZES);
 	oldCtx = MemoryContextSwitchTo(insertCtx);

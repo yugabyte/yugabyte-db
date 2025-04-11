@@ -19,14 +19,14 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -38,6 +38,7 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/operation_counter.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 
@@ -54,7 +55,7 @@ class IndexedTableReader {
  public:
   IndexedTableReader(
       std::reference_wrapper<const TableInfo> indexed_table,
-      const docdb::VectorIndex& vector_index)
+      const docdb::DocVectorIndex& vector_index)
       : indexed_table_(indexed_table),
         projection_(indexed_table_.schema(), {vector_index.column_id()}),
         row_(projection_) {
@@ -145,8 +146,8 @@ Status TabletVectorIndexes::DoCreateIndex(
     LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
     return Status::OK();
   }
-  auto& thread_pool = *thread_pool_provider_();
-  auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
+  auto& thread_pool = *thread_pool_provider_(VectorIndexThreadPoolType::kInsert);
+  auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), thread_pool,
       indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
@@ -165,7 +166,7 @@ Status TabletVectorIndexes::DoCreateIndex(
   auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
   auto& indexes = vector_indexes_list_;
   if (!indexes) {
-    indexes = std::make_shared<std::vector<docdb::VectorIndexPtr>>(1, it->second);
+    indexes = std::make_shared<std::vector<docdb::DocVectorIndexPtr>>(1, it->second);
     return Status::OK();
   }
   if (indexes.use_count() == 1) {
@@ -173,7 +174,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     return Status::OK();
   }
 
-  auto new_indexes = std::make_shared<docdb::VectorIndexes>();
+  auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
   new_indexes->reserve(indexes->size() + 1);
   *new_indexes = *indexes;
   new_indexes->push_back(it->second);
@@ -191,7 +192,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
 
   void Add(Slice ybctid, Slice value) {
     ybctids_.push_back(arena_.DupSlice(ybctid));
-    entries_.emplace_back(docdb::VectorIndexInsertEntry {
+    entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
     });
   }
@@ -204,7 +205,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
     return entries_.size() >= FLAGS_vector_index_initial_chunk_size;
   }
 
-  Status Flush(Tablet& tablet, docdb::VectorIndex& index, Slice next_ybctid) {
+  Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
     ++num_chunks_;
     {
       docdb::ConsensusFrontiers frontiers;
@@ -221,7 +222,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
     } else {
       frontiers.Largest().SetBackfillPosition(next_ybctid);
     }
-    RETURN_NOT_OK_PREPEND(index.Insert(entries_, &frontiers), "Insert entries");
+    RETURN_NOT_OK_PREPEND(index.Insert(entries_, frontiers), "Insert entries");
     if (!next_ybctid.empty()) {
       entries_.clear();
       ybctids_.clear();
@@ -232,7 +233,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override {
     for (size_t i = 0; i != ybctids_.size(); ++i) {
-      docdb::AddVectorIndexReverseEntry(
+      docdb::DocVectorIndex::ApplyReverseEntry(
           handler, ybctids_[i], entries_[i].value.AsSlice(), DocHybridTime(backfill_ht_, 0));
     }
     return Status::OK();
@@ -241,7 +242,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
  private:
   const HybridTime backfill_ht_;
   const OpId op_id_;
-  docdb::VectorIndexInsertEntries entries_;
+  docdb::DocVectorIndexInsertEntries entries_;
   std::vector<Slice> ybctids_;
   Arena arena_;
   size_t num_chunks_ = 0;
@@ -250,7 +251,7 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
 } // namespace
 
 Status TabletVectorIndexes::Backfill(
-    const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice from_key,
+    const docdb::DocVectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice from_key,
     HybridTime backfill_ht, OpId op_id) {
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "vector_index: " << AsString(*vector_index) << ", indexed_table: "
@@ -358,9 +359,9 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
 }
 
 void TabletVectorIndexes::ScheduleBackfill(
-    const docdb::VectorIndexPtr& vector_index, HybridTime backfill_ht, OpId op_id,
+    const docdb::DocVectorIndexPtr& vector_index, HybridTime backfill_ht, OpId op_id,
     const TableInfoPtr& indexed_table, std::shared_ptr<ScopedRWOperation> read_op) {
-  thread_pool_provider_()->EnqueueFunctor(
+  thread_pool_provider_(VectorIndexThreadPoolType::kBackfill)->EnqueueFunctor(
       [this, vector_index, backfill_ht, op_id, indexed_table, read_op = std::move(read_op)] {
     auto status = Backfill(vector_index, *indexed_table, Slice(), backfill_ht, op_id);
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
@@ -388,8 +389,8 @@ void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) 
   // Wait actual shutdown.
 }
 
-docdb::VectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table_id) const {
-  SharedLock lock(vector_indexes_mutex_);
+
+docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTableUnlocked(const TableId& table_id) const {
   auto it = vector_indexes_map_.find(table_id);
   if (it != vector_indexes_map_.end()) {
     return it->second;
@@ -402,7 +403,36 @@ docdb::VectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table_id
   return nullptr;
 }
 
-docdb::VectorIndexesPtr TabletVectorIndexes::List() const {
+docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table_id) const {
+  SharedLock lock(vector_indexes_mutex_);
+  return IndexForTableUnlocked(table_id);
+}
+
+docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
+  if (!has_vector_indexes_.load(std::memory_order_acquire)) {
+    return nullptr;
+  }
+
+  if (table_ids.empty()) {
+    return List();
+  }
+
+  auto result = std::make_shared<docdb::DocVectorIndexes>();
+  result->reserve(table_ids.size());
+  {
+    SharedLock lock(vector_indexes_mutex_);
+    for (const auto& table_id : table_ids) {
+      auto index = IndexForTableUnlocked(table_id);
+      if (!index) {
+        return nullptr;
+      }
+      result->push_back(std::move(index));
+    }
+  }
+  return result;
+}
+
+docdb::DocVectorIndexesPtr TabletVectorIndexes::List() const {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
     return nullptr;
   }
@@ -437,6 +467,49 @@ void TabletVectorIndexes::FillMaxPersistentOpIds(
   }
 }
 
+docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId& table_id) {
+  if (!vector_indexes_list_) {
+    return nullptr;
+  }
+  for (auto it = vector_indexes_list_->begin(); it != vector_indexes_list_->end(); ++it) {
+    if ((**it).table_id() == table_id) {
+      auto result = *it;
+      auto& indexes = vector_indexes_list_;
+      if (indexes.use_count() == 1) {
+        indexes->erase(it);
+        return result;
+      }
+
+      auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
+      new_indexes->reserve(indexes->size() - 1);
+      new_indexes->insert(new_indexes->end(), vector_indexes_list_->begin(), it);
+      new_indexes->insert(new_indexes->end(), ++it, vector_indexes_list_->end());
+      indexes = std::move(new_indexes);
+      return result;
+    }
+  }
+  return nullptr;
+}
+
+Status TabletVectorIndexes::Remove(const TableId& table_id) {
+  if (!has_vector_indexes_.load()) {
+    return Status::OK();
+  }
+  docdb::DocVectorIndexPtr index;
+  {
+    UniqueLock lock(vector_indexes_mutex_);
+    auto it = vector_indexes_map_.find(table_id);
+    if (it == vector_indexes_map_.end()) {
+      return Status::OK();
+    }
+    index = RemoveTableFromList(table_id);
+    RSTATUS_DCHECK(
+        index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
+    vector_indexes_map_.erase(it);
+  }
+  return index->Destroy();
+}
+
 Status TabletVectorIndexes::Verify() {
   auto list = List();
   if (!list) {
@@ -457,8 +530,9 @@ Status TabletVectorIndexes::Verify() {
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
-      auto vector_id_key = dockv::VectorIdKey(vector_id);
-      auto ybctid = CHECK_RESULT(reverse_index_iterator->FetchDirect(vector_id_key.AsSlice()));
+      auto vector_id_key = dockv::DocVectorKey(vector_id);
+      // TODO(vector_index): does it handle kTombstone in reader.current_ybctid()?
+      auto ybctid = CHECK_RESULT(reverse_index_iterator->FetchDirect(vector_id_key));
       if (reader.current_ybctid() != ybctid) {
         LOG_WITH_FUNC(DFATAL)
             << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()
@@ -488,9 +562,19 @@ void VectorIndexList::Flush() {
   if (!list_) {
     return;
   }
-  // TODO(vector-index) Check flush order between vector indexes and intents db
+  // TODO(vector_index) Check flush order between vector indexes and intents db
   for (const auto& index : *list_) {
     WARN_NOT_OK(index->Flush(), "Flush vector index");
+  }
+}
+
+void VectorIndexList::Compact() {
+  if (!list_) {
+    return;
+  }
+
+  for (const auto& index : *list_) {
+    WARN_NOT_OK(index->Compact(), "Compact vector index");
   }
 }
 

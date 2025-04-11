@@ -178,11 +178,11 @@ Bulk assessment is managed using a fleet configuration file, which specifies the
 
 The following table outlines the fields that can be included in the fleet configuration file.
 
-| Field | Description |
+| <div style="width:180px">Field</div> | Description |
 | :--- | :--- |
 | source-db-type | Required. The type of source database. Currently, only Oracle is supported. |
 | source-db-user | Required. The username used to connect to the source database. |
-| source&#8209;db&#8209;password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
+| source-db-password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
 | source-db-schema | Required. The specific schema in the source database to be assessed. |
 | source-db-host | Optional. The hostname or IP address of the source database server. |
 | source-db-port | Optional. The port number on which the source database is running. This is required if `oracle-tns-alias` is not used. |

@@ -2214,7 +2214,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   // Calculate the difference between commit time and consistent snapshot time. We need to set out
   // refresh interval equal to this difference so as to create commit time ties of special record
   // with txn 2
-  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time);
+  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time).ToMicroseconds();
 
   ASSERT_OK(DestroyVirtualWAL());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
@@ -4233,6 +4233,16 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestMovingRestartTimeForwardWhenN
   slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
   auto restart_time_4 = slot_entry->record_id_commit_time;
   ASSERT_GT(restart_time_4, restart_time_3);
+
+  // Increase the value of the flag cdcsdk_update_restart_time_interval_secs back to 60 seconds.
+  // Since we updated the restart time in last GetConsistentChanges call, it should not be updated
+  // for the next minute.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 60;
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_5 = slot_entry->record_id_commit_time;
+  ASSERT_EQ(restart_time_5, restart_time_4);
 }
 
 // This test verifies that we do not ship records with commit time < vwal_safe_time.
@@ -4311,6 +4321,28 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expecpted_count[i], count[i]);
   }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBlockDropTableWhenPartOfPublication) {
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (id int primary key)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_2 (id int primary key)"));
+
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_1 FOR TABLE test_1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_2 FOR ALL TABLES"));
+
+  // We should be able to drop the table test_2 as it is only part of pub_2 which is an ALL TABLES
+  // publication.
+  ASSERT_OK(conn.Execute("DROP TABLE test_2"));
+
+  // Attempt to drop table test_1 should fail since it is also part of pub_1.
+  ASSERT_NOK(conn.Execute("DROP TABLE test_1"));
+
+  // Drop the table test_1 from pub_1. Now the drop table should succeed.
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 DROP TABLE test_1"));
+  ASSERT_OK(conn.Execute("DROP TABLE test_1"));
 }
 
 }  // namespace cdc

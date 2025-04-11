@@ -113,7 +113,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 
 	elog(DEBUG1, "YBCInitVirtualWal");
 
-	virtual_wal_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	virtual_wal_context = AllocSetContextCreate(CurrentMemoryContext,
 												"YB virtual WAL context",
 												ALLOCSET_DEFAULT_SIZES);
 	/*
@@ -133,7 +133,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 													 "YB unacked txn list "
 													 "context",
 													 ALLOCSET_DEFAULT_SIZES);
-	caller_context = GetCurrentMemoryContext();
+	caller_context = CurrentMemoryContext;
 
 	/* Start a transaction to be able to read the catalog tables. */
 	StartTransactionCommand();
@@ -259,7 +259,7 @@ InitVirtualWal(List *publication_names,
 	}
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
-							list_length(tables), slot_hash_range);
+							list_length(tables), slot_hash_range, MyProcPid);
 
 	elog(DEBUG2,
 		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
@@ -454,7 +454,7 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 {
 	MemoryContext caller_context;
 
-	caller_context = GetCurrentMemoryContext();
+	caller_context = CurrentMemoryContext;
 	MemoryContextSwitchTo(unacked_txn_list_context);
 
 	switch (record->action)

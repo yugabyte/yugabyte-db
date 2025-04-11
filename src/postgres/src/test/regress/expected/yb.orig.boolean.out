@@ -38,3 +38,40 @@ CREATE INDEX NONCONCURRENTLY desc_nulls_first ON bools (b DESC NULLS FIRST); -- 
      1
 (1 row)
 
+/*+IndexScan(bools)*/ EXPLAIN (COSTS OFF) SELECT b FROM bools WHERE b;
+                 QUERY PLAN                 
+--------------------------------------------
+ Index Scan using desc_nulls_first on bools
+   Index Cond: (b = true)
+(2 rows)
+
+/*+IndexScan(bools)*/ SELECT b FROM bools WHERE b;
+ b 
+---
+(0 rows)
+
+CREATE TABLE boolpart (a bool) PARTITION BY LIST (a);
+CREATE TABLE boolpart_default PARTITION OF boolpart DEFAULT;
+CREATE TABLE boolpart_t PARTITION OF boolpart FOR VALUES IN ('true');
+CREATE TABLE boolpart_f PARTITION OF boolpart FOR VALUES IN ('false');
+INSERT INTO boolpart (a) VALUES
+    (true),
+    (false),
+    (true),
+    (false),
+    (NULL);
+EXPLAIN (COSTS OFF) SELECT * FROM boolpart WHERE a = false;
+           QUERY PLAN            
+---------------------------------
+ Seq Scan on boolpart_f boolpart
+   Storage Filter: (NOT a)
+(2 rows)
+
+SELECT * FROM boolpart WHERE a = false;
+ a 
+---
+ f
+ f
+(2 rows)
+
+DROP TABLE boolpart;

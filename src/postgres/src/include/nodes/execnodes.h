@@ -33,7 +33,7 @@
 #include "utils/tuplesort.h"
 #include "utils/tuplestore.h"
 
-/* YB includes. */
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 struct PlanState;				/* forward references in this file */
@@ -226,7 +226,7 @@ typedef struct ExprContext_CB
  *	  before we begin to evaluate expressions for that tuple.  Each
  *	  ExprContext normally has its very own per-tuple memory context.
  *
- *	GetCurrentMemoryContext() should be set to ecxt_per_tuple_memory before
+ *	CurrentMemoryContext should be set to ecxt_per_tuple_memory before
  *	calling ExecEvalExpr() --- see ExecEvalExprSwitchContext().
  * ----------------
  */
@@ -468,6 +468,9 @@ typedef struct ResultRelInfo
 	TupleTableSlot *ri_oldTupleSlot;
 	/* Have the projection and the slots above been initialized? */
 	bool		ri_projectNewInfoValid;
+
+	/* updates do LockTuple() before oldtup read; see README.tuplock */
+	bool		ri_needLockTagTuple;
 
 	/* triggers to be fired, if any */
 	TriggerDesc *ri_TrigDesc;
@@ -768,8 +771,8 @@ typedef struct EState
  * ExecRowMark -
  *	   runtime representation of FOR [KEY] UPDATE/SHARE clauses
  *
- * When doing UPDATE, DELETE, or SELECT FOR [KEY] UPDATE/SHARE, we will have an
- * ExecRowMark for each non-target relation in the query (except inheritance
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR [KEY] UPDATE/SHARE, we will have
+ * an ExecRowMark for each non-target relation in the query (except inheritance
  * parent RTEs, which can be ignored at runtime).  Virtual relations such as
  * subqueries-in-FROM will have an ExecRowMark with relation == NULL.  See
  * PlanRowMark for details about most of the fields.  In addition to fields
@@ -1254,17 +1257,17 @@ typedef struct PlanState
  */
 typedef struct EPQState
 {
-	/* Initialized at EvalPlanQualInit() time: */
-
+	/* These are initialized by EvalPlanQualInit() and do not change later: */
 	EState	   *parentestate;	/* main query's EState */
 	int			epqParam;		/* ID of Param to force scan node re-eval */
+	struct EPQStateExtra *epqExtra; /* extension pointer to avoid ABI break */
 
 	/*
-	 * Tuples to be substituted by scan nodes. They need to set up, before
-	 * calling EvalPlanQual()/EvalPlanQualNext(), into the slot returned by
-	 * EvalPlanQualSlot(scanrelid). The array is indexed by scanrelid - 1.
+	 * relsubs_slot[scanrelid - 1] holds the EPQ test tuple to be returned by
+	 * the scan node for the scanrelid'th RT index, in place of performing an
+	 * actual table scan.  Callers should use EvalPlanQualSlot() to fetch
+	 * these slots.
 	 */
-	List	   *tuple_table;	/* tuple table for relsubs_slot */
 	TupleTableSlot **relsubs_slot;
 
 	/*
@@ -1296,14 +1299,34 @@ typedef struct EPQState
 	ExecAuxRowMark **relsubs_rowmark;
 
 	/*
-	 * True if a relation's EPQ tuple has been fetched for relation, indexed
-	 * by scanrelid - 1.
+	 * relsubs_done[scanrelid - 1] is true if there is no EPQ tuple for this
+	 * target relation or it has already been fetched in the current scan of
+	 * this target relation within the current EvalPlanQual test.
 	 */
 	bool	   *relsubs_done;
 
 	PlanState  *recheckplanstate;	/* EPQ specific exec nodes, for ->plan */
 } EPQState;
 
+
+/*
+ * To avoid an ABI-breaking change in the size of EPQState in back branches,
+ * we create one of these during EvalPlanQualInit.
+ */
+typedef struct EPQStateExtra
+{
+	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+	List	   *tuple_table;	/* tuple table for relsubs_slot */
+
+	/*
+	 * relsubs_blocked[scanrelid - 1] is true if there is no EPQ tuple for
+	 * this target relation during the current EvalPlanQual test.  We keep
+	 * these flags set for all relids listed in resultRelations, but
+	 * transiently clear the one for the relation whose tuple is actually
+	 * passed to EvalPlanQual().
+	 */
+	bool	   *relsubs_blocked;
+} EPQStateExtra;
 
 /* ----------------
  *	 ResultState information
@@ -1716,6 +1739,8 @@ typedef struct IndexScanState
  *		TableSlot		   slot for holding tuples fetched from the table
  *		VMBuffer		   buffer in use for visibility map testing, if any
  *		PscanLen		   size of parallel index-only scan descriptor
+ *		NameCStringAttNums attnums of name typed columns to pad to NAMEDATALEN
+ *		NameCStringCount   number of elements in the NameCStringAttNums array
  *
  *	YB specific attributes
  *		might_recheck	   true if the scan might recheck indexquals (currently
@@ -1740,6 +1765,8 @@ typedef struct IndexOnlyScanState
 	TupleTableSlot *ioss_TableSlot;
 	Buffer		ioss_VMBuffer;
 	Size		ioss_PscanLen;
+	AttrNumber *ioss_NameCStringAttNums;
+	int			ioss_NameCStringCount;
 
 	/* YB specific attributes. */
 	bool		yb_ioss_might_recheck;

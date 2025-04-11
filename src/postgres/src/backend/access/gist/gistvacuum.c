@@ -163,7 +163,7 @@ gistvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	 * growing code.  These values should likely be benchmarked and set to
 	 * more suitable values.
 	 */
-	vstate.page_set_context = GenerationContextCreate(GetCurrentMemoryContext(),
+	vstate.page_set_context = GenerationContextCreate(CurrentMemoryContext,
 													  "GiST VACUUM page set context",
 													  16 * 1024,
 													  16 * 1024,

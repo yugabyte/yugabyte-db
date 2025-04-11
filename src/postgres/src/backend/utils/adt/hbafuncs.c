@@ -36,12 +36,12 @@ static void fill_ident_view(Tuplestorestate *tuple_store, TupleDesc tupdesc);
 /*
  * This macro specifies the maximum number of authentication options
  * that are possible with any given authentication method that is supported.
- * Currently LDAP supports 11, and there are 3 that are not dependent on
+ * Currently LDAP supports 12, and there are 3 that are not dependent on
  * the auth method here.  It may not actually be possible to set all of them
  * at the same time, but we'll set the macro value high enough to be
  * conservative and avoid warnings from static analysis tools.
  */
-#define MAX_HBA_OPTIONS 14
+#define MAX_HBA_OPTIONS 15
 
 /*
  * Create a text array listing the options specified in the HBA line.
@@ -87,6 +87,10 @@ get_hba_options(HbaLine *hba)
 		if (hba->ldapport)
 			options[noptions++] =
 				CStringGetTextDatum(psprintf("ldapport=%d", hba->ldapport));
+
+		if (hba->ldapscheme)
+			options[noptions++] =
+				CStringGetTextDatum(psprintf("ldapscheme=%s", hba->ldapscheme));
 
 		if (hba->ldaptls)
 			options[noptions++] =
@@ -408,7 +412,7 @@ fill_hba_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 	FreeFile(file);
 
 	/* Now parse all the lines */
-	hbacxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	hbacxt = AllocSetContextCreate(CurrentMemoryContext,
 								   "hba parser context",
 								   ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(hbacxt);
@@ -544,7 +548,7 @@ fill_ident_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 	FreeFile(file);
 
 	/* Now parse all the lines */
-	identcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	identcxt = AllocSetContextCreate(CurrentMemoryContext,
 									 "ident parser context",
 									 ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(identcxt);

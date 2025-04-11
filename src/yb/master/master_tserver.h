@@ -19,6 +19,7 @@
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_fwd.h"
 
 namespace yb::master {
 
@@ -33,7 +34,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
   MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
-  tserver::TSLocalLockManager* ts_local_lock_manager() const override { return nullptr; }
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
@@ -66,9 +67,13 @@ class MasterTabletServer : public tserver::TabletServerIf,
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const override;
+
   client::TransactionPool& TransactionPool() override;
 
-  tserver::TServerSharedData& SharedObject() override;
+  ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;
 
@@ -113,10 +118,17 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   bool SkipCatalogVersionChecks() override;
 
+  void SetYsqlDBCatalogVersions(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
+
+  Result<tserver::GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+
   const std::string& permanent_uuid() const override;
 
   Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
         const tserver::PgTxnSnapshotLocalId& snapshot_id) override;
+
+  Result<std::string> GetUniverseUuid() const override;
 
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(

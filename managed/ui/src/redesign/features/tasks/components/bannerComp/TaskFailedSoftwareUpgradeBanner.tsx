@@ -23,7 +23,6 @@ import { RetryConfirmModal } from '../drawerComp/TaskDetailActions';
 import { useBannerCommonStyles } from './BannerStyles';
 import { useRefetchTasks } from '../../TaskUtils';
 import { retryTasks } from '../drawerComp/api';
-import { hideTaskBanner } from '../../../../../actions/tasks';
 import { TaskBannerCompProps } from './dtos';
 import ErrorIcon from '../../../../assets/error.svg';
 
@@ -99,7 +98,6 @@ export const TaskFailedSoftwareUpgradeBanner: FC<TaskBannerCompProps> = ({
       toggleRetryConfirmationModal(false);
       refreshUniverse();
       refetchTasks();
-      dispatch(hideTaskBanner(currentTask?.id, currentTask?.targetUUID));
     }
   });
 

@@ -7,6 +7,7 @@
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -288,6 +289,173 @@ SPLIT INTO 3 TABLETS;
 
 \if :use_roles
     ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16621'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16620'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16619'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16619'::pg_catalog.oid);
+
+CREATE TABLE public.level0 (
+    c1 integer,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
+    CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
+    CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level1_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16624'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16623'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16622'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16622'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16625'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16625'::pg_catalog.oid);
+
+CREATE TABLE public.level1_0 (
+    c1 integer NOT NULL,
+    CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
+)
+INHERITS (public.level0);
+
+
+\if :use_roles
+    ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level1_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16629'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16628'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16627'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16627'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16630'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16630'::pg_catalog.oid);
+
+CREATE TABLE public.level1_1 (
+    c2 text,
+    CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
+    CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
+)
+INHERITS (public.level0)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level2_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16635'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16634'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16633'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16633'::pg_catalog.oid);
+
+CREATE TABLE public.level2_0 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL
+)
+INHERITS (public.level1_0)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level2_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16638'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16637'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16636'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16636'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16639'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16639'::pg_catalog.oid);
+
+CREATE TABLE public.level2_1 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL,
+    c4 text NOT NULL,
+    CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
+)
+INHERITS (public.level1_0, public.level1_1)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level2_1 OWNER TO yugabyte_test;
 \endif
 
 --
@@ -1738,6 +1906,51 @@ COPY public.hash_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) 
 
 
 --
+-- Data for Name: level0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level0 (c1, c2, c3, c4) FROM stdin;
+\N	0	\N	\N
+\.
+
+
+--
+-- Data for Name: level1_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_0 (c1, c2, c3, c4) FROM stdin;
+2	1_0	1_0	\N
+\.
+
+
+--
+-- Data for Name: level1_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_1 (c1, c2, c3, c4) FROM stdin;
+\N	1_1	\N	1_1
+\.
+
+
+--
+-- Data for Name: level2_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_0 (c1, c2, c3, c4) FROM stdin;
+1	2_0	2_0	\N
+\.
+
+
+--
+-- Data for Name: level2_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_1 (c1, c2, c3, c4) FROM stdin;
+2	2_1	2_1	2_1
+\.
+
+
+--
 -- Data for Name: p1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -2185,6 +2398,30 @@ CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING 
 
 
 --
+-- Name: level1_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16632'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16632'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC);
+
+
+--
+-- Name: level2_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16641'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16641'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
+
+
+--
 -- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
@@ -2494,6 +2731,76 @@ GRANT SELECT ON TABLE public.rls_private TO rls_user;
 \if :use_roles
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
 \endif
+
+
+--
+-- Name: TABLE tbl13; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+GRANT ALL ON TABLE public.tbl13 TO regress_rls_alice WITH GRANT OPTION;
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT ALL ON TABLE public.tbl13 TO tablegroup_test_user;
+RESET SESSION AUTHORIZATION;
+\endif
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT ALL ON FUNCTIONS  TO PUBLIC;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: yugabyte_test
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT SELECT ON TABLES  TO PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT UPDATE ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT DELETE ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: rls_user
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user IN SCHEMA public GRANT SELECT ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TYPES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE ALL ON TYPES  FROM PUBLIC;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SCHEMAS; Type: DEFAULT ACL; Schema: -; Owner: yugabyte_test
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test GRANT USAGE ON SCHEMAS  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT SELECT ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: rls_user
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE ALL ON TABLES  FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT,REFERENCES,TRIGGER,TRUNCATE,UPDATE ON TABLES  TO rls_user;
 
 
 -- YB: re-enable auto analyze after all catalog changes

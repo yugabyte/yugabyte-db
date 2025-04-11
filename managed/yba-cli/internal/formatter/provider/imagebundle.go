@@ -139,7 +139,7 @@ func (ib *ImageBundleContext) startSubsection(format string) (*template.Template
 }
 
 func (ib *ImageBundleContext) subSection(name string) {
-	ib.Output.Write([]byte("\n\n"))
+	ib.Output.Write([]byte("\n"))
 	ib.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	ib.Output.Write([]byte("\n"))
 }

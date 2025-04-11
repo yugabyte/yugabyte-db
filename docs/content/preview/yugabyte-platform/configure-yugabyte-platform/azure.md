@@ -132,6 +132,8 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 
 - Select **Use Managed Identity from this YBA host's instance**.
 
+    This option is only available if YugabyteDB Anywhere is deployed on an Azure VM that has a managed identity assigned.
+
 #### Additional fields
 
 - **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.
@@ -175,6 +177,12 @@ To add your own machine images to the catalog:
 1. Click **Add Linux Version**.
 
 To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
+
+    {{< warning title="Important" >}}
+
+For YugabyteDB Anywhere v2025.1 and later, if you want to deploy a universe on Azure in an airgapped environment, you must provide your own Linux version.
+
+    {{< /warning >}}
 
 ### SSH Key Pairs
 

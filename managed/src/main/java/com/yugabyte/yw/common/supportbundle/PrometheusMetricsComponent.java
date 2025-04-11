@@ -20,7 +20,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashMap;
@@ -37,8 +36,6 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
   private final MetricQueryHelper metricQueryHelper;
   private final SupportBundleUtil supportBundleUtil;
   public final String PROMETHEUS_DUMP_FOLDER = "promdump";
-  public final String pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'";
-  public final SimpleDateFormat dateFormat = new SimpleDateFormat(pattern);
   public final String TOO_MANY_SAMPLES_ERROR_MSG =
       "query processing would load too many samples into memory in query execution";
   public final String TOO_MANY_RESOLUTIONS_ERROR_MSG = "exceeded maximum resolution";
@@ -56,8 +53,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     return String.format(
             "%s.%s-%s",
             type,
-            dateFormat.format(startDate).replace(":", "_"),
-            dateFormat.format(endDate).replace(":", "_"))
+            startDate.toInstant().toString().replace(":", "_"),
+            endDate.toInstant().toString().replace(":", "_"))
         + ".json";
   }
 
@@ -86,8 +83,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
         // populate the query params
         HashMap<String, String> queryParams = new HashMap<>();
         queryParams.put("query", query);
-        queryParams.put("start", dateFormat.format(batchStartTS));
-        queryParams.put("end", dateFormat.format(batchEndTS));
+        queryParams.put("start", batchStartTS.toInstant().toString());
+        queryParams.put("end", batchEndTS.toInstant().toString());
         queryParams.put(
             "step",
             confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpStepInSecs).toString());

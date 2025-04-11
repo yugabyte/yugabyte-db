@@ -126,7 +126,7 @@ func (fr *FullRoleContext) startSubsection(format string) (*template.Template, e
 }
 
 func (fr *FullRoleContext) subSection(name string) {
-	fr.Output.Write([]byte("\n\n"))
+	fr.Output.Write([]byte("\n"))
 	fr.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fr.Output.Write([]byte("\n"))
 }

@@ -18,7 +18,9 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
@@ -207,6 +209,10 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                 client.get(),
                 CoarseMonoClock::now() +
                     MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec));
+          },
+      .set_normal_oid_counter_above_all_normal_oids_func =
+          [this](NamespaceId namespace_id) {
+            return SetNormalOidCounterAboveAllNormalOids(namespace_id);
           },
       .get_normal_oid_higher_than_any_used_normal_oid_func =
           [client_future = master_.client_future()](NamespaceId namespace_id) -> Result<uint32_t> {
@@ -532,6 +538,22 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
   std::vector<TableId> table_ids;
 };
 
+Status XClusterSourceManager::SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id) {
+  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  VLOG(1) << "Calling ReadHighestNormalPreservableOid on database OID " << database_oid;
+  auto highest_oid = VERIFY_RESULT(sys_catalog_.ReadHighestNormalPreservableOid(database_oid));
+  auto* yb_client = master_.client_future().get();
+  SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
+  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
+          << highest_oid;
+  uint32_t begin_oid, end_oid;
+  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+      namespace_id, /*next_oid=*/highest_oid, /*count=*/1, &begin_oid, &end_oid,
+      /*use_secondary_space=*/false));
+  VLOG(1) << "Invalidating TServer OID caches for database OID " << database_oid;
+  return catalog_manager_.InvalidateTserverOidCaches();
+}
+
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(
     const std::vector<TableId>& table_ids, const LeaderEpoch& epoch) {
@@ -718,7 +740,7 @@ void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTableDrop(
   // cdc_wal_retention_time_secs.
 
   // Only the parent colocated table is replicated via xCluster.
-  if (table_info.IsColocatedUserTable()) {
+  if (table_info.IsSecondaryTable()) {
     return;
   }
 
@@ -1087,6 +1109,7 @@ Status XClusterSourceManager::PopulateXClusterStatus(
     group_status.replication_group_id = replication_info->Id();
     group_status.state = SysXClusterOutboundReplicationGroupEntryPB::State_Name(metadata.state());
     group_status.target_universe_info = metadata.target_universe_info().DebugString();
+    group_status.automatic_ddl_mode = metadata.automatic_ddl_mode();
 
     for (const auto& [namespace_id, namespace_status] : metadata.namespace_infos()) {
       XClusterOutboundReplicationGroupNamespaceStatus ns_status;
@@ -1198,7 +1221,7 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
         for (const auto& stream : tables_to_stream_map_.at(index_id)) {
           LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
                     << index_id << " to its end of WAL";
-          table_streams.push_back({index_id, stream->StreamId()});
+          table_streams.emplace_back(index_id, stream->StreamId());
         }
       }
     }
