@@ -6781,7 +6781,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_skip_data_insert_for_table_rewrite)
+			if (newrel && !yb_skip_data_insert_for_xcluster_target)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,

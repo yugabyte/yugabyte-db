@@ -1365,8 +1365,8 @@ index_create(Relation heapRelation,
 			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
 										"backfill",
 										"non-concurrent index backfill");
-		index_build(heapRelation, indexRelation, indexInfo, false, true);
 
+		index_build(heapRelation, indexRelation, indexInfo, false, true);
 	}
 
 	/*
@@ -3122,6 +3122,14 @@ index_build(Relation heapRelation,
 	Assert(PointerIsValid(indexRelation->rd_indam->ambuild));
 	Assert(PointerIsValid(indexRelation->rd_indam->ambuildempty));
 
+	if (yb_skip_data_insert_for_xcluster_target)
+	{
+		/* Still need to update pg_catalog. */
+		index_update_stats(heapRelation, true, -1);
+		index_update_stats(indexRelation, false, -1);
+		return;
+	}
+
 	/*
 	 * Determine worker process details for parallel CREATE INDEX.  Currently,
 	 * only btree has support for parallel builds.
@@ -4085,8 +4093,7 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	 * do an index build for them (like PG), so skip this.
 	 */
 	if (!(IsYBRelation(iRel) &&
-		  iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-		(!is_yb_table_rewrite || !yb_skip_data_insert_for_table_rewrite))
+				iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX))
 	{
 		index_build(heapRelation, iRel, indexInfo, true, true);
 	}

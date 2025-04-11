@@ -2655,14 +2655,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_skip_data_insert_for_table_rewrite", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("If enabled, any DDL operations that cause a table rewrite "
-						 "will skip the data loading phase. "
+		{"yb_skip_data_insert_for_xcluster_target", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("If enabled, any DDL operations will skip the data loading "
+						 "phase. This includes table rewrites and nonconcurrent indexes."
 						 "WARNING: Incorrect usage will result in data loss."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_skip_data_insert_for_table_rewrite,
+		&yb_skip_data_insert_for_xcluster_target,
 		false,
 		NULL, NULL, NULL
 	},

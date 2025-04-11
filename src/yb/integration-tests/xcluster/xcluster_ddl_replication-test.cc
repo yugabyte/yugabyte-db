@@ -448,6 +448,104 @@ TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   ASSERT_OK(c_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
 }
 
+TEST_F(XClusterDDLReplicationTest, NonconcurrentBackfills) {
+  // Test commands that trigger nonconcurrent backfills.
+  // Want to ensure that we don't trigger the backfill on the target, otherwise we may see duplicate
+  // rows.
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const std::string kBaseTableName = "base_table";
+  const std::string kColumn2Name = "a";
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+
+  // Create a base table.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int);", kBaseTableName, kKeyColumnName,
+      kColumn2Name));
+
+  // Insert some rows.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName));
+  const auto producer_base_table_name = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kBaseTableName));
+  {
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto producer_table = ASSERT_RESULT(GetProducerTable(producer_base_table_name));
+    auto consumer_table = ASSERT_RESULT(GetConsumerTable(producer_base_table_name));
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  }
+
+  // Create index nonconcurrently.
+  const auto kNonconcurrentIndex = "nonconcurrent_index";
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE INDEX NONCONCURRENTLY $0 ON $1($2 ASC)", kNonconcurrentIndex, kBaseTableName,
+      kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Verify index is replicated on consumer and has proper count of rows.
+  const auto kCol2CountStmt = Format(
+      "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 >= 0", kNonconcurrentIndex,
+      kBaseTableName, kColumn2Name);
+  ASSERT_EQ(ASSERT_RESULT(c_conn.FetchRow<int64_t>(kCol2CountStmt)), 100);
+
+  // Ensure that we can also create a unique index nonconcurrently.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE UNIQUE INDEX NONCONCURRENTLY ON $0($1)", kBaseTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Test adding a unique constraint, this will also trigger a nonconcurrent backfill.
+  const auto kUniqueConstraintName = "unique_constraint";
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD CONSTRAINT $1 UNIQUE($2);", kBaseTableName, kUniqueConstraintName,
+      kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Verify unique constraint is replicated on consumer.
+  const auto kUniqueCountStmt = Format(
+      "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 >= 0", kUniqueConstraintName,
+      kBaseTableName, kKeyColumnName);
+  ASSERT_EQ(ASSERT_RESULT(c_conn.FetchRow<int64_t>(kUniqueCountStmt)), 100);
+}
+
+TEST_F(XClusterDDLReplicationTest, NonconcurrentBackfillsWithPartitions) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kPartitionedTableName = "partitioned_table";
+  const auto kPartitionedIndexName = "partitioned_index";
+  const std::string kColumn2Name = "a";
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE TABLE $0 ($1 int PRIMARY KEY, $2 int) PARTITION BY RANGE ($1);",
+      kPartitionedTableName, kKeyColumnName, kColumn2Name));
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE TABLE $0_p1 PARTITION OF $0 FOR VALUES FROM (0) TO (100);", kPartitionedTableName));
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE TABLE $0_p2 PARTITION OF $0 FOR VALUES FROM (100) TO (200);", kPartitionedTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Insert some rows.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(51, 150) as i;", kPartitionedTableName));
+  // Create partitioned index on the parent, this will cause nonconcurrent index creates on the
+  // partitions. Make the table ranged so we can force an index scan later.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2 ASC);", kPartitionedIndexName, kPartitionedTableName,
+      kColumn2Name));
+  // Verify indexes on target.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  const auto kPartitionedIndexCountStmt = Format(
+      "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 >= 0", kPartitionedIndexName,
+      kPartitionedTableName, kColumn2Name);
+  ASSERT_EQ(ASSERT_RESULT(c_conn.FetchRow<int64_t>(kPartitionedIndexCountStmt)), 100);
+
+  // Also verify that we can create a unique index on the partitioned table.
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE UNIQUE INDEX ON $0($1, $2);", kPartitionedTableName, kKeyColumnName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
 TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   // Test that DDLs are only replicated exactly once.
   const int kNumTablets = 3;

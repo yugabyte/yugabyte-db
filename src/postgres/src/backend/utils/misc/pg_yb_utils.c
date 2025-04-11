@@ -2132,7 +2132,7 @@ bool		yb_silence_advisory_locks_not_supported_error = false;
 
 bool		yb_use_hash_splitting_by_default = true;
 
-bool		yb_skip_data_insert_for_table_rewrite = false;
+bool		yb_skip_data_insert_for_xcluster_target = false;
 
 bool		yb_enable_extended_sql_codes = false;
 
