@@ -102,7 +102,9 @@ extern List *YBCPrepareAlterTable(List **subcmds,
 
 extern void YBCExecAlterTable(YbcPgStatement handle, Oid relationId);
 
-extern void YBCRename(RenameStmt *stmt, Oid relationId);
+extern void YBCRename(Oid relationId, ObjectType renameType,
+					  const char *relname,
+					  const char *colname);
 
 extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
 
@@ -124,7 +126,8 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time,
-									 YbCRSLsnType lsn_type);
+									 YbCRSLsnType lsn_type,
+									 YbCRSOrderingMode yb_ordering_mode);
 
 extern void YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 									size_t *numreplicationslots);

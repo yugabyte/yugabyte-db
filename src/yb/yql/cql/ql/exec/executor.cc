@@ -1922,7 +1922,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
   // Go through each ExecContext and process async results.
   bool need_flush = false;
   bool has_restart = false;
-  const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
+  const MonoTime now = MonoTime::NowIf(ql_metrics_ != nullptr);
   for (auto exec_itr = exec_contexts_.begin(); exec_itr != exec_contexts_.end(); ) {
 
     // Set current ExecContext.

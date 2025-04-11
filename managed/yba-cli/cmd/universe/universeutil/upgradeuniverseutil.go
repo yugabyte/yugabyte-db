@@ -451,3 +451,14 @@ func RemoveOrAddZones(
 	}
 	return cloudList, nil
 }
+
+// FindClusterByType finds the cluster by type
+func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclient.Cluster {
+	for _, cluster := range clusters {
+		if strings.EqualFold(cluster.GetClusterType(), clusterType) {
+			return cluster
+		}
+	}
+	logrus.Debug("No cluster found with type: ", clusterType)
+	return ybaclient.Cluster{}
+}

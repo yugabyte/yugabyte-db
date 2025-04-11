@@ -220,28 +220,33 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_before = CountManagedThreads();
-  size_t threads_mid = 0;
+  auto threads_started_before = CountStartedThreads();
   constexpr size_t kNumIterations = 16;
 
   for (int i = 0; i != kNumIterations; ++i) {
     auto conn = ASSERT_RESULT(Connect());
     auto result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
     ASSERT_EQ(result, "1");
-    if (i == kNumIterations / 2) {
-      threads_mid = CountManagedThreads();
-    }
+    std::this_thread::sleep_for(100ms * kTimeMultiplier);
   }
 
-  std::this_thread::sleep_for(1s * kTimeMultiplier);
-
   auto threads_after = CountManagedThreads();
+  auto threads_started_after = CountStartedThreads();
 
-  LOG(INFO) << "Threads: " << threads_before << ", " << threads_mid << ", " << threads_after;
+  LOG(INFO) << "Running threads: " << threads_before << ", " << threads_after
+            << ", started threads: " << threads_started_before << ", " << threads_started_after;
 
-  ASSERT_LE(threads_after, threads_mid);
+  // Expect that we reuse at least some threads;
+  ASSERT_LT(threads_started_after, threads_started_before + kNumIterations);
+
+  ASSERT_OK(WaitFor([threads_before] {
+    return CountManagedThreads() <= threads_before;
+  }, 5s * kTimeMultiplier, "Threads cleanup"));
 
   auto* client_service = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
-  ASSERT_LE(client_service->TEST_SessionsCount(), 1);
+  ASSERT_OK(WaitFor([client_service] {
+    return client_service->TEST_SessionsCount() <= 1;
+  }, 5s * kTimeMultiplier, "Sessions cleanup"));
 }
 
 } // namespace yb::pgwrapper

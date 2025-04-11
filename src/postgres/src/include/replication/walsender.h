@@ -33,6 +33,15 @@ typedef enum
 	CRS_HYBRID_TIME
 } YbCRSLsnType;
 
+/*
+ * The type of ordering mode to use in create replication slot command.
+ */
+ typedef enum
+ {
+	 YB_CRS_ROW,
+	 YB_CRS_TRANSACTION
+ } YbCRSOrderingMode;
+
 /* global state */
 extern PGDLLIMPORT bool am_walsender;
 extern PGDLLIMPORT bool am_cascading_walsender;

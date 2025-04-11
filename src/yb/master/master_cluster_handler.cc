@@ -18,6 +18,8 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/ts_manager.h"
 
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
     "When a master leader failsover, the time until which the progress of load movement "

@@ -25,6 +25,7 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_util.h"
 
+#include "yb/master/ts_manager.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -942,6 +943,23 @@ std::string BackendsCatalogVersionTS::LogPrefix() const {
   } else {
     return Format("[no job, TS $0]: ", permanent_uuid());
   }
+}
+
+bool BackendsCatalogVersionTS::RetryTaskAfterRPCFailure(const Status& status) {
+  auto ts = target_ts_desc();
+  if (status.IsRemoteError() &&
+      rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " is on an older version that doesn't"
+                             << " support backends catalog version RPC. Ignoring.";
+    return false;
+  } else if (!ts->HasYsqlCatalogLease()) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " catalog lease expired. Assume backends"
+                             << " on that TS will be resolved to sufficient catalog version";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace master

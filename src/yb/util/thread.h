@@ -55,6 +55,8 @@ class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
 
+struct ThreadDescriptor;
+
 const char* TEST_GetThreadLogPrefix();
 std::string TEST_GetThreadUnformattedLogPrefix();
 
@@ -340,9 +342,11 @@ class Thread : public RefCountedThreadSafe<Thread> {
   Thread(std::string category, std::string name, ThreadFunctor functor);
 
   // Library-specific thread ID.
+  ThreadDescriptor* descriptor_ = nullptr;
   pthread_t thread_;
 
   // Name and category for this thread.
+
   const std::string category_;
   const std::string name_;
   const std::string TEST_log_prefix_;
@@ -427,5 +431,6 @@ class CDSAttacher {
 
 void RenderAllThreadStacks(std::ostream& output);
 size_t CountManagedThreads();
+size_t CountStartedThreads();
 
 } // namespace yb

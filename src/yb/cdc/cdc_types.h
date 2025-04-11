@@ -19,12 +19,10 @@
 #include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 

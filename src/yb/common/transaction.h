@@ -34,11 +34,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 
-#include "yb/gutil/template_util.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/math_util.h"
-#include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"

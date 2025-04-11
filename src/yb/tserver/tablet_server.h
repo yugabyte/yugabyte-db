@@ -70,12 +70,13 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status_fwd.h"
+
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace rocksdb {
 class Env;
@@ -116,6 +117,7 @@ class TserverXClusterContextIf;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
+class GetYSQLLeaseInfoResponsePB;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -206,6 +208,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+  bool YSQLLeaseEnabled() const;
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
   bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
@@ -530,7 +534,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // If shared memory array db_catalog_versions_ slot is used by a database OID, the
   // corresponding slot in this boolean array is set to true.
-  std::unique_ptr<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>
+  std::unique_ptr<std::array<bool, kYBCMaxNumDbCatalogVersions>>
     ysql_db_catalog_version_index_used_;
 
   // When searching for a free slot in the shared memory array db_catalog_versions_, we start

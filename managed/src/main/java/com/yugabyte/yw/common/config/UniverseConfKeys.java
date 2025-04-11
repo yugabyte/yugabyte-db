@@ -1573,4 +1573,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimal number of retries for create tablespaces task",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> unexpectedServersCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health_checks.unexpected_servers_check_enabled",
+          ScopeType.UNIVERSE,
+          "Whether to alert for unexpected masters/tservers in universe",
+          "Whether to alert for unexpected masters/tservers in universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> verifyClusterUUIDOnStart =
+      new ConfKeyInfo<>(
+          "yb.checks.verify_cluster_uuid.enabled",
+          ScopeType.UNIVERSE,
+          "Check if process has correct gflag on start",
+          "Check if process has correct gflag on start",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

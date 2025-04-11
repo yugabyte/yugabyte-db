@@ -134,8 +134,8 @@ service PgClientService {
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
-  rpc SetTxnSnapshot(PgSetTxnSnapshotRequestPB)
-      returns (PgSetTxnSnapshotResponsePB);
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
 
   rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
       returns (PgClearExportedTxnSnapshotsResponsePB);
@@ -291,6 +291,13 @@ enum PGReplicationSlotLsnType {
   ReplicationSlotLsnTypePg_HYBRID_TIME = 2;
 }
 
+// proto2 version of the ReplicationSlotOrderingMode enum from yb/common/common.proto
+enum PGReplicationSlotOrderingMode {
+  ReplicationSlotOrderingModePg_UNDEFINED = 0;
+  ReplicationSlotOrderingModePg_ROW = 1;
+  ReplicationSlotOrderingModePg_TRANSACTION = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
@@ -299,6 +306,7 @@ message PgCreateReplicationSlotRequestPB {
   string output_plugin_name = 5;
   AshMetadataPB ash_metadata = 6;
   PGReplicationSlotLsnType lsn_type = 7;
+  PGReplicationSlotOrderingMode ordering_mode = 8;
 }
 
 message PgCreateReplicationSlotResponsePB {
@@ -708,6 +716,8 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  bool non_transactional_buffered_write = 26;
 }
 
 message PgPerformRequestPB {
@@ -1225,7 +1235,6 @@ message PgExportTxnSnapshotRequestPB {
   uint64 session_id = 1;
   PgTxnSnapshotPB snapshot = 2;
   PgPerformOptionsPB options = 3;
-  ReadHybridTimePB explicit_read_time = 5;
   AshMetadataPB ash_metadata = 4;
 }
 
@@ -1234,17 +1243,14 @@ message PgExportTxnSnapshotResponsePB {
   string snapshot_id = 2;
 }
 
-message PgSetTxnSnapshotRequestPB {
+message PgImportTxnSnapshotRequestPB {
   uint64 session_id = 1;
-  oneof source {
-    string snapshot_id = 2;
-    ReadHybridTimePB explicit_read_time = 5;
-  }
+  string snapshot_id = 2;
   PgPerformOptionsPB options = 3;
   AshMetadataPB ash_metadata = 4;
 }
 
-message PgSetTxnSnapshotResponsePB {
+message PgImportTxnSnapshotResponsePB {
   AppStatusPB status = 1;
   PgTxnSnapshotPB snapshot = 2;
 }

@@ -156,7 +156,7 @@ class MiniTabletServer {
 
   FsManager& fs_manager() const;
   MetricEntity& metric_entity() const;
-  const MemTrackerPtr& mem_tracker() const;
+  const std::shared_ptr<MemTracker>& mem_tracker() const;
   HybridTime Now() const;
 
   void SetPgServerHandlers(

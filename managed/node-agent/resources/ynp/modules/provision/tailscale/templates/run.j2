@@ -1,0 +1,13 @@
+# --- Reset hostname ---
+echo "Resetting hostname..."
+hostnamectl set-hostname ""
+
+# --- Add Tailscale repository ---
+echo "Adding Tailscale repository..."
+curl -fsSL https://pkgs.tailscale.com/stable/fedora/tailscale.repo \
+  -o /etc/yum.repos.d/tailscale.repo
+# --- Install Tailscale ---
+echo "Installing Tailscale..."
+dnf install -y tailscale
+
+echo "Tailscale installation complete."

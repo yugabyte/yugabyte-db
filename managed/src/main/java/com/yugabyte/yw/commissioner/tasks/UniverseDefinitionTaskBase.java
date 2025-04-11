@@ -1116,6 +1116,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public void createConfigureUniverseTasks(
       Cluster primaryCluster,
       @Nullable Collection<NodeDetails> masterNodes,
+      @Nullable Collection<NodeDetails> tserverNodes,
       @Nullable Runnable gflagsUpgradeSubtasks) {
     // Wait for a Master Leader to be elected.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -1131,6 +1132,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Persist the placement info into the YB master leader.
     createPlacementInfoTask(null /* blacklistNodes */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+      createWaitForServersTasks(tserverNodes, ServerType.YSQLSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
 
     // Manage encryption at rest
     SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
@@ -2208,16 +2214,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  public void createCheckCertificateConfigTask(
-      Collection<Cluster> clusters,
-      Set<NodeDetails> nodes,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA,
-      boolean enableClientToNodeEncrypt) {
-    createCheckCertificateConfigTask(
-        clusters, nodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
-  }
-
   /**
    * Create preflight node check to check certificateConfig for on-prem nodes in the universe
    *
@@ -2299,9 +2295,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Create check certificate config tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
-   * @param clusters the clusters
+   * @param universe the universe to which the clusters belong.
+   * @param clusters the clusters.
    */
-  public void createCheckCertificateConfigTask(Collection<Cluster> clusters) {
+  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
     log.info("Checking certificate config for on-prem nodes in the universe.");
     Set<Cluster> onPremClusters =
         clusters.stream()
@@ -2311,15 +2308,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("No on-prem clusters found in the universe.");
       return;
     }
+
     UUID rootCA =
-        EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null;
+        EncryptionInTransitUtil.isRootCARequired(universe.getUniverseDetails())
+            ? taskParams().rootCA
+            : null;
     UUID clientRootCA =
-        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+        EncryptionInTransitUtil.isClientRootCARequired(universe.getUniverseDetails())
             ? taskParams().getClientRootCA()
             : null;
-    boolean enableClientToNodeEncrypt =
-        taskParams().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate
+    // config.
     if (rootCA == null && clientRootCA == null) {
       return;
     }
@@ -2327,6 +2326,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     Set<NodeDetails> nodesToProvision =
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
     if (CollectionUtils.isNotEmpty(nodesToProvision)) {
+      boolean enableClientToNodeEncrypt =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
       createCheckCertificateConfigTask(
           clusters, nodesToProvision, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
     }
@@ -2349,14 +2350,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupYNPTask(Universe universe, Collection<NodeDetails> nodes) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
-    SubTaskGroup subTaskGroup = createSubTaskGroup(SetupYNP.class.getSimpleName());
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(SetupYNP.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
     if (!new File(installPath).isAbsolute()) {
       String errMsg = String.format("Node agent installation path %s is invalid", installPath);
       log.error(errMsg);
       throw new IllegalArgumentException(errMsg);
     }
-    int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Customer customer = Customer.get(universe.getCustomerId());
     nodes.forEach(
         n -> {
@@ -2375,7 +2376,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
-          params.nodeAgentPort = serverPort;
           params.sudoAccess = true;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
@@ -2397,7 +2397,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
-    SubTaskGroup subTaskGroup = createSubTaskGroup(YNPProvisioning.class.getSimpleName());
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
     if (!new File(installPath).isAbsolute()) {
       String errMsg = String.format("Node agent installation path %s is invalid", installPath);
@@ -2424,6 +2425,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.nodeName = n.nodeName;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
+          params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
@@ -2457,8 +2459,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Must use ansible provisioning for non-systemd universes
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean useAnsibleProvisioning =
-        confGetter.getGlobalConf(GlobalConfKeys.useAnsibleProvisioning) || !userIntent.useSystemd;
+        confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
+            || !userIntent.useSystemd;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2723,6 +2727,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createStartTserverProcessTasks(
       Collection<NodeDetails> nodesToBeStarted, boolean isYSQLEnabled) {
+    createStartTserverProcessTasks(
+        nodesToBeStarted, isYSQLEnabled, false /* skipYSQLServerCheck */);
+  }
+
+  public void createStartTserverProcessTasks(
+      Collection<NodeDetails> nodesToBeStarted,
+      boolean isYSQLEnabled,
+      boolean skipYSQLServerCheck) {
     // No check done for state as the operations are idempotent.
     // Creates the YB cluster by starting the masters in the create mode.
     createStartTServersTasks(nodesToBeStarted)
@@ -2741,7 +2753,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
     // [PLAT-5637] Wait for postgres server to be healthy if YSQL is enabled.
-    if (isYSQLEnabled) {
+    if (isYSQLEnabled && !skipYSQLServerCheck) {
       createWaitForServersTasks(nodesToBeStarted, ServerType.YSQLSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
     }
@@ -3888,7 +3900,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             serverType,
             (node, params) -> {
               params.force = true;
-              // Override only expression pushdown flag.
               params.gflags =
                   ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
             })

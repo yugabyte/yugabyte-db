@@ -929,9 +929,9 @@ ExecEndIndexScan(IndexScanState *node)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
 	{
-		if (node->ss.ps.state->yb_exec_params.yb_index_check &&
-			indexRelationDesc->rd_rel->relkind == RELKIND_RELATION)
+		if (node->ss.ps.state->yb_exec_params.yb_index_check)
 			yb_free_dummy_baserel_index(indexRelationDesc);
+
 		index_close(indexRelationDesc, NoLock);
 	}
 }

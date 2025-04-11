@@ -145,9 +145,11 @@
 #include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/system_tablet.h"
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
@@ -168,6 +170,7 @@
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
+#include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
 #include "yb/rpc/messenger.h"
@@ -888,6 +891,23 @@ Result<QLWriteRequestPB::QLStmtType> ToQLStmtType(
       WriteSysCatalogEntryRequestPB::WriteOp_Name(pb_op_type));
 }
 
+void RemoveTableIdsFromTabletInfo(
+    TabletInfoPtr tablet_info, TabletInfo::WriteLock& tablet_info_l,
+    const std::unordered_set<TableId>& tables_to_remove) {
+  if (tablet_info_l->pb.hosted_tables_mapped_by_parent_id()) {
+    tablet_info->RemoveTableIds(tables_to_remove);
+    return;
+  }
+
+  google::protobuf::RepeatedPtrField<std::string> new_table_ids;
+  for (const auto& table_id : tablet_info_l->pb.table_ids()) {
+    if (!tables_to_remove.contains(table_id)) {
+      *new_table_ids.Add() = std::move(table_id);
+    }
+  }
+  tablet_info_l.mutable_data()->pb.mutable_table_ids()->Swap(&new_table_ids);
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -981,12 +1001,10 @@ Status CatalogManager::Init() {
 
   RETURN_NOT_OK(xcluster_manager_->Init());
 
-  master_->ts_manager()->SetLeaseExpiredCallback(std::bind(
-      &ObjectLockInfoManager::ReleaseLocksHeldByExpiredLeaseEpoch, object_lock_info_manager_.get(),
-      _1, _2, false, _3));
-
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
+
+  object_lock_info_manager_->Start();
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs > 0)) {
     LOG_WITH_PREFIX(INFO) << "Simulating slow system tablet bootstrap";
@@ -2792,6 +2810,10 @@ Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& ta
   return Status::OK();
 }
 
+PitrCount CatalogManager::pitr_count() const {
+  return sys_catalog_->pitr_count();
+}
+
 Status CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
@@ -3402,7 +3424,15 @@ Status CatalogManager::CreateYsqlSysTableInMemory(
 Status CatalogManager::AddYsqlSysTableToSystemTablet(
     const TabletInfoPtr& sys_catalog_tablet, CreateYsqlSysTableData& data,
     TabletInfo::WriteLock& lock) {
-  lock.mutable_data()->pb.add_table_ids(data.table->id());
+  const auto& table_id_to_add = data.table->id();
+  auto& pb = lock.mutable_data()->pb;
+  for (const auto& table_id : pb.table_ids()) {
+    RSTATUS_DCHECK_NE(
+        table_id, table_id_to_add, IllegalState,
+        Format("Table $0 already exists in sys_catalog tablet", table_id_to_add));
+  }
+
+  pb.add_table_ids(table_id_to_add);
   return data.table->AddTablet(sys_catalog_tablet);
 }
 
@@ -5568,20 +5598,12 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
 Status CatalogManager::RemoveTableIdsFromTabletInfo(
     TabletInfoPtr tablet_info, const std::unordered_set<TableId>& tables_to_remove,
     const LeaderEpoch& epoch) {
-  auto tablet_lock = tablet_info->LockForWrite();
-  if (tablet_lock->pb.hosted_tables_mapped_by_parent_id()) {
-    tablet_info->RemoveTableIds(tables_to_remove);
-  } else {
-    google::protobuf::RepeatedPtrField<std::string> new_table_ids;
-    for (const auto& table_id : tablet_lock->pb.table_ids()) {
-      if (tables_to_remove.find(table_id) == tables_to_remove.end()) {
-        *new_table_ids.Add() = std::move(table_id);
-      }
-    }
-    tablet_lock.mutable_data()->pb.mutable_table_ids()->Swap(&new_table_ids);
-    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_info));
-    tablet_lock.Commit();
-  }
+  auto l = tablet_info->LockForWrite();
+  master::RemoveTableIdsFromTabletInfo(tablet_info, l, tables_to_remove);
+
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_info));
+  l.Commit();
+
   return Status::OK();
 }
 
@@ -5819,18 +5841,7 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
                                         RefreshYsqlLeaseResponsePB* resp,
                                         rpc::RpcContext* rpc,
                                         const LeaderEpoch& epoch) {
-  auto lease_update =
-      VERIFY_RESULT(master_->ts_manager()->RefreshYsqlLease(epoch, req->instance()));
-  *resp->mutable_info() = lease_update.ToPB();
-  if (resp->info().new_lease()) {
-    object_lock_info_manager()->UpdateTabletServerLeaseEpoch(
-        req->instance().permanent_uuid(), resp->info().lease_epoch());
-  }
-  if (req->needs_bootstrap() || resp->info().new_lease()) {
-    *resp->mutable_info()->mutable_ddl_lock_entries() =
-        object_lock_info_manager()->ExportObjectLockInfo();
-  }
-  return Status::OK();
+  return object_lock_info_manager_->RefreshYsqlLease(*req, *resp, *rpc, epoch);
 }
 
 Status CatalogManager::TruncateTable(const TableId& table_id,
@@ -7036,10 +7047,12 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   // Garbage collecting.
   // Going through all tables under the global lock, copying them to not hold lock for too long.
   std::vector<TableInfoPtr> tables;
+  TabletInfoPtr sys_catalog_tablet_info;
   {
     SharedLock lock(mutex_);
     auto tables_range = tables_->GetAllTables();
     tables.assign(tables_range.begin(), tables_range.end());
+    sys_catalog_tablet_info = tablet_map_->find(kSysCatalogTabletId)->second;
   }
   std::sort(tables.begin(), tables.end(), IdLess());
   // Mark the tables as DELETED and remove them from the in-memory maps.
@@ -7055,7 +7068,23 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
   }
   if (tables_to_update_on_disk.size() > 0) {
-    Status s = sys_catalog_->Upsert(epoch, tables_to_update_on_disk);
+    std::unordered_set<TableId> sys_table_ids;
+    for (const auto& table : tables_to_update_on_disk) {
+      if (table->is_system()) {
+        sys_table_ids.emplace(table->id());
+      }
+    }
+    Status s;
+    std::optional<TabletInfo::WriteLock> sys_tablet_l;
+    if (!sys_table_ids.empty()) {
+      sys_tablet_l = sys_catalog_tablet_info->LockForWrite();
+      master::RemoveTableIdsFromTabletInfo(sys_catalog_tablet_info, *sys_tablet_l, sys_table_ids);
+
+      s = sys_catalog_->Upsert(epoch, tables_to_update_on_disk, sys_catalog_tablet_info);
+    } else {
+      s = sys_catalog_->Upsert(epoch, tables_to_update_on_disk);
+    }
+
     if (!s.ok()) {
       LOG(WARNING) << "Error marking tables as DELETED: " << s.ToString();
       return;
@@ -7064,6 +7093,10 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     for (auto& [lock, _] : table_lock_and_transaction_ids) {
       lock.Commit();
     }
+    if (sys_tablet_l) {
+      sys_tablet_l->Commit();
+    }
+
     size_t i = 0;
     for (auto table : tables_to_update_on_disk) {
       auto transaction_id = table_lock_and_transaction_ids[i].second;

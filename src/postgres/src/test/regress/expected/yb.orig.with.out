@@ -20,10 +20,10 @@ with w(i) as (
      ->  Insert on a
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
-           ->  Result
+           ->  Result *RESULT*
    InitPlan 2 (returns $2)
      ->  CTE Scan on w
-   ->  Result
+   ->  Result *RESULT*_1
 (11 rows)
 
 with w(i) as (
@@ -46,10 +46,10 @@ with w(i) as (
      ->  Insert on a a_1
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
-           ->  Result
+           ->  Result *RESULT*
    InitPlan 2 (returns $2)
      ->  CTE Scan on w
-   ->  Result
+   ->  Result *RESULT*_1
 (11 rows)
 
 with w(i) as (
@@ -74,15 +74,15 @@ with w(i) as (
      ->  Insert on a a_1
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
-           ->  Result
+           ->  Result *RESULT*
    CTE x
      ->  Insert on a a_2
            Conflict Resolution: UPDATE
            Conflict Arbiter Indexes: a_i_key
-           ->  Result
+           ->  Result *RESULT*_1
    InitPlan 3 (returns $4)
      ->  CTE Scan on w
-   ->  Result
+   ->  Result *RESULT*_2
 (16 rows)
 
 with w(i) as (

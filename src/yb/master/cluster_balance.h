@@ -29,6 +29,7 @@
 #include "yb/master/cluster_balance_util.h"
 #include "yb/master/cluster_balance_activity_info.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ysql_tablespace_manager.h"
 
 #include "yb/util/random.h"
 

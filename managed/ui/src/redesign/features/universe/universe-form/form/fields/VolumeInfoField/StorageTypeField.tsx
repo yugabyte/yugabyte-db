@@ -4,7 +4,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { Box, Grid, MenuItem, makeStyles } from '@material-ui/core';
-import { YBLabel, YBSelect} from '../../../../../../components';
+import { YBLabel, YBSelect } from '../../../../../../components';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
@@ -75,7 +75,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ isViewMode, isEdit
     const diskIops = getIopsByStorageType(storageType);
     if (
       fieldValue.storageType === StorageType.Persistent &&
-      masterFieldValue.storageType === StorageType.Scratch
+      masterFieldValue?.storageType === StorageType.Scratch
     ) {
       setValue(MASTER_DEVICE_INFO_FIELD, {
         ...masterFieldValue,
@@ -86,7 +86,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ isViewMode, isEdit
     }
     if (
       fieldValue.storageType === StorageType.Scratch &&
-      masterFieldValue.storageType === StorageType.Persistent
+      masterFieldValue?.storageType === StorageType.Persistent
     ) {
       setValue(DEVICE_INFO_FIELD, {
         ...masterFieldValue,

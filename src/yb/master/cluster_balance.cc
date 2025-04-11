@@ -30,8 +30,11 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
+#include "yb/master/ts_manager.h"
+#include "yb/master/ysql_tablespace_manager.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

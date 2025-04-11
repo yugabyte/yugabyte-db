@@ -2147,12 +2147,6 @@ _bt_mark_page_halfdead(Relation rel, Buffer leafbuf, BTStack stack)
 								 &topparent, &topparentrightsib))
 		return false;
 
-	/*
-	 * Check that the parent-page index items we're about to delete/overwrite
-	 * in subtree parent page contain what we expect.  This can fail if the
-	 * index has become corrupt for some reason.  We want to throw any error
-	 * before entering the critical section --- otherwise it'd be a PANIC.
-	 */
 	page = BufferGetPage(subtreeparent);
 	opaque = BTPageGetOpaque(page);
 
@@ -2170,14 +2164,28 @@ _bt_mark_page_halfdead(Relation rel, Buffer leafbuf, BTStack stack)
 	nextoffset = OffsetNumberNext(poffset);
 	itemid = PageGetItemId(page, nextoffset);
 	itup = (IndexTuple) PageGetItem(page, itemid);
+
+	/*
+	 * Check that the parent-page index items we're about to delete/overwrite
+	 * in subtree parent page contain what we expect.  This can fail if the
+	 * index has become corrupt for some reason.  When that happens we back
+	 * out of deletion of the leafbuf subtree.  (This is just like the case
+	 * where _bt_lock_subtree_parent() cannot "re-find" leafbuf's downlink.)
+	 */
 	if (BTreeTupleGetDownLink(itup) != topparentrightsib)
-		ereport(ERROR,
+	{
+		ereport(LOG,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				 errmsg_internal("right sibling %u of block %u is not next child %u of block %u in index \"%s\"",
 								 topparentrightsib, topparent,
 								 BTreeTupleGetDownLink(itup),
 								 BufferGetBlockNumber(subtreeparent),
 								 RelationGetRelationName(rel))));
+
+		_bt_relbuf(rel, subtreeparent);
+		Assert(false);
+		return false;
+	}
 
 	/*
 	 * Any insert which would have gone on the leaf block will now go to its
@@ -2414,24 +2422,22 @@ _bt_unlink_halfdead_page(Relation rel, Buffer leafbuf, BlockNumber scanblkno,
 
 			if (!leftsibvalid)
 			{
-				if (target != leafblkno)
-				{
-					/* we have only a pin on target, but pin+lock on leafbuf */
-					ReleaseBuffer(buf);
-					_bt_relbuf(rel, leafbuf);
-				}
-				else
-				{
-					/* we have only a pin on leafbuf */
-					ReleaseBuffer(leafbuf);
-				}
-
+				/*
+				 * This is known to fail in the field; sibling link corruption
+				 * is relatively common.  Press on with vacuuming rather than
+				 * just throwing an ERROR.
+				 */
 				ereport(LOG,
 						(errcode(ERRCODE_INDEX_CORRUPTED),
 						 errmsg_internal("valid left sibling for deletion target could not be located: "
-										 "left sibling %u of target %u with leafblkno %u and scanblkno %u in index \"%s\"",
+										 "left sibling %u of target %u with leafblkno %u and scanblkno %u on level %u of index \"%s\"",
 										 leftsib, target, leafblkno, scanblkno,
-										 RelationGetRelationName(rel))));
+										 targetlevel, RelationGetRelationName(rel))));
+
+				/* Must release all pins and locks on failure exit */
+				ReleaseBuffer(buf);
+				if (target != leafblkno)
+					_bt_relbuf(rel, leafbuf);
 
 				return false;
 			}
@@ -2506,13 +2512,40 @@ _bt_unlink_halfdead_page(Relation rel, Buffer leafbuf, BlockNumber scanblkno,
 	rbuf = _bt_getbuf(rel, rightsib, BT_WRITE);
 	page = BufferGetPage(rbuf);
 	opaque = BTPageGetOpaque(page);
+
+	/*
+	 * Validate target's right sibling page.  Its left link must point back to
+	 * the target page.
+	 */
 	if (opaque->btpo_prev != target)
-		ereport(ERROR,
+	{
+		/*
+		 * This is known to fail in the field; sibling link corruption is
+		 * relatively common.  Press on with vacuuming rather than just
+		 * throwing an ERROR (same approach used for left-sibling's-right-link
+		 * validation check a moment ago).
+		 */
+		ereport(LOG,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				 errmsg_internal("right sibling's left-link doesn't match: "
-								 "block %u links to %u instead of expected %u in index \"%s\"",
-								 rightsib, opaque->btpo_prev, target,
-								 RelationGetRelationName(rel))));
+								 "right sibling %u of target %u with leafblkno %u "
+								 "and scanblkno %u spuriously links to non-target %u "
+								 "on level %u of index \"%s\"",
+								 rightsib, target, leafblkno,
+								 scanblkno, opaque->btpo_prev,
+								 targetlevel, RelationGetRelationName(rel))));
+
+		/* Must release all pins and locks on failure exit */
+		if (BufferIsValid(lbuf))
+			_bt_relbuf(rel, lbuf);
+		_bt_relbuf(rel, rbuf);
+		_bt_relbuf(rel, buf);
+		if (target != leafblkno)
+			_bt_relbuf(rel, leafbuf);
+
+		return false;
+	}
+
 	rightsib_is_rightmost = P_RIGHTMOST(opaque);
 	*rightsib_empty = (P_FIRSTDATAKEY(opaque) > PageGetMaxOffsetNumber(page));
 
@@ -2736,6 +2769,7 @@ _bt_unlink_halfdead_page(Relation rel, Buffer leafbuf, BlockNumber scanblkno,
 	 */
 	_bt_pendingfsm_add(vstate, target, safexid);
 
+	/* Success - hold on to lock on leafbuf (might also have been target) */
 	return true;
 }
 
@@ -2807,6 +2841,7 @@ _bt_lock_subtree_parent(Relation rel, BlockNumber child, BTStack stack,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				 errmsg_internal("failed to re-find parent key in index \"%s\" for deletion target page %u",
 								 RelationGetRelationName(rel), child)));
+		Assert(false);
 		return false;
 	}
 

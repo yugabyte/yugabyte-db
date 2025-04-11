@@ -4286,8 +4286,19 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(list_length(exprlist) == list_length(oprlist));
 
+	List *ybIndexList = rel->indexlist;
+	if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
+	{
+		/*
+		 * 'ybHintsOrigIndexlist' holds the original set of indexes for the relation.
+		 * rel->indexlist may have been pruned by the hint code but we need all indexes
+		 * to prove uniqueness of columns.
+		 */
+		ybIndexList = rel->ybHintsOrigIndexlist;
+	}
+
 	/* Short-circuit if no indexes... */
-	if (rel->indexlist == NIL)
+	if (ybIndexList == NIL)
 		return false;
 
 	/*
@@ -4332,17 +4343,20 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 		return false;
 
 	/* Examine each index of the relation ... */
-	foreach(ic, rel->indexlist)
+	foreach(ic, ybIndexList)
 	{
 		IndexOptInfo *ind = (IndexOptInfo *) lfirst(ic);
 		int			c;
 
 		/*
 		 * If the index is not unique, or not immediately enforced, or if it's
-		 * a partial index that doesn't match the query, it's useless here.
+		 * a partial index, it's useless here.  We're unable to make use of
+		 * predOK partial unique indexes due to the fact that
+		 * check_index_predicates() also makes use of join predicates to
+		 * determine if the partial index is usable. Here we need proofs that
+		 * hold true before any joins are evaluated.
 		 */
-		if (!ind->unique || !ind->immediate ||
-			(ind->indpred != NIL && !ind->predOK))
+		if (!ind->unique || !ind->immediate || ind->indpred != NIL)
 			continue;
 
 		/*

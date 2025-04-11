@@ -1,10 +1,10 @@
 ---
 title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
-headerTitle: Build LLM applications with LangChain, OpenAI, and YugabyteDB
+headerTitle: LangChain and OpenAI
 linkTitle: LangChain and OpenAI
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
 image: /images/tutorials/ai/icons/langchain-icon.svg
-headcontent: Use YugabyteDB as the database backend for LLM applications
+headcontent: Query your database using natural language
 menu:
   preview_tutorials:
     identifier: tutorials-ai-langchain-openai
@@ -13,13 +13,15 @@ menu:
 type: docs
 ---
 
-This tutorial demonstrates how to use [LangChain](https://python.langchain.com/docs/get_started/introduction) to build applications with LLM integration. LangChain is a framework for developing applications powered by language models.
+In this tutorial, you build an intelligent application using [LangChain](https://python.langchain.com/docs/get_started/introduction) and [OpenAI](https://openai.com/) that lets you query your database with plain text - no SQL required. This means you can ask _Find me shoes that are in stock and available in size 15_ and instantly get the right answer without ever writing a single SQL query. Behind the scenes, the application takes your natural language input, translates it into the correct SQL query, executes it against your database, and then delivers the results back to you.
 
-Follow the guide to learn how to build a scalable LLM application using the [SQL](https://python.langchain.com/docs/use_cases/qa_structured/sql) chain capabilities of LangChain in conjunction with an [OpenAI](https://openai.com/) LLM. The application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language.
+While this tutorial demonstrates the solution using YugabyteDB as the database backend, the same approach works seamlessly with standard PostgreSQL and other relational databases. LangChain, a powerful framework for developing language model–powered applications, makes this intuitive interaction possible by bridging the gap between natural language and structured queries.
+
+Follow the guide to learn how to build a scalable LLM application using the [SQL](https://python.langchain.com/docs/use_cases/qa_structured/sql) chain capabilities of LangChain in conjunction with an OpenAI LLM to query a YugabyteDB database using natural language.
 
 ## Prerequisites
 
-* Python 3
+* Python 3.9 or later
 * Docker
 
 ## Set up the application
@@ -149,7 +151,7 @@ The Flask server for this application exposes a REST endpoint which returns valu
 
     # Find me shoes that are in stock and available in size 15.
 
-    curl -X POST http://localhost:8080/your_endpoint -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
+    curl -X POST http://127.0.0.1:8080/queries -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
     ```
 
     ```output.json
@@ -187,6 +189,22 @@ The Flask server for this application exposes a REST endpoint which returns valu
     ```
 
 ## Review the application
+
+Behind the scenes, the application, implemented in the `llm_db.py` code, bridges natural language and SQL in three key stages:
+
+1. Connect to the database and extract metadata.
+
+    The application starts by establishing a connection to your database using the provided credentials. Once connected, it queries the database for metadata, such as table names, column types, and even some sample data. This metadata is essential because it gives the language model insight into the database structure, enabling it to correctly formulate SQL queries later on.
+
+1. Translate natural language to SQL.
+
+    With the metadata in hand, the application then uses a language model via LangChain and OpenAI to interpret the user's natural language input. For example, when a user asks, _Find me shoes that are in stock and available in size 15_, the language model leverages the database schema information to generate a valid SQL query that targets the right tables and fields.
+
+1. Execute the query and deliver the result.
+
+    After formulating the SQL query, the application executes it against the database. The results are then fetched, processed if necessary (to format or filter the output), and delivered back to the user in an easy-to-read format.
+
+LangChain streamlines this entire process by managing the communication between the language model and your database, ensuring that what begins as a plain language question is accurately translated into a precise SQL query that runs against your data.
 
 The Python application relies on a custom prompt to provide additional context to the LLM, in order to generate more relevant responses. For instance, sample queries are provided to help suggest SQL syntax to OpenAI:
 

@@ -149,7 +149,6 @@ CREATE STATISTICS stxdinp ON (a + 1), a, b FROM stxdinp;
 ANALYZE stxdinp; -- partitions are processed recursively -- YB: just use ANALYZE because VACUUM ANALYZE is no-op
 
 SELECT 1 FROM pg_statistic_ext WHERE stxrelid = 'stxdinp'::regclass;
--- YB: broken until #23592 is fixed (Should be 10 but 200)
 SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinp GROUP BY 1, 2');
 SELECT * FROM check_estimated_rows('SELECT a + 1, b FROM ONLY stxdinp GROUP BY 1, 2');
 DROP TABLE stxdinp;

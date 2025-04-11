@@ -1,0 +1,626 @@
+SET search_path TO documentdb_api_catalog, documentdb_api, documentdb_core, documentdb_api_internal, public;
+SET citus.next_shard_id TO 6700000;
+SET documentdb.next_collection_id TO 6700;
+SET documentdb.next_collection_index_id TO 6700;
+-- create a collection
+SELECT documentdb_api.create_collection('db', 'cursors_basic');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- insert 20 documents
+WITH r1 AS (SELECT FORMAT('{"_id": %I, "a": { "b": { "$numberInt": %I }, "c": { "$numberInt" : %I }, "d": [ { "$numberInt" : %I }, { "$numberInt" : %I } ] }}', g.Id, g.Id, g.Id, g.Id, g.Id)::bson AS formatDoc FROM generate_series(1, 20) AS g (id) ORDER BY g.Id desc) 
+SELECT documentdb_api.insert_one('db', 'cursors_basic', r1.formatDoc) FROM r1;
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(20 rows)
+
+-- run the default test.
+-- now query them with varying page sizes using cursors.
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 6 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } }
+(6 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 10 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } }
+ { "_id" : "14", "a" : { "b" : { "$numberInt" : "14" }, "c" : { "$numberInt" : "14" }, "d" : [ { "$numberInt" : "14" }, { "$numberInt" : "14" } ] } }
+ { "_id" : "13", "a" : { "b" : { "$numberInt" : "13" }, "c" : { "$numberInt" : "13" }, "d" : [ { "$numberInt" : "13" }, { "$numberInt" : "13" } ] } }
+(8 rows)
+
+-- try more complex queries that should work.
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 10 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } }
+ { "_id" : "14", "a" : { "b" : { "$numberInt" : "14" }, "c" : { "$numberInt" : "14" }, "d" : [ { "$numberInt" : "14" }, { "$numberInt" : "14" } ] } }
+ { "_id" : "13", "a" : { "b" : { "$numberInt" : "13" }, "c" : { "$numberInt" : "13" }, "d" : [ { "$numberInt" : "13" }, { "$numberInt" : "13" } ] } }
+ { "_id" : "12", "a" : { "b" : { "$numberInt" : "12" }, "c" : { "$numberInt" : "12" }, "d" : [ { "$numberInt" : "12" }, { "$numberInt" : "12" } ] } }
+ { "_id" : "11", "a" : { "b" : { "$numberInt" : "11" }, "c" : { "$numberInt" : "11" }, "d" : [ { "$numberInt" : "11" }, { "$numberInt" : "11" } ] } }
+(10 rows)
+
+-- add projections to this.
+SELECT document, bson_dollar_project(document, '{ "a.b": 1 }') FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 6 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                       document                                                                       |                    bson_dollar_project                    
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" } } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } } | { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" } } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } } | { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" } } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } } | { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" } } }
+(6 rows)
+
+-- try on tables that do not exist
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic_table_dne') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic_table_dne') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- try prepared queries
+PREPARE q1(text, text, bson, bson) AS SELECT document FROM documentdb_api.collection($1, $2) WHERE documentdb_api_internal.cursor_state(document, $3) AND document @@ $4;
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 1 }', '{ "a.b": { "$gt": 12 }}');
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 3 }', '{ "a.b": { "$gt": 12 }}');
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+(3 rows)
+
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 12 }}');
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } }
+ { "_id" : "14", "a" : { "b" : { "$numberInt" : "14" }, "c" : { "$numberInt" : "14" }, "d" : [ { "$numberInt" : "14" }, { "$numberInt" : "14" } ] } }
+(7 rows)
+
+-- try on tables that do not exist.
+EXECUTE q1('db', 'cursors_basic_table_dne', '{ "getpage_batchCount": 3 }', '{ "a.b": { "$gt": 12 }}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+EXECUTE q1('db', 'cursors_basic_table_dne', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 12 }}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- queries that return no rows.
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 6 }') AND document @@ '{ "a.b": { "$gt": 25 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 11 }') AND document @@ '{ "a.b": { "$gt": 25 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 25 }}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- Explain the queries.
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 1 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: (collection.shard_key_value = '6700'::bigint)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '6700'::bigint)
+(16 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
+                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_dollar_elemmatch(document, '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 5 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: (collection.shard_key_value = '6700'::bigint)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@#?) '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '6700'::bigint)
+(16 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 2 }}');
+                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE ((documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_true_match($3::documentdb_core.bson)) AND ((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND documentdb_api_catalog.bson_true_match($4::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 7 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: (collection.shard_key_value = '6700'::bigint)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '6700'::bigint)
+(16 rows)
+
+EXPLAIN (VERBOSE ON, ANALYZE ON, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 2 }}');
+                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=7 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 427 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE ((documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_true_match($3::documentdb_core.bson)) AND ((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND documentdb_api_catalog.bson_true_match($4::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Tuple data received from node: 427 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Result (actual rows=7 loops=1)
+               Output: document
+               One-Time Filter: (documentdb_api_catalog.bson_true_match($3) AND documentdb_api_catalog.bson_true_match($4))
+               ->  Custom Scan (DocumentDBApiScan) (actual rows=7 loops=1)
+                     Output: document
+                     Page Row Count: 7 rows
+                     ->  Result (actual rows=8 loops=1)
+                           Output: shard_key_value, object_id, document, creation_time
+                           One-Time Filter: (documentdb_api_catalog.bson_true_match($3) AND documentdb_api_catalog.bson_true_match($4))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection (actual rows=8 loops=1)
+                                 Output: shard_key_value, object_id, document, creation_time
+                                 Recheck Cond: (collection.shard_key_value = '6700'::bigint)
+                                 Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+                                 Heap Blocks: exact=1
+                                 ->  Bitmap Index Scan on _id_ (actual rows=20 loops=1)
+                                       Index Cond: (collection.shard_key_value = '6700'::bigint)
+(25 rows)
+
+-- explain with projection (projection happens in the custom scan.)
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document, bson_dollar_project(document, '{ "a.b": 1 }') FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
+                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document, remote_scan.bson_dollar_project
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS bson_dollar_project FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_dollar_elemmatch(document, '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               Page Row Count: 5 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: (collection.shard_key_value = '6700'::bigint)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@#?) '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '6700'::bigint)
+(16 rows)
+
+-- do a primary key scan.
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "_id": { "$gt": "10" } }';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+(5 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "_id": { "$gt": "10" } }';
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND ((document OPERATOR(documentdb_api_catalog.#>) '{ "_id" : "10" }'::documentdb_core.bsonquery) AND (object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 5 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson))
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : "10" }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson))
+(16 rows)
+
+-- do a primary key lookup
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "_id": { "$eq": "10" } }';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "10", "a" : { "b" : { "$numberInt" : "10" }, "c" : { "$numberInt" : "10" }, "d" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
+(1 row)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "_id": { "$eq": "10" } }';
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND ((document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : "10" }'::documentdb_core.bsonquery) AND (object_id OPERATOR(documentdb_core.=) '{ "" : "10" }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 5 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.=) '{ "" : "10" }'::documentdb_core.bson))
+                     Filter: documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.=) '{ "" : "10" }'::documentdb_core.bson))
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'cursors_basic');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- validate seq scan works.
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 1 }', '{ "a.b": { "$gt": 12 }}');
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 3 }', '{ "a.b": { "$gt": 12 }}');
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+(3 rows)
+
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 11 }', '{ "a.b": { "$gt": 12 }}');
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } }
+ { "_id" : "14", "a" : { "b" : { "$numberInt" : "14" }, "c" : { "$numberInt" : "14" }, "d" : [ { "$numberInt" : "14" }, { "$numberInt" : "14" } ] } }
+ { "_id" : "13", "a" : { "b" : { "$numberInt" : "13" }, "c" : { "$numberInt" : "13" }, "d" : [ { "$numberInt" : "13" }, { "$numberInt" : "13" } ] } }
+(8 rows)
+
+-- queries that return no rows.
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 6 }') AND document @@ '{ "a.b": { "$gt": 25 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 11 }') AND document @@ '{ "a.b": { "$gt": 25 }}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 25 }}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- Explain the queries.
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 1 rows
+               ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     TID Cond: (collection.ctid >= '(0,0)'::tid)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+(14 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
+                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_dollar_elemmatch(document, '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 5 rows
+               ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     TID Cond: (collection.ctid >= '(0,0)'::tid)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@#?) '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson))
+(14 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 2 }}');
+                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE ((documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_true_match($3::documentdb_core.bson)) AND ((document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND documentdb_api_catalog.bson_true_match($4::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 7 rows
+               ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     TID Cond: (collection.ctid >= '(0,0)'::tid)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+(14 rows)
+
+-- now create an index on a.b and a.d
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('cursors_basic', 'index_1', '{"a.b": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "0" }, "numIndexesAfter" : { "$numberInt" : "1" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('cursors_basic', 'index_2', '{"a.d": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO OFF;
+    -- now query them with varying page sizes using cursors - this will convert to a bitmap scan (as it's an index scan).
+    SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+    EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 1 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+                     Filter: documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on index_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+set local enable_seqscan TO OFF;
+set local enable_indexscan TO OFF;
+    -- now query them with varying page sizes using cursors - this should work as a normal bitmap heap scan.
+    SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+    EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 1 rows
+               ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+                     Filter: documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on index_1
+                           Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+(16 rows)
+
+ROLLBACK;
+-- ensure parallel scans don't impact this.
+DO $$
+DECLARE
+  v_collection_id bigint;
+BEGIN
+    SELECT collection_id INTO v_collection_id FROM documentdb_api_catalog.collections
+  	    WHERE database_name = 'db' AND collection_name = 'cursors_basic';
+    EXECUTE format('ALTER TABLE documentdb_data.documents_%s SET (parallel_workers = 1)',
+                    v_collection_id);
+END
+$$;
+BEGIN;
+set local parallel_tuple_cost TO 0;
+set local parallel_setup_cost TO 0;
+set local enable_seqscan TO ON;
+set local enable_indexscan TO OFF;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document
+               Page Row Count: 1 rows
+               ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     TID Cond: (collection.ctid >= '(0,0)'::tid)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+(14 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+ROLLBACK;
+-- invalid cursor scans
+PREPARE q2(text, text, bson, bson) AS SELECT document FROM documentdb_api.collection($1, $2) WHERE documentdb_api_internal.cursor_state(document, $3) AND document @@ $4 ORDER BY bson_orderby(document, '{ "a": 1 }');
+EXECUTE q2('db', 'cursors_basic', '{}', '{}');
+ERROR:  Having continuations not supported for this type of query
+DEALLOCATE q2;
+-- creates projectSet - not allowed.
+SET client_min_messages TO ERROR;
+PREPARE q2(text, text, bson, bson) AS SELECT bson_dollar_unwind(document, '{ "$a": 1 }') FROM documentdb_api.collection($1, $2) WHERE documentdb_api_internal.cursor_state(document, $3) AND document @@ $4;
+EXECUTE q2('db', 'cursors_basic', '{}', '{}');
+ERROR:  Unsupported combination of query with streaming cursors
+RESET client_min_messages;
+DEALLOCATE q2;
+PREPARE q2(text, text, bson, bson) AS SELECT bson_dollar_project(document, '{ "a": 1 }') FROM documentdb_api.collection($1, $2) WHERE documentdb_api_internal.cursor_state(document, $3) AND document @@ $4 OFFSET 1;
+EXECUTE q2('db', 'cursors_basic', '{}', '{}');
+ERROR:  Found unsupported limit for stream cursors with offset
+DEALLOCATE q2;
+-- now create many CTEs of Project/Filter/Project
+PREPARE q2(text, text, bson) AS 
+    WITH r1 AS (SELECT bson_dollar_project(document, '{ "a": 1, "d": "$a.b" }') AS document, current_cursor_state(document) AS cursorState FROM documentdb_api.collection($1, $2) WHERE documentdb_api_internal.cursor_state(document, $3) AND document @@ '{ "_id": { "$exists": true } }'),
+         r2 AS (SELECT bson_dollar_add_fields(document, '{ "c": 4 }') AS document, cursorState FROM r1 WHERE document @@ '{ "d": 1 }'),
+         r3 AS (SELECT bson_dollar_project(document, '{ "_id": 0 }') AS document, cursorState FROM r2 WHERE document @@ '{ "c": 4 }'),
+         r4 AS (SELECT bson_dollar_add_fields(document, '{ "e.f": "foo" }') AS document, cursorState FROM r3),
+         r5 AS (SELECT document, cursorState FROM r4 WHERE document @@ '{ "e.f" : "foo" }')
+         SELECT * FROM r5;
+EXECUTE q2('db', 'cursors_basic', '{}');
+                                                                                                       document                                                                                                        |                                                    cursorstate                                                     
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }, "d" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" }, "e" : { "f" : "foo" } } | { "table_name" : "documents_6700_6700003", "value" : { "$binary" : { "base64" : "AAAAABQA", "subType" : "00" } } }
+(1 row)
+
+EXECUTE q2('db', 'cursors_non_existent', '{}');
+ document | cursorstate 
+---------------------------------------------------------------------
+(0 rows)
+

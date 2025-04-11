@@ -79,7 +79,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
     createPreflightNodeCheckTasks(taskParams().clusters);
 
-    createCheckCertificateConfigTask(taskParams().clusters);
+    createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
 
   protected void freezeUniverseInTxn(Universe universe) {

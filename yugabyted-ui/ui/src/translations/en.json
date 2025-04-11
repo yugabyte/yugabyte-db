@@ -998,9 +998,6 @@
             "migrationComplexityExplanation": "Migration Complexity Explanation",
             "estimatedDataMigrationTime": "Estimated Data Migration Time",
             "unavailable": "Summary unavailable",
-            "complexityTooltipEasy": "This migration is rated as <bold>Easy</bold>, as it requires <bold>0-20 manual schema changes</bold> and <bold>0 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
-            "complexityTooltipMedium": "This migration is rated as <bold>Medium</bold>, as it requires <bold>>20 manual schema changes</bold> and/or <bold>1-5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
-            "complexityTooltipHard": "This migration is rated as <bold>Hard</bold>, as it requires <bold>>5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
             "complexityLearn": "Learn more about how migration complexity is calculated"
           },
           "impactLevels": {
@@ -1087,6 +1084,7 @@
             "schemaChanges": {
               "heading": "Recommended Changes",
               "objectType": "Object Type",
+              "objectTypeColon": "Object Type : ",
               "automaticDDLImportTooltip": "SQL objects that can be imported into YugabyteDB without DDL changes.",
               "manualRefactoringTooltip": "Number of DDL statements requiring manual refactoring.",
               "invalidObjectCountTooltip": "Invalid object count requiring manual refactoring.",

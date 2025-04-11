@@ -510,3 +510,11 @@ CREATE INDEX test_idx on test_tbl (
 SELECT yb_get_range_split_clause('test_idx'::regclass);
 DROP INDEX test_idx;
 DROP TABLE test_tbl;
+
+-- Test partitioned table
+-- Although using SPLIT AT VALUES clause with a partitioned table doesn't make
+-- sense, we want to make sure yb_get_range_split_clause dones't break on a
+-- partitioned table.
+CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a) SPLIT AT VALUES ((5), (10));
+SELECT yb_get_range_split_clause('test_part'::regclass);
+DROP TABLE test_part;

@@ -1191,7 +1191,8 @@ public class AlertController extends AuthenticatedController {
             alert.getResolvedTime() != null
                 ? alert.getResolvedTime().getTime()
                 : System.currentTimeMillis());
-    return metricUrlProvider.getExpressionUrl(expression, startUnixTime, endUnixTime);
+    return metricUrlProvider.getExpressionUrl(
+        Collections.singletonList(expression), startUnixTime, endUnixTime);
   }
 
   @VisibleForTesting

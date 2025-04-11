@@ -140,6 +140,7 @@ DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
                     "Whether to skip filter check during vector index search.");
 
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
@@ -848,7 +849,6 @@ class VectorIndexKeyProvider {
   }
 
   void AddedKeyToResultSet() {
-    // TODO(vector_index) Support universal distance
     response_.add_vector_index_distances(search_result_[index_ - 1].encoded_distance);
     response_.add_vector_index_ends(result_buffer_.size());
   }
@@ -877,28 +877,44 @@ class VectorIndexKeyProvider {
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
-    LOG_IF(INFO, FLAGS_vector_index_dump_stats && search_result_.size() != old_size)
-        << "VI_STATS: VectorIndexKeyProvider, found in intents: "
-        << (search_result_.size() - old_size);
+    found_intents_ = search_result_.size() - old_size;
+    prefetch_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
 
-    // Remove duplicates, so sort by key
-    std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+    auto cmp_keys = [](const auto& lhs, const auto& rhs) {
       return lhs.key < rhs.key;
-    });
-    auto range = std::ranges::unique(search_result_, [](const auto& lhs, const auto& rhs) {
-      return lhs.key == rhs.key;
-    });
-    search_result_.erase(range.begin(), range.end());
+    };
+    std::ranges::sort(search_result_, cmp_keys);
 
-    std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
-      return lhs.encoded_distance < rhs.encoded_distance;
-    });
+    if (found_intents_) {
+      auto range = std::ranges::unique(search_result_, [](const auto& lhs, const auto& rhs) {
+        return lhs.key == rhs.key;
+      });
+      search_result_.erase(range.begin(), range.end());
 
-    if (search_result_.size() > max_results_) {
-      search_result_.resize(max_results_);
+      if (search_result_.size() > max_results_) {
+        std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+          return lhs.encoded_distance < rhs.encoded_distance;
+        });
+        search_result_.resize(max_results_);
+        std::ranges::sort(search_result_, cmp_keys);
+      }
     }
 
+    merge_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+
     return Status::OK();
+  }
+
+  size_t found_intents() const {
+    return found_intents_;
+  }
+
+  MonoTime prefetch_done_time() const {
+    return prefetch_done_time_;
+  }
+
+  MonoTime merge_done_time() const {
+    return merge_done_time_;
   }
 
  private:
@@ -909,6 +925,9 @@ class VectorIndexKeyProvider {
   const size_t max_results_;
   WriteBuffer& result_buffer_;
   size_t index_ = 0;
+  size_t found_intents_ = 0;
+  MonoTime prefetch_done_time_;
+  MonoTime merge_done_time_;
 };
 
 // NotReached - iteration finished at the upper bound or the end of the tablet
@@ -2319,7 +2338,7 @@ Status SampleRowsFromBlocks(
   bool fetch_next_needed = false;
 
   size_t sample_block_idx = 0;
-  size_t num_blocks_present = 0;
+  size_t num_blocks_with_rows = 0;
   for (const auto& sample_block : sample_blocks) {
     const auto[lower_bound_key_inclusive, upper_bound_key_exclusive] =
         GetSampleBlockBounds(sample_block);
@@ -2385,20 +2404,21 @@ Status SampleRowsFromBlocks(
     }
 
     if (found_row) {
-      ++num_blocks_present;
+      ++num_blocks_with_rows;
     }
 
-    VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows)
-            << ", ybctid after the sample block #" << sample_block_idx << ": "
-            << DebugKeySliceToString(table_iter->GetTupleId())
-            << " row_key: " << DebugKeySliceToString(row_key);
+    VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows) << ", ybctid after the sample block #"
+            << sample_block_idx << ": " << DebugKeySliceToString(table_iter->GetTupleId())
+            << " row_key: " << DebugKeySliceToString(row_key)
+            << " found_row: " << found_row
+            << " num_blocks_with_rows: " << num_blocks_with_rows;
     if (reached_end_of_tablet) {
       break;
     }
     ++sample_block_idx;
   }
 
-  VLOG(2) << "num_blocks_present: " << num_blocks_present;
+  VLOG(2) << "num_blocks_with_rows: " << num_blocks_with_rows;
   sampling_state->set_samplerows(num_sample_rows);
   sampling_state->set_rowstoskip(rows_to_skip);
   sampling_state->set_numrows(num_rows_collected);
@@ -2713,9 +2733,20 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   ));
 
   // TODO(vector_index) Order keys by ybctid for fetching.
+  auto dump_stats = FLAGS_vector_index_dump_stats;
+  auto read_start_time = MonoTime::NowIf(dump_stats);
   VectorIndexKeyProvider key_provider(
       result, response_, *data_.vector_index, vector_slice, max_results, *result_buffer_);
-  return ExecuteBatchKeys(key_provider);
+  auto res = ExecuteBatchKeys(key_provider);
+  LOG_IF(INFO, dump_stats)
+      << "VI_STATS: Read rows data time: "
+      << (MonoTime::Now() - key_provider.merge_done_time()).ToPrettyString()
+      << ", read intents time: "
+      << (key_provider.prefetch_done_time() - read_start_time).ToPrettyString()
+      << ", merge with intents time: "
+      << (key_provider.merge_done_time() - key_provider.prefetch_done_time()).ToPrettyString()
+      << ", found intents: " << key_provider.found_intents() << ", size: " << res;
+  return res;
 }
 
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {
@@ -2739,7 +2770,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
   // The response size should not exceed the rpc_max_message_size, so use it as a default size
   // limit. Reduce it to the number requested by the client, if it is stricter.
-  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
@@ -2853,14 +2885,15 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
 template <class KeyProvider>
 Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
-  VLOG_WITH_FUNC(3) << "Started, request_.size_limit(): " << request_.size_limit()
-                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
-                    << " tablet: " << data_.ql_storage.ToString();
   // We limit the response's size.
-  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
+  VLOG_WITH_FUNC(3) << "Started, response size limit: " << response_size_limit
+                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
+                    << " tablet: " << data_.ql_storage.ToString();
 
   const auto& doc_read_context = data_.doc_read_context;
   auto projection = CreateProjection(doc_read_context.schema(), request_);

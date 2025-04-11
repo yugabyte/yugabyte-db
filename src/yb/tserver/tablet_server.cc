@@ -49,7 +49,9 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
@@ -95,6 +97,7 @@
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/ysql_lease_poller.h"
@@ -813,6 +816,29 @@ Status TabletServer::ProcessLeaseUpdate(
     pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);
   }
   return Status::OK();
+}
+
+
+Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
+  if (!YSQLLeaseEnabled()) {
+    return STATUS(NotSupported, "YSQL lease is not enabled");
+  }
+  auto pg_client_service = pg_client_service_.lock();
+  if (!pg_client_service) {
+    RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
+  }
+  auto lease_info = pg_client_service->impl.GetYSQLLeaseInfo();
+  GetYSQLLeaseInfoResponsePB resp;
+  resp.set_is_live(lease_info.is_live);
+  if (lease_info.is_live) {
+    resp.set_lease_epoch(lease_info.lease_epoch);
+  }
+  return resp;
+}
+
+bool TabletServer::YSQLLeaseEnabled() const {
+  return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
+         GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease);
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {

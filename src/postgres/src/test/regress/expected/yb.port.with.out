@@ -799,18 +799,18 @@ with recursive test as (
   from test
 ) search depth first by x set y
 select * from test limit 5;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
  Limit
-   Output: test.x, test.y
+   Output: test_1.x, test_1.y
    CTE test
      ->  Recursive Union
-           ->  Result
+           ->  Result *RESULT*
                  Output: 1, '{(1)}'::record[]
-           ->  WorkTable Scan on test test_1
-                 Output: (test_1.x + 1), array_cat(test_1.y, ARRAY[ROW((test_1.x + 1))])
-   ->  CTE Scan on test
-         Output: test.x, test.y
+           ->  WorkTable Scan on test
+                 Output: (test.x + 1), array_cat(test.y, ARRAY[ROW((test.x + 1))])
+   ->  CTE Scan on test test_1
+         Output: test_1.x, test_1.y
 (10 rows)
 
 with recursive test as (
@@ -837,18 +837,18 @@ with recursive test as (
   from test
 ) search breadth first by x set y
 select * from test limit 5;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
  Limit
-   Output: test.x, test.y
+   Output: test_1.x, test_1.y
    CTE test
      ->  Recursive Union
-           ->  Result
+           ->  Result *RESULT*
                  Output: 1, '(0,1)'::record
-           ->  WorkTable Scan on test test_1
-                 Output: (test_1.x + 1), ROW(int8inc((test_1.y)."*DEPTH*"), (test_1.x + 1))
-   ->  CTE Scan on test
-         Output: test.x, test.y
+           ->  WorkTable Scan on test
+                 Output: (test.x + 1), ROW(int8inc((test.y)."*DEPTH*"), (test.x + 1))
+   ->  CTE Scan on test test_1
+         Output: test_1.x, test_1.y
 (10 rows)
 
 with recursive test as (
@@ -1217,17 +1217,17 @@ with recursive test as (
   from test
 ) cycle x set is_cycle using path
 select * from test;
-                                                                                          QUERY PLAN                                                                                           
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CTE Scan on test
-   Output: test.x, test.is_cycle, test.path
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CTE Scan on test test_1
+   Output: test_1.x, test_1.is_cycle, test_1.path
    CTE test
      ->  Recursive Union
-           ->  Result
+           ->  Result *RESULT*
                  Output: 0, false, '{(0)}'::record[]
-           ->  WorkTable Scan on test test_1
-                 Output: ((test_1.x + 1) % 10), CASE WHEN (ROW(((test_1.x + 1) % 10)) = ANY (test_1.path)) THEN true ELSE false END, array_cat(test_1.path, ARRAY[ROW(((test_1.x + 1) % 10))])
-                 Filter: (NOT test_1.is_cycle)
+           ->  WorkTable Scan on test
+                 Output: ((test.x + 1) % 10), CASE WHEN (ROW(((test.x + 1) % 10)) = ANY (test.path)) THEN true ELSE false END, array_cat(test.path, ARRAY[ROW(((test.x + 1) % 10))])
+                 Filter: (NOT test.is_cycle)
 (9 rows)
 
 with recursive test as (
@@ -3312,7 +3312,7 @@ DELETE FROM a_star USING wcte WHERE aa = q2;
    CTE wcte
      ->  Insert on public.int8_tbl
            Output: int8_tbl.q2
-           ->  Result
+           ->  Result *RESULT*
                  Output: '42'::bigint, '47'::bigint
    ->  Hash Join
          Output: wcte.*, a_star.tableoid, a_star.ybctid

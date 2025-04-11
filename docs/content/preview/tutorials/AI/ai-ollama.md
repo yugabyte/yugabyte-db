@@ -17,10 +17,10 @@ This tutorial shows how you can use [Ollama](https://ollama.com/) to generate te
 
 ## Prerequisites
 
-- Install [YugabyteDB v2.19+](https://download.yugabyte.com/)
-- Install [Ollama](https://ollama.com/)
-- Install Node.js V18+
-- Install Docker
+- [YugabyteDB v2.19+](https://download.yugabyte.com/)
+- [Ollama](https://ollama.com/)
+- Node.js V18+
+- Docker
 
 ## Set up the application
 
@@ -35,12 +35,13 @@ Download the application and provide settings specific to your deployment:
 1. Install the application dependencies.
 
    ```sh
+   git lfs fetch --all
    npm install
    cd backend/ && npm install
    cd news-app-ui/ && npm install
    ```
 
-1. Configure the application environment variables in `{project_directory/backend/.env}`.
+1. Configure the database connection parameters in `{project_directory/backend/index.js}`.
 
 ## Set up YugabyteDB
 
@@ -73,8 +74,6 @@ docker run -d --name yugabytedb-node3 --net custom-network \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
-
-The database connectivity settings are provided in the `{project_dir}/.env` file and do not need to be changed if you started the cluster with the preceding command.
 
 Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
@@ -137,45 +136,51 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
     ```
 
     ```output
-    API server running on port 3000.
+    Server running at http://localhost:3000/
     ```
 
 1. Query the `/search` endpoint with a relevant prompt and category. For instance:
 
     ```sh
-    curl "localhost:3000/api/search?q=olympic gold medal&category=SPORTS"
+    curl "http://localhost:3000/api/search?q=olympic%20gold%20medal&category=SPORTS"
     ```
 
     ```output
     {
         "data": [
             {
-                "headline": "Mikaela Shiffrin Wins Gold In Women's Giant Slalom",
-                "short_description": "It was her second gold medal ever after her 2014 Sochi Winter Olympics win.",
-                "link": "https://www.huffingtonpost.com/entry/mikaela-shiffrin-gold-giant-slalom_us_5a8523a4e4b0ab6daf45c6ec"
+                "headline": "17-Year-Old Snowboarder Wins United States’ First Gold Medal In Pyeongchang",
+                "short_description": "“I haven’t had time for it to sink in yet,\" Redmond Gerard said following his victory.",
+                "link": "https://www.huffingtonpost.com/entry/red-gerard-gold-olympics_us_5a7fac94e4b0c6726e141850"
             },
             {
-                "headline": "Baby Watching Her Olympian Dad Compete On TV Will Give You Gold Medal Feels",
-                "short_description": "She's got her cute mojo working for Canada's Winter Olympics curling team.",
-                "link": "https://www.huffingtonpost.com/entry/baby-watching-olympics-dad-tv-curling_us_5a842772e4b0adbaf3d94ad2"
+                "headline": "Brazil Finally Wins Olympic Soccer Gold And Everybody Is In Tears",
+                "short_description": "Neymar cried. And then so did everyone else.",
+                "link": "https://www.huffingtonpost.com/entry/brazil-tears-olympic-soccer-rio-2016_us_57b960b4e4b00d9c3a180858"
             },
             {
-                "headline": "Jimmy Kimmel's Own Winter Olympics Produce Another Gold Medal Moment",
-                "short_description": "\"I think they're even better than the expensive Olympics,\" the host said.",
-                "link": "https://www.huffingtonpost.com/entry/jimmy-kimmels-own-olympics-produce-another-gold-medal-moment_us_5a85779be4b0774f31d27528"
+                "headline": "Simone Manuel And Simone Biles Pose For Ultimate Olympic Selfie",
+                "short_description": "The gold medalists are feeling the love. 💛",
+                "link": "https://www.huffingtonpost.com/entry/simone-biles-simone-manuel-selfie_us_57ae111de4b069e7e5052acf"
             },
             {
-                "headline": "The Most Dazzling Moments From The 2018 Winter Olympics Opening Ceremony",
-                "short_description": "The 2018 Winter Games are officially open.",
-                "link": "https://www.huffingtonpost.com/entry/winter-olympics-opening-ceremony-photos_us_5a7d968de4b08dfc930304da"
+                "headline": "United States Wins 1,000th Olympic Gold Medal",
+                "short_description": "That's a lot of victories.",
+                "link": "https://www.huffingtonpost.com/entry/united-states-win-womens-4x100-medley-gold_us_57afd40fe4b007c36e4f0746"
+            },
+            {
+                "headline": "German Team Doctor Recommends Olympians Drink A Beer After Competing",
+                "short_description": "The country currently has 10 gold medals, the second-most of any nation.",
+                "link": "https://www.huffingtonpost.com/entry/german-team-doctor-recommends-olympians-drink-a-beer-after-competing_us_5a8b8b20e4b09fc01e02a355"
             }
         ]
-    }
+    } 
     ```
 
-1. Run the UI and visit http://localhost:5173 to search the news archives.
+1. Run the UI and visit <http://localhost:5173> to search the news archives.
 
     ```sh
+    cd news-app-ui
     npm run dev
     ```
 
@@ -237,7 +242,7 @@ app.get("/api/search", async (req, res) => {
 
 The `/api/search` endpoint specifies the embedding model and prompt to be sent to Ollama to generate a vector representation. This is done using the Ollama JavaScript library. The response is then used to execute a cosine similarity search against the dataset stored in YugabyteDB using pgvector. Latency is reduced by pre-filtering by news category, thus reducing the search space.
 
-This application is quite straightforward, but before executing similarity searches, embeddings need to be generated for each news story and subsequently stored in the database. You can see how this is done in the `generate_embeddings.js` script.
+This application is quite straightforward. Before executing similarity searches, embeddings need to be generated for each news story and subsequently stored in the database. You can see how this is done in the `generate_embeddings.js` script.
 
 ```javascript
 # generate_embeddings.py

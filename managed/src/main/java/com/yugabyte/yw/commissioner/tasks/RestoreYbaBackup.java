@@ -58,7 +58,7 @@ public class RestoreYbaBackup extends AbstractTaskBase {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "could not find backup file " + taskParams.localPath);
     }
-    if (!replicationManager.restoreBackup(backupFile)) {
+    if (!replicationManager.restoreBackup(backupFile, true /* k8sRestoreYbaDbOnRestart */)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "YBA restore failed.");
     }
 

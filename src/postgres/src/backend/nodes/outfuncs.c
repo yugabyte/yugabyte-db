@@ -357,6 +357,11 @@ _outPlanInfo(StringInfo str, const Plan *node)
 	WRITE_NODE_FIELD(initPlan);
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
+	WRITE_STRING_FIELD(ybHintAlias);
+	WRITE_UINT_FIELD(ybUniqueId);
+	WRITE_STRING_FIELD(ybInheritedHintAlias);
+	WRITE_BOOL_FIELD(ybIsHinted);
+	WRITE_BOOL_FIELD(ybHasHintedUid);
 }
 
 /*

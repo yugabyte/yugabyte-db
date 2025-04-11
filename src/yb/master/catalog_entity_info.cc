@@ -709,7 +709,7 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
         "Two tablets $0, $1 with the same partition key start and split depth: $2 and $3",
         tablet->id(), old_tablet->tablet_id(),
         tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
-    LOG(DFATAL) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     return STATUS(IllegalState, msg);
   }
   return Status::OK();
@@ -1348,6 +1348,41 @@ const DdlLogEntryPB& DdlLogEntry::new_pb() const {
 
 std::string DdlLogEntry::id() const {
   return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
+}
+
+// ================================================================================================
+// ObjectLockInfo
+// ================================================================================================
+
+std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
+    const NodeInstancePB& instance) {
+  auto l = LockForWrite();
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+  if (l->pb.lease_info().live_lease() &&
+      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+    return std::nullopt;
+  }
+  auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
+  lease_info.set_live_lease(true);
+  lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
+  lease_info.set_instance_seqno(instance.instance_seqno());
+  return std::move(l);
+}
+
+void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
+  MetadataCowWrapper<PersistentObjectLockInfo>::Load(metadata);
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+}
+
+MonoTime ObjectLockInfo::last_ysql_lease_refresh() const {
+  std::lock_guard l(mutex_);
+  return last_ysql_lease_refresh_;
 }
 
 // ================================================================================================

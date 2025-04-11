@@ -54,6 +54,7 @@
 /* YB includes */
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
+#include "replication/walsender.h"
 
 /*
  * Replication slot on-disk data structure.
@@ -111,6 +112,10 @@ const char *PG_OUTPUT_PLUGIN = "pgoutput";
 /* Constants for replication slot LSN types */
 const char *LSN_TYPE_SEQUENCE = "SEQUENCE";
 const char *LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
+
+/* Constants for replication slot ordering mode */
+const char *ORDERING_MODE_ROW = "ROW";
+const char *ORDERING_MODE_TRANSACTION = "TRANSACTION";
 
 static void ReplicationSlotShmemExit(int code, Datum arg);
 static void ReplicationSlotDropAcquired(void);
@@ -265,7 +270,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					  char *yb_plugin_name,
 					  CRSSnapshotAction yb_snapshot_action,
 					  uint64_t *yb_consistent_snapshot_time,
-					  YbCRSLsnType lsn_type)
+					  YbCRSLsnType lsn_type,
+					  YbCRSOrderingMode yb_ordering_mode)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -290,7 +296,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					 errmsg("two_phase is not supported")));
 
 		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
-								 yb_consistent_snapshot_time, lsn_type);
+								 yb_consistent_snapshot_time, lsn_type,
+								 yb_ordering_mode);
 
 		/*
 		 * The creation of a replication slot establishes a boundry between the

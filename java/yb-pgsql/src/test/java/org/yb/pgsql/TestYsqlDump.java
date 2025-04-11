@@ -62,6 +62,7 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   private static enum IncludeYbMetadata { ON, OFF }
   private static enum NoTableSpaces { ON, OFF }
+  private static enum DumpRoleChecks { ON, OFF }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -132,6 +133,35 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpWithDumpRoleChecks() throws Exception {
+
+    markClusterNeedsRecreation();
+    restartCluster();
+
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
+        "data/yb_ysql_dump_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format("CREATE DATABASE import_db;"));
+    }
+
+    verifyYsqlDump(
+      true /* importDump */,
+      "import_db" /* verifyDbName */,
+      "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
+  }
+
+  @Test
   public void ysqlDumpAllWithYbMetadata() throws Exception {
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
@@ -142,6 +172,31 @@ public class TestYsqlDump extends BasePgSQLTest {
         "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /* importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
+    );
+  }
+
+  @Test
+  public void ysqlDumpAllWithDumpRoleChecks() throws Exception {
+    // Note that we're using the same describe input as for regular ysql_dump!
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
+        "data/yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
 
     // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
     // like CREATE ROLE postgres
@@ -327,6 +382,19 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final String outputFileRelativePath,
                       final IncludeYbMetadata includeYbMetadata,
                       final NoTableSpaces noTableSpaces) throws Exception {
+    ysqlDumpTester(
+        binaryName, dumpedDatabaseName, inputFileRelativePath, expectedDumpRelativePath,
+        outputFileRelativePath, includeYbMetadata, noTableSpaces, DumpRoleChecks.OFF);
+  }
+
+  void ysqlDumpTester(final String binaryName,
+                      final String dumpedDatabaseName,
+                      final String inputFileRelativePath,
+                      final String expectedDumpRelativePath,
+                      final String outputFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata,
+                      final NoTableSpaces noTableSpaces,
+                      final DumpRoleChecks dumpRoleChecks) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
@@ -363,6 +431,10 @@ public class TestYsqlDump extends BasePgSQLTest {
     if (noTableSpaces == NoTableSpaces.ON) {
       args.add("--no-tablespaces");
     }
+    if (dumpRoleChecks == DumpRoleChecks.ON) {
+      args.add("--dump-role-checks");
+    }
+
     if (!dumpedDatabaseName.isEmpty()) {
       Collections.addAll(args, "-d", dumpedDatabaseName);
     }

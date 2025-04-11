@@ -42,7 +42,6 @@
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
-#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
@@ -608,6 +607,8 @@ class PgApiImpl {
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
+  Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
+
 
   //------------------------------------------------------------------------------------------------
   // Functions.
@@ -788,6 +789,7 @@ class PgApiImpl {
                                   const PgOid database_oid,
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
+                                  YbcOrderingMode ordering_mode,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -821,9 +823,8 @@ class PgApiImpl {
   Status ExecDropReplicationSlot(PgStatement *handle);
 
   Result<std::string> ExportSnapshot(
-      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
-  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
-      PgTxnSnapshotDescriptor snapshot_descriptor);
+      const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
 
   bool HasExportedSnapshots() const;
   void ClearExportedTxnSnapshots();
@@ -839,8 +840,9 @@ class PgApiImpl {
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 
-  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
-  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
+  [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
+  Status RestoreReadPoint(YbcReadPointHandle read_point);
+  Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   void DdlEnableForceCatalogModification();
 

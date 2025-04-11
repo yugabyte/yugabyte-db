@@ -31,6 +31,7 @@
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -1081,8 +1082,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value = dockv::Value::EncodedTombstone();
   } else if (within_merge_block_) {
     if (expiration.ttl != ValueControlFields::kMaxTtl) {
-      expiration.ttl += MonoDelta::FromMicroseconds(
-          overwrite_.back().expiration.write_ht.PhysicalDiff(VERIFY_RESULT(lazy_ht.Get())));
+      expiration.ttl += overwrite_.back().expiration.write_ht.PhysicalDiff(
+          VERIFY_RESULT(lazy_ht.Get()));
       overwrite_.back().expiration.ttl = expiration.ttl;
     }
 

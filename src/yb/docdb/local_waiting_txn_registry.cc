@@ -42,6 +42,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"

@@ -3,6 +3,10 @@ package org.yb.minicluster;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +68,22 @@ public class YugabytedCommands {
         return binDir + "/yugabyted destroy --base_dir " + baseDir;
     }
 
+    private static void deleteDirectoryIfEmpty(Path directory) throws IOException {
+        if (Files.exists(directory) && Files.isDirectory(directory)) {
+            // Check if the directory is empty
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
+                if (!stream.iterator().hasNext()) {
+                    Files.delete(directory);
+                    LOG.info("Directory deleted successfully.");
+                } else {
+                    throw new IOException("Directory is not empty. Cannot delete.");
+                }
+            }
+        } else {
+            throw new IOException("The specified path is not a valid directory.");
+        }
+    }
+
     public static boolean destroy(String baseDir) throws Exception {
         String command = YugabytedCommands.getDestroyCmd(baseDir);
         LOG.info("Running command: " + command);
@@ -73,6 +93,19 @@ public class YugabytedCommands {
         int exitCode = proc.waitFor();
         if (exitCode != 0) {
             LOG.error("Yugabyted destroy command failed with exit code: " + exitCode);
+            return false;
+        }
+
+        try {
+            if (baseDir.startsWith("~")) {
+                baseDir = baseDir.replaceFirst("~", System.getProperty("user.home"));
+            }
+            Path baseDirPath = Paths.get(baseDir);
+            LOG.info("Removing base directory: " + baseDirPath);
+            deleteDirectoryIfEmpty(baseDirPath);
+            LOG.info("Base directory removed successfully.");
+        } catch (IOException e) {
+            LOG.error("Failed to remove base directory: " + e.getMessage());
             return false;
         }
         return true;

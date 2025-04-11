@@ -43,7 +43,7 @@ export default class TaskListTable extends Component {
           {row.typeName} {row.target}
         </Link>
       ) : (
-        `${row.typeName} ${row.target}`
+        <span style={{ paddingLeft: '5px' }}>{`${row.typeName} ${row.target}`}</span>
       );
     }
 
@@ -118,12 +118,13 @@ export default class TaskListTable extends Component {
               search
               multiColumnSearch
               searchPlaceholder="Search by Name or Type"
+              hover={isNewTaskDetailsUIEnabled}
               options={{
-                onRowClick: (task) => { 
+                onRowClick: (task) => {
                   if (isNewTaskDetailsUIEnabled) {
-                     showTaskDrawer(task.id); 
-                    } 
+                    showTaskDrawer(task.id);
                   }
+                }
               }
               }
               trStyle={isNewTaskDetailsUIEnabled && { cursor: 'pointer' }}
@@ -133,7 +134,7 @@ export default class TaskListTable extends Component {
                 dataField="type"
                 dataFormat={typeFormatter}
                 columnClassName="no-border name-column"
-                className="no-border"
+                className={`no-border ${isNewTaskDetailsUIEnabled ? 'task-type-column' : ''}`}
               >
                 Type
               </TableHeaderColumn>
@@ -144,7 +145,7 @@ export default class TaskListTable extends Component {
                 columnClassName="no-border name-column"
                 className="no-border"
               >
-                {isNewTaskDetailsUIEnabled ? 'Target' : 'Name'}
+                {isNewTaskDetailsUIEnabled ? 'Performed On' : 'Name'}
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="percentComplete"

@@ -1860,7 +1860,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           << "Request to unknown transaction " << id << ": "
           << state.ShortDebugString();
       return STATUS_EC_FORMAT(
-          Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
           "Transaction $0 expired or aborted by a conflict", id);
     }
 

@@ -5,10 +5,10 @@
 create table t1 (id int, name text);
 create table t2 (id int primary key, name text);
 explain (COSTS OFF) insert into t2 values (1);
-  QUERY PLAN  
---------------
+      QUERY PLAN       
+-----------------------
  Insert on t2
-   ->  Result
+   ->  Result *RESULT*
 (2 rows)
 
 insert into t2 values (1);
@@ -48,10 +48,10 @@ select * from t2 where id > 1;
 (2 rows)
 
 explain (COSTS OFF) update t2 set name = 'John' where id = 1;
-  QUERY PLAN  
---------------
+   QUERY PLAN    
+-----------------
  Update on t2
-   ->  Result
+   ->  Result t2
 (2 rows)
 
 update t2 set name = 'John' where id = 1;
@@ -83,10 +83,10 @@ explain (COSTS OFF) update t2 set id = id + 4 where id > 1;
 
 update t2 set id = id + 4 where id > 1;
 explain (COSTS OFF) delete from t2 where id = 1;
-  QUERY PLAN  
---------------
+   QUERY PLAN    
+-----------------
  Delete on t2
-   ->  Result
+   ->  Result t2
 (2 rows)
 
 delete from t2 where id = 1;
@@ -819,7 +819,7 @@ EXPLAIN (COSTS OFF) UPDATE list_parted SET c = 2 WHERE a = 1 and b = 1;
 -----------------------------------
  Update on list_parted
    Update on sub_part1 list_parted
-   ->  Result
+   ->  Result list_parted
 (3 rows)
 
 UPDATE list_parted SET c = 2 WHERE a = 1 and b = 1;
@@ -834,7 +834,7 @@ EXPLAIN (COSTS OFF) DELETE FROM list_parted WHERE a = 1 and b = 1;
 -----------------------------------
  Delete on list_parted
    Delete on sub_part1 list_parted
-   ->  Result
+   ->  Result list_parted
 (3 rows)
 
 DELETE FROM list_parted WHERE a = 1 and b = 1;

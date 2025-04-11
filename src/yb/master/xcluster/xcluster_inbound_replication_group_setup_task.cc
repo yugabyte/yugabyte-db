@@ -26,6 +26,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"

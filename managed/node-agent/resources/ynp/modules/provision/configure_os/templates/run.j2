@@ -97,7 +97,7 @@ EOF
   # Create core dump kernel pattern
   CORE_SCRIPT="$bin_path/compress_core.sh"
   CORE_DIR="{{ yb_home_dir }}/cores"
-  CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_%p_%t_%E"
+  CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_yb.%t.%e.%p"
 
   # Apply the core pattern temporarily
   sysctl -w kernel.core_pattern="$CORE_PATTERN"

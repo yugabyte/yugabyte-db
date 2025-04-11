@@ -14,6 +14,7 @@
 #pragma once
 
 #include <optional>
+#include <shared_mutex>
 #include <unordered_map>
 
 #include "yb/common/entity_ids_types.h"

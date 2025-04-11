@@ -610,10 +610,10 @@ SELECT * FROM c ORDER BY k;
 TRUNCATE c;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 INSERT INTO c VALUES(1, 1, 1, 1, 1);
-                  QUERY PLAN                  
-----------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Insert on c (actual rows=0 loops=1)
-   ->  Result (actual rows=1 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Trigger for constraint c_p2_fk_fkey: calls=1
  Trigger for constraint c_p4_fk_fkey: calls=1

@@ -107,8 +107,7 @@ YsqlLeasePoller::YsqlLeasePoller(TabletServer& server, MasterLeaderFinder& finde
     : server_(server), finder_(finder) {}
 
 Status YsqlLeasePoller::Poll() {
-  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh ||
-      !GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks)) {
+  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !server_.YSQLLeaseEnabled()) {
     return Status::OK();
   }
 

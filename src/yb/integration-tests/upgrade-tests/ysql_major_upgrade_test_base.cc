@@ -195,8 +195,10 @@ Status YsqlMajorUpgradeTestBase::ExecuteStatementsInFiles(
   return Status::OK();
 }
 
-Result<pgwrapper::PGConn> YsqlMajorUpgradeTestBase::CreateConnToTs(std::optional<size_t> ts_id) {
-  return cluster_->ConnectToDB("yugabyte", ts_id);
+Result<pgwrapper::PGConn> YsqlMajorUpgradeTestBase::CreateConnToTs(std::optional<size_t> ts_id,
+    const std::string& user) {
+  return cluster_->ConnectToDB(/* database= */ "yugabyte", ts_id,
+      /*simple_query_protocol=*/ false, user);
 }
 
 Status YsqlMajorUpgradeTestBase::ExecuteStatement(const std::string& sql_statement) {

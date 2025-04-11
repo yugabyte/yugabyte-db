@@ -15,8 +15,6 @@
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/dockv/value_type.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"

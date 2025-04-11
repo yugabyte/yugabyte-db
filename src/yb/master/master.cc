@@ -62,6 +62,7 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"

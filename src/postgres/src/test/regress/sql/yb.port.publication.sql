@@ -163,6 +163,9 @@ REVOKE CREATE ON DATABASE yugabyte FROM regress_publication_user2;
 
 DROP TABLE testpub_parted;
 DROP VIEW testpub_view;
+-- YB Note: We do not allow dropping of tables that are part of a non-ALL TABLES publication.
+DROP TABLE testpub_tbl1;
+ALTER PUBLICATION testpub_fortbl DROP TABLE testpub_tbl1; -- YB: Drop the table from publication first.
 DROP TABLE testpub_tbl1;
 
 \dRp+ testpub_default

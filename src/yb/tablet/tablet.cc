@@ -563,6 +563,17 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
     FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
     ERROR_NOT_OK(tablet_.metadata()->OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
+
+    if (VLOG_IS_ON(2)) {
+      VLOG_WITH_PREFIX_AND_FUNC(2) << AsString(table_id_to_min_schema_version);
+      if (tablet_.regular_db_) {
+        for (const auto& file : tablet_.regular_db_->GetLiveFilesMetaData()) {
+          VLOG_WITH_PREFIX_AND_FUNC(2)
+              << "file: " << file.name_id << ", smallest: "
+              << AsString(file.smallest.user_frontier);
+        }
+      }
+    }
   }
 
   // Checks XCluster config to determine the min schema version at which to expect rows.
@@ -1702,10 +1713,10 @@ Status Tablet::WriteTransactionalBatch(
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    return STATUS(TryAgain,
-                  Format("Transaction metadata missing: $0, looks like it was just aborted",
-                         transaction_id), Slice(),
-                         PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+    return STATUS(
+        TryAgain,
+        Format("Transaction metadata missing: $0, looks like it was just aborted", transaction_id),
+        Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
   }
 
   auto isolation_level = prepare_batch_data->first;
@@ -1753,8 +1764,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        &GetSchemaPackingProvider());
-    batcher.SetFrontiers(&frontiers);
+        GetSchemaPackingProvider(), frontiers);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -2310,11 +2320,13 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   // transaction is done properly in the rare situation where the committed transaction's intents
   // are still in intents db and not yet in regular db.
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
+  docdb::ConsensusFrontiers frontiers;
+  InitFrontiers(data, frontiers);
   auto vector_indexes = vector_indexes_->List();
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
-      min_running_ht, data.op_id, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes,
-      data.apply_to_storages);
+      min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
+      vector_indexes, data.apply_to_storages);
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2322,9 +2334,6 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   regular_write_batch.SetDirectWriter(&intents_writer);
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
-  docdb::ConsensusFrontiers frontiers;
-  InitFrontiers(data, frontiers);
-  context.SetFrontiers(&frontiers);
   WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
   return context.apply_state();
 }

@@ -1544,6 +1544,7 @@ CONTEXT:  PL/pgSQL function tg_slotlink_set(character,character) line 77 at RAIS
 PL/pgSQL function tg_slotlink_a() line 17 at assignment
 insert into HSlot values ('HS', 'base.hub1', 1, '');
 ERROR:  duplicate key value violates unique constraint "hslot_name"
+CONTEXT:  PL/pgSQL function tg_slotlink_a() line 4 at statement block
 insert into HSlot values ('HS', 'base.hub1', 20, '');
 ERROR:  no manual manipulation of HSlot
 CONTEXT:  PL/pgSQL function tg_hslot_biu() line 12 at RAISE
@@ -5248,7 +5249,7 @@ select i, a from
 -----------------------------------------------------------------
  Nested Loop
    Output: i.i, (returns_rw_array(1))
-   ->  Result
+   ->  Result *RESULT*
          Output: returns_rw_array(1)
    ->  Function Scan on public.consumes_rw_array i
          Output: i.i

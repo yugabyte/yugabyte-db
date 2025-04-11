@@ -46,6 +46,7 @@ import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -855,6 +856,9 @@ public class CustomerTaskManager {
         break;
       case CertsRotate:
         taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
+        break;
+      case TlsToggle:
+        taskParams = Json.fromJson(oldTaskParams, TlsToggleParams.class);
         break;
       case SystemdUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);

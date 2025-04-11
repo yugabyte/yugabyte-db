@@ -72,6 +72,7 @@
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_creation_limits.h"

@@ -5,13 +5,13 @@
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
 # yb_pg_misc_serial_schedule, the tests in this schedule have no dependencies.
 ####################################################################################################
-test: yb.port.comments
+test: comments
 test: yb.port.index_including
 test: yb.port.create_function_sql
-test: yb.port.create_cast
+test: create_cast
 test: yb.port.drop_if_exists
 test: yb.port.case
 test: yb.port.namespace
-test: yb.port.security_label
+test: security_label
 test: yb.port.lock
 test: yb.port.drop_operator

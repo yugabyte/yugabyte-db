@@ -113,7 +113,7 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
               + " may not be permitted.");
     }
 
-    if (!replicationManager.restoreBackup(backup)) {
+    if (!replicationManager.restoreBackup(backup, true /* k8sRestoreYbaDbOnRestart */)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error restoring backup to YBA");
     }
 

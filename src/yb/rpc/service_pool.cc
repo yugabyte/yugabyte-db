@@ -179,7 +179,12 @@ class ServicePoolImpl final : public InboundCallHandler {
     }
   }
 
-  void Enqueue(const InboundCallPtr& call) {
+  void Process(InboundCallPtr call, Queue queue) {
+    if (!queue && thread_pool_.OwnsThisThread()) {
+      Handle(std::move(call));
+      return;
+    }
+
     TRACE_TO(call->trace(), "Inserting onto call queue");
     SET_WAIT_STATUS_TO(call->wait_state(), OnCpu_Passive);
 
@@ -191,7 +196,7 @@ class ServicePoolImpl final : public InboundCallHandler {
 
     auto call_deadline = call->GetClientDeadline();
     if (call_deadline != CoarseTimePoint::max()) {
-      pre_check_timeout_queue_.push(call);
+      pre_check_timeout_queue_.push(std::move(call));
       ScheduleCheckTimeout(call_deadline);
     }
 
@@ -481,12 +486,8 @@ void ServicePool::CompleteShutdown() {
   impl_->CompleteShutdown();
 }
 
-void ServicePool::QueueInboundCall(InboundCallPtr call) {
-  impl_->Enqueue(std::move(call));
-}
-
-void ServicePool::Handle(InboundCallPtr call) {
-  impl_->Handle(std::move(call));
+void ServicePool::Process(InboundCallPtr call, Queue queue) {
+  impl_->Process(std::move(call), queue);
 }
 
 void ServicePool::FillEndpoints(RpcEndpointMap* map) {

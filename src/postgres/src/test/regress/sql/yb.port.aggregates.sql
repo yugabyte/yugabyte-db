@@ -441,8 +441,6 @@ drop table minmaxtest cascade;
 -- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
 begin;
 set local enable_sort = off;
--- YB note: t1 access path differs from upstream because we favor index scan
--- when the table is unanalyzed or CBO is not enabled.
 -- YB note: add consistent ordering that matches upstream:
 -- 1. mainly order by absolute value of f1.
 -- 2. order positives before negatives by adding an offset of -1/+1 using the

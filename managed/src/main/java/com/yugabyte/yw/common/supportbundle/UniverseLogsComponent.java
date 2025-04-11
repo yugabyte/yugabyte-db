@@ -15,7 +15,6 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Files;
@@ -26,7 +25,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
@@ -41,7 +39,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
   private final SupportBundleUtil supportBundleUtil;
   private final RuntimeConfGetter confGetter;
   private final String LOG_DIR_GFLAG = "log_dir";
-  private final String YNP_LOG_DIR = "%s/node-agent/release/%s/scripts/logs";
+  private final String YNP_LOG_DIR = "%s/node-agent/logs";
   private final String YNP_LOG_FILE = "app.log";
 
   @Inject
@@ -278,13 +276,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
   }
 
   private String getYnpLogDir(String nodeIp) {
-    Optional<NodeAgent> nodeAgent = NodeAgent.maybeGetByIp(nodeIp);
-    if (nodeAgent.isPresent()) {
-      return String.format(
-          YNP_LOG_DIR,
-          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath),
-          nodeAgent.get().getVersion());
-    }
-    return null;
+    return String.format(
+        YNP_LOG_DIR, confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath));
   }
 }

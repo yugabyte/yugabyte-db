@@ -176,6 +176,14 @@ join_is_removable(PlannerInfo *root, SpecialJoinInfo *sjinfo)
 	if (!bms_get_singleton_member(sjinfo->min_righthand, &innerrelid))
 		return false;
 
+	/*
+	 * Never try to eliminate a left join to the query result rel.  Although
+	 * the case is syntactically impossible in standard SQL, MERGE will build
+	 * a join tree that looks exactly like that.
+	 */
+	if (innerrelid == root->parse->resultRelation)
+		return false;
+
 	innerrel = find_base_rel(root, innerrelid);
 
 	/*
@@ -592,18 +600,28 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		/*
 		 * For a plain relation, we only know how to prove uniqueness by
 		 * reference to unique indexes.  Make sure there's at least one
-		 * suitable unique index.  It must be immediately enforced, and if
-		 * it's a partial index, it must match the query.  (Keep these
-		 * conditions in sync with relation_has_unique_index_for!)
+		 * suitable unique index.  It must be immediately enforced, and not a
+		 * partial index. (Keep these conditions in sync with
+		 * relation_has_unique_index_for!)
 		 */
 		ListCell   *lc;
 
-		foreach(lc, rel->indexlist)
+		List *ybIndexList = rel->indexlist;
+		if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
+		{
+			/*
+			 * 'ybHintsOrigIndexlist' holds the original set of indexes for the relation.
+			 * rel->indexlist may have been pruned by the hint code but we need all indexes
+			 * to prove uniqueness of columns.
+			 */
+			ybIndexList = rel->ybHintsOrigIndexlist;
+		}
+
+		foreach(lc, ybIndexList)
 		{
 			IndexOptInfo *ind = (IndexOptInfo *) lfirst(lc);
 
-			if (ind->unique && ind->immediate &&
-				(ind->indpred == NIL || ind->predOK))
+			if (ind->unique && ind->immediate && ind->indpred == NIL)
 				return true;
 		}
 	}

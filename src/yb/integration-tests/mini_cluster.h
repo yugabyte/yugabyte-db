@@ -357,13 +357,15 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
     MiniCluster* cluster, const TabletId& tablet_id);
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
-    MiniCluster* cluster, const TableId& table_id);
+    MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter = ListPeersFilter::kAll);
 
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
-    MiniCluster* cluster, const std::string& table_name);
+    MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
 
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
-    MiniCluster* cluster, const std::string& table_name);
+    MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
 
 std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers);
 

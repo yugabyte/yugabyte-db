@@ -10,3 +10,4 @@ test: yb.orig.planner_size_estimates
 test: yb.orig.planner_heuristic_selectivity
 test: yb.orig.planner_base_scans_cost_model_colocated
 test: yb.orig.planner_base_scans_cost_model
+test: yb.orig.row_estimates

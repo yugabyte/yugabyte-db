@@ -74,6 +74,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /* Utility function to calculate column sorting options */
@@ -1846,27 +1847,28 @@ YBCExecAlterTable(YbcPgStatement handle, Oid relationId)
 }
 
 void
-YBCRename(RenameStmt *stmt, Oid relationId)
+YBCRename(Oid relationId, ObjectType renameType, const char *relname,
+		  const char *colname)
 {
 	YbcPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char	   *db_name = get_database_name(databaseId);
 
-	switch (stmt->renameType)
+	switch (renameType)
 	{
 		case OBJECT_MATVIEW:
 		case OBJECT_TABLE:
 		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, relname));
 			break;
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
 
-			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, stmt->subname, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, colname, relname));
 			break;
 
 		default:
@@ -2024,8 +2026,16 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	}
 
 	heapId = IndexGetRelation(indexId, false);
-	/* TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock? */
-	heapRel = table_open(heapId, ShareLock);
+	/*
+	 * The backend that initiated index backfill holds the following locks:
+	 * 1. ShareUpdateExclusiveLock on the main table
+	 * 2. RowExclusiveLock on the index table
+	 *
+	 * Theoretically, the child backfill jobs need not acquire any locks on
+	 * either the main table or the index. Yet, we acquire relevant locks for
+	 * reading the main table and inserting rows into the index for safety.
+	 */
+	heapRel = table_open(heapId, AccessShareLock);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -2037,7 +2047,7 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
-	indexRel = index_open(indexId, ShareLock);
+	indexRel = index_open(indexId, RowExclusiveLock);
 
 	indexInfo = BuildIndexInfo(indexRel);
 	/*
@@ -2056,8 +2066,8 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 				   stmt->bfinfo,
 				   out_param);
 
-	index_close(indexRel, ShareLock);
-	table_close(heapRel, ShareLock);
+	index_close(indexRel, RowExclusiveLock);
+	table_close(heapRel, AccessShareLock);
 
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);
@@ -2149,7 +2159,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time,
-						 YbCRSLsnType lsn_type)
+						 YbCRSLsnType lsn_type,
+						 YbCRSOrderingMode yb_ordering_mode)
 {
 	YbcPgStatement handle;
 
@@ -2174,14 +2185,21 @@ YBCCreateReplicationSlot(const char *slot_name,
 	 */
 	YbcLsnType	repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
 
+	YbcOrderingMode repl_slot_ordering_mode =
+		YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION;
+
 	if (lsn_type == CRS_HYBRID_TIME)
 		repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME;
+
+	if (yb_ordering_mode == YB_CRS_ROW)
+		repl_slot_ordering_mode = YB_REPLICATION_SLOT_ORDERING_MODE_ROW;
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 MyDatabaseId,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
+												 repl_slot_ordering_mode,
 												 &handle));
 
 	YbcStatus	status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);

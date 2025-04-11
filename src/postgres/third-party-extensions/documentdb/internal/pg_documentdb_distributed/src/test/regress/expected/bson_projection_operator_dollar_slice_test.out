@@ -1,0 +1,600 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 290000;
+SET documentdb.next_collection_id TO 2900;
+SET documentdb.next_collection_index_id TO 2900;
+--Input type positive number
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 0} }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1} }',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 2} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 8} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberLong" : "2"}} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDouble" : "2.1234"}} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "2.1234"}} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : []}', '{"a" : { "$slice" : 1} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1]}', '{"a" : { "$slice" : 1} }',NULL);
+             bson_dollar_project_find              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [{"x":[1,2,3]}, {"x":[4,5,6]}]}', '{"a.x" : { "$slice" : 2} }',NULL);
+                                                               bson_dollar_project_find                                                                
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "x" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] } ] }
+(1 row)
+
+--Input type is Negative number
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : -0} }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : -1} }',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : -2} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : -4} }',NULL);
+                                     bson_dollar_project_find                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5,6,7,8,9,10,11] }', '{"a" : { "$slice" : -13} }',NULL);
+                                                                                                                                      bson_dollar_project_find                                                                                                                                       
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : -8} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberLong" : "-2"}} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDouble" : "-2.1234"}} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "-2.1234"}} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+--Input type is array with postive number fields
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0,0]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0,2]} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [2,3]} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [3,1]} }',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "4" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [3,10]} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : [4,10]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : [5,10]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberLong" : "1"}, { "$numberLong" : "3"} ] }}',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDouble" : "2.1234"}, { "$numberDouble" : "3.1234"} ] }}',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "1.1234"}, { "$numberDecimal" : "3.1234"}] }}',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+--Input type is array with negative number fields
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-0,0]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-1,2]} }',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-2,3]} }',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-3,1]} }',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-3,10]} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : [-4,10]} }',NULL);
+                                     bson_dollar_project_find                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : [-5,10]} }',NULL);
+                                     bson_dollar_project_find                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : [-10,10]} }',NULL);
+                                     bson_dollar_project_find                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberLong" : "-1"}, { "$numberLong" : "3"} ] }}',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDouble" : "-2.1234"}, { "$numberDouble" : "3.1234"} ] }}',NULL);
+                                                                                                 bson_dollar_project_find                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "-1.1234"}, { "$numberDecimal" : "3.1234"}] }}',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "5" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+--Input is NaN or Infinity
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "NaN"}} }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "Infinity"}} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDouble" : "NaN"}} }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDouble" : "Infinity"}} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "NaN"}, { "$numberDecimal" : "NaN"}]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "NaN"}, { "$numberDecimal" : "Infinity"}]} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "Infinity"}, { "$numberDecimal" : "NaN"}]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "Infinity"}, { "$numberDecimal" : "Infinity"}]} }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0, { "$numberDecimal" : "Infinity"}]} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "Infinity"}, 1]} }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0, { "$numberDecimal" : "NaN"}]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "NaN"}, 1]} }',NULL);
+                                                                                     bson_dollar_project_find                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : { "$numberDecimal" : "-Infinity"}} }',NULL);
+                                     bson_dollar_project_find                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [{ "$numberDecimal" : "-Infinity"}, 1]} }',NULL);
+             bson_dollar_project_find              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1, { "$numberDecimal" : "-Infinity"}]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+--large values $slice
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "999999999999999999999999999999"}} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "999999999999999999999999999999"}, { "$numberDecimal" : "999999999999999999999999999999"}] } }',NULL);
+                                                                          bson_dollar_project_find                                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "0"}, { "$numberDecimal" : "999999999999999999999999999999"}] } }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : {"$numberDecimal" : "123123123123123121231"}} }',NULL);
+                                                     bson_dollar_project_find                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : [ {"$numberDecimal" : "123123123123123121231"}, {"$numberDecimal" : "123123123123123121231"} ]} }',NULL);
+                  bson_dollar_project_find                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : [1,{"$numberDecimal" : "123123123123123121231"}]} }',NULL);
+                                         bson_dollar_project_find                                         
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" } }
+(1 row)
+
+--inclusion Exclusion check
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "b" :0 }',NULL);
+                                                                     bson_dollar_project_find                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "b" :1 }',NULL);
+                             bson_dollar_project_find                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "b":0, "c":0 }',NULL);
+                            bson_dollar_project_find                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c": 1, "d" : 0 }',NULL);
+ERROR:  Cannot do exclusion on field d in inclusion projection.
+--Nested array inside document & array
+select bson_dollar_project_find('{"_id":"1", "a" : {"x": [1,2,3], "y":5 }, "b":10}', '{"a.x" : { "$slice" : 1}, "b" :0 }',NULL);
+                                 bson_dollar_project_find                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "x" : [ { "$numberInt" : "1" } ], "y" : { "$numberInt" : "5" } } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : {"x": [1,2,3], "y":5 }, "b":10}', '{"a.x" : { "$slice" : 1}, "b" :1 }',NULL);
+                                  bson_dollar_project_find                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "x" : [ { "$numberInt" : "1" } ] }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [[1,2,3]], "b":10}', '{"a.0" : { "$slice" : 1}}',NULL);
+                                                       bson_dollar_project_find                                                       
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ], "b" : { "$numberInt" : "10" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [[1,2,3], {"y": 5}], "b":10}', '{"a.0" : { "$slice" : 1}, "b" :1 }',NULL);
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [  ], {  } ], "b" : { "$numberInt" : "10" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [[1,2,3],4,5]}', '{"a.0" : { "$slice" : 1}}',NULL);
+                                                               bson_dollar_project_find                                                                
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [[1,2,3], {"y": 5}], "b":10}', '{"a.0" : { "$slice" : 1}, "b" :0 }',NULL);
+                                                        bson_dollar_project_find                                                         
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "y" : { "$numberInt" : "5" } } ] }
+(1 row)
+
+--multiple Slice
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c" : { "$slice" : 1} }',NULL);
+                                                             bson_dollar_project_find                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c" : { "$slice" : 1}, "b" :0 }',NULL);
+                                             bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "c" : [ { "$numberInt" : "1" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c" : { "$slice" : 1}, "b" :1 }',NULL);
+                                              bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+--$slice with other operators
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c" : { "$elemMatch" : {"$gt":1}} }',NULL);
+                                                             bson_dollar_project_find                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "2" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$elemMatch" : {"$gt":1}}, "c" : { "$slice" : 1}}',NULL);
+                                                             bson_dollar_project_find                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c" : { "$elemMatch" : {"$gt":1}}, "b" : 1 }',NULL);
+                                              bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "2" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$elemMatch" : {"$gt":1}}, "c" : { "$slice" : 1}, "b" :0}',NULL);
+                                             bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "2" } ], "c" : [ { "$numberInt" : "1" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c" : { "$elemMatch" : {"$gt":1}}, "b" : 0 }',NULL);
+                                             bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "c" : [ { "$numberInt" : "2" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$elemMatch" : {"$gt":1}}, "c" : { "$slice" : 1}, "b" :1}',NULL);
+                                              bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" } ], "a" : [ { "$numberInt" : "2" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"b" : 0 , "a" : { "$slice" : 1}, "c" : { "$elemMatch" : {"$gt":1}} }',NULL);
+                                             bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" } ], "c" : [ { "$numberInt" : "2" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"b" : 1 , "a" : { "$elemMatch" : {"$gt":1}}, "c" : { "$slice" : 1}}',NULL);
+                                              bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" } ], "a" : [ { "$numberInt" : "2" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"a": [ {"b" : [10]}, { "b" : [20]}]}', '{ "a.b": {"$slice":1}, "a.b": {"$add":[1,5]} }','{}');
+                             bson_dollar_project_find                             
+---------------------------------------------------------------------
+ { "a" : [ { "b" : { "$numberInt" : "6" } }, { "b" : { "$numberInt" : "6" } } ] }
+(1 row)
+
+select bson_dollar_project_find('{"a": [ {"b" : [10]}, { "b" : [20]}]}', '{ "a.b": {"$add":[1,10]}, "a.b": {"$slice":1} }','{}');
+                                  bson_dollar_project_find                                  
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ { "$numberInt" : "10" } ] }, { "b" : [ { "$numberInt" : "20" } ] } ] }
+(1 row)
+
+select bson_dollar_project_find('{"b": [[1,2,3,4]], "a": [10,20,30,40]}', '{ "a.$": 1, "b" : {"$slice" : 1} }','{"a" : {"$gt" :1}}');
+                                                              bson_dollar_project_find                                                               
+---------------------------------------------------------------------
+ { "b" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] ], "a" : [ { "$numberInt" : "10" } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : {"b": {"c":[1,2,3], "d":10},"f":10 } }', '{"a.b.c" : {"$slice": 1}, "a.b.d": {"field":"$a.f"} }',NULL);
+                                              bson_dollar_project_find                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : [ { "$numberInt" : "1" } ], "d" : { "field" : { "$numberInt" : "10" } } } } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : {"b": {"c":[1,2,3], "d":10},"f":10 } }', '{"a.b.c" : {"$slice": 1}, "a.b.d": {"$isArray":"$a.c"} }',NULL);
+                              bson_dollar_project_find                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : [ { "$numberInt" : "1" } ], "d" : false } } }
+(1 row)
+
+--Path Collision 
+select bson_dollar_project_find('{"_id":"1", "a" : [{"x":1, "y":2}]}', '{"a" : { "$slice" : 1}, "a.x":0 }',NULL);
+ERROR:  Path collision at a.x remaining portion x
+select bson_dollar_project_find('{"_id":"1", "a" : [{"x":1, "y":2}]}', '{"a" : { "$slice" : 1}, "a.x":1 }',NULL);
+ERROR:  Path collision at a.x remaining portion x
+--array of array
+select bson_dollar_project_find('{"_id":"1", "a" : [[{"b": [1,2,3]}]]}', '{"a.b" : { "$slice" : 2}}',NULL);
+                                              bson_dollar_project_find                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [ { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [[{"b": [1,2,3]}],  { "b": [1,2,3]}]}', '{"a.b" : { "$slice" : 2}}',NULL);
+                                                                             bson_dollar_project_find                                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [ { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ] }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [[{"b": [1,2,3], "c":{ "d": [1,2,3] }  }],  { "e": [1,2,3] , "f": [[{"g": [1,2,3]}]] }]}', '{"a.b" : { "$slice" : 2}, "a.c.d" : { "$slice" : 2}, "a.e" : { "$slice" : 2},"a.f.g" : { "$slice" : 2}}',NULL);
+                                                                                                                                                                             bson_dollar_project_find                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ [ { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } } ], { "e" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "f" : [ [ { "g" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] } ] }
+(1 row)
+
+--Null and undefined input
+select bson_dollar_project_find('{"_id":"1", "a" : null}', '{"a" : { "$slice" : [1,2]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,null]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [null,1]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [null,null]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : { "$undefined" : true }}', '{"a" : { "$slice" : [1,2]} }',NULL);
+            bson_dollar_project_find            
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "$undefined" : true } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,{ "$undefined" : true }]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [{ "$undefined" : true },1]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [{ "$undefined" : true },{ "$undefined" : true }]} }',NULL);
+  bson_dollar_project_find   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : null }
+(1 row)
+
+--Invalid Input Negative cases find slice projection
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : "str"} }',NULL);
+ERROR:  First argument to $slice must be an number, but is of type: string
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : ["str"]} }',NULL);
+ERROR:  $slice takes 2 arguments, but 1 were passed in.
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,2,3]} }',NULL);
+ERROR:  $slice takes 2 arguments, but 3 were passed in.
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,"str"]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number, but is of type: string
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,-1]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,0]} }',NULL);
+ERROR:  Second argument to $slice must be a positive number
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1]} }',NULL);
+ERROR:  $slice takes 2 arguments, but 1 were passed in.
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : null} }',NULL);
+ERROR:  First argument to $slice must be an number, but is of type: null
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : { "$undefined" : true }} }',NULL);
+ERROR:  First argument to $slice must be an number, but is of type: undefined

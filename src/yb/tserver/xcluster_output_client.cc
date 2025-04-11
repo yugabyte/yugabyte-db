@@ -26,8 +26,10 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/master/master_replication.pb.h"
 

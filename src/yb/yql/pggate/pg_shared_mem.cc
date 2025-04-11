@@ -13,6 +13,8 @@
 
 #include "yb/yql/pggate/pg_shared_mem.h"
 
+#include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/status.h"

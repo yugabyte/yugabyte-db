@@ -798,7 +798,7 @@ InvalidateSystemCachesExtended(bool debug_discard, bool yb_callback)
 	if (!yb_callback)
 	{
 		InvalidateCatalogSnapshot();
-		ResetCatalogCaches();
+		ResetCatalogCachesExt(debug_discard);
 		RelationCacheInvalidate(debug_discard); /* gets smgr and relmap too */
 	}
 

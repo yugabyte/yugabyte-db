@@ -32,6 +32,7 @@
 #include "yb/master/master_heartbeat.service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -361,8 +362,15 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get YSQL invalidation messages for heartbeat response: "
-                   << ResultToStatus(messages);
+      const auto& s = messages.status();
+      auto msg = Format("Could not get YSQL invalidation messages for heartbeat response: $0", s);
+      if (s.IsNotFound()) {
+        // During upgrade, the table pg_yb_invalidation_messages is created in the finalization
+        // phase. We do not want to flood the log before that.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << msg;
+      } else {
+        LOG(WARNING) << msg;
+      }
     }
   }
 

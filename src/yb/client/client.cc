@@ -1496,7 +1496,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     CoarseTimePoint deadline,
     const CDCSDKDynamicTablesOption& dynamic_tables_option,
     uint64_t *consistent_snapshot_time_out,
-    const std::optional<ReplicationSlotLsnType>& lsn_type) {
+    const std::optional<ReplicationSlotLsnType>& lsn_type,
+    const std::optional<ReplicationSlotOrderingMode>& ordering_mode) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1523,6 +1524,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (lsn_type.has_value()) {
     req.mutable_cdcsdk_stream_create_options()->set_lsn_type(lsn_type.value());
   }
+  if (ordering_mode.has_value()) {
+    req.mutable_cdcsdk_stream_create_options()->set_ordering_mode(ordering_mode.value());
+  }
   req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
       dynamic_tables_option);
 
@@ -1548,7 +1552,8 @@ Status YBClient::GetCDCStream(
     std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
     std::optional<std::string>* replication_slot_name,
     std::vector<TableId>* unqualified_table_ids,
-    std::optional<ReplicationSlotLsnType>* lsn_type) {
+    std::optional<ReplicationSlotLsnType>* lsn_type,
+    std::optional<ReplicationSlotOrderingMode>* ordering_mode) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1610,6 +1615,12 @@ Status YBClient::GetCDCStream(
   if (lsn_type && resp.stream().has_cdc_stream_info_options() &&
       resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_lsn_type()) {
     *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
+  }
+
+  if (ordering_mode && resp.stream().has_cdc_stream_info_options() &&
+      resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+    *ordering_mode =
+        resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_ordering_mode();
   }
 
   return Status::OK();

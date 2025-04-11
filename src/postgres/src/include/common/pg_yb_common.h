@@ -152,4 +152,9 @@ extern bool YBColocateDatabaseByDefault();
  */
 Oid			YBGetDatabaseOidFromEnv(const char *database_name);
 
+/**
+ * Returns whether FLAGS_TEST_ysql_yb_query_diagnostics_race_condition is set.
+ */
+extern bool YBQueryDiagnosticsTestRaceCondition();
+
 #endif							/* PG_YB_COMMON_H */

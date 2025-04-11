@@ -1439,10 +1439,6 @@ CREATE TABLE fd_pt1 (
 );
 CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
   SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
-                                    ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
@@ -1450,11 +1446,20 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumb
  c1     | integer |           | not null |         | plain    |              | 
  c2     | text    |           |          |         | extended |              | 
  c3     | date    |           |          |         | plain    |              | 
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+
 DROP FOREIGN TABLE ft2;
-*/ -- YB
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
@@ -1479,10 +1484,6 @@ Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
-ERROR:  ALTER action INHERIT not supported yet
-LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
-                                ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
@@ -1490,9 +1491,19 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c1     | integer |           | not null |         | plain    |              | 
  c2     | text    |           |          |         | extended |              | 
  c3     | date    |           |          |         | plain    |              | 
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+
 CREATE TABLE ct3() INHERITS(ft2);
 CREATE FOREIGN TABLE ft3 (
 	c1 integer NOT NULL,
@@ -1500,10 +1511,41 @@ CREATE FOREIGN TABLE ft3 (
 	c3 date
 ) INHERITS(ft2)
   SERVER s0;
+NOTICE:  merging column "c1" with inherited definition
+NOTICE:  merging column "c2" with inherited definition
+NOTICE:  merging column "c3" with inherited definition
 \d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+Child tables: ct3,
+              ft3
+
 \d+ ct3
+                                    Table "public.ct3"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              | 
+ c2     | text    |           |          |         | extended |              | 
+ c3     | date    |           |          |         | plain    |              | 
+Inherits: ft2
+
 \d+ ft3
-*/ -- YB
+                                       Foreign table "public.ft3"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Server: s0
+Inherits: ft2
+
 -- add attributes recursively
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c5 integer DEFAULT 0;
@@ -1522,23 +1564,73 @@ ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
  c6     | integer |           |          |         | plain    |              | 
  c7     | integer |           | not null |         | plain    |              | 
  c8     | integer |           |          |         | plain    |              | 
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+ c4     | integer |           |          |         |             | plain    |              | 
+ c5     | integer |           |          | 0       |             | plain    |              | 
+ c6     | integer |           |          |         |             | plain    |              | 
+ c7     | integer |           | not null |         |             | plain    |              | 
+ c8     | integer |           |          |         |             | plain    |              | 
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+Child tables: ct3,
+              ft3
+
 \d+ ct3
+                                    Table "public.ct3"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              | 
+ c2     | text    |           |          |         | extended |              | 
+ c3     | date    |           |          |         | plain    |              | 
+ c4     | integer |           |          |         | plain    |              | 
+ c5     | integer |           |          | 0       | plain    |              | 
+ c6     | integer |           |          |         | plain    |              | 
+ c7     | integer |           | not null |         | plain    |              | 
+ c8     | integer |           |          |         | plain    |              | 
+Inherits: ft2
+
 \d+ ft3
-*/ -- YB
+                                       Foreign table "public.ft3"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+ c4     | integer |           |          |         |             | plain    |              | 
+ c5     | integer |           |          | 0       |             | plain    |              | 
+ c6     | integer |           |          |         |             | plain    |              | 
+ c7     | integer |           | not null |         |             | plain    |              | 
+ c8     | integer |           |          |         |             | plain    |              | 
+Server: s0
+Inherits: ft2
+
 -- alter attributes recursively
 ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
 ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
 ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
-ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR -- YB: output differs due to INHERITS not supported above
+ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR
+ERROR:  "ft2" is not a table
+ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
@@ -1566,10 +1658,26 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c6     | integer |           | not null |         | plain    |              | 
  c7     | integer |           |          |         | plain    |              | 
  c8     | text    |           |          |         | extended |              | 
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    | 10000        | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+ c4     | integer |           |          | 0       |             | plain    |              | 
+ c5     | integer |           |          |         |             | plain    |              | 
+ c6     | integer |           | not null |         |             | plain    |              | 
+ c7     | integer |           |          |         |             | plain    |              | 
+ c8     | text    |           |          |         |             | extended |              | 
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+Child tables: ct3,
+              ft3
+
 -- drop attributes recursively
 ALTER TABLE fd_pt1 DROP COLUMN c4;
 ALTER TABLE fd_pt1 DROP COLUMN c5;
@@ -1583,10 +1691,21 @@ ALTER TABLE fd_pt1 DROP COLUMN c8;
  c1     | integer |           | not null |         | plain    | 10000        | 
  c2     | text    |           |          |         | extended |              | 
  c3     | date    |           |          |         | plain    |              | 
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    | 10000        | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+Child tables: ct3,
+              ft3
+
 -- add constraints recursively
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk1 CHECK (c1 > 0) NO INHERIT;
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
@@ -1612,27 +1731,68 @@ SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
 Check constraints:
     "fd_pt1chk1" CHECK (c1 > 0) NO INHERIT
     "fd_pt1chk2" CHECK (c2 <> ''::text)
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
-DROP FOREIGN TABLE ft2; -- ERROR -- YB: does not fail because above queries fail/commented-out
-DROP FOREIGN TABLE ft2 CASCADE; -- YB: fails because the above DROP succeeds
-ERROR:  foreign table "ft2" does not exist
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    | 10000        | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+Child tables: ct3,
+              ft3
+
+DROP FOREIGN TABLE ft2; -- ERROR
+ERROR:  cannot drop foreign table ft2 because other objects depend on it
+DETAIL:  foreign table ft3 depends on foreign table ft2
+table ct3 depends on foreign table ft2
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+\set VERBOSITY terse \\ -- YB: suppress cascade details
+DROP FOREIGN TABLE ft2 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default \\ -- YB
 CREATE FOREIGN TABLE ft2 (
 	c1 integer NOT NULL,
 	c2 text,
 	c3 date
 ) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
 -- child must have parent's INHERIT constraints
-/* YB: uncomment when INHERITS is supported
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;                            -- ERROR
+ERROR:  child table is missing constraint "fd_pt1chk2"
 ALTER FOREIGN TABLE ft2 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 -- child does not inherit NO INHERIT constraints
 \d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        | 
+ c2     | text    |           |          |         | extended |              | 
+ c3     | date    |           |          |         | plain    |              | 
+Check constraints:
+    "fd_pt1chk1" CHECK (c1 > 0) NO INHERIT
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Child tables: ft2
+
 \d+ ft2
-*/ -- YB
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+
 -- drop constraints recursively
 ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk1 CASCADE;
 ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk2 CASCADE;
@@ -1648,10 +1808,22 @@ ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
  c3     | date    |           |          |         | plain    |              | 
 Check constraints:
     "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
 \d+ fd_pt1
@@ -1663,17 +1835,29 @@ ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
  c3     | date    |           |          |         | plain    |              | 
 Check constraints:
     "fd_pt1chk3" CHECK (c2 <> ''::text)
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              | 
+ c2     | text    |           |          |         |             | extended |              | 
+ c3     | date    |           |          |         |             | plain    |              | 
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+    "fd_pt1chk3" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+
 -- changes name of an attribute recursively
 ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
 ALTER TABLE fd_pt1 RENAME COLUMN c2 TO f2;
 ALTER TABLE fd_pt1 RENAME COLUMN c3 TO f3;
 -- changes name of a constraint recursively
 ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
-\d+ fd_pt1 \\ -- YB: output differs with the original test due to failed ALTER TABLE above
+\d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
@@ -1682,12 +1866,24 @@ ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
  f3     | date    |           |          |         | plain    |              | 
 Check constraints:
     "f2_check" CHECK (f2 <> ''::text)
+Child tables: ft2
 
-/* YB: uncomment when INHERITS is supported
 \d+ ft2
-*/ -- YB
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ f1     | integer |           | not null |         |             | plain    |              | 
+ f2     | text    |           |          |         |             | extended |              | 
+ f3     | date    |           |          |         |             | plain    |              | 
+Check constraints:
+    "f2_check" CHECK (f2 <> ''::text)
+    "fd_pt1chk2" CHECK (f2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+Inherits: fd_pt1
+
 DROP TABLE fd_pt1 CASCADE;
-DROP FOREIGN TABLE ft2; -- YB: workaround for above DROP CASCADE since ft2 never got linked under fd_pt1 due to lack of INHERITS support
+NOTICE:  drop cascades to foreign table ft2
 -- IMPORT FOREIGN SCHEMA
 IMPORT FOREIGN SCHEMA s1 FROM SERVER s9 INTO public; -- ERROR
 ERROR:  foreign-data wrapper "foo" has no handler

@@ -65,7 +65,7 @@ GetYBAdvisoryLockId(LOCKTAG tag)
 bool
 HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
 {
-	if (status && YBCIsAdvisoryLockNotFoundError(YBCStatusTransactionError(status)))
+	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_LOCK_NOT_FOUND)
 	{
 		const char *lock_type = (mode == YB_ADVISORY_LOCK_SHARED) ? "ShareLock" : "ExclusiveLock";
 		elog(WARNING, "you don't own a lock of type %s", lock_type);
@@ -80,7 +80,7 @@ HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
 bool
 HandleStatusIgnoreSkipLocking(YbcStatus status)
 {
-	if (status && YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
+	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_SKIP_LOCKING)
 	{
 		YBCFreeStatus(status);
 		return false;

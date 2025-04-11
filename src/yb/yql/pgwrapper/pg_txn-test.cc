@@ -13,34 +13,45 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
 using std::string;
 
 using namespace std::literals;
 
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(yb_enable_read_committed_isolation);
-DECLARE_bool(enable_wait_queues);
-DECLARE_string(time_source);
-DECLARE_int32(replication_factor);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_int32(replication_factor);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
+DECLARE_int32(rocksdb_universal_compaction_size_ratio);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int64(db_filter_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_string(time_source);
+DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 
 namespace yb::pgwrapper {
 
 class PgTxnTest : public PgMiniTestBase {
-
  protected:
   void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
     auto value_from_deprecated_guc = ASSERT_RESULT(
@@ -596,6 +607,81 @@ TEST_F(PgTxnTest, CleanupIntentsDuringShutdown) {
   conn = ASSERT_RESULT(Connect());
   sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
   ASSERT_EQ(sum, kExpectedSum);
+}
+
+TEST_F(PgTxnTest, FlushLargeTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 14;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 128_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_size_ratio) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_always_include_size_threshold) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_min_merge_width) = 2;
+
+  constexpr auto kTxnRows = 15;
+  constexpr auto kValueLen = 16_KB;
+  constexpr auto kExtraRows = 1;
+  constexpr auto kExtraValueLen = 16_KB;
+
+  auto random_string_expr = Format(
+      "array_to_string(ARRAY("
+          "SELECT chr((97 + round(random() * 25))::INT) FROM generate_series(1, $0)), '')",
+      kValueLen);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT generate_series(1, $0), $1", kTxnRows, random_string_expr));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // At this point we should have single SST file with primary_schema_version 0
+  // (before fix for GHI #25106 primary_schema_version was empty).
+
+  // This flush is not necessary to reproduce the bug, but there is some logic to check
+  // that test itself is not broken and verifies desired behaviour.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+
+  auto tablets = ASSERT_RESULT(ListTabletsForTableName(
+      cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablets.size(), 1);
+  auto leader = tablets[0];
+  std::set<uint64_t> name_ids;
+  auto two_files_waiter = [leader, &name_ids]() -> Result<bool> {
+    auto files = leader->doc_db().regular->GetLiveFilesMetaData();
+    LOG(INFO) << leader->LogPrefix() << "Files: " << AsString(files);
+    if (files.size() != 2) {
+      return false;
+    }
+    name_ids.clear();
+    for (const auto& file : files) {
+      name_ids.insert(file.name_id);
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor(two_files_waiter, 10s, "Wait for second SST file to flush"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 TEXT"));
+
+  for (int i = kTxnRows; i++ <= kTxnRows + kExtraRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES($0, '$1', '$1')", i, RandomHumanReadableString(kExtraValueLen)));
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  }
+
+  auto old_name_ids = name_ids;
+  // This logic ensures the tserver's behavior remains unchanged and validates that the test
+  // still confirms the expected functionality.
+  ASSERT_OK(WaitFor(two_files_waiter, 10s, "Wait for compaction"));
+  // Check that the first file (before fix w/o primary_schema_version) still there.
+  ASSERT_EQ(*old_name_ids.begin(), *name_ids.begin());
+  // Check that other files were compacted.
+  // Since we have 0 retention, this file will contain only rows with most recent schema version.
+  ASSERT_NE(*(++old_name_ids.begin()), *(++name_ids.begin()));
+
+  auto res = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(LENGTH(value)) FROM test"));
+  ASSERT_EQ(res, kValueLen * kTxnRows + kExtraValueLen * kExtraRows);
 }
 
 } // namespace yb::pgwrapper

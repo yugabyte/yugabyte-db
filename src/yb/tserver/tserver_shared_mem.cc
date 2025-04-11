@@ -531,43 +531,45 @@ uint64_t SharedExchange::session_id() const {
   return impl_->session_id();
 }
 
-SharedExchangeThread::SharedExchangeThread(
-    SharedExchange exchange,
-    const SharedExchangeListener& listener)
-    : exchange_(std::move(exchange)) {
-  CHECK_OK(Thread::Create(
-      "shared_exchange", Format("sh_xchng_$0", exchange_.session_id()), [this, listener] {
-    for (;;) {
-      auto query_size = exchange_.Poll();
-      if (!query_size.ok()) {
-        if (!query_size.status().IsShutdownInProgress()) {
-          LOG(DFATAL) << "Poll session " << exchange_.session_id() <<  " failed: "
-                      << query_size.status();
-        }
-        break;
-      }
-      listener(*query_size);
-    }
-    ready_to_complete_ = true;
-  }, &thread_));
+SharedExchangeRunnable::SharedExchangeRunnable(
+    SharedExchange exchange, const SharedExchangeListener& listener)
+    : exchange_(std::move(exchange)), listener_(listener) {
 }
 
-SharedExchangeThread::~SharedExchangeThread() {
+Status SharedExchangeRunnable::Start(ThreadPool& thread_pool) {
+  RETURN_NOT_OK(thread_pool.Submit(shared_from_this()));
+  stop_latch_.Reset(1);
+  return Status::OK();
+}
+
+void SharedExchangeRunnable::Run() {
+  for (;;) {
+    auto query_size = exchange_.Poll();
+    if (!query_size.ok()) {
+      if (!query_size.status().IsShutdownInProgress()) {
+        LOG(DFATAL) << "Poll session " << exchange_.session_id() <<  " failed: "
+                    << query_size.status();
+      }
+      break;
+    }
+    listener_(*query_size);
+  }
+  stop_latch_.CountDown();
+}
+
+SharedExchangeRunnable::~SharedExchangeRunnable() {
   StartShutdown();
   CompleteShutdown();
 }
 
-void SharedExchangeThread::StartShutdown() {
-  if (thread_) {
+void SharedExchangeRunnable::StartShutdown() {
+  if (stop_latch_.count()) {
     exchange_.SignalStop();
   }
 }
 
-void SharedExchangeThread::CompleteShutdown() {
-  if (thread_) {
-    thread_->Join();
-    thread_ = nullptr;
-  }
+void SharedExchangeRunnable::CompleteShutdown() {
+  stop_latch_.Wait();
 }
 
 bool TServerSharedData::IsCronLeader() const {

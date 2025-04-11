@@ -6886,8 +6886,8 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 				{
 					ybctid_width += get_attavgwidth(index->indexoid, i + 1) + 1;
 
-					Relation	baserel = index_open(index->indexoid, NoLock);
-					Form_pg_attribute att = TupleDescAttr(baserel->rd_att,
+					Relation indexrel = index_open(index->indexoid, NoLock);
+					Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
 														  i + 1);
 
 					if (att->attlen < 0)
@@ -6899,6 +6899,8 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						 */
 						++ybctid_width;
 					}
+
+					index_close(indexrel, NoLock);
 				}
 				else if (index->indexkeys[i] > 0)	/* Index key is user
 													 * column */
@@ -8795,12 +8797,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * tuples_fetched;
 
-	path->rows =
-		clamp_row_est(baserel->tuples *
-					  clauselist_selectivity(root, baserel->baserestrictinfo,
-											 baserel->relid, JOIN_INNER, NULL));
-
-	path->rows = tuples_fetched;
 	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->yb_plan_info.estimated_num_nexts = num_nexts;

@@ -2394,8 +2394,7 @@ CommitTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		bool increment_done = false;
-		bool increment_pg_txns = YbCheckPgTxnCommitForAnalyze(&increment_done);
+		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
 		/*
 		 * Firing the triggers may abort current transaction.
 		 * At this point all the them has been fired already.
@@ -2405,12 +2404,7 @@ CommitTransaction(void)
 		 */
 		YBCCommitTransaction();
 		if (increment_pg_txns)
-		{
-			Assert(!increment_done);
 			YbIncrementPgTxnsCommitted();
-		}
-		else if (increment_done)
-			YbCheckNewLocalCatalogVersionOptimization();
 	}
 
 
@@ -3224,13 +3218,6 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_internal_savepoint)
 			{
 				/*
-				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
-				 * current query). This helps track if automatic restart of a query is possible in
-				 * READ COMMITTED isolation level.
-				 */
-				s->ybDataSentForCurrQuery = false;
-
-				/*
 				 * Create a new internal sub txn before any execution. This aids in rolling back any changes
 				 * before restarting the statement.
 				 *
@@ -3359,6 +3346,7 @@ CommitTransactionCommand(void)
 	TransactionState s = CurrentTransactionState;
 	SavedTransactionCharacteristics savetc;
 
+	/* Must save in case we need to restore below */
 	SaveTransactionCharacteristics(&savetc);
 
 	/* TODO(jayant): add YB prefix to prevState. */
@@ -5731,6 +5719,7 @@ PushTransaction(void)
 	s->blockState = TBLOCK_SUBBEGIN;
 	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
 	s->prevXactReadOnly = XactReadOnly;
+	s->startedInRecovery = p->startedInRecovery;
 	s->parallelModeLevel = 0;
 	s->topXidLogged = false;
 

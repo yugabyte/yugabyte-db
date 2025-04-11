@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
@@ -111,6 +112,7 @@ public class LocalNodeManager {
   private Map<String, Map<String, String>> provisionArgs = new ConcurrentHashMap<>();
 
   private SpecificGFlags additionalGFlags;
+  private Pair<Set<String>, Set<String>> gFlagsToRemove;
 
   @Setter private int ipRangeStart = 2;
   @Setter private int ipRangeEnd = 100;
@@ -145,6 +147,14 @@ public class LocalNodeManager {
 
   public void addVersionBinPath(String version, String binPath) {
     versionBinPathMap.put(version, binPath);
+  }
+
+  public void setGFlagsToRemove(Pair<Set<String>, Set<String>> gFlagsToRemove) {
+    this.gFlagsToRemove = gFlagsToRemove;
+  }
+
+  public String getVersionBinPath(String version) {
+    return versionBinPathMap.get(version);
   }
 
   public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
@@ -846,6 +856,14 @@ public class LocalNodeManager {
     if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
+    if (gFlagsToRemove != null) {
+      gflagsToWrite
+          .keySet()
+          .removeAll(
+              serverType == UniverseTaskBase.ServerType.MASTER
+                  ? gFlagsToRemove.getFirst()
+                  : gFlagsToRemove.getSecond());
+    }
     String fileName = getNodeGFlagsFile(userIntent, serverType, nodeInfo);
     log.debug("Write gflags {} for {} to file {}", gflagsToWrite, serverType, fileName);
     File flagFileTmpPath = new File(fileName);
@@ -969,7 +987,7 @@ public class LocalNodeManager {
     return nodesByNameMap.get(nodeDetails.nodeName);
   }
 
-  private String getNodeFSRoot(
+  public String getNodeFSRoot(
       UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String res = getNodeRoot(userIntent, nodeInfo) + "/data/";
     new File(res).mkdirs();

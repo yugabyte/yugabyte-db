@@ -92,6 +92,28 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
         ", ", "\n"));
   }
 
+  Result<std::string> ReadTypeInfoThatMustMatch(Cluster& cluster) {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    return VERIFY_RESULT(conn.FetchAllAsString(R"(
+        SELECT
+            n.nspname,
+            t.typname,
+            t.oid,
+            t.typtype::text AS typtype_str,
+            c.relkind::text AS relkind_str
+        FROM pg_type t
+          LEFT JOIN pg_class c     ON t.typrelid     = c.oid
+          LEFT JOIN pg_namespace n ON t.typnamespace = n.oid
+        WHERE
+              t.typtype = 'e'                              -- enum type
+          OR (t.typtype = 'c' AND c.relkind = 'c')         -- user-defined composite type
+          OR  t.typtype = 'r'                              -- single range type
+          OR (t.typtype = 'b' AND NOT t.typcategory = 'A') -- base type that is not an array
+          OR (t.typtype = 'p' AND NOT t.typisdefined)      -- shell type
+        ORDER BY t.typnamespace ASC, t.typname ASC;
+      )", ", ", "\n"));
+  }
+
   Result<std::string> ReadSequenceOidInfo(Cluster& cluster) {
     auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
     return VERIFY_RESULT(conn.FetchAllAsString(
@@ -104,11 +126,12 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
   }
 
   void ExpectEqOidsNeedingPreservation(Cluster& consumer_cluster, Cluster& producer_cluster) {
-    // Enums pg_enum OIDs.
+    // pg_enum OIDs.
     auto producer_enum_label_info = ASSERT_RESULT(ReadEnumLabelInfo(producer_cluster));
     auto consumer_enum_label_info = ASSERT_RESULT(ReadEnumLabelInfo(consumer_cluster));
     ASSERT_EQ(producer_enum_label_info, consumer_enum_label_info)
         << "enum label OID information does not match";
+    LOG(INFO) << "pg_enum OIDs on both sides are:\n" << producer_enum_label_info;
 
     // Sequence pg_class OIDs.
     auto producer_sequence_info = ASSERT_RESULT(ReadSequenceOidInfo(producer_cluster));
@@ -116,6 +139,13 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     ASSERT_EQ(producer_sequence_info, consumer_sequence_info)
         << "sequence OID information does not match";
     LOG(INFO) << "Sequence pg_class OIDs on both sides are:\n" << producer_sequence_info;
+
+    // pg_type OIDs.
+    auto producer_type_info = ASSERT_RESULT(ReadTypeInfoThatMustMatch(producer_cluster));
+    auto consumer_type_info = ASSERT_RESULT(ReadTypeInfoThatMustMatch(consumer_cluster));
+    ASSERT_EQ(producer_type_info, consumer_type_info)
+        << "type OID information that must match does not match";
+    LOG(INFO) << "pg_type OIDs that must match on both sides are:\n" << producer_type_info;
   }
 
   void ExecutePgFile(const std::string& file_path) { ExecutePgFile(file_path, namespace_name); }
@@ -292,6 +322,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropEnum) {
   ASSERT_OK(TestPgRegress("create_enum.sql", "drop_enum.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropType) {
+  ASSERT_OK(TestPgRegress("create_type.sql", "drop_type.sql"));
 }
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTemp) {

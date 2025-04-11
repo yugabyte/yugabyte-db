@@ -12,6 +12,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Divider, Typography, makeStyles } from '@material-ui/core';
 import { AlertVariant, YBAlert, YBButton } from '../../../../components';
+import { getTaskTitle } from '../../TaskUtils';
 import { TaskBannerCompProps } from './dtos';
 import { useBannerCommonStyles } from './BannerStyles';
 
@@ -38,7 +39,7 @@ export const TaskSuccessBanner: FC<TaskBannerCompProps> = ({
         text={
           <div className={clsx(commonStyles.flex)}>
             <div className={commonStyles.flex}>
-              <Typography variant="body1">{currentTask.title}</Typography>
+              <Typography variant="body1">{getTaskTitle(currentTask)}</Typography>
             </div>
             <Divider orientation="vertical" className={commonStyles.divider} />
             <YBButton

@@ -66,8 +66,12 @@ func buildClusters(
 	if len(strings.TrimSpace(providerType)) == 0 {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
-	if strings.Compare(providerType, "azure") == 0 {
+	if strings.Compare(providerType, "azure") == 0 || strings.Compare(providerType, "az") == 0 {
 		providerType = util.AzureProviderType
+	} else if strings.Compare(providerType, "on-premises") == 0 {
+		providerType = util.OnpremProviderType
+	} else if strings.Compare(providerType, "k8s") == 0 {
+		providerType = util.K8sProviderType
 	}
 	providerListRequest = providerListRequest.ProviderCode(strings.ToLower(providerType))
 	providerName := v1.GetString("provider-name")
@@ -170,7 +174,9 @@ func buildClusters(
 
 	dedicatedNodes := v1.GetBool("dedicated-nodes")
 
-	var k8sTserverMemSize, k8sMasterMemSize, k8sTserverCPUCoreCount, k8sMasterCPUCoreCount []float64
+	k8sMasterMemSize := v1.GetFloat64("k8s-master-mem-size")
+	k8sMasterCPUCoreCount := v1.GetFloat64("k8s-master-cpu-core-count")
+	var k8sTserverMemSize, k8sTserverCPUCoreCount []float64
 
 	if providerType == util.K8sProviderType {
 		dedicatedNodes = true
@@ -199,32 +205,6 @@ func buildClusters(
 			}
 		} else {
 			k8sTserverCPUCoreCount = k8sTserverCPUCoreCountInterface.([]float64)
-		}
-
-		k8sMasterMemSizeInterface := v1.Get("k8s-master-mem-size")
-		if reflect.TypeOf(k8sMasterMemSizeInterface) == reflect.TypeOf(checkInterfaceType) {
-			k8sMasterMemSize = *util.Float64Slice(k8sMasterMemSizeInterface.([]interface{}))
-		} else if reflect.TypeOf(k8sMasterMemSizeInterface) == reflect.TypeOf(checkStringType) {
-			k8sMasterMemSize, err = util.GetFloat64SliceFromString(
-				k8sMasterMemSizeInterface.(string))
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-		} else {
-			k8sMasterMemSize = k8sMasterMemSizeInterface.([]float64)
-		}
-
-		k8sMasterCPUCoreCountInterface := v1.Get("k8s-master-cpu-core-count")
-		if reflect.TypeOf(k8sMasterCPUCoreCountInterface) == reflect.TypeOf(checkInterfaceType) {
-			k8sMasterCPUCoreCount = *util.Float64Slice(k8sMasterCPUCoreCountInterface.([]interface{}))
-		} else if reflect.TypeOf(k8sMasterCPUCoreCountInterface) == reflect.TypeOf(checkStringType) {
-			k8sMasterCPUCoreCount, err = util.GetFloat64SliceFromString(
-				k8sMasterCPUCoreCountInterface.(string))
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-		} else {
-			k8sMasterCPUCoreCount = k8sMasterCPUCoreCountInterface.([]float64)
 		}
 	}
 
@@ -673,20 +653,12 @@ func buildClusters(
 		}
 		if providerType == util.K8sProviderType {
 			k8sTserverMemSizeLen := len(k8sTserverMemSize)
-			k8sMasterMemSizeLen := len(k8sMasterMemSize)
 			k8sTserverCPUCoreCountLen := len(k8sTserverCPUCoreCount)
-			k8sMasterCPUCoreCountLen := len(k8sMasterCPUCoreCount)
 			if i == k8sTserverMemSizeLen {
 				k8sTserverMemSize = append(k8sTserverMemSize, 4)
 			}
-			if i == k8sMasterMemSizeLen {
-				k8sMasterMemSize = append(k8sMasterMemSize, 4)
-			}
 			if i == k8sTserverCPUCoreCountLen {
 				k8sTserverCPUCoreCount = append(k8sTserverCPUCoreCount, 2)
-			}
-			if i == k8sMasterCPUCoreCountLen {
-				k8sMasterCPUCoreCount = append(k8sTserverCPUCoreCount, 2)
 			}
 			userIntent := c.GetUserIntent()
 			userIntent.SetTserverK8SNodeResourceSpec(ybaclient.K8SNodeResourceSpec{
@@ -694,8 +666,8 @@ func buildClusters(
 				CpuCoreCount: k8sTserverCPUCoreCount[i],
 			})
 			userIntent.SetMasterK8SNodeResourceSpec(ybaclient.K8SNodeResourceSpec{
-				MemoryGib:    k8sMasterMemSize[i],
-				CpuCoreCount: k8sMasterCPUCoreCount[i],
+				MemoryGib:    k8sMasterMemSize,
+				CpuCoreCount: k8sMasterCPUCoreCount,
 			})
 			c.SetUserIntent(userIntent)
 		}

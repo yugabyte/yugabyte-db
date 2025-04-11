@@ -831,7 +831,16 @@ transformAssignmentIndirection(ParseState *pstate,
 			fstore->fieldnums = list_make1_int(attnum);
 			fstore->resulttype = baseTypeId;
 
-			/* If target is a domain, apply constraints */
+			/*
+			 * If target is a domain, apply constraints.  Notice that this
+			 * isn't totally right: the expression tree we build would check
+			 * the domain's constraints on a composite value with only this
+			 * one field populated or updated, possibly leading to an unwanted
+			 * failure.  The rewriter will merge together any subfield
+			 * assignments to the same table column, resulting in the domain's
+			 * constraints being checked only once after we've assigned to all
+			 * the fields that the INSERT or UPDATE means to.
+			 */
 			if (baseTypeId != targetTypeId)
 				return coerce_to_domain((Node *) fstore,
 										baseTypeId, baseTypeMod,
@@ -979,7 +988,12 @@ transformAssignmentSubscripts(ParseState *pstate,
 
 	result = (Node *) sbsref;
 
-	/* If target was a domain over container, need to coerce up to the domain */
+	/*
+	 * If target was a domain over container, need to coerce up to the domain.
+	 * As in transformAssignmentIndirection, this coercion is premature if the
+	 * query assigns to multiple elements of the container; but we'll fix that
+	 * during query rewrite.
+	 */
 	if (containerType != targetTypeId)
 	{
 		Oid			resulttype = exprType(result);
@@ -1516,7 +1530,8 @@ ExpandRowReference(ParseState *pstate, Node *expr,
  * drill down to find the ultimate defining expression and attempt to infer
  * the tupdesc from it.  We ereport if we can't determine the tupdesc.
  *
- * levelsup is an extra offset to interpret the Var's varlevelsup correctly.
+ * levelsup is an extra offset to interpret the Var's varlevelsup correctly
+ * when recursing.  Outside callers should pass zero.
  */
 TupleDesc
 expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
@@ -1604,11 +1619,17 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 					/*
 					 * Recurse into the sub-select to see what its Var refers
 					 * to.  We have to build an additional level of ParseState
-					 * to keep in step with varlevelsup in the subselect.
+					 * to keep in step with varlevelsup in the subselect;
+					 * furthermore, the subquery RTE might be from an outer
+					 * query level, in which case the ParseState for the
+					 * subselect must have that outer level as parent.
 					 */
-					ParseState	mypstate;
+					ParseState	mypstate = {0};
+					Index		levelsup;
 
-					MemSet(&mypstate, 0, sizeof(mypstate));
+					/* this loop must work, since GetRTEByRangeTablePosn did */
+					for (levelsup = 0; levelsup < netlevelsup; levelsup++)
+						pstate = pstate->parentParseState;
 					mypstate.parentParseState = pstate;
 					mypstate.p_rtable = rte->subquery->rtable;
 					/* don't bother filling the rest of the fake pstate */
@@ -1659,12 +1680,11 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 					 * Recurse into the CTE to see what its Var refers to. We
 					 * have to build an additional level of ParseState to keep
 					 * in step with varlevelsup in the CTE; furthermore it
-					 * could be an outer CTE.
+					 * could be an outer CTE (compare SUBQUERY case above).
 					 */
-					ParseState	mypstate;
+					ParseState	mypstate = {0};
 					Index		levelsup;
 
-					MemSet(&mypstate, 0, sizeof(mypstate));
 					/* this loop must work, since GetCTEForRTE did */
 					for (levelsup = 0;
 						 levelsup < rte->ctelevelsup + netlevelsup;

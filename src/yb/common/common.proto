@@ -150,9 +150,16 @@ message PgVectorIdxOptionsPB {
   optional PgHnswIndexOptionsPB hnsw = 7;
 }
 
+message PgHnswReadOptionsPB {
+  required uint32 ef_search = 1;
+}
+
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  oneof index_params {
+    PgHnswReadOptionsPB hnsw_options = 3;
+  }
 }
 
 message TablePropertiesPB {
@@ -677,6 +684,13 @@ enum ReplicationSlotLsnType {
   ReplicationSlotLsnType_HYBRID_TIME = 2;
 }
 
+// The type of ordering mode to be used while using logical replication.
+enum ReplicationSlotOrderingMode {
+  ReplicationSlotOrderingMode_UNSPECIFIED = 0;
+  ReplicationSlotOrderingMode_ROW = 1;
+  ReplicationSlotOrderingMode_TRANSACTION = 2;
+}
+
 message AshMetadataPB {
   // The root level request id. i.e. the request id
   // corresponding to the call from the application to YSQL-Pg/YCQL
@@ -732,6 +746,8 @@ message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
+  optional ReplicationSlotOrderingMode ordering_mode =
+    13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 message TserverMetricsInfoPB {

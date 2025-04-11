@@ -137,6 +137,7 @@ struct ExternalMiniClusterOptions {
 
   bool enable_ysql = false;
   bool enable_ysql_auth = false;
+  bool enable_ysql_conn_mgr = false;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -464,6 +465,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Waits until the tablet server with given uuid registers to the master leader.
   Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
+  Status WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline);
+  Status WaitForTabletServersToAcquireYSQLLeases(
+      const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline);
+
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
 
@@ -581,7 +586,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // chosen.
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& db_name = "yugabyte", std::optional<size_t> node_index = std::nullopt,
-      bool simple_query_protocol = false);
+      bool simple_query_protocol = false, const std::string& user = "postgres");
 
   Status MoveTabletLeader(
       const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,

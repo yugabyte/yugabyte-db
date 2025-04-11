@@ -183,16 +183,17 @@ AsyncRpc::AsyncRpc(
 AsyncRpc::~AsyncRpc() {
   if (trace_) {
     if (trace_->must_print()) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-                << "us. Trace:";
+      LOG(INFO)
+          << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
+          << ". Trace:";
       trace_->DumpToLogInfo(true);
     } else {
       const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
       if (print_trace_every_n > 0) {
         bool was_printed = false;
         YB_LOG_EVERY_N(INFO, print_trace_every_n)
-            << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-            << "us. Trace:" << Trace::SetTrue(&was_printed);
+            << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
+            << ". Trace:" << Trace::SetTrue(&was_printed);
         if (was_printed)
           trace_->DumpToLogInfo(true);
       }
@@ -243,7 +244,6 @@ void AsyncRpc::Finished(const Status& status) {
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
-
   }
   if (tablet_invoker_.Done(&new_status)) {
     if (tablet().is_split() ||
@@ -841,6 +841,7 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   tablet_invoker_.proxy()->ReadAsync(
     req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -918,6 +919,7 @@ Status ReadRpc::SwapResponses() {
 }
 
 void ReadRpc::NotifyBatcher(const Status& status) {
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
   batcher_->ProcessReadResponse(*this, status);
 }
 

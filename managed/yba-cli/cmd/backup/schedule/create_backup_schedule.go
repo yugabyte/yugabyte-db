@@ -249,23 +249,26 @@ var createBackupScheduleCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		enablePitr := util.MustGetFlagBool(cmd, "enable-pitr")
+
 		keyspaceTableList = buildKeyspaceTables(keyspaces)
 		requestBody := ybaclient.BackupRequestParams{
-			UniverseUUID:        universeUUID,
-			CustomerUUID:        util.GetStringPointer(authAPI.CustomerUUID),
-			ScheduleName:        util.GetStringPointer(scheduleName),
-			StorageConfigUUID:   storageUUID,
-			BackupType:          util.GetStringPointer(backupType),
-			KeyspaceTableList:   &keyspaceTableList,
-			UseTablespaces:      util.GetBoolPointer(useTablespaces),
-			Sse:                 util.GetBoolPointer(sse),
-			TimeBeforeDelete:    util.GetInt64Pointer(timeBeforeDeleteInMs),
-			SchedulingFrequency: util.GetInt64Pointer(scheduleFrequencyInSecs * 1000),
-			FrequencyTimeUnit:   util.GetStringPointer(frequencyTimeUnit),
-			ExpiryTimeUnit:      util.GetStringPointer("MILLISECONDS"),
-			EnableVerboseLogs:   util.GetBoolPointer(enableVerboseLogs),
-			Parallelism:         util.GetInt32Pointer(int32(parallelism)),
-			BackupCategory:      util.GetStringPointer(strings.ToUpper(category)),
+			UniverseUUID:             universeUUID,
+			CustomerUUID:             util.GetStringPointer(authAPI.CustomerUUID),
+			ScheduleName:             util.GetStringPointer(scheduleName),
+			StorageConfigUUID:        storageUUID,
+			BackupType:               util.GetStringPointer(backupType),
+			KeyspaceTableList:        &keyspaceTableList,
+			UseTablespaces:           util.GetBoolPointer(useTablespaces),
+			Sse:                      util.GetBoolPointer(sse),
+			TimeBeforeDelete:         util.GetInt64Pointer(timeBeforeDeleteInMs),
+			SchedulingFrequency:      util.GetInt64Pointer(scheduleFrequencyInSecs * 1000),
+			FrequencyTimeUnit:        util.GetStringPointer(frequencyTimeUnit),
+			ExpiryTimeUnit:           util.GetStringPointer("MILLISECONDS"),
+			EnableVerboseLogs:        util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:              util.GetInt32Pointer(int32(parallelism)),
+			BackupCategory:           util.GetStringPointer(strings.ToUpper(category)),
+			EnablePointInTimeRestore: util.GetBoolPointer(enablePitr),
 		}
 
 		if (len(strings.TrimSpace(cronExpression))) > 0 {
@@ -495,5 +498,7 @@ func init() {
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
 	createBackupScheduleCmd.Flags().Int("parallelism", 8,
 		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
+	createBackupScheduleCmd.Flags().Bool("enable-pitr", false,
+		"[Optional] Enable PITR for the backup schedule. (default false)")
 
 }

@@ -72,14 +72,18 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
     RETURN_NOT_OK(conn.Execute(
         "SET yb_binary_restore = true;"
         "SET yb_ignore_pg_class_oids = false;"
+        "SET yb_ignore_relfilenode_ids = false;"
         "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('100000'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('100000'::pg_catalog.oid);"
         "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('100001'::pg_catalog.oid);"
         "CREATE SEQUENCE sequence_foo START 177777 CACHE 1 INCREMENT BY 42"));
 
     RETURN_NOT_OK(conn.Execute(
         "SET yb_binary_restore = true;"
         "SET yb_ignore_pg_class_oids = false;"
+        "SET yb_ignore_relfilenode_ids = false;"
         "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('200000'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('200000'::pg_catalog.oid);"
         "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('200001'::pg_catalog.oid);"
         "CREATE SEQUENCE sequence_bar START 277777 CACHE 1 INCREMENT BY 399"));
 

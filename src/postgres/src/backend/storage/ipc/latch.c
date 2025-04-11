@@ -543,48 +543,54 @@ WaitLatchOrSocket(Latch *latch, int wakeEvents, pgsocket sock,
 	WaitEvent	event;
 	WaitEventSet *set = CreateWaitEventSet(CurrentMemoryContext, 3);
 
-	if (wakeEvents & WL_TIMEOUT)
-		Assert(timeout >= 0);
-	else
-		timeout = -1;
-
-	if (wakeEvents & WL_LATCH_SET)
-		AddWaitEventToSet(set, WL_LATCH_SET, PGINVALID_SOCKET,
-						  latch, NULL);
-
-	/* Postmaster-managed callers must handle postmaster death somehow. */
-	Assert(!IsUnderPostmaster ||
-		   (wakeEvents & WL_EXIT_ON_PM_DEATH) ||
-		   (wakeEvents & WL_POSTMASTER_DEATH));
-
-	if ((wakeEvents & WL_POSTMASTER_DEATH) && IsUnderPostmaster)
-		AddWaitEventToSet(set, WL_POSTMASTER_DEATH, PGINVALID_SOCKET,
-						  NULL, NULL);
-
-	if ((wakeEvents & WL_EXIT_ON_PM_DEATH) && IsUnderPostmaster)
-		AddWaitEventToSet(set, WL_EXIT_ON_PM_DEATH, PGINVALID_SOCKET,
-						  NULL, NULL);
-
-	if (wakeEvents & WL_SOCKET_MASK)
+	PG_TRY();
 	{
-		int			ev;
+		if (wakeEvents & WL_TIMEOUT)
+			Assert(timeout >= 0);
+		else
+			timeout = -1;
 
-		ev = wakeEvents & WL_SOCKET_MASK;
-		AddWaitEventToSet(set, ev, sock, NULL, NULL);
+		if (wakeEvents & WL_LATCH_SET)
+			AddWaitEventToSet(set, WL_LATCH_SET, PGINVALID_SOCKET,
+							  latch, NULL);
+
+		/* Postmaster-managed callers must handle postmaster death somehow. */
+		Assert(!IsUnderPostmaster ||
+			   (wakeEvents & WL_EXIT_ON_PM_DEATH) ||
+			   (wakeEvents & WL_POSTMASTER_DEATH));
+
+		if ((wakeEvents & WL_POSTMASTER_DEATH) && IsUnderPostmaster)
+			AddWaitEventToSet(set, WL_POSTMASTER_DEATH, PGINVALID_SOCKET,
+							  NULL, NULL);
+
+		if ((wakeEvents & WL_EXIT_ON_PM_DEATH) && IsUnderPostmaster)
+			AddWaitEventToSet(set, WL_EXIT_ON_PM_DEATH, PGINVALID_SOCKET,
+							  NULL, NULL);
+
+		if (wakeEvents & WL_SOCKET_MASK)
+		{
+			int			ev;
+
+			ev = wakeEvents & WL_SOCKET_MASK;
+			AddWaitEventToSet(set, ev, sock, NULL, NULL);
+		}
+
+		rc = WaitEventSetWait(set, timeout, &event, 1, wait_event_info);
+
+		if (rc == 0)
+			ret |= WL_TIMEOUT;
+		else
+		{
+			ret |= event.events & (WL_LATCH_SET |
+								   WL_POSTMASTER_DEATH |
+								   WL_SOCKET_MASK);
+		}
 	}
-
-	rc = WaitEventSetWait(set, timeout, &event, 1, wait_event_info);
-
-	if (rc == 0)
-		ret |= WL_TIMEOUT;
-	else
+	PG_FINALLY();
 	{
-		ret |= event.events & (WL_LATCH_SET |
-							   WL_POSTMASTER_DEATH |
-							   WL_SOCKET_MASK);
+		FreeWaitEventSet(set);
 	}
-
-	FreeWaitEventSet(set);
+	PG_END_TRY();
 
 	return ret;
 }
@@ -1933,6 +1939,38 @@ WaitEventSetWaitBlock(WaitEventSet *set, int cur_timeout,
 		{
 			WaitEventAdjustWin32(set, cur_event);
 			cur_event->reset = false;
+		}
+
+		/*
+		 * We associate the socket with a new event handle for each
+		 * WaitEventSet.  FD_CLOSE is only generated once if the other end
+		 * closes gracefully.  Therefore we might miss the FD_CLOSE
+		 * notification, if it was delivered to another event after we stopped
+		 * waiting for it.  Close that race by peeking for EOF after setting
+		 * up this handle to receive notifications, and before entering the
+		 * sleep.
+		 *
+		 * XXX If we had one event handle for the lifetime of a socket, we
+		 * wouldn't need this.
+		 */
+		if (cur_event->events & WL_SOCKET_READABLE)
+		{
+			char		c;
+			WSABUF		buf;
+			DWORD		received;
+			DWORD		flags;
+
+			buf.buf = &c;
+			buf.len = 1;
+			flags = MSG_PEEK;
+			if (WSARecv(cur_event->fd, &buf, 1, &received, &flags, NULL, NULL) == 0)
+			{
+				occurred_events->pos = cur_event->pos;
+				occurred_events->user_data = cur_event->user_data;
+				occurred_events->events = WL_SOCKET_READABLE;
+				occurred_events->fd = cur_event->fd;
+				return 1;
+			}
 		}
 
 		/*

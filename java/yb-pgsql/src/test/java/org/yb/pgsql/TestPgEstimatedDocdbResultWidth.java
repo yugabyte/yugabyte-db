@@ -7,9 +7,14 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
+import static org.yb.AssertionWrappers.assertEquals;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLWarning;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.After;
 import org.junit.Before;
@@ -621,6 +626,41 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       testDocdbResultWidhEstimationHelper(stmt,
         "/*+ IndexOnlyScan(test_table test_index_4) */ SELECT 0 FROM test_table",
         "test_table", 136);
+    }
+  }
+
+  /**
+   * Test that there aren't any warnings generated for valid queries (#24819).
+   */
+  @Test
+  public void testNoRelcacheReferenceLeakWithExpressionIndex() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET yb_enable_base_scans_cost_model = on");
+      stmt.execute("CREATE TABLE t (a int, b int)");
+      stmt.execute("CREATE INDEX ON t ((a % 10) asc)");
+
+      // Capture warnings for select query
+      List<SQLWarning> selectWarnings = new ArrayList<>();
+      ResultSet rs = stmt.executeQuery("SELECT * FROM t WHERE a % 10 = 0");
+      SQLWarning warning = stmt.getWarnings();
+      while (warning != null) {
+        selectWarnings.add(warning);
+        warning = warning.getNextWarning();
+      }
+      rs.close();
+
+      // Capture warnings for explain query
+      List<SQLWarning> explainWarnings = new ArrayList<>();
+      rs = stmt.executeQuery("EXPLAIN SELECT * FROM t WHERE a % 10 = 0");
+      warning = stmt.getWarnings();
+      while (warning != null) {
+        explainWarnings.add(warning);
+        warning = warning.getNextWarning();
+      }
+      rs.close();
+
+      assertEquals("No warnings should be generated for SELECT query", 0, selectWarnings.size());
+      assertEquals("No warnings should be generated for EXPLAIN query", 0, explainWarnings.size());
     }
   }
 }

@@ -15,11 +15,9 @@ WITH aaa AS (SELECT 1 AS a, 'Foo' AS b) INSERT INTO upsert_test
   VALUES (1, 'Bar') ON CONFLICT(a)
   DO UPDATE SET (b, a) = (SELECT b, a FROM aaa) RETURNING *;
 -- correlated sub-select:
-SET yb_insert_on_conflict_read_batch_size = 0; -- TODO(#25147)
 WITH aaa AS (SELECT 1 AS ctea, ' Foo' AS cteb) INSERT INTO upsert_test
   VALUES (1, 'Bar'), (2, 'Baz') ON CONFLICT(a)
   DO UPDATE SET (b, a) = (SELECT upsert_test.b||cteb, upsert_test.a FROM aaa) RETURNING *;
-RESET yb_insert_on_conflict_read_batch_size; -- TODO(#25147)
 
 DROP TABLE upsert_test;
 

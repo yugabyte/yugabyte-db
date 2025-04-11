@@ -62,6 +62,9 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
       const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
 
+  Result<tserver::GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo(
+      const tserver::GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) override;
+
   void AdminExecutePgsql(
       const tserver::AdminExecutePgsqlRequestPB* req, tserver::AdminExecutePgsqlResponsePB* resp,
       rpc::RpcContext context) override;

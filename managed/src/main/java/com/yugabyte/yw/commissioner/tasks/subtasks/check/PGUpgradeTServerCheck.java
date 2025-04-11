@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -41,6 +42,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeManager nodeManager;
   private final KubernetesManagerFactory kubernetesManagerFactory;
+  private final LocalNodeManager localNodeManager;
 
   private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
 
@@ -59,11 +61,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
       NodeManager nodeManager,
-      KubernetesManagerFactory kubernetesManagerFactory) {
+      KubernetesManagerFactory kubernetesManagerFactory,
+      LocalNodeManager localNodeManager) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeManager = nodeManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
+    this.localNodeManager = localNodeManager;
   }
 
   @Override
@@ -237,6 +241,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   }
 
   private void runCheckOnNode(Universe universe, NodeDetails node) {
+    boolean localProviderTest =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.local);
     List<String> command = new ArrayList<>();
     Architecture arch = universe.getUniverseDetails().arch;
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
@@ -248,9 +259,20 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             + "/yb-software/"
             + extractVersionName(ybServerPackage)
             + "/postgres/bin/pg_upgrade";
+    if (localProviderTest) {
+      pgUpgradeBinaryLocation =
+          localNodeManager.getVersionBinPath(taskParams().ybSoftwareVersion).replace("/bin", "")
+              + "/postgres/bin/pg_upgrade";
+    }
     command.add(pgUpgradeBinaryLocation);
     command.add("-d");
     String pgDataDir = Util.getDataDirectoryPath(universe, node, config) + "/pg_data";
+    if (localProviderTest) {
+      pgDataDir =
+          localNodeManager.getNodeFSRoot(
+                  primaryCluster.userIntent, localNodeManager.getNodeInfo(node))
+              + "/pg_data";
+    }
     command.add(pgDataDir);
     command.add("--old-host");
     if (primaryCluster.userIntent.enableYSQLAuth) {
@@ -277,13 +299,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .timeoutSecs(PG_UPGRADE_CHECK_TIMEOUT)
             .build();
 
-    log.info("Running PG15 upgrade check on node: {} with command: ", node.nodeName, command);
+    log.info("Running PG15 upgrade check on node: {} with command: {}", node.nodeName, command);
     ShellResponse response =
         nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
     if (response.code != 0) {
       log.info(
           "PG upgrade check failed on node: {} with error: {}", node.nodeName, response.message);
       throw new RuntimeException("PG15 upgrade check failed on node: " + node.nodeName);
+    } else {
+      log.info("PG upgrade check passed on node: {}", node.nodeName);
     }
   }
 

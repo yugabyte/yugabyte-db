@@ -189,19 +189,31 @@ YBPgErrorCode FetchErrorCode(YbcStatus s) {
     const uint8_t* txn_err_ptr = wrapper->ErrorData(TransactionErrorTag::kCategory);
     if (txn_err_ptr != nullptr) {
       switch (TransactionErrorTag::Decode(txn_err_ptr)) {
-        case TransactionErrorCode::kAborted: FALLTHROUGH_INTENDED;
-        case TransactionErrorCode::kReadRestartRequired: FALLTHROUGH_INTENDED;
+        case TransactionErrorCode::kNone:
+          break;
+        case TransactionErrorCode::kAborted:
+          result = YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
+          break;
+        case TransactionErrorCode::kReadRestartRequired:
+          result = YBPgErrorCode::YB_PG_YB_RESTART_READ;
+          break;
         case TransactionErrorCode::kConflict:
-          result = YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+          result = YBPgErrorCode::YB_PG_YB_TXN_CONFLICT;
           break;
         case TransactionErrorCode::kSnapshotTooOld:
           result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
           break;
         case TransactionErrorCode::kDeadlock:
-          result = YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED;
+          result = YBPgErrorCode::YB_PG_YB_DEADLOCK;
           break;
-        case TransactionErrorCode::kNone: FALLTHROUGH_INTENDED;
+        case TransactionErrorCode::kSkipLocking:
+          result = YBPgErrorCode::YB_PG_YB_TXN_SKIP_LOCKING;
+          break;
+        case TransactionErrorCode::kLockNotFound:
+          result = YBPgErrorCode::YB_PG_YB_TXN_LOCK_NOT_FOUND;
+          break;
         default:
+          result = YBPgErrorCode::YB_PG_YB_TXN_ERROR;
           break;
       }
     }
@@ -268,10 +280,6 @@ uint32_t YBCStatusPgsqlError(YbcStatus s) {
   return to_underlying(FetchErrorCode(s));
 }
 
-uint16_t YBCStatusTransactionError(YbcStatus s) {
-  return to_underlying(TransactionError(*StatusWrapper(s)).value());
-}
-
 void YBCFreeStatus(YbcStatus s) {
   FreeYBCStatus(s);
 }
@@ -325,38 +333,6 @@ const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
     }
   }
   return result;
-}
-
-bool YBCIsRestartReadError(uint16_t txn_errcode) {
-  return txn_errcode == to_underlying(TransactionErrorCode::kReadRestartRequired);
-}
-
-bool YBCIsTxnConflictError(uint16_t txn_errcode) {
-  return txn_errcode == to_underlying(TransactionErrorCode::kConflict);
-}
-
-bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
-  return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
-}
-
-bool YBCIsTxnDeadlockError(uint16_t txn_errcode) {
-  return txn_errcode == to_underlying(TransactionErrorCode::kDeadlock);
-}
-
-bool YBCIsTxnAbortedError(uint16_t txn_errcode) {
-  return txn_errcode == to_underlying(TransactionErrorCode::kAborted);
-}
-
-bool YBCIsAdvisoryLockNotFoundError(uint16_t txn_errcode) {
-  return txn_errcode == to_underlying(TransactionErrorCode::kLockNotFound);
-}
-
-const char* YBCTxnErrCodeToString(uint16_t txn_errcode) {
-  return YBCPAllocStdString(ToString(TransactionErrorCode(txn_errcode)));
-}
-
-uint16_t YBCGetTxnConflictErrorCode() {
-  return to_underlying(TransactionErrorCode::kConflict);
 }
 
 YbcStatus YBCInit(const char* argv0,

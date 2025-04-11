@@ -2,20 +2,11 @@ TOP_BUILDDIR ?= .
 DEVOPS_HOME=$(CURDIR)/../devops
 GOLINES := ./bin/golines
 
-
-VERSION_NUMBER ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.version_number')
-BUILD_NUM ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_number')
-
-ifeq ($(BUILD_NUM),"PRE_RELEASE")
-    VERSION := $(shell echo ${VERSION_NUMBER} | tr -d '"')-$(shell echo ${BUILD_NUM} | tr -d '"')
-else
-    VERSION := $(shell echo ${VERSION_NUMBER} | tr -d '"')-b$(shell echo ${BUILD_NUM} | tr -d '"')
-endif
-
+VERSION := $(strip $(shell ../../build-support/get_version.sh))
 
 # go compile options
-GOOS ?= linux
-GOARCH ?= amd64
+GOOS ?= $(shell uname -s | tr A-Z a-z)
+GOARCH := $(shell [[ $$(uname -m) == "x86_64" ]] && echo -n 'amd64' || echo -n 'arm64')
 
 # Build Tags
 BUILD_TYPE ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_type')
@@ -33,8 +24,10 @@ OS_ARCH := ${GOOS}-${GOARCH}
 
 GO_SOURCE_FILES := $(shell find . -name \*.go -type f -print)
 
-
 all: yba package
+
+release: yba package
+	@cp $(PACKAGE_NAME) $(DESTINATION)
 
 echo:
 	@echo $(CURDIR)
@@ -67,8 +60,6 @@ endif
 	@echo "Folder path for ${PACKAGE_DIR}:"
 	@realpath "${PACKAGE_DIR}"
 
-
-
 .PHONY: test
 test:
 
@@ -81,9 +72,17 @@ clean-package:
 	rm -rf ${PACKAGE_DIR}
 	rm -rf ${PACKAGE_NAME}
 
+
 .PHONY: updateclient
-updateclient:
+updateclient: updatev1client updatev2client
+
+.PHONY: updatev1client
+updatev1client:
 	go get github.com/yugabyte/platform-go-client
+
+.PHONY: updatev2client
+updatev2client:
+	go get github.com/yugabyte/platform-go-client/v2
 
 .PHONY: build
 build:

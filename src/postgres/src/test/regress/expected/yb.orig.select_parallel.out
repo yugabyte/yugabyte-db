@@ -28,7 +28,7 @@ explain (costs off)
          ->  Seq Scan on part_pa_test_p1 pa2_1
          ->  Seq Scan on part_pa_test_p2 pa2_2
    SubPlan 2
-     ->  Result
+     ->  Result *RESULT*
    SubPlan 1
      ->  Append
            ->  Seq Scan on part_pa_test_p1 pa1_1
@@ -734,19 +734,19 @@ ORDER BY 1;
                          QUERY PLAN                          
 -------------------------------------------------------------
  Sort
-   Sort Key: tenk1.unique1
+   Sort Key: tenk1_1.unique1
    ->  Append
-         ->  Seq Scan on tenk1
+         ->  Seq Scan on tenk1 tenk1_1
                Storage Filter: (fivethous = $0)
                InitPlan 1 (returns $0)
                  ->  Limit
-                       ->  Seq Scan on tenk1 tenk1_2
+                       ->  Seq Scan on tenk1
                              Storage Filter: (fivethous = 1)
-         ->  Seq Scan on tenk1 tenk1_1
+         ->  Seq Scan on tenk1 tenk1_3
                Storage Filter: (fivethous = $1)
                InitPlan 2 (returns $1)
                  ->  Limit
-                       ->  Seq Scan on tenk1 tenk1_3
+                       ->  Seq Scan on tenk1 tenk1_2
                              Storage Filter: (fivethous = 1)
 (15 rows)
 

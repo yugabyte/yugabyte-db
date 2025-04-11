@@ -2,13 +2,13 @@
 -- FLOAT4
 --
 
-CREATE TABLE FLOAT4_TBL (yborder int, f1  float4);
+CREATE TABLE FLOAT4_TBL (f1  float4);
 
-INSERT INTO FLOAT4_TBL(yborder, f1) VALUES (0, '    0.0');
-INSERT INTO FLOAT4_TBL(yborder, f1) VALUES (1, '1004.30   ');
-INSERT INTO FLOAT4_TBL(yborder, f1) VALUES (2, '     -34.84    ');
-INSERT INTO FLOAT4_TBL(yborder, f1) VALUES (3, '1.2345678901234e+20');
-INSERT INTO FLOAT4_TBL(yborder, f1) VALUES (4, '1.2345678901234e-20');
+INSERT INTO FLOAT4_TBL(f1) VALUES ('    0.0');
+INSERT INTO FLOAT4_TBL(f1) VALUES ('1004.30   ');
+INSERT INTO FLOAT4_TBL(f1) VALUES ('     -34.84    ');
+INSERT INTO FLOAT4_TBL(f1) VALUES ('1.2345678901234e+20');
+INSERT INTO FLOAT4_TBL(f1) VALUES ('1.2345678901234e-20');
 
 -- test for over and under flow
 INSERT INTO FLOAT4_TBL(f1) VALUES ('10e70');
@@ -54,45 +54,48 @@ SELECT 'nan'::float4 / 'nan'::float4;
 SELECT 'nan'::float4 / '0'::float4;
 SELECT 'nan'::numeric::float4;
 
-SELECT f1 FROM FLOAT4_TBL ORDER BY yborder;
+SELECT * FROM FLOAT4_TBL;
 
-SELECT f.f1 FROM FLOAT4_TBL f WHERE f.f1 <> '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT4_TBL f WHERE f.f1 <> '1004.3';
 
-SELECT f.f1 FROM FLOAT4_TBL f WHERE f.f1 = '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT4_TBL f WHERE f.f1 = '1004.3';
 
-SELECT f.f1 FROM FLOAT4_TBL f WHERE '1004.3' > f.f1 ORDER BY yborder;
+SELECT f.* FROM FLOAT4_TBL f WHERE '1004.3' > f.f1;
 
-SELECT f.f1 FROM FLOAT4_TBL f WHERE  f.f1 < '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT4_TBL f WHERE  f.f1 < '1004.3';
 
-SELECT f.f1 FROM FLOAT4_TBL f WHERE '1004.3' >= f.f1 ORDER BY yborder;
+SELECT f.* FROM FLOAT4_TBL f WHERE '1004.3' >= f.f1;
 
-SELECT f.f1 FROM FLOAT4_TBL f WHERE  f.f1 <= '1004.3' ORDER BY yborder;
+SELECT f.* FROM FLOAT4_TBL f WHERE  f.f1 <= '1004.3';
 
 SELECT f.f1, f.f1 * '-10' AS x FROM FLOAT4_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1, f.f1 + '-10' AS x FROM FLOAT4_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1, f.f1 / '-10' AS x FROM FLOAT4_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 SELECT f.f1, f.f1 - '-10' AS x FROM FLOAT4_TBL f
-   WHERE f.f1 > '0.0' ORDER BY yborder;
+   WHERE f.f1 > '0.0';
 
 -- test divide by zero
-SELECT f.f1 / '0.0' from FLOAT4_TBL f ORDER BY yborder;
+SELECT f.f1 / '0.0' from FLOAT4_TBL f;
 
-SELECT f1 FROM FLOAT4_TBL ORDER BY yborder;
+SELECT * FROM FLOAT4_TBL;
 
 -- test the unary float4abs operator
-SELECT f.f1, @f.f1 AS abs_f1 FROM FLOAT4_TBL f ORDER BY yborder;
+SELECT f.f1, @f.f1 AS abs_f1 FROM FLOAT4_TBL f;
+
+WITH ybtmp AS (DELETE FROM FLOAT4_TBL WHERE FLOAT4_TBL.f1 > '0.0' RETURNING *)
+    	INSERT INTO FLOAT4_TBL SELECT * FROM ybtmp; -- YB: imitate PG ctid reallocation for the following update
 
 UPDATE FLOAT4_TBL
-   SET f1 = FLOAT4_TBL.f1 * '-1', yborder = yborder + 100
+   SET f1 = FLOAT4_TBL.f1 * '-1'
    WHERE FLOAT4_TBL.f1 > '0.0';
 
-SELECT f1 FROM FLOAT4_TBL ORDER BY yborder;
+SELECT * FROM FLOAT4_TBL;
 
 -- test edge-case coercions to integer
 SELECT '32767.4'::float4::int2;

@@ -73,6 +73,16 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
 PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
     "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
     "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+VNET_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/virtualNetworks/(?P<vnet_name>[^/]*)")
+SUBNET_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/virtualNetworks/(?P<vnet_name>[^/]*)"
+    "/subnets/(?P<subnet_name>[^/]*)")
+SECURITY_GROUP_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/networkSecurityGroups/(?P<security_group_name>[^/]*)")
 CLOUDINIT_EPHEMERAL_MNTPOINT = {
     "mounts": [
         ["ephemeral0", "/mnt/resource"]
@@ -804,12 +814,24 @@ class AzureCloudAdmin():
         logging.info("[app] Sucessfully destroyed instance {}".format(vm_name))
 
     def get_subnet_id(self, vnet, subnet):
+        # subnet URN can be used directly
+        if SUBNET_ID_REGEX.match(subnet):
+            return subnet
+        # vnet URN, subnet name
+        vnet_match = VNET_ID_REGEX.match(vnet)
+        if vnet_match:
+            return SUBNET_ID_FORMAT_STRING.format(vnet_match.group('subscription_id'),
+                                                  vnet_match.group('resource_group'),
+                                                  vnet_match.group('vnet_name'), subnet)
+        # vnet name, subnet name
         return SUBNET_ID_FORMAT_STRING.format(
             NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, vnet, subnet
         )
 
     def get_nsg_id(self, nsg):
         if nsg:
+            if SECURITY_GROUP_ID_REGEX.match(nsg):
+                return nsg
             return NSG_ID_FORMAT_STRING.format(
                 NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, nsg
             )
@@ -1231,17 +1253,17 @@ class AzureCloudAdmin():
         parameters, subscr_id = self._get_dns_record_set_args(
             dns_zone_id, domain_name_prefix, ip_list)
         # Setting if_none_match="*" will cause this to error if a record with the name exists.
-        return self.get_dns_client(subscr_id).record_sets.begin_create_or_update(if_none_match="*",
-                                                                                 **parameters)
+        return self.get_dns_client(subscr_id).record_sets.create_or_update(if_none_match="*",
+                                                                           **parameters)
 
     def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
         parameters, subscr_id = self._get_dns_record_set_args(
             dns_zone_id, domain_name_prefix, ip_list)
-        return self.get_dns_client(subscr_id).record_sets.begin_update(**parameters)
+        return self.get_dns_client(subscr_id).record_sets.update(**parameters)
 
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
         parameters, subscr_id = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
-        return self.get_dns_client(subscr_id).record_sets.begin_delete(**parameters)
+        return self.get_dns_client(subscr_id).record_sets.delete(**parameters)
 
     def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
         zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
@@ -1250,7 +1272,7 @@ class AzureCloudAdmin():
             "resource_group_name": rg,
             "private_zone_name": zone_name,
             "record_type": "A",
-            "relative_record_set_name": "{}.{}".format(domain_name_prefix, zone_name),
+            "relative_record_set_name": domain_name_prefix,
         }
 
         if ip_list is not None:

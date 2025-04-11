@@ -7,6 +7,7 @@
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -67,7 +68,7 @@ CREATE TABLE public.chat_user (
     "chatID" text NOT NULL,
     CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -138,7 +139,7 @@ CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
     col4 integer,
     CONSTRAINT hash_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY((col1) HASH, col2 ASC) INCLUDE (col3, col4)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -170,7 +171,7 @@ CREATE TABLE public.level0 (
     CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
     CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -238,7 +239,7 @@ CREATE TABLE public.level1_1 (
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
 INHERITS (public.level0)
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -268,7 +269,7 @@ CREATE TABLE public.level2_0 (
     c3 text NOT NULL
 )
 INHERITS (public.level1_0)
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -305,7 +306,7 @@ CREATE TABLE public.level2_1 (
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
 )
 INHERITS (public.level1_0, public.level1_1)
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -339,7 +340,7 @@ CREATE TABLE public.p1 (
     v text,
     CONSTRAINT p1_pkey PRIMARY KEY((k) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -373,7 +374,7 @@ CREATE TABLE public.p2 (
     v text,
     CONSTRAINT p2_pkey PRIMARY KEY((k) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -409,7 +410,7 @@ CREATE TABLE public.part_uniq_const (
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
 PARTITION BY RANGE (v1)
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -444,7 +445,7 @@ CREATE TABLE public.part_uniq_const_30_50 (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_30_50_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -479,7 +480,7 @@ CREATE TABLE public.part_uniq_const_50_100 (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_50_100_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -514,7 +515,7 @@ CREATE TABLE public.part_uniq_const_default (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_default_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -665,7 +666,7 @@ CREATE TABLE public.rls_private (
     v text,
     CONSTRAINT rls_private_pkey PRIMARY KEY((k) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
 
@@ -701,7 +702,7 @@ CREATE TABLE public.rls_public (
     v text,
     CONSTRAINT rls_public_pkey PRIMARY KEY((k) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -729,7 +730,7 @@ CREATE TABLE public.tbl1 (
     a integer NOT NULL,
     b integer
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -765,7 +766,7 @@ CREATE TABLE public.tbl10 (
     d integer,
     CONSTRAINT tbl10_pkey PRIMARY KEY((a, c) HASH, b ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -870,7 +871,7 @@ CREATE TABLE public.tbl13 (
     d integer,
     CONSTRAINT tbl13_pkey PRIMARY KEY((b, c) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -926,7 +927,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16390'::pg_catalog.o
 CREATE TABLE public.tbl2 (
     a integer NOT NULL
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1022,7 +1023,7 @@ CREATE TABLE public.tbl4 (
     b integer NOT NULL,
     CONSTRAINT tbl4_pkey PRIMARY KEY((a) HASH, b ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1057,7 +1058,7 @@ CREATE TABLE public.tbl5 (
     c integer,
     CONSTRAINT tbl5_pkey PRIMARY KEY((a) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1090,7 +1091,7 @@ CREATE TABLE public.tbl6 (
     a integer NOT NULL,
     CONSTRAINT tbl6_pkey PRIMARY KEY((a) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1126,7 +1127,7 @@ CREATE TABLE public.tbl7 (
     d integer,
     CONSTRAINT tbl7_pkey PRIMARY KEY((b) HASH, c ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1162,7 +1163,7 @@ CREATE TABLE public.tbl8 (
     d integer NOT NULL,
     CONSTRAINT tbl8_pkey PRIMARY KEY((a) HASH, d ASC)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1197,7 +1198,7 @@ CREATE TABLE public.tbl9 (
     c integer,
     CONSTRAINT tbl9_pkey PRIMARY KEY((a, b) HASH)
 )
-SPLIT INTO 6 TABLETS;
+SPLIT INTO 2 TABLETS;
 
 
 \if :use_roles
@@ -1891,7 +1892,7 @@ CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 AS
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16535'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16535'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 6 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 2 TABLETS;
 
 
 --
@@ -1903,7 +1904,7 @@ CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16424'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16424'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 6 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 2 TABLETS;
 
 
 --
@@ -1915,7 +1916,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPL
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16425'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16425'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 6 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 2 TABLETS;
 
 
 --
@@ -1951,7 +1952,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16428'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16428'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 6 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 2 TABLETS;
 
 
 --
@@ -2011,7 +2012,7 @@ CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16529'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16529'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 6 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 2 TABLETS;
 
 
 --

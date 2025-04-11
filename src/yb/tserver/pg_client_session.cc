@@ -101,11 +101,13 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
+DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
+DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
@@ -224,9 +226,11 @@ TransactionErrorCode GetTransactionErrorCode(const Status& status) {
 
 struct PgClientSessionOperation {
   std::shared_ptr<client::YBPgsqlOp> op;
-  // TODO(vector_index) Support multiple reads in a single perform.
-  std::unique_ptr<rpc::Sidecars> vector_index_sidecars;
   std::unique_ptr<PgsqlReadRequestPB> vector_index_read_request;
+
+  // TODO(vector_index) Support multiple reads in a single perform.
+  std::unique_ptr<rpc::Sidecars> vector_index_sidecars{};
+  MonoTime vector_index_fetch_start{};
 };
 
 using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
@@ -450,11 +454,13 @@ Result<PgClientSessionOperations> PrepareOperations(
               table, *vector_index_sidecars, new_read.get());
           ops.push_back(PgClientSessionOperation {
             .op = std::move(read_op),
-            .vector_index_sidecars = nullptr,
             .vector_index_read_request = std::move(new_read),
           });
         }
         ops[first_idx].vector_index_sidecars = std::move(vector_index_sidecars);
+        if (FLAGS_vector_index_dump_stats) {
+          ops[first_idx].vector_index_fetch_start = MonoTime::Now();
+        }
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {
@@ -462,7 +468,6 @@ Result<PgClientSessionOperations> PrepareOperations(
         }
         ops.push_back(PgClientSessionOperation {
           .op = std::move(read_op),
-          .vector_index_sidecars = nullptr,
           .vector_index_read_request = nullptr,
         });
       }
@@ -475,7 +480,6 @@ Result<PgClientSessionOperations> PrepareOperations(
       }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
-        .vector_index_sidecars = nullptr,
         .vector_index_read_request = nullptr,
       });
     }
@@ -510,42 +514,6 @@ std::byte* SerializeWithCachedSizesToArray(
     const google::protobuf::MessageLite& msg, std::byte* out) {
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
-
-class VectorIndexPartitionResult {
- public:
-  VectorIndexPartitionResult(
-      std::reference_wrapper<const PgsqlResponsePB> response, const RefCntSlice& sidecars)
-      : response_(response), sidecars_(sidecars) {}
-
-  uint64_t Distance() const {
-    return response_.vector_index_distances()[index_];
-  }
-
-  bool Finished() const {
-    return index_ >= response_.vector_index_distances().size();
-  }
-
-  bool Consume(PgsqlResponsePB& out, WriteBuffer& sidecars) {
-    out.mutable_vector_index_distances()->Add(response_.vector_index_distances()[index_]);
-    auto new_offset = response_.vector_index_ends()[index_];
-    sidecars.Append(Slice(sidecars_.data() + sidecar_offset_, new_offset - sidecar_offset_));
-    sidecar_offset_ = new_offset;
-    ++index_;
-    return !Finished();
-  }
-
- private:
-  int index_ = 0;
-  const PgsqlResponsePB& response_;
-  RefCntSlice sidecars_;
-  size_t sidecar_offset_ = 8;
-};
-
-struct CompareVectorIndexPartitionResult {
-  bool operator()(VectorIndexPartitionResult* lhs, VectorIndexPartitionResult* rhs) const {
-    return lhs->Distance() > rhs->Distance();
-  }
-};
 
 struct PerformData {
   uint64_t session_id;
@@ -711,51 +679,59 @@ struct PerformData {
 
   Status ProcessVectorIndexResponse(TabletReadTime* used_read_time) {
     auto& front = ops.front();
+    auto dump_stats = front.vector_index_fetch_start != MonoTime();
+    auto process_start_time = MonoTime::NowIf(dump_stats);
     const auto& read = *front.vector_index_read_request;
     auto& responses = *resp.mutable_responses();
 
-    std::vector<VectorIndexPartitionResult> results;
-    results.reserve(ops.size());
+    std::vector<RefCntSlice> all_sidecars;
+    all_sidecars.reserve(ops.size());
+    std::vector<std::pair<uint64_t, Slice>> vectors;
 
     for (const auto& op : ops) {
-      // TODO(vector_index) Implement paging.
-      results.emplace_back(
-          op.op->response(), front.vector_index_sidecars->Extract(*op.op->sidecar_index()));
-    }
-
-    // TODO(vector_index) Use heap with sift up functionality.
-    std::priority_queue<
-        VectorIndexPartitionResult*, std::vector<VectorIndexPartitionResult*>,
-        CompareVectorIndexPartitionResult> queue;
-    for (auto& part : results) {
-      if (!part.Finished()) {
-        queue.push(&part);
+      auto op_sidecars = front.vector_index_sidecars->Extract(*op.op->sidecar_index());
+      all_sidecars.push_back(op_sidecars);
+      auto sidecars_data = op_sidecars.data();
+      auto& op_resp = op.op->response();
+      auto& distances = op_resp.vector_index_distances();
+      auto& ends = op_resp.vector_index_ends();
+      size_t sidecar_offset = 8;
+      for (int index = 0; index != distances.size(); ++index) {
+        auto new_offset = ends[index];
+        vectors.emplace_back(
+            distances[index], Slice(sidecars_data + sidecar_offset, sidecars_data + new_offset));
+        sidecar_offset = new_offset;
       }
     }
+
+    auto reduce_start_time = MonoTime::NowIf(dump_stats);
+
+    std::ranges::sort(vectors, [](const auto& lhs, const auto& rhs) {
+      return lhs.first < rhs.first;
+    });
 
     auto& out_resp = *responses.Add();
     auto& write_buffer = sidecars.Start();
-    auto num_rows_pos = write_buffer.Position();
-    pggate::PgWire::WriteInt64(0, &write_buffer);
     auto prefetch_size = read.index_request().vector_idx_options().prefetch_size();
-    if (prefetch_size == -1) {
-      prefetch_size = std::numeric_limits<decltype(prefetch_size)>::max();
+    if (prefetch_size >= 0 && vectors.size() > make_unsigned(prefetch_size)) {
+      vectors.resize(prefetch_size);
     }
 
-    while (!queue.empty() && out_resp.vector_index_distances().size() < prefetch_size) {
-      auto& top = *queue.top();
-      queue.pop();
-      if (top.Consume(out_resp, write_buffer)) {
-        queue.push(&top);
-      }
+    pggate::PgWire::WriteInt64(vectors.size(), &write_buffer);
+    for (const auto& [distance, data] : vectors) {
+      out_resp.mutable_vector_index_distances()->Add(distance);
+      write_buffer.Append(data);
     }
-
-    RETURN_NOT_OK(pggate::PgWire::WriteInt64(
-        out_resp.vector_index_distances().size(), &write_buffer, num_rows_pos));
 
     out_resp.set_status(front.op->response().status());
     out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
     out_resp.set_partition_list_version(front.op->table()->GetPartitionListVersion());
+
+    LOG_IF(INFO, dump_stats)
+        << "VI_STATS: Fetch time: "
+        << (process_start_time - front.vector_index_fetch_start).ToPrettyString()
+        << ", collect time: " << (reduce_start_time - process_start_time).ToPrettyString()
+        << ", reduce time: " << (MonoTime::Now() - reduce_start_time).ToPrettyString();
 
     return Status::OK();
   }
@@ -1150,7 +1126,7 @@ class PgClientSession::Impl {
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
-        big_shared_mem_expiration_task_(&scheduler),
+        big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
@@ -1356,6 +1332,20 @@ class PgClientSession::Impl {
       }
     }
 
+    std::optional<yb::ReplicationSlotOrderingMode> ordering_mode;
+    if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes) {
+      switch (req.ordering_mode()) {
+        case ReplicationSlotOrderingModePg_ROW:
+          ordering_mode = ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_ROW;
+          break;
+        case ReplicationSlotOrderingModePg_TRANSACTION:
+          ordering_mode = ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_TRANSACTION;
+          break;
+        default:
+          return STATUS_FORMAT(InvalidArgument, "invalid ordering_mode $0", req.ordering_mode());
+      }
+    }
+
     uint64_t consistent_snapshot_time;
     auto stream_result = VERIFY_RESULT(client_.CreateCDCSDKStreamForNamespace(
         GetPgsqlNamespaceId(req.database_oid()), options,
@@ -1365,7 +1355,8 @@ class PgClientSession::Impl {
         context->GetClientDeadline(),
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
         &consistent_snapshot_time,
-        lsn_type));
+        lsn_type,
+        ordering_mode));
     *resp->mutable_stream_id() = stream_result.ToString();
     resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
     return Status::OK();
@@ -2140,6 +2131,10 @@ class PgClientSession::Impl {
     big_shared_mem_expiration_task_.StartShutdown();
   }
 
+  bool ReadyToShutdown() {
+    return big_shared_mem_expiration_task_.ReadyToShutdown();
+  }
+
   void CompleteShutdown() {
     big_shared_mem_expiration_task_.CompleteShutdown();
   }
@@ -2282,7 +2277,7 @@ class PgClientSession::Impl {
     }
     ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
 
-    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, options);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -2602,19 +2597,24 @@ class PgClientSession::Impl {
     }
 
     if (txn) {
-      return txn->isolation() != isolation
-          ? STATUS_FORMAT(
-              IllegalState,
-              "Attempt to change isolation level of running transaction from $0 to $1",
-              txn->isolation(), isolation)
-          : Status::OK();
+      if (txn->isolation() != isolation) {
+        return STATUS_FORMAT(
+          IllegalState,
+          "Attempt to change isolation level of running transaction from $0 to $1",
+          txn->isolation(), isolation);
+      }
+
+      return options.ddl_mode() && options.ddl_use_regular_transaction_block()
+                 ? txn->EnsureGlobal(deadline)
+                 : Status::OK();
     }
 
-    // TODO(#26299): Local to Global transaction promotion might not work with DDLs. Needs to be
-    // investigated and necessary support needs to be added.
+    const client::ForceGlobalTransaction force_global_transaction{
+        options.force_global_transaction() ||
+        (options.ddl_mode() && options.ddl_use_regular_transaction_block())};
     TransactionProvider::EnsureGlobal ensure_global{false};
     std::tie(txn, ensure_global) = transaction_provider_.Take<kSessionKind>(
-        client::ForceGlobalTransaction{options.force_global_transaction()}, deadline);
+      force_global_transaction, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
     auto* read_point = session->read_point();
@@ -3004,8 +3004,6 @@ class PgClientSession::Impl {
     const auto has_exclusive_locks = plain_session_has_exclusive_object_locks_.load();
     if (has_exclusive_locks) {
       SCHECK_NOTNULL(txn);
-      VLOG(1) << "Requesting release of global object locks for "
-              << " txn " << txn->id() << " subtxn_id " << AsString(subtxn_id);
       // Statements like BACKFILL INDEX seem to operate under DML mode but acquire exclusive
       // locks on objects. This is because they don't lead to any schema changes. For such DMLs
       // we need to propagate the release locks request to master to release the object locks
@@ -3022,9 +3020,10 @@ class PgClientSession::Impl {
   Status DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
       CoarseTimePoint deadline, bool has_exclusive_locks) {
+    VLOG_WITH_PREFIX_AND_FUNC(1)
+        << "Requesting release of " << (has_exclusive_locks ? "global" : "local")
+        << " locks for " << " txn " << txn_id << " subtxn_id " << AsString(subtxn_id);
     if (!has_exclusive_locks) {
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "txn: " << txn_id << " subtxn: " << AsString(subtxn_id);
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),
@@ -3046,11 +3045,13 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
+  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
+                                              const PgPerformOptionsPB& options) {
     auto* read_point = result.session_data.session->read_point();
     if (!result.is_plain ||
         result.session_data.transaction ||
-        (read_point && read_point->GetReadTime())) {
+        (read_point && read_point->GetReadTime()) ||
+        options.non_transactional_buffered_write()) {
       return {};
     }
 
@@ -3125,6 +3126,10 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
 
 void PgClientSession::StartShutdown() {
   return impl_->StartShutdown();
+}
+
+bool PgClientSession::ReadyToShutdown() const {
+  return impl_->ReadyToShutdown();
 }
 
 void PgClientSession::CompleteShutdown() {

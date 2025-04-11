@@ -32,8 +32,14 @@ YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 
 class TablespaceParser {
  public:
-  static Result<ReplicationInfoPB> FromString(const std::string& placement);
-  static Result<ReplicationInfoPB> FromQLValue(const std::vector<std::string>& placements);
+  // If fail on fail_on_validation_error is true, the functions below will return an error if the
+  // extra validation checks fail. If it is false, then the function will return the replication
+  // info and just log a warning. This is required for upgrade safety (and eventually to support the
+  // a force flag in the yb-admin APIs).
+  static Result<ReplicationInfoPB> FromString(
+      const std::string& placement, bool fail_on_validation_error = true);
+  static Result<ReplicationInfoPB> FromQLValue(
+      const std::vector<std::string>& placements, bool fail_on_validation_error = true);
 
   // Returns the locality level for given CloudInfoPB references.
   static LocalityLevel GetLocalityLevel(
@@ -41,7 +47,8 @@ class TablespaceParser {
 
  private:
   static Result<ReplicationInfoPB> FromJson(
-      const std::string& placement_str, const rapidjson::Document& placement);
+      const std::string& placement_str, const rapidjson::Document& placement,
+      bool fail_on_validation_error);
 };
 
 } // namespace yb

@@ -23,7 +23,7 @@ SELECT * FROM test2;
 -- Test rollback of a block with multiple DDLs
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 CREATE TABLE test3 (id int);
-CREATE TABLE test4 (id int);
+CREATE TABLE test4 (id int PRIMARY KEY, b int);
 ALTER TABLE test1 ADD COLUMN value text;
 INSERT INTO test1 VALUES (3, 'text');
 ROLLBACK;
@@ -84,3 +84,49 @@ BEGIN ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test7 VALUES (1, 1);
 COMMIT;
 SELECT * FROM test7;
+
+SET allow_system_table_mods = on;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate system table inside a transaction block.
+TRUNCATE pg_extension;
+ROLLBACK;
+RESET allow_system_table_mods;
+
+SET yb_enable_alter_table_rewrite = off;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate user table inside a transaction block with table rewrite disabled.
+TRUNCATE test7;
+ROLLBACK;
+RESET yb_enable_alter_table_rewrite;
+
+-- Rollback CREATE, DROP and CREATE TABLE with same name in a transaction block.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test8 (a int primary key, b int);
+INSERT INTO test8 VALUES (1, 1);
+SELECT * FROM test8;
+DROP TABLE test8;
+CREATE TABLE test8 (c int primary key, d int);
+INSERT INTO test8 VALUES (10, 10);
+ROLLBACK;
+SELECT * FROM test8;
+
+-- Same test as above but with COMMIT.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test8 (a int primary key, b int);
+INSERT INTO test8 VALUES (1, 1);
+SELECT * FROM test8;
+DROP TABLE test8;
+CREATE TABLE test8 (c int primary key, d int);
+INSERT INTO test8 VALUES (10, 10);
+COMMIT;
+SELECT * FROM test8;
+
+-- Rollback of DROP TABLE.
+CREATE TABLE test9 (a int primary key, b int);
+INSERT INTO test9 VALUES (1, 1);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test9 VALUES (2, 2);
+SELECT * FROM test9;
+DROP TABLE test9;
+ROLLBACK;
+SELECT * FROM test9;

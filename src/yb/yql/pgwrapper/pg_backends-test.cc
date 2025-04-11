@@ -775,7 +775,7 @@ TEST_F_EX(PgBackendsTest, RenameDatabase, PgBackendsTestRf3) {
   ASSERT_EQ(1, num_backends);
 }
 
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(Stress), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, YB_RELEASE_ONLY_TEST(Stress), PgBackendsTestRf3) {
   constexpr auto kBumpPeriod = 1s;
   constexpr auto kMaxSleep = 3s;
   constexpr auto kTestDuration = 45s;

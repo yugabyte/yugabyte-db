@@ -13,6 +13,7 @@
 
 #include "yb/tserver/master_leader_poller.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/master/master_rpc.h"

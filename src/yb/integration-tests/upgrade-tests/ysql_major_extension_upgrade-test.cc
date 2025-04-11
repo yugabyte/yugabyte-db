@@ -23,10 +23,14 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
   YsqlMajorExtensionUpgradeTest() = default;
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
-    opts.extra_tserver_flags.push_back(
-        Format("--ysql_pg_conf_csv=\"shared_preload_libraries=passwordcheck,pg_stat_monitor\""));
+    opts.extra_tserver_flags.push_back(Format(
+        "--ysql_pg_conf_csv=\"shared_preload_libraries=passwordcheck,pg_stat_monitor,anon\""));
     opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
     opts.extra_master_flags.push_back("--enable_pg_cron=true");
+    // TODO: Exclude passwordcheck for now, as upgrade fails with it enabled. Add separate test for
+    // passwordcheck (see GH#26618).
+    opts.extra_master_flags.push_back(Format(
+        "--ysql_pg_conf_csv=\"shared_preload_libraries=pg_stat_monitor,anon\""));
     YsqlMajorUpgradeTestBase::SetUpOptions(opts);
   }
 };
@@ -321,5 +325,46 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
   ASSERT_OK(ExecuteStatement("DROP EXTENSION pg_stat_monitor"));
   ASSERT_OK(UpgradeClusterToCurrentVersion());
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_stat_monitor")));
+}
+
+TEST_F(YsqlMajorExtensionUpgradeTest, Anon) {
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION anon"));
+  auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = TRUE"));
+  auto result = ASSERT_RESULT(conn.FetchRows<bool>("SELECT anon.start_dynamic_masking()"));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = FALSE"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(result, (decltype(result){true}));
+  ASSERT_OK(ExecuteStatement("CREATE TABLE test (name text)"));
+  ASSERT_OK(ExecuteStatement("CREATE ROLE test_role LOGIN"));
+  ASSERT_OK(ExecuteStatement("SECURITY LABEL FOR anon ON ROLE test_role IS 'MASKED'"));
+  ASSERT_OK(ExecuteStatement("GRANT SELECT ON test TO test_role"));
+  ASSERT_OK(ExecuteStatement(
+      "SECURITY LABEL FOR anon ON COLUMN test.name IS 'MASKED WITH VALUE ''CONFIDENTIAL'''"));
+  ASSERT_OK(ExecuteStatement("INSERT INTO test VALUES ('hi'), ('bye')"));
+  auto check_query = [&](const std::optional<size_t> tserver_idx) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx, "test_role"));
+    auto result = ASSERT_RESULT((conn.FetchRows<std::string>("SELECT * FROM test")));
+    ASSERT_VECTORS_EQ(result, (decltype(result){"CONFIDENTIAL", "CONFIDENTIAL"}));
+  };
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
+}
+
+TEST_F(YsqlMajorExtensionUpgradeTest, PlPgsql) {
+  ASSERT_OK(ExecuteStatements({
+    "DROP EXTENSION plpgsql CASCADE",
+    "CREATE LANGUAGE plpgsql",
+    "CREATE FUNCTION test() RETURNS INTEGER AS $$begin return 1; end$$ LANGUAGE plpgsql",
+    "DROP LANGUAGE plpgsql CASCADE",
+    "CREATE EXTENSION plpgsql",
+  }));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
 }
 } // namespace yb

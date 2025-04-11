@@ -62,7 +62,7 @@ CREATE TABLE customers (
 );
 ```
 
-The following example shows a YCQL table created with hash sharding only, (an explict syntax for setting hash sharding is not necessary):
+The following example shows a YCQL table created with hash sharding only, (an explicit syntax for setting hash sharding is not necessary):
 
 ```postgres
 CREATE TABLE items (

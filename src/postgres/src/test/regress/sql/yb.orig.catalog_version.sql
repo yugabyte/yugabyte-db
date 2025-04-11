@@ -308,7 +308,7 @@ ALTER TABLE evt_trig_table ADD COLUMN val INT;
 CREATE TABLE post_trigger_table (id INT);
 :display_catalog_version;
 
--- The execution on atomic SPI context function will increment current_version.
+-- The execution on atomic SPI context function will not increment current_version.
 CREATE FUNCTION atomic_spi(INT) RETURNS INT AS $$
 DECLARE TOTAL INT;
 BEGIN
@@ -368,7 +368,18 @@ CREATE TABLE t_3 AS SELECT c FROM (SELECT 1 AS c, f1()) AS s;
 GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
 
--- The next GRANT SELECT will increment current_version due to evt_ddl_start.
+-- The next GRANT SELECT used to increment current_version due to evt_ddl_start
+-- which causes an insert into evt_trig_table table. However, evt_trig_table is
+-- not a catalog table. It is a user table and writing to a user table does not
+-- change catalog state so should not need to increment catalog version. As of
+-- 2024-10-15, we simply detect whether there is any write under DDL mode and
+-- when we make the write to evt_trig_table, the GRANT SELECT DDL execution is
+-- in progress. An improvement is to detect we write to catalog table under DDL
+-- mode.
+-- With invalidation messages, we detect that the GRANT SELECT DDL statement
+-- does not generate any invalidation messages at all, which implies no catalog
+-- cache entries need to be invalidated. Therefore this GRANT SELECT no longer
+-- increments current_version.
 GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
 
@@ -388,6 +399,7 @@ CREATE UNIQUE INDEX ON mv(t);
 REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
 -- concurrent refreshes should not bump catalog version.
+INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
 
@@ -452,6 +464,10 @@ ALTER ROLE test_role;
 :display_catalog_version;
 
 -- Sanity test yb_increment_db_catalog_version_with_inval_messages
+-- Clear pg_yb_invalidation_messages for any left over messages from previous DDLs.
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
+DELETE FROM pg_yb_invalidation_messages;
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 \set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
 SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 SET yb_disable_catalog_version_check TO on;

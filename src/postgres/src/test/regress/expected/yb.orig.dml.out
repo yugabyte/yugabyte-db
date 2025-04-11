@@ -11,10 +11,10 @@ EXPLAIN (COSTS OFF) INSERT INTO GH_22967 VALUES ((EXISTS(SELECT 1) in (SELECT tr
 ---------------------------------
  Insert on gh_22967
    InitPlan 1 (returns $0)
-     ->  Result
+     ->  Result *RESULT*
    ->  Values Scan on "*VALUES*"
          SubPlan 2
-           ->  Result
+           ->  Result *RESULT*_1
 (6 rows)
 
 INSERT INTO GH_22967 VALUES ((EXISTS(SELECT 1) in (SELECT true))::INT4), (-10);

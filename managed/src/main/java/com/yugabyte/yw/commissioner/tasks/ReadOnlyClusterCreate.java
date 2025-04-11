@@ -55,7 +55,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     Collection<Cluster> clusters = taskParams().getReadOnlyClusters();
     // Create preflight node check tasks for on-prem nodes.
     createPreflightNodeCheckTasks(clusters);
-    createCheckCertificateConfigTask(clusters);
+    createCheckCertificateConfigTask(universe, clusters);
   }
 
   protected void freezeUniverseInTxn(Universe universe) {

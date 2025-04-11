@@ -565,6 +565,8 @@ YbcStatus YBCPgDmlANNBindVector(YbcPgStatement handle, YbcPgExpr vector);
 
 YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
+YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -919,6 +921,7 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgOid database_oid,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
+                                        YbcOrderingMode ordering_mode,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
@@ -969,8 +972,10 @@ YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* 
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
 
-uint64_t YBCPgGetCurrentReadTimePoint();
-YbcStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
+YbcReadPointHandle YBCPgGetCurrentReadPoint();
+YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
+YbcStatus YBCPgRegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
 void YBCDdlEnableForceCatalogModification();
 
@@ -982,9 +987,9 @@ YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode 
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
 
 YbcStatus YBCPgExportSnapshot(
-    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id,
+    const YbcReadPointHandle* explicit_read_point);
 YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
-YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
 
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();

@@ -1,0 +1,50 @@
+trigger:
+  branches:
+    include:
+      - "main"
+  paths:
+    exclude:
+      - ".github/*"
+  batch: true
+
+pool:
+  vmImage: 'windows-2022'
+
+variables:
+  tempBranchName: 'temp-branch-for-sync-pipeline'
+  branchName: $[replace(variables['Build.SourceBranch'], 'refs/heads/', '')]
+
+steps:
+- checkout: self
+  persistCredentials: true
+- powershell: |
+    $ErrorActionPreference = 'Stop'
+
+    git remote add azure-devops https://$(System.AccessToken)@$(INTERNAL_REPO_URL)
+    git fetch azure-devops | Out-Null
+
+    git checkout -b $(tempBranchName)
+
+    Write-Host "Pushing Branch $(branchName) ..."
+
+    $branchExists = git ls-remote --heads azure-devops $(branchName)
+    if (-not $branchExists) {
+      Write-Host "Branch $(branchName) does not exist in Azure DevOps. Creating it ..."
+      git push -u azure-devops $(tempBranchName):$(branchName)
+    }
+    elseif ("$(branchName)" -eq "main") {
+      Write-Host "Branch $(branchName) is main. Pushing to main ..."
+      git push azure-devops $(tempBranchName):$(branchName)
+    }
+    else {
+      Write-Host "Branch $(branchName) exists in Azure DevOps. Forcing push ..."
+      git push -f azure-devops $(tempBranchName):$(branchName)
+    }
+  displayName: 'Push to Azure DevOps'
+- task: PoliCheck@2
+  inputs:
+    targetType: 'F'
+    targetArgument: '$(Build.SourcesDirectory)'
+    result: 'PolicheckOutput'
+    optionsFC: '1'
+    optionsXS: '1'

@@ -1062,6 +1062,10 @@ func getAssessmentIssueList(log logger.Logger, voyagerAssessmentReportResponse h
     assessmentIssuesMap := make(map[string]models.AssessmentIssueInfo)
 
     addIssue := func(issueType string, issue helpers.VoyagerAssessmentIssueInfo) {
+        if len(issue.Type) == 0 || len(issue.Name) == 0 {
+            return
+        }
+
         _, issuePresent := assessmentIssuesMap[issueType]
 
         if issuePresent {

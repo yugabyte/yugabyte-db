@@ -20,7 +20,7 @@ var createPITRCmd = &cobra.Command{
 	Short:   "Create a new PITR configuration for the universe",
 	Long:    "Create Point-In-Time Recovery (PITR) configuration for a keyspace in the universe",
 	Example: `yba backup pitr create --universe-name <universe-name> --keyspace <keyspace-name>
-	--table-type <table-type> --retention-period <retention-period>`,
+	--table-type <table-type> --retention-in-secs <retention-in-secs>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		universeName := util.MustGetFlagString(cmd, "universe-name")
 		keyspaceName := util.MustGetFlagString(cmd, "keyspace")
