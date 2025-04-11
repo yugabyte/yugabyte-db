@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="../../yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
 {{< /page-finder/head >}}
 
 {{< tip title="Tip" >}}

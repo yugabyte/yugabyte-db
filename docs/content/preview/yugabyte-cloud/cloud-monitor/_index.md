@@ -18,6 +18,12 @@ type: indexpage
 showRightNav: true
 ---
 
+{{< page-finder/head text="Monitor YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../launch-and-manage/monitor-and-alert" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/alerts-monitoring/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
+{{< /page-finder/head >}}
+
 ### Alerts
 
 Use YugabyteDB Aeon [Alerts](cloud-alerts/) to be automatically notified of potential problems. You can enable alerts for cluster, database, and billing criteria. Configure alerts from the **Alerts** page.

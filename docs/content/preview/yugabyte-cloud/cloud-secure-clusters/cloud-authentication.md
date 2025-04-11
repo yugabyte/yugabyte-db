@@ -14,6 +14,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Encryption in transit" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/tls-encryption/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/security/enable-encryption-in-transit/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Aeon uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. Using TLS with a digital certificate encrypts the data in transit to ensure a secure connection to your cluster, and prevents man in the middle (MITM) attacks, impersonation attacks, and eavesdropping.
 
 Whether you are connecting to your cluster from a client shell or an application, YugabyteDB Aeon clusters require a TLS/SSL connection.

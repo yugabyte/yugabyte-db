@@ -1,3 +1,7 @@
+{{/* get the page path to determine version */}}
+{{- $path := split $.Page.File.Dir "/" -}}
+{{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
+{{- $version := index $path 0 -}}
 {{- $tabs := default "local,cloud,anywhere" (.Get "list") -}}
 {{- $mode := default "local" (.Get "active") -}}
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
@@ -13,7 +17,7 @@
     <li>
         <a href="#cloud" class="nav-link {{if (eq $mode "cloud")}}active{{end}}" id="cloud-tab" data-bs-toggle="tab" role="tab" aria-controls="cloud" aria-selected="{{if (eq $mode "cloud")}}true{{end}}">
         <img src="/icons/cloud.svg" alt="Cloud Cluster"/>
-        YB Managed
+        YugabyteDB Aeon
         </a>
     </li>
     {{- end -}}
@@ -21,7 +25,7 @@
     <li>
         <a href="#anywhere" class="nav-link {{if (eq $mode "anywhere")}}active{{end}}" id="anywhere-tab" data-bs-toggle="tab" role="tab" aria-controls="anywhere" aria-selected="{{if (eq $mode "anywhere")}}true{{end}}">
         <img src="/icons/server.svg" alt="Anywhere Cluster"/>
-        YB Anywhere
+        YugabyteDB Anywhere
         </a>
     </li>
     {{- end -}}
@@ -32,7 +36,7 @@
     <div id="local" class="tab-pane fade {{if (eq $mode "local")}}show active{{end}}" role="tabpanel" aria-labelledby="local-tab">
         <div class="admonition note">
             <p class="admonition-title">Setup</p>
-            To set up a local universe, refer to <a href="/preview/explore/#set-up-yugabytedb-universe">Set up a local YugabyteDB universe</a>.
+            To set up a local universe, refer to <a href="/{{$version}}/explore/#set-up-yugabytedb-universe">Set up a local YugabyteDB universe</a>.
         </div>
     </div>
     {{- end -}}
@@ -40,7 +44,7 @@
     <div id="cloud" class="tab-pane fade {{if (eq $mode "cloud")}}show active{{end}}" role="tabpanel" aria-labelledby="cloud-tab">
         <div class="admonition note">
             <p class="admonition-title">Setup</p>
-            To set up a cluster, refer to <a href="/preview/explore/#set-up-yugabytedb-universe">Set up a YugabyteDB Aeon cluster</a>.
+            To set up a cluster, refer to <a href="/{{$version}}/explore/#set-up-yugabytedb-universe">Set up a YugabyteDB Aeon cluster</a>.
         </div>
     </div>
     {{- end -}}
@@ -48,7 +52,7 @@
     <div id="anywhere" class="tab-pane fade {{if (eq $mode "cloud")}}show active{{end}}" role="tabpanel" aria-labelledby="anywhere-tab">
         <div class="admonition note">
             <p class="admonition-title">Setup</p>
-            To set up a universe, refer to <a href="/preview/explore/#set-up-yugabytedb-universe">Set up a YugabyteDB Anywhere universe</a>.
+            To create a universe, refer to <a href="/{{$version}}/yugabyte-platform/create-deployments/create-universe-multi-zone">Create a multi-zone universe</a>.
         </div>
     </div>
     {{- end -}}
