@@ -227,7 +227,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
             .filter(n -> n.type == NodeConfig.Type.PAM_LIMITS_WRITABLE)
             .findFirst()
             .get();
-    NodeConfig errCheck = new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "true");
+    NodeConfig errCheck = new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "false");
     testNode.nodeConfigs.remove(pamNode);
     testNode.nodeConfigs.add(errCheck);
     // Set an unaccepted value.
@@ -327,7 +327,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.INTERNET_CONNECTION, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.TMP_DIR_SPACE, "10000"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.PROMETHEUS_SPACE, "10000"));
-    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "false"));
+    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.HOME_DIR_SPACE, "10000"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.SSH_PORT, "{\"54422\":\"true\"}"));
     nodeConfigs.add(
