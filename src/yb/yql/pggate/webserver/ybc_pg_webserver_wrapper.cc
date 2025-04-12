@@ -20,6 +20,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <regex>
 
 #include "yb/gutil/map-util.h"
 
@@ -73,6 +74,10 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
 static const char *USER = "user";
+
+static std::regex rename_from(
+  "yb_ysqlserver_((CatalogCacheMisses)|(CatalogCacheTableMisses))");
+static std::string rename_to = "handler_latency_yb_ysqlserver_SQLProcessor_$1";
 
 namespace {
 
@@ -547,6 +552,16 @@ static void PgPrometheusMetricsHandler(
             "counter", ybpgm_table[i].count_help),
         "Couldn't write text metrics for Prometheus");
 
+    // minor hack to emit old and new names for certain count metrics
+    const std::string duplicate_name = std::regex_replace(
+      metric_name, rename_from, rename_to);
+    if (duplicate_name != metric_name) {
+      WARN_NOT_OK(writer.WriteSingleEntry(
+        prometheus_attr, duplicate_name + "_count", ybpgm_table[i].calls,
+        AggregationFunction::kSum, kServerLevel, metric_entity_type,
+        "counter", ybpgm_table[i].count_help),
+    "Couldn't write text metrics for Prometheus");
+    }
     // Skip over empty metrics.
     if (strcmp(ybpgm_table[i].sum_help, "Not applicable") != 0) {
       WARN_NOT_OK(

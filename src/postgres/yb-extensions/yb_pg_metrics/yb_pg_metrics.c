@@ -49,7 +49,9 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
-#define YSQL_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
+#define YSQL_METRIC_PREFIX "yb_ysqlserver_"
+#define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
+
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
 
 PG_MODULE_MAGIC;
@@ -345,22 +347,22 @@ set_metric_names(void)
 		ybpgm_table[i].sum_help[0] = '\0';
 	}
 
-	strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
-	strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
-	strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
-	strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
-	strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
-	strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
-	strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
-	strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+	strcpy(ybpgm_table[Select].name, YSQL_LATENCY_METRIC_PREFIX "SelectStmt");
+	strcpy(ybpgm_table[Insert].name, YSQL_LATENCY_METRIC_PREFIX "InsertStmt");
+	strcpy(ybpgm_table[Delete].name, YSQL_LATENCY_METRIC_PREFIX "DeleteStmt");
+	strcpy(ybpgm_table[Update].name, YSQL_LATENCY_METRIC_PREFIX "UpdateStmt");
+	strcpy(ybpgm_table[Begin].name, YSQL_LATENCY_METRIC_PREFIX "BeginStmt");
+	strcpy(ybpgm_table[Commit].name, YSQL_LATENCY_METRIC_PREFIX "CommitStmt");
+	strcpy(ybpgm_table[Rollback].name, YSQL_LATENCY_METRIC_PREFIX "RollbackStmt");
+	strcpy(ybpgm_table[Other].name, YSQL_LATENCY_METRIC_PREFIX "OtherStmts");
 	/* Deprecated. Names with "_"s may cause confusion to metric consumers. */
 	strcpy(ybpgm_table[Single_Shard_Transaction].name,
-		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+		   YSQL_LATENCY_METRIC_PREFIX "Single_Shard_Transactions");
 	strcpy(ybpgm_table[SingleShardTransaction].name,
-		   YSQL_METRIC_PREFIX "SingleShardTransactions");
-	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
+		   YSQL_LATENCY_METRIC_PREFIX "SingleShardTransactions");
+	strcpy(ybpgm_table[Transaction].name, YSQL_LATENCY_METRIC_PREFIX "Transactions");
 	strcpy(ybpgm_table[AggregatePushdown].name,
-		   YSQL_METRIC_PREFIX "AggregatePushdowns");
+		   YSQL_LATENCY_METRIC_PREFIX "AggregatePushdowns");
 	strcpy(ybpgm_table[CatCacheRefresh].name,
 		   YSQL_METRIC_PREFIX "CatCacheRefresh");
 	strcpy(ybpgm_table[CatCacheDeltaRefresh].name,

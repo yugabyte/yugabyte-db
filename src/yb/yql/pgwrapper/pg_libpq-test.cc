@@ -1796,7 +1796,7 @@ Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& ta
   auto found_it =
       std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
         return (
-            metric.name.find("CatalogCacheTableMisses") != std::string::npos &&
+            metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
             metric.labels["table_name"] == table_name);
       });
   if (found_it == json_metrics.end()) {
@@ -4113,7 +4113,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   for (const auto& metrics : {json_metrics, prometheus_metrics}) {
     int64_t expected_total_cache_misses = 0;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
           metric.labels.find("table_name") == metric.labels.end()) {
         expected_total_cache_misses = metric.value;
         break;
@@ -4126,7 +4126,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     int64_t total_index_cache_misses = 0;
     std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
           metric.labels.find("table_name") != metric.labels.end()) {
         auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
         ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
@@ -4144,7 +4144,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     // table-level cache miss metric.
     int64_t total_table_cache_misses = 0;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheTableMisses") != std::string::npos) {
+      if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos) {
         auto table_name = metric.labels.at("table_name");
         ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
             << "Expected sum of index cache misses for table " << table_name
