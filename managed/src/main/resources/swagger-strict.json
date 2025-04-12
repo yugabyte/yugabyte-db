@@ -27399,6 +27399,12 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "replicationSetupTime" : {
+          "description" : "Time of replication setup, ie, table added to the replication group on the target universe",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
         "restoreUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -27451,10 +27457,14 @@
           "description" : "Short human readable replication status error messages",
           "items" : {
             "enum" : [
+              "Unknown error",
               "Missing op ID",
               "Schema mismatch",
               "Missing table",
-              "Auto flag config mismatch"
+              "Uninitialized",
+              "Auto flag config mismatch",
+              "Source unreachable",
+              "System error"
             ],
             "type" : "string"
           },
