@@ -1,5 +1,6 @@
 ---
-title: Encryption at rest
+title: Encryption at rest in YugabyteDB Aeon
+headerTitle: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Aeon cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
@@ -10,6 +11,12 @@ menu:
     weight: 460
 type: docs
 ---
+
+{{< page-finder/head text="Encryption at rest" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/encryption-at-rest/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/security/enable-encryption-at-rest/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
+{{< /page-finder/head >}}
 
 For added security, you can encrypt your clusters (including backups) using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). You grant YugabyteDB Aeon access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
