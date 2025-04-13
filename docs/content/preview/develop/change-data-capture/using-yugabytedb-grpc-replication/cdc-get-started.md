@@ -19,9 +19,11 @@ type: docs
 
 The following steps are necessary to set up YugabyteDB for use with the YugabyteDB gRPC connector:
 
-- Create a DB stream ID.
+- Create a database stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the `create_change_data_stream` yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference for more details.
+
+    Note that CDC currently only supports YSQL tables.
 
 - Make sure the YB-Master and YB-TServer ports are open.
 
@@ -33,11 +35,11 @@ The following steps are necessary to set up YugabyteDB for use with the Yugabyte
 
     In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
-## Deploying the YugabyteDB gRPC Connector
+## Deploy the YugabyteDB gRPC Connector
 
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
-- Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+- Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases).
 - Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
 - Configure the Connector: Modify the connector configuration to suit your specific requirements.
 - Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
