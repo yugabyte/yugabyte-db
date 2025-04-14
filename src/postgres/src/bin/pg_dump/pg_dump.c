@@ -3218,6 +3218,10 @@ dumpDatabase(Archive *fout)
 	{
 		appendPQExpBufferStr(creaQry, " colocation = true");
 	}
+	else if (dopt->include_yb_metadata)
+	{
+		appendPQExpBufferStr(creaQry, " colocation = false");
+	}
 
 	/*
 	 * Note: looking at dopt->outputNoTablespaces here is completely the wrong
