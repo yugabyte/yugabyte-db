@@ -278,9 +278,12 @@ static const FormData_pg_attribute yb_a2 = {
 	.attislocal = true,
 };
 
-
 static const FormData_pg_attribute *YbSysAtt[] = {&yb_a1, &yb_a2};
 
+/*
+ * SystemAttributeDefinition() equivalent for attnum <=
+ * YBFirstLowInvalidAttributeNumber.
+ */
 const FormData_pg_attribute *
 YbSystemAttributeDefinition(AttrNumber attno)
 {
